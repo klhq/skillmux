@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://klh.app/schemas/skill-router/router-core.json",
+  "title": "Skill Router — router-core contract",
+  "description": "Typed contract for the skill-router MCP server: tool inputs/outputs (logical result payloads), config.toml, and the audit-log row. Source spec: docs/sdd/router-core/spec.md (approved 2026-07-14). Transport note: the SKILL.md body must appear exactly once on the wire — implementations put metadata in MCP structuredContent and the body in text content, or inline both in one structured result, but never duplicate the body.",
+  "$defs": {
+    "SkillId": {
+      "type": "string",
+      "description": "Vault directory name of the skill (~/.agents/skills/<skill_id>/SKILL.md).",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,127}$"
+    },
+    "Sha256Hex": {
+      "type": "string",
+      "description": "Lowercase hex SHA-256 of the exact SKILL.md bytes.",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "RelativePath": {
+      "type": "string",
+      "description": "Path of a supporting file relative to the skill directory (e.g. 'references/palette.md'). Never absolute, never contains '..'.",
+      "pattern": "^(?!/)(?!.*\\.\\.).+$",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "Candidate": {
+      "type": "object",
+      "description": "One shortlist entry in an ambiguous result.",
+      "properties": {
+        "skill_id": { "$ref": "#/$defs/SkillId" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "description": { "type": "string", "minLength": 1 },
+        "rerank_score": {
+          "type": ["number", "null"],
+          "description": "BAAI/bge-reranker-v2-m3 relevance score. null when degraded=true (reranker unreachable; FTS5-only recall)."
+        }
+      },
+      "required": ["skill_id", "title", "description", "rerank_score"],
+      "additionalProperties": false
+    },
+    "ResolveSkillInput": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Natural-language task description to route. Normalized (NFC) by the server; never semantically rewritten.",
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      },
+      "required": ["query"],
+      "additionalProperties": false
+    },
+    "MatchedResult": {
+      "type": "object",
+      "description": "AC2: one candidate clearly dominates. Full SKILL.md delivered inline, byte-identical to disk at delivery time. Never returned when degraded (AC7) — encoded as const false.",
+      "properties": {
+        "outcome": { "const": "matched" },
+        "degraded": { "const": false },
+        "skill_id": { "$ref": "#/$defs/SkillId" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "content_sha256": { "$ref": "#/$defs/Sha256Hex" },
+        "score": {
+          "type": "number",
+          "description": "Top rerank_score. Satisfies score >= config thresholds.match_score."
+        },
+        "margin": {
+          "type": "number",
+          "description": "Top minus second rerank_score. Satisfies margin >= config thresholds.match_margin. Equals score when there is exactly one candidate.",
+          "minimum": 0
+        },
+        "body": {
+          "type": "string",
+          "description": "Verbatim UTF-8 content of SKILL.md. sha256(body bytes) == content_sha256 == hash of the on-disk file read at delivery time.",
+          "minLength": 1
+        },
+        "files": {
+          "type": "array",
+          "description": "Relative paths of the skill's supporting files (contents NOT included). Same semantics as FetchSkillResult.files.",
+          "items": { "$ref": "#/$defs/RelativePath" },
+          "uniqueItems": true
+        }
+      },
+      "required": ["outcome", "degraded", "skill_id", "title", "content_sha256", "score", "margin", "body", "files"],
+      "additionalProperties": false
+    },
+    "AmbiguousResult": {
+      "type": "object",
+      "description": "AC3: several plausible candidates; the calling LLM picks, then calls fetch_skill. No body. In degraded mode this is the only outcome besides no_match, with rerank_score null on every candidate.",
+      "properties": {
+        "outcome": { "const": "ambiguous" },
+        "degraded": { "type": "boolean" },
+        "candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Candidate" },
+          "minItems": 1,
+          "maxItems": 5
+        }
+      },
+      "required": ["outcome", "degraded", "candidates"],
+      "additionalProperties": false
+    },
+    "NoMatchResult": {
+      "type": "object",
+      "description": "AC4: no skill passed the relevance floor. Caller proceeds under its normal workflow; must not load an unrelated skill.",
+      "properties": {
+        "outcome": { "const": "no_match" },
+        "degraded": { "type": "boolean" },
+        "message": {
+          "type": "string",
+          "description": "Fixed guidance string telling the caller to proceed normally.",
+          "minLength": 1
+        }
+      },
+      "required": ["outcome", "degraded", "message"],
+      "additionalProperties": false
+    },
+    "ResolveSkillResult": {
+      "description": "AC1: exactly three outcomes, discriminated by 'outcome'.",
+      "oneOf": [
+        { "$ref": "#/$defs/MatchedResult" },
+        { "$ref": "#/$defs/AmbiguousResult" },
+        { "$ref": "#/$defs/NoMatchResult" }
+      ]
+    },
+    "FetchSkillInput": {
+      "type": "object",
+      "properties": {
+        "skill_id": { "$ref": "#/$defs/SkillId" }
+      },
+      "required": ["skill_id"],
+      "additionalProperties": false
+    },
+    "FetchSkillResult": {
+      "type": "object",
+      "description": "AC5: verbatim delivery independent of any prior resolve outcome. Unknown skill_id raises ToolError with code SKILL_NOT_FOUND instead of returning this shape.",
+      "properties": {
+        "skill_id": { "$ref": "#/$defs/SkillId" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "content_sha256": { "$ref": "#/$defs/Sha256Hex" },
+        "body": { "type": "string", "minLength": 1 },
+        "files": {
+          "type": "array",
+          "description": "Relative paths of supporting files under the skill directory (references/, scripts/, ...). Paths only; callers with filesystem access read contents directly.",
+          "items": { "$ref": "#/$defs/RelativePath" },
+          "uniqueItems": true
+        }
+      },
+      "required": ["skill_id", "title", "content_sha256", "body", "files"],
+      "additionalProperties": false
+    },
+    "ErrorCode": {
+      "type": "string",
+      "description": "Machine-readable code carried in MCP ToolError messages as 'CODE: human message'.",
+      "enum": ["SKILL_NOT_FOUND", "VAULT_UNAVAILABLE", "INTERNAL"]
+    },
+    "Config": {
+      "type": "object",
+      "description": "config.toml, validated at startup. All five tuning parameters (AC6) live here — never hardcoded. Threshold values are produced by 'skill-router eval' (AC11).",
+      "properties": {
+        "vault_path": {
+          "type": "string",
+          "description": "Skill vault root. Default: ~/.agents/skills",
+          "default": "~/.agents/skills"
+        },
+        "state_dir": {
+          "type": "string",
+          "description": "All router writes are confined here (AC9): index SQLite (incl. audit log), vector matrix.",
+          "default": "~/.local/state/skill-router"
+        },
+        "recall": {
+          "type": "object",
+          "properties": {
+            "k_lexical": { "type": "integer", "minimum": 1, "maximum": 100, "default": 15 },
+            "k_vector": { "type": "integer", "minimum": 1, "maximum": 100, "default": 15 }
+          },
+          "required": ["k_lexical", "k_vector"],
+          "additionalProperties": false
+        },
+        "thresholds": {
+          "type": "object",
+          "description": "Calibrated by the eval harness against the real vault; the values below are placeholders until AC11 runs.",
+          "properties": {
+            "match_score": {
+              "type": "number",
+              "description": "T — minimum top rerank_score for outcome=matched."
+            },
+            "match_margin": {
+              "type": "number",
+              "description": "Δ — minimum (top − second) rerank_score gap for outcome=matched.",
+              "minimum": 0
+            },
+            "candidate_floor": {
+              "type": "number",
+              "description": "Minimum score for a candidate to appear in an ambiguous shortlist; all below ⇒ no_match. Applied to rerank_score, or to normalized BM25 rank order in degraded mode."
+            }
+          },
+          "required": ["match_score", "match_margin", "candidate_floor"],
+          "additionalProperties": false
+        },
+        "embedding": {
+          "type": "object",
+          "description": "Harrier embeddings via Bifrost (OpenAI-compatible), authenticated with vk-embed.",
+          "properties": {
+            "base_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Bifrost OpenAI-compatible base URL (client calls POST {base_url}/v1/embeddings)."
+            },
+            "api_key_env": {
+              "type": "string",
+              "description": "Name of the environment variable holding the vk-embed key. The key value itself never appears in config.",
+              "default": "BIFROST_VK_EMBED"
+            },
+            "model": { "const": "microsoft/harrier-oss-v1-0.6b" },
+            "dimension": { "const": 1024 }
+          },
+          "required": ["base_url", "api_key_env", "model", "dimension"],
+          "additionalProperties": false
+        },
+        "rerank": {
+          "type": "object",
+          "description": "bge-reranker via the workhorse Infinity endpoint DIRECTLY (Bifrost has no rerank passthrough). Client calls Infinity's native POST {base_url}/rerank.",
+          "properties": {
+            "base_url": { "type": "string", "format": "uri" },
+            "model": { "const": "BAAI/bge-reranker-v2-m3" }
+          },
+          "required": ["base_url", "model"],
+          "additionalProperties": false
+        },
+        "remote_timeout_ms": {
+          "type": "integer",
+          "description": "Per-request budget for embedding and rerank calls; exceeding it flips resolve_skill to the degraded lane (AC7).",
+          "minimum": 100,
+          "maximum": 30000,
+          "default": 2000
+        }
+      },
+      "required": ["vault_path", "state_dir", "recall", "thresholds", "embedding", "rerank", "remote_timeout_ms"],
+      "additionalProperties": false
+    },
+    "AuditRow": {
+      "type": "object",
+      "description": "AC10: one row per resolve_skill call, appended to the audit table in the state-dir SQLite. Raw query stored deliberately (single-user private homelab).",
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "ts": { "type": "string", "format": "date-time" },
+        "query": { "type": "string" },
+        "outcome": { "type": "string", "enum": ["matched", "ambiguous", "no_match"] },
+        "degraded": { "type": "boolean" },
+        "candidates": {
+          "type": "array",
+          "description": "skill_id + score of every reranked (or FTS5-ranked) candidate considered, best first.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "skill_id": { "$ref": "#/$defs/SkillId" },
+              "score": { "type": ["number", "null"] }
+            },
+            "required": ["skill_id", "score"],
+            "additionalProperties": false
+          }
+        },
+        "selected_skill_id": {
+          "oneOf": [{ "$ref": "#/$defs/SkillId" }, { "type": "null" }],
+          "description": "Set iff outcome=matched."
+        },
+        "latency_ms": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["id", "ts", "query", "outcome", "degraded", "candidates", "selected_skill_id", "latency_ms"],
+      "additionalProperties": false
+    }
+  }
+}
