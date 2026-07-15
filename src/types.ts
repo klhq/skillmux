@@ -40,7 +40,7 @@ export interface Config {
   embedding: EmbeddingConfig;
   rerank: RerankConfig;
   remote_timeout_ms: number;
-  server: ServerConfig;
+  server?: ServerConfig;
 }
 
 export interface Candidate {

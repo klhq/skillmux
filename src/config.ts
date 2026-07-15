@@ -102,14 +102,16 @@ export async function loadConfig(path?: string): Promise<Config> {
   }
 
   // HTTP server environment overrides
-  if (process.env.HTTP_AUTH_ENABLED) {
-    merged.server.auth_enabled = process.env.HTTP_AUTH_ENABLED === "true";
-  }
-  if (process.env.HTTP_AUTH_TOKEN_ENV) {
-    merged.server.auth_token_env = process.env.HTTP_AUTH_TOKEN_ENV;
-  }
-  if (process.env.HTTP_ALLOWED_ORIGINS) {
-    merged.server.allowed_origins = process.env.HTTP_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+  if (merged.server) {
+    if (process.env.HTTP_AUTH_ENABLED) {
+      merged.server.auth_enabled = process.env.HTTP_AUTH_ENABLED === "true";
+    }
+    if (process.env.HTTP_AUTH_TOKEN_ENV) {
+      merged.server.auth_token_env = process.env.HTTP_AUTH_TOKEN_ENV;
+    }
+    if (process.env.HTTP_ALLOWED_ORIGINS) {
+      merged.server.allowed_origins = process.env.HTTP_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+    }
   }
 
   return merged;

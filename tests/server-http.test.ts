@@ -60,7 +60,7 @@ beforeAll(async () => {
   // Mock Bun.serve to capture the server port
   const mockServe = (options: any) => {
     const s = origServe(options);
-    capturedPort = s.port;
+    capturedPort = s.port!;
     return s;
   };
   // @ts-ignore
@@ -81,7 +81,7 @@ afterAll(() => {
 function parseSSEResponse(text: string): any {
   const match = text.match(/data:\s*({.*})/);
   if (!match) throw new Error(`Could not parse SSE response: ${text}`);
-  return JSON.parse(match[1]);
+  return JSON.parse(match[1]!);
 }
 
 describe("MCP Streamable HTTP Server (AC3)", () => {
@@ -172,7 +172,7 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     let authPort = 0;
     const mockServe = (options: any) => {
       const s = origServe(options);
-      authPort = s.port;
+      authPort = s.port!;
       return s;
     };
     // @ts-ignore

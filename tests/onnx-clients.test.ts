@@ -49,8 +49,8 @@ describe("local ONNX clients (AC1)", () => {
 
     expect(scores).toHaveLength(2);
     console.log("Reranker scores:", scores);
-    expect(scores[0]).toBeGreaterThan(scores[1]); // match is ranked higher than mismatch
-    expect(scores[1]).toBeLessThan(0.01);         // mismatch is very low
+    expect(scores[0]!).toBeGreaterThan(scores[1]!); // match is ranked higher than mismatch
+    expect(scores[1]!).toBeLessThan(0.01);         // mismatch is very low
 
   });
 });

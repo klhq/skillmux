@@ -66,8 +66,13 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
     const bunServer = Bun.serve({
       port,
       async fetch(req) {
+        const serverConfig = config.server || {
+          auth_enabled: false,
+          auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
+          allowed_origins: ["*"],
+        };
         const origin = req.headers.get("origin") || "";
-        const allowedOrigins = config.server.allowed_origins;
+        const allowedOrigins = serverConfig.allowed_origins;
         const isAllowed = allowedOrigins.includes("*") || allowedOrigins.includes(origin);
         const allowOriginHeader = isAllowed ? (allowedOrigins.includes("*") ? "*" : origin) : "";
 
@@ -86,8 +91,8 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
         }
 
         // Token Auth Check
-        if (config.server.auth_enabled) {
-          const expectedToken = process.env[config.server.auth_token_env] ?? "";
+        if (serverConfig.auth_enabled) {
+          const expectedToken = process.env[serverConfig.auth_token_env] ?? "";
           if (!expectedToken) {
             return new Response("Server authentication configured but token environment variable is empty", { status: 500 });
           }
