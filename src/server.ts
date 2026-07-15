@@ -80,10 +80,15 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
     });
     await server.connect(transport);
 
+    const { RateLimiter } = await import("./rate-limiter");
+    const rateLimiter = new RateLimiter(
+      config.server?.rate_limit || { enabled: false, requests_per_minute: 60 }
+    );
+
     const port = opts?.port ?? Number(process.env.PORT || 3000);
     const bunServer = Bun.serve({
       port,
-      async fetch(req) {
+      async fetch(req, server) {
         const serverConfig = config.server || {
           auth_enabled: false,
           auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
@@ -98,24 +103,6 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
           return new Response("CORS origin not allowed", { status: 403 });
         }
 
-        const url = new URL(req.url);
-        if (req.method === "GET") {
-          if (url.pathname === "/health") {
-            const headers = new Headers({ "Content-Type": "application/json" });
-            if (allowOriginHeader) {
-              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-            }
-            return new Response(JSON.stringify({ status: "ok" }), { status: 200, headers });
-          }
-          if (url.pathname === "/metrics") {
-            const headers = new Headers({ "Content-Type": "text/plain; version=0.0.4" });
-            if (allowOriginHeader) {
-              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-            }
-            return new Response(metricsRegistry.render(), { status: 200, headers });
-          }
-        }
-
         if (req.method === "OPTIONS") {
           return new Response(null, {
             headers: {
@@ -124,6 +111,65 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
               "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version",
             },
           });
+        }
+
+        // Run rate limiter check
+        const rateLimitResult = rateLimiter.check({
+          nowMs: Date.now(),
+          auth_enabled: serverConfig.auth_enabled,
+          req,
+          server,
+        });
+
+        if (!rateLimitResult.allowed) {
+          metricsRegistry.recordRateLimitExceeded();
+
+          // Count the request in requests_total under the method if possible
+          let mcpMethod = "unknown";
+          try {
+            const bodyClone = await req.clone().json();
+            if (bodyClone.method === "tools/call") {
+              mcpMethod = bodyClone.params?.name || "tools/call";
+            } else {
+              mcpMethod = bodyClone.method || "unknown";
+            }
+          } catch {
+            // Non-JSON or parsing error
+          }
+          metricsRegistry.recordRequest(mcpMethod);
+
+          const headers = new Headers(rateLimitResult.headers);
+          if (allowOriginHeader) {
+            headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+          }
+          return new Response("Too Many Requests", {
+            status: 429,
+            headers,
+          });
+        }
+
+        const url = new URL(req.url);
+        if (req.method === "GET") {
+          if (url.pathname === "/health") {
+            const headers = new Headers({ "Content-Type": "application/json" });
+            if (allowOriginHeader) {
+              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            }
+            for (const [key, value] of Object.entries(rateLimitResult.headers)) {
+              headers.set(key, value);
+            }
+            return new Response(JSON.stringify({ status: "ok" }), { status: 200, headers });
+          }
+          if (url.pathname === "/metrics") {
+            const headers = new Headers({ "Content-Type": "text/plain; version=0.0.4" });
+            if (allowOriginHeader) {
+              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            }
+            for (const [key, value] of Object.entries(rateLimitResult.headers)) {
+              headers.set(key, value);
+            }
+            return new Response(metricsRegistry.render(), { status: 200, headers });
+          }
         }
 
         // Token Auth Check
@@ -157,6 +203,9 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
         const headers = new Headers(res.headers);
         if (allowOriginHeader) {
           headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+        }
+        for (const [key, value] of Object.entries(rateLimitResult.headers)) {
+          headers.set(key, value);
         }
         return new Response(res.body, {
           status: res.status,

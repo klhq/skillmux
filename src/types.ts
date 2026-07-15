@@ -55,10 +55,16 @@ export interface RerankConfig {
   dtype?: ONNXDtype;
 }
 
+export interface RateLimitConfig {
+  enabled: boolean;
+  requests_per_minute: number;
+}
+
 export interface ServerConfig {
   auth_enabled: boolean;
   auth_token_env: string;
   allowed_origins: string[];
+  rate_limit?: RateLimitConfig;
 }
 
 export interface Config {

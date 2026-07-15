@@ -31,6 +31,10 @@ const DEFAULTS: Config = {
     auth_enabled: false,
     auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
     allowed_origins: ["*"],
+    rate_limit: {
+      enabled: false,
+      requests_per_minute: 60,
+    },
   },
 };
 
@@ -132,6 +136,28 @@ export async function loadConfig(path?: string): Promise<Config> {
     }
     if (process.env.HTTP_ALLOWED_ORIGINS) {
       merged.server.allowed_origins = process.env.HTTP_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+    }
+
+    if (!merged.server.rate_limit) {
+      merged.server.rate_limit = { enabled: false, requests_per_minute: 60 };
+    }
+
+    const rateLimitEnabledStr = getEnv("SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED", "HTTP_RATE_LIMIT_ENABLED");
+    if (rateLimitEnabledStr) {
+      merged.server.rate_limit.enabled = rateLimitEnabledStr === "true";
+    }
+
+    const rateLimitRPMStr = getEnv("SKILL_ROUTER_HTTP_RATE_LIMIT_RPM", "HTTP_RATE_LIMIT_RPM");
+    if (rateLimitRPMStr) {
+      const rpm = Number(rateLimitRPMStr);
+      if (!Number.isInteger(rpm)) {
+        throw new Error(`Invalid rate limit RPM: ${rateLimitRPMStr}`);
+      }
+      merged.server.rate_limit.requests_per_minute = rpm;
+    }
+
+    if (merged.server.rate_limit.enabled && merged.server.rate_limit.requests_per_minute === undefined) {
+      merged.server.rate_limit.requests_per_minute = 60;
     }
   }
 

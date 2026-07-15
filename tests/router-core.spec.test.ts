@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -468,6 +468,12 @@ describe("on-demand lazy indexing (First Principles #2)", () => {
       join(dir, "SKILL.md"),
       `---\nname: Lazy Test Skill\ndescription: A skill created to test on-demand lazy indexing without watcher.\n---\n\n# Lazy Test Skill\nBody\n`,
     );
+
+    // Set timestamps in the future to guarantee detection even on coarse filesystems
+    const futureTime = new Date(Date.now() + 5000);
+    utimesSync(join(dir, "SKILL.md"), futureTime, futureTime);
+    utimesSync(dir, futureTime, futureTime);
+    utimesSync(vaultDir, futureTime, futureTime);
 
     // Call resolveSkill and verify it automatically re-indexes and matches the new skill
     const res = await resolveSkill({ query: "Lazy Test Skill" });

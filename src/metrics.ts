@@ -9,6 +9,7 @@ export class MetricsRegistry {
   private latencyCount = 0;
 
   private errors = 0;
+  private rateLimitsExceeded = 0;
 
   recordRequest(method: string) {
     this.requests.set(method, (this.requests.get(method) || 0) + 1);
@@ -31,6 +32,10 @@ export class MetricsRegistry {
 
   recordError() {
     this.errors++;
+  }
+
+  recordRateLimitExceeded() {
+    this.rateLimitsExceeded++;
   }
 
   render(): string {
@@ -69,6 +74,11 @@ export class MetricsRegistry {
     lines.push("# HELP skill_router_errors_total Total count of server and query routing errors.");
     lines.push("# TYPE skill_router_errors_total counter");
     lines.push(`skill_router_errors_total ${this.errors}`);
+
+    // Rate limits exceeded
+    lines.push("# HELP skill_router_rate_limits_exceeded_total Total count of HTTP requests rejected by rate limiting.");
+    lines.push("# TYPE skill_router_rate_limits_exceeded_total counter");
+    lines.push(`skill_router_rate_limits_exceeded_total ${this.rateLimitsExceeded}`);
 
     return lines.join("\n") + "\n";
   }
