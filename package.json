@@ -3,7 +3,17 @@
   "version": "0.1.0",
   "description": "Local read-only MCP server routing natural-language task queries to skills in a SKILL.md vault, with zero-loss delivery",
   "type": "module",
-  "private": true,
+  "private": false,
+  "author": "Lance Hsu <lance@klh.app>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/klhq/skill-router.git"
+  },
+  "bugs": {
+    "url": "https://github.com/klhq/skill-router/issues"
+  },
+  "homepage": "https://github.com/klhq/skill-router#readme",
   "scripts": {
     "test": "bun test",
     "serve": "bun run src/cli.ts serve",
