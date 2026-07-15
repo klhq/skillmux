@@ -15,11 +15,15 @@ export interface EmbeddingConfig {
   api_key_env: string;
   model: string;
   dimension: number;
+  device?: string;
+  dtype?: string;
 }
 
 export interface RerankConfig {
   base_url: string;
   model: string;
+  device?: string;
+  dtype?: string;
 }
 
 export interface Config {

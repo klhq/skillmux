@@ -17,10 +17,14 @@ const DEFAULTS: Config = {
     api_key_env: "SKILL_ROUTER_EMBED_KEY",
     model: "microsoft/harrier-oss-v1-0.6b",
     dimension: 1024,
+    device: "cpu",
+    dtype: "q8",
   },
   rerank: {
     base_url: "http://127.0.0.1:7997",
     model: "BAAI/bge-reranker-v2-m3",
+    device: "cpu",
+    dtype: "q8",
   },
   remote_timeout_ms: 2000,
 };
@@ -76,8 +80,20 @@ export async function loadConfig(path?: string): Promise<Config> {
   if (process.env.EMBED_BASE_URL) {
     merged.embedding.base_url = process.env.EMBED_BASE_URL;
   }
+  if (process.env.EMBED_DEVICE) {
+    merged.embedding.device = process.env.EMBED_DEVICE;
+  }
+  if (process.env.EMBED_DTYPE) {
+    merged.embedding.dtype = process.env.EMBED_DTYPE;
+  }
   if (process.env.RERANK_BASE_URL) {
     merged.rerank.base_url = process.env.RERANK_BASE_URL;
+  }
+  if (process.env.RERANK_DEVICE) {
+    merged.rerank.device = process.env.RERANK_DEVICE;
+  }
+  if (process.env.RERANK_DTYPE) {
+    merged.rerank.dtype = process.env.RERANK_DTYPE;
   }
 
   return merged;
