@@ -31,7 +31,7 @@ const config: Config = {
   vault_path: vaultDir,
   state_dir: join(tmp, "state"),
   recall: { k_lexical: 15, k_vector: 15 },
-  thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
+  thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
   embedding: {
     base_url: "http://127.0.0.1:9",
     api_key_env: "SKILL_ROUTER_EMBED_KEY",

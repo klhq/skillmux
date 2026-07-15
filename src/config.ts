@@ -11,7 +11,7 @@ const DEFAULTS: Config = {
   vault_path: "~/.agents/skills",
   state_dir: "~/.local/state/skill-router",
   recall: { k_lexical: 15, k_vector: 15 },
-  thresholds: { match_score: 0.9, match_margin: 0.3, candidate_floor: 0.5 },
+  thresholds: { match_score: 0.9, match_margin: 0.3, candidate_floor: 0.5, candidate_limit: 5 },
   embedding: {
     base_url: "http://127.0.0.1:8080",
     api_key_env: "SKILL_ROUTER_EMBED_KEY",

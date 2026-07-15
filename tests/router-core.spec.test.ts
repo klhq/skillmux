@@ -230,6 +230,7 @@ describe("decision logic", () => {
         match_score: 0.9,
         match_margin: 0.2,
         candidate_floor: 0.4,
+        candidate_limit: 5,
       },
     });
 
@@ -251,6 +252,7 @@ describe("decision logic", () => {
         match_score: 0.9,
         match_margin: 0.1,
         candidate_floor: 0.4,
+        candidate_limit: 5,
       },
     });
 
@@ -267,6 +269,7 @@ describe("decision logic", () => {
         match_score: 0.9,
         match_margin: 0.2,
         candidate_floor: 0.4,
+        candidate_limit: 5,
       },
     });
 
@@ -285,6 +288,7 @@ describe("decision logic", () => {
         match_score: 0.9,
         match_margin: 0.2,
         candidate_floor: 0.4,
+        candidate_limit: 5,
       },
     });
 
@@ -301,6 +305,7 @@ describe("decision logic", () => {
         match_score: 0.9,
         match_margin: 0.9,
         candidate_floor: 0.4,
+        candidate_limit: 5,
       },
     });
 
@@ -319,11 +324,34 @@ describe("decision logic", () => {
         match_score: 0.9,
         match_margin: 0.2,
         candidate_floor: 0.4,
+        candidate_limit: 5,
       },
     });
 
     expect(["ambiguous", "no_match"]).toContain(result.outcome);
     expect(result.outcome).not.toBe("matched");
+  });
+
+  test("limits candidates to candidate_limit when outcome is ambiguous", () => {
+    const result = decideResolveOutcome({
+      degraded: false,
+      candidates: [
+        { skill_id: "a", title: "A", description: "A", rerank_score: 0.8 },
+        { skill_id: "b", title: "B", description: "B", rerank_score: 0.7 },
+        { skill_id: "c", title: "C", description: "C", rerank_score: 0.6 },
+      ],
+      thresholds: {
+        match_score: 0.9,
+        match_margin: 0.3,
+        candidate_floor: 0.5,
+        candidate_limit: 2,
+      },
+    });
+
+    expect(result.outcome).toBe("ambiguous");
+    if (result.outcome !== "ambiguous") throw new Error("unreachable");
+    expect(result.candidates).toHaveLength(2);
+    expect(result.candidates.map(c => c.skill_id)).toEqual(["a", "b"]);
   });
 });
 
@@ -338,6 +366,7 @@ describe("config contract", () => {
     expect(config.thresholds.match_score).toEqual(expect.any(Number));
     expect(config.thresholds.match_margin).toEqual(expect.any(Number));
     expect(config.thresholds.candidate_floor).toEqual(expect.any(Number));
+    expect(config.thresholds.candidate_limit).toEqual(expect.any(Number));
     expect(config.embedding.base_url).toMatch(/^https?:\/\//);
     expect(config.embedding.api_key_env).toEqual(expect.any(String));
     expect(config.embedding.model).toBe("microsoft/harrier-oss-v1-0.6b");

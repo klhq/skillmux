@@ -191,9 +191,16 @@
             "candidate_floor": {
               "type": "number",
               "description": "Minimum score for a candidate to appear in an ambiguous shortlist; all below ⇒ no_match. Applied to rerank_score, or to normalized BM25 rank order in degraded mode."
+            },
+            "candidate_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 5,
+              "description": "Maximum number of candidates returned on ambiguous outcomes (top-k limit)."
             }
           },
-          "required": ["match_score", "match_margin", "candidate_floor"],
+          "required": ["match_score", "match_margin", "candidate_floor", "candidate_limit"],
           "additionalProperties": false
         },
         "embedding": {

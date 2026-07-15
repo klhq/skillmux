@@ -24,6 +24,7 @@ k_vector = 15    # embedding-cosine candidates
 match_score = 0.90      # top score required for a confident single match
 match_margin = 0.30    # required gap between top and second candidate
 candidate_floor = 0.50  # minimum score to appear in an ambiguous shortlist
+candidate_limit = 5     # maximum number of candidates returned on ambiguous outcomes (top-k)
 
 # OpenAI-compatible embeddings endpoint (POST {base_url}/v1/embeddings).
 # The API key is read from the environment variable named by api_key_env —

@@ -7,6 +7,7 @@ export interface Thresholds {
   match_score: number;
   match_margin: number;
   candidate_floor: number;
+  candidate_limit: number;
 }
 
 export interface EmbeddingConfig {

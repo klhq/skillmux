@@ -11,14 +11,12 @@ export type Decision =
   | { outcome: "ambiguous"; candidates: Candidate[] }
   | { outcome: "no_match" };
 
-const MAX_SHORTLIST = 5;
-
 export function decideResolveOutcome({ degraded, candidates, thresholds }: DecisionInput): Decision {
   if (candidates.length === 0) return { outcome: "no_match" };
 
   // Degraded lane: no comparable scores exist, so never match; the (BM25-ordered)
   // shortlist goes to the calling LLM instead (AC7).
-  if (degraded) return { outcome: "ambiguous", candidates: candidates.slice(0, MAX_SHORTLIST) };
+  if (degraded) return { outcome: "ambiguous", candidates: candidates.slice(0, thresholds.candidate_limit) };
 
   const sorted = [...candidates].sort((a, b) => (b.rerank_score ?? -Infinity) - (a.rerank_score ?? -Infinity));
   const eligible = sorted.filter((c) => (c.rerank_score ?? -Infinity) >= thresholds.candidate_floor);
@@ -31,5 +29,5 @@ export function decideResolveOutcome({ degraded, candidates, thresholds }: Decis
   if (topScore >= thresholds.match_score && margin >= thresholds.match_margin) {
     return { outcome: "matched", skill_id: top.skill_id, score: topScore, margin };
   }
-  return { outcome: "ambiguous", candidates: eligible.slice(0, MAX_SHORTLIST) };
+  return { outcome: "ambiguous", candidates: eligible.slice(0, thresholds.candidate_limit) };
 }
