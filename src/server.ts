@@ -66,18 +66,43 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
     const bunServer = Bun.serve({
       port,
       async fetch(req) {
+        const origin = req.headers.get("origin") || "";
+        const allowedOrigins = config.server.allowed_origins;
+        const isAllowed = allowedOrigins.includes("*") || allowedOrigins.includes(origin);
+        const allowOriginHeader = isAllowed ? (allowedOrigins.includes("*") ? "*" : origin) : "";
+
+        if (origin && !isAllowed) {
+          return new Response("CORS origin not allowed", { status: 403 });
+        }
+
         if (req.method === "OPTIONS") {
           return new Response(null, {
             headers: {
-              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Origin": allowOriginHeader,
               "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers": "Content-Type, MCP-Protocol-Version",
+              "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version",
             },
           });
         }
+
+        // Token Auth Check
+        if (config.server.auth_enabled) {
+          const expectedToken = process.env[config.server.auth_token_env] ?? "";
+          if (!expectedToken) {
+            return new Response("Server authentication configured but token environment variable is empty", { status: 500 });
+          }
+          const authHeader = req.headers.get("authorization") || "";
+          const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+          if (!token || token !== expectedToken) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+        }
+
         const res = await transport.handleRequest(req);
         const headers = new Headers(res.headers);
-        headers.set("Access-Control-Allow-Origin", "*");
+        if (allowOriginHeader) {
+          headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+        }
         return new Response(res.body, {
           status: res.status,
           statusText: res.statusText,

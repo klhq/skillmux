@@ -161,4 +161,103 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(response.headers.get("access-control-allow-methods")).toContain("POST");
   });
+
+  test("handles Bearer token authentication and CORS origin filtering", async () => {
+    process.env.HTTP_AUTH_ENABLED = "true";
+    process.env.HTTP_AUTH_TOKEN_ENV = "MY_TEST_HTTP_TOKEN";
+    process.env.MY_TEST_HTTP_TOKEN = "secret-token-123";
+    process.env.HTTP_ALLOWED_ORIGINS = "http://trusted.com,http://another.com";
+
+    const origServe = Bun.serve;
+    let authPort = 0;
+    const mockServe = (options: any) => {
+      const s = origServe(options);
+      authPort = s.port;
+      return s;
+    };
+    // @ts-ignore
+    Bun.serve = mockServe;
+
+    configure({});
+
+    await startServer({ transport: "http", port: 0 });
+    
+    // @ts-ignore
+    Bun.serve = origServe;
+
+    try {
+      // 1. Request with wrong token should fail with 401
+      const resWrongToken = await fetch(`http://127.0.0.1:${authPort}/`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer wrong-token",
+        },
+        body: JSON.stringify({}),
+      });
+      expect(resWrongToken.status).toBe(401);
+
+      // 2. Request with correct token and trusted origin should pass
+      const resCorrectToken = await fetch(`http://127.0.0.1:${authPort}/`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer secret-token-123",
+          "origin": "http://trusted.com",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: {},
+            clientInfo: { name: "test-client", version: "0.0.1" },
+          },
+        }),
+      });
+      expect(resCorrectToken.status).toBe(200);
+      expect(resCorrectToken.headers.get("access-control-allow-origin")).toBe("http://trusted.com");
+
+      // 3. Request with untrusted origin should fail with 403
+      const resUntrustedOrigin = await fetch(`http://127.0.0.1:${authPort}/`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "accept": "application/json, text/event-stream",
+          "authorization": "Bearer secret-token-123",
+          "origin": "http://untrusted.com",
+        },
+        body: JSON.stringify({}),
+      });
+      expect(resUntrustedOrigin.status).toBe(403);
+
+      // 4. OPTIONS request with trusted origin
+      const resOptionsTrusted = await fetch(`http://127.0.0.1:${authPort}/`, {
+        method: "OPTIONS",
+        headers: {
+          "origin": "http://trusted.com",
+        },
+      });
+      expect(resOptionsTrusted.status).toBe(200);
+      expect(resOptionsTrusted.headers.get("access-control-allow-origin")).toBe("http://trusted.com");
+
+      // 5. OPTIONS request with untrusted origin
+      const resOptionsUntrusted = await fetch(`http://127.0.0.1:${authPort}/`, {
+        method: "OPTIONS",
+        headers: {
+          "origin": "http://untrusted.com",
+        },
+      });
+      expect(resOptionsUntrusted.status).toBe(403);
+    } finally {
+      delete process.env.HTTP_AUTH_ENABLED;
+      delete process.env.HTTP_AUTH_TOKEN_ENV;
+      delete process.env.MY_TEST_HTTP_TOKEN;
+      delete process.env.HTTP_ALLOWED_ORIGINS;
+      configure({});
+    }
+  });
 });

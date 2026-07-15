@@ -43,3 +43,10 @@ base_url = "http://127.0.0.1:7997"
 model = "BAAI/bge-reranker-v2-m3"
 device = "cpu"          # device to run local ONNX model on: "cpu", "cuda", "mps", "wasm" (default: "cpu")
 dtype = "q8"            # data type/quantization for local ONNX model: "q8", "fp16", "fp32" (default: "q8")
+
+# HTTP server settings (CORS and bearer token authentication).
+# Only relevant when serving over HTTP (--transport http).
+[server]
+auth_enabled = false               # enable bearer token authentication check (default: false)
+auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"  # env var name containing the expected API token (default: "SKILL_ROUTER_AUTH_TOKEN")
+allowed_origins = ["*"]            # list of whitelisted CORS origins (default: ["*"])

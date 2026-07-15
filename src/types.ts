@@ -26,6 +26,12 @@ export interface RerankConfig {
   dtype?: string;
 }
 
+export interface ServerConfig {
+  auth_enabled: boolean;
+  auth_token_env: string;
+  allowed_origins: string[];
+}
+
 export interface Config {
   vault_path: string;
   state_dir: string;
@@ -34,6 +40,7 @@ export interface Config {
   embedding: EmbeddingConfig;
   rerank: RerankConfig;
   remote_timeout_ms: number;
+  server: ServerConfig;
 }
 
 export interface Candidate {

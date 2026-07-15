@@ -27,6 +27,11 @@ const DEFAULTS: Config = {
     dtype: "q8",
   },
   remote_timeout_ms: 2000,
+  server: {
+    auth_enabled: false,
+    auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
+    allowed_origins: ["*"],
+  },
 };
 
 export const DEFAULT_CONFIG_PATH = "~/.config/skill-router/config.toml";
@@ -94,6 +99,17 @@ export async function loadConfig(path?: string): Promise<Config> {
   }
   if (process.env.RERANK_DTYPE) {
     merged.rerank.dtype = process.env.RERANK_DTYPE;
+  }
+
+  // HTTP server environment overrides
+  if (process.env.HTTP_AUTH_ENABLED) {
+    merged.server.auth_enabled = process.env.HTTP_AUTH_ENABLED === "true";
+  }
+  if (process.env.HTTP_AUTH_TOKEN_ENV) {
+    merged.server.auth_token_env = process.env.HTTP_AUTH_TOKEN_ENV;
+  }
+  if (process.env.HTTP_ALLOWED_ORIGINS) {
+    merged.server.allowed_origins = process.env.HTTP_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
   }
 
   return merged;
