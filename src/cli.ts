@@ -49,7 +49,19 @@ async function runEval(): Promise<void> {
 switch (command) {
   case "serve": {
     const { startServer } = await import("./server");
-    await startServer();
+    const args = Bun.argv.slice(3);
+    let transport: "stdio" | "http" = "stdio";
+    let port: number | undefined;
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "--transport" && args[i + 1]) {
+        transport = args[i + 1] as "stdio" | "http";
+        i++;
+      } else if (args[i] === "--port" && args[i + 1]) {
+        port = parseInt(args[i + 1]!, 10);
+        i++;
+      }
+    }
+    await startServer({ transport, port });
     break;
   }
   case "index":
@@ -59,6 +71,6 @@ switch (command) {
     await runEval();
     break;
   default:
-    console.error("usage: skill-router <serve|index|eval>");
+    console.error("usage: skill-router <serve|index|eval> [--transport stdio|http] [--port N]");
     process.exit(2);
 }

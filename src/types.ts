@@ -10,16 +10,55 @@ export interface Thresholds {
   candidate_limit: number;
 }
 
+export type ONNXDevice =
+  | "cpu"
+  | "auto"
+  | "gpu"
+  | "wasm"
+  | "webgpu"
+  | "cuda"
+  | "dml"
+  | "coreml"
+  | "webnn"
+  | "webnn-npu"
+  | "webnn-gpu"
+  | "webnn-cpu";
+
+export type ONNXDtype =
+  | "q8"
+  | "auto"
+  | "fp32"
+  | "fp16"
+  | "int8"
+  | "uint8"
+  | "q4"
+  | "bnb4"
+  | "q4f16"
+  | "q2"
+  | "q2f16"
+  | "q1"
+  | "q1f16";
+
 export interface EmbeddingConfig {
   base_url: string;
   api_key_env: string;
   model: string;
   dimension: number;
+  device?: ONNXDevice;
+  dtype?: ONNXDtype;
 }
 
 export interface RerankConfig {
   base_url: string;
   model: string;
+  device?: ONNXDevice;
+  dtype?: ONNXDtype;
+}
+
+export interface ServerConfig {
+  auth_enabled: boolean;
+  auth_token_env: string;
+  allowed_origins: string[];
 }
 
 export interface Config {
@@ -30,6 +69,7 @@ export interface Config {
   embedding: EmbeddingConfig;
   rerank: RerankConfig;
   remote_timeout_ms: number;
+  server?: ServerConfig;
 }
 
 export interface Candidate {

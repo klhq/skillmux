@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Config } from "./types";
+import type { Config, ONNXDevice, ONNXDtype } from "./types";
 
 // Fallback values only; a config.toml (SKILL_ROUTER_CONFIG or default path)
 // overrides them. Endpoints default to localhost placeholders — deployment-
@@ -17,12 +17,21 @@ const DEFAULTS: Config = {
     api_key_env: "SKILL_ROUTER_EMBED_KEY",
     model: "microsoft/harrier-oss-v1-0.6b",
     dimension: 1024,
+    device: "cpu",
+    dtype: "q8",
   },
   rerank: {
     base_url: "http://127.0.0.1:7997",
     model: "BAAI/bge-reranker-v2-m3",
+    device: "cpu",
+    dtype: "q8",
   },
   remote_timeout_ms: 2000,
+  server: {
+    auth_enabled: false,
+    auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
+    allowed_origins: ["*"],
+  },
 };
 
 export const DEFAULT_CONFIG_PATH = "~/.config/skill-router/config.toml";
@@ -49,7 +58,61 @@ function deepMerge<T>(base: T, override: unknown): T {
 export async function loadConfig(path?: string): Promise<Config> {
   const configPath = path ?? process.env.SKILL_ROUTER_CONFIG ?? DEFAULT_CONFIG_PATH;
   const file = Bun.file(expandHome(configPath));
-  if (!(await file.exists())) return structuredClone(DEFAULTS);
-  const parsed = Bun.TOML.parse(await file.text());
-  return deepMerge(structuredClone(DEFAULTS), parsed);
+
+  const baseConfig = structuredClone(DEFAULTS);
+  if (process.env.RUNNING_IN_DOCKER === "true") {
+    baseConfig.vault_path = "/vault";
+    baseConfig.state_dir = "/data";
+    baseConfig.embedding.base_url = "local://";
+    baseConfig.rerank.base_url = "local://";
+  }
+
+  let merged: Config;
+  if (!(await file.exists())) {
+    merged = baseConfig;
+  } else {
+    const parsed = Bun.TOML.parse(await file.text());
+    merged = deepMerge(baseConfig, parsed);
+  }
+
+  // Environment variable overrides (AC4)
+  if (process.env.VAULT_PATH) {
+    merged.vault_path = process.env.VAULT_PATH;
+  }
+  if (process.env.STATE_DIR) {
+    merged.state_dir = process.env.STATE_DIR;
+  }
+  if (process.env.EMBED_BASE_URL) {
+    merged.embedding.base_url = process.env.EMBED_BASE_URL;
+  }
+  if (process.env.EMBED_DEVICE) {
+    merged.embedding.device = process.env.EMBED_DEVICE as ONNXDevice;
+  }
+  if (process.env.EMBED_DTYPE) {
+    merged.embedding.dtype = process.env.EMBED_DTYPE as ONNXDtype;
+  }
+  if (process.env.RERANK_BASE_URL) {
+    merged.rerank.base_url = process.env.RERANK_BASE_URL;
+  }
+  if (process.env.RERANK_DEVICE) {
+    merged.rerank.device = process.env.RERANK_DEVICE as ONNXDevice;
+  }
+  if (process.env.RERANK_DTYPE) {
+    merged.rerank.dtype = process.env.RERANK_DTYPE as ONNXDtype;
+  }
+
+  // HTTP server environment overrides
+  if (merged.server) {
+    if (process.env.HTTP_AUTH_ENABLED) {
+      merged.server.auth_enabled = process.env.HTTP_AUTH_ENABLED === "true";
+    }
+    if (process.env.HTTP_AUTH_TOKEN_ENV) {
+      merged.server.auth_token_env = process.env.HTTP_AUTH_TOKEN_ENV;
+    }
+    if (process.env.HTTP_ALLOWED_ORIGINS) {
+      merged.server.allowed_origins = process.env.HTTP_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+    }
+  }
+
+  return merged;
 }

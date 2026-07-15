@@ -21,6 +21,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Cache ONNX Models
+        uses: actions/cache@v4
+        with:
+          path: ./.models
+          key: ${{ runner.os }}-onnx-models-${{ hashFiles('tests/onnx-clients.test.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-onnx-models-
+
       - name: Typecheck
         run: bunx tsc --noEmit
 
