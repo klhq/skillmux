@@ -38,7 +38,7 @@ describe("Docker and env variable configuration (AC4)", () => {
     process.env.EMBED_DEVICE = "cuda";
     process.env.EMBED_DTYPE = "fp16";
     process.env.RERANK_BASE_URL = "http://env-rerank:9000";
-    process.env.RERANK_DEVICE = "mps";
+    process.env.RERANK_DEVICE = "gpu";
     process.env.RERANK_DTYPE = "fp32";
 
     const config = await loadConfig("/does/not/exist/config.toml");
@@ -49,7 +49,7 @@ describe("Docker and env variable configuration (AC4)", () => {
     expect(config.embedding.device).toBe("cuda");
     expect(config.embedding.dtype).toBe("fp16");
     expect(config.rerank.base_url).toBe("http://env-rerank:9000");
-    expect(config.rerank.device).toBe("mps");
+    expect(config.rerank.device).toBe("gpu");
     expect(config.rerank.dtype).toBe("fp32");
   });
 

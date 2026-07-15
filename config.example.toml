@@ -34,14 +34,14 @@ base_url = "http://127.0.0.1:8080"
 api_key_env = "SKILL_ROUTER_EMBED_KEY"
 model = "microsoft/harrier-oss-v1-0.6b"
 dimension = 1024
-device = "cpu"          # device to run local ONNX model on: "cpu", "cuda", "mps", "wasm" (default: "cpu")
+device = "cpu"          # device to run local ONNX model on: "cpu", "cuda", "gpu", "wasm", "webgpu" (default: "cpu")
 dtype = "q8"            # data type/quantization for local ONNX model: "q8", "fp16", "fp32" (default: "q8")
 
 # Infinity-native reranker endpoint (POST {base_url}/rerank).
 [rerank]
 base_url = "http://127.0.0.1:7997"
 model = "BAAI/bge-reranker-v2-m3"
-device = "cpu"          # device to run local ONNX model on: "cpu", "cuda", "mps", "wasm" (default: "cpu")
+device = "cpu"          # device to run local ONNX model on: "cpu", "cuda", "gpu", "wasm", "webgpu" (default: "cpu")
 dtype = "q8"            # data type/quantization for local ONNX model: "q8", "fp16", "fp32" (default: "q8")
 
 # HTTP server settings (CORS and bearer token authentication).

@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Config } from "./types";
+import type { Config, ONNXDevice, ONNXDtype } from "./types";
 
 // Fallback values only; a config.toml (SKILL_ROUTER_CONFIG or default path)
 // overrides them. Endpoints default to localhost placeholders — deployment-
@@ -86,19 +86,19 @@ export async function loadConfig(path?: string): Promise<Config> {
     merged.embedding.base_url = process.env.EMBED_BASE_URL;
   }
   if (process.env.EMBED_DEVICE) {
-    merged.embedding.device = process.env.EMBED_DEVICE;
+    merged.embedding.device = process.env.EMBED_DEVICE as ONNXDevice;
   }
   if (process.env.EMBED_DTYPE) {
-    merged.embedding.dtype = process.env.EMBED_DTYPE;
+    merged.embedding.dtype = process.env.EMBED_DTYPE as ONNXDtype;
   }
   if (process.env.RERANK_BASE_URL) {
     merged.rerank.base_url = process.env.RERANK_BASE_URL;
   }
   if (process.env.RERANK_DEVICE) {
-    merged.rerank.device = process.env.RERANK_DEVICE;
+    merged.rerank.device = process.env.RERANK_DEVICE as ONNXDevice;
   }
   if (process.env.RERANK_DTYPE) {
-    merged.rerank.dtype = process.env.RERANK_DTYPE;
+    merged.rerank.dtype = process.env.RERANK_DTYPE as ONNXDtype;
   }
 
   // HTTP server environment overrides

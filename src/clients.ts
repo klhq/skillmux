@@ -38,8 +38,8 @@ async function getLocalEmbedder(config: Config) {
   const pipeline = await setupTransformers(cacheDir);
 
   localEmbedder = await pipeline("feature-extraction", config.embedding.model || "Xenova/bge-m3", {
-    device: (config.embedding.device || "cpu") as any,
-    dtype: (config.embedding.dtype || "q8") as any,
+    device: config.embedding.device || "cpu",
+    dtype: config.embedding.dtype || "q8",
   });
   return localEmbedder;
 }
@@ -51,8 +51,8 @@ async function getLocalReranker(config: Config) {
   const pipeline = await setupTransformers(cacheDir);
 
   localReranker = await pipeline("text-classification", config.rerank.model || "onnx-community/bge-reranker-v2-m3-ONNX", {
-    device: (config.rerank.device || "cpu") as any,
-    dtype: (config.rerank.dtype || "q8") as any,
+    device: config.rerank.device || "cpu",
+    dtype: config.rerank.dtype || "q8",
   });
   return localReranker;
 }
