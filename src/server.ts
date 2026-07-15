@@ -6,6 +6,9 @@ import { createClients } from "./clients";
 import { loadConfig } from "./config";
 import { backfillEmbeddings, configure, fetchSkill, resolveSkill } from "./router-core";
 import { SKILL_ID_PATTERN } from "./vault";
+import { MetricsRegistry } from "./metrics";
+
+export const metricsRegistry = new MetricsRegistry();
 
 export async function startServer(opts?: { transport?: "stdio" | "http"; port?: number }): Promise<void> {
   const config = await loadConfig();
@@ -25,15 +28,25 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
       inputSchema: { query: z.string().min(1).max(8192) },
     },
     async ({ query }) => {
-      const result = await resolveSkill({ query });
-      if (result.outcome === "matched") {
-        const { body, ...meta } = result;
-        return { content: [{ type: "text" as const, text: body }], structuredContent: { ...meta } };
+      const startTime = performance.now();
+      try {
+        const result = await resolveSkill({ query });
+        const duration = (performance.now() - startTime) / 1000;
+        metricsRegistry.recordResolveLatencySeconds(duration);
+        metricsRegistry.recordResolveOutcome(result.outcome);
+
+        if (result.outcome === "matched") {
+          const { body, ...meta } = result;
+          return { content: [{ type: "text" as const, text: body }], structuredContent: { ...meta } };
+        }
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: { ...result },
+        };
+      } catch (err) {
+        metricsRegistry.recordError();
+        throw err;
       }
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result) }],
-        structuredContent: { ...result },
-      };
     },
   );
 
@@ -46,9 +59,14 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
       inputSchema: { skill_id: z.string().regex(SKILL_ID_PATTERN) },
     },
     async ({ skill_id }) => {
-      const result = await fetchSkill({ skill_id });
-      const { body, ...meta } = result;
-      return { content: [{ type: "text" as const, text: body }], structuredContent: { ...meta } };
+      try {
+        const result = await fetchSkill({ skill_id });
+        const { body, ...meta } = result;
+        return { content: [{ type: "text" as const, text: body }], structuredContent: { ...meta } };
+      } catch (err) {
+        metricsRegistry.recordError();
+        throw err;
+      }
     },
   );
 
@@ -80,6 +98,24 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
           return new Response("CORS origin not allowed", { status: 403 });
         }
 
+        const url = new URL(req.url);
+        if (req.method === "GET") {
+          if (url.pathname === "/health") {
+            const headers = new Headers({ "Content-Type": "application/json" });
+            if (allowOriginHeader) {
+              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            }
+            return new Response(JSON.stringify({ status: "ok" }), { status: 200, headers });
+          }
+          if (url.pathname === "/metrics") {
+            const headers = new Headers({ "Content-Type": "text/plain; version=0.0.4" });
+            if (allowOriginHeader) {
+              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            }
+            return new Response(metricsRegistry.render(), { status: 200, headers });
+          }
+        }
+
         if (req.method === "OPTIONS") {
           return new Response(null, {
             headers: {
@@ -102,6 +138,20 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
             return new Response("Unauthorized", { status: 401 });
           }
         }
+
+        // Record request metrics
+        let mcpMethod = "unknown";
+        try {
+          const bodyClone = await req.clone().json();
+          if (bodyClone.method === "tools/call") {
+            mcpMethod = bodyClone.params?.name || "tools/call";
+          } else {
+            mcpMethod = bodyClone.method || "unknown";
+          }
+        } catch {
+          // Non-JSON or parsing error
+        }
+        metricsRegistry.recordRequest(mcpMethod);
 
         const res = await transport.handleRequest(req);
         const headers = new Headers(res.headers);

@@ -101,6 +101,27 @@ export async function loadConfig(path?: string): Promise<Config> {
     merged.rerank.dtype = process.env.RERANK_DTYPE as ONNXDtype;
   }
 
+  const getEnv = (prefixed: string, unprefixed: string) => process.env[prefixed] || process.env[unprefixed];
+
+  const embedModel = getEnv("SKILL_ROUTER_EMBED_MODEL", "EMBED_MODEL");
+  if (embedModel) {
+    merged.embedding.model = embedModel;
+  }
+
+  const embedDimStr = getEnv("SKILL_ROUTER_EMBED_DIMENSION", "EMBED_DIMENSION");
+  if (embedDimStr) {
+    const dim = Number(embedDimStr);
+    if (!Number.isInteger(dim)) {
+      throw new Error(`Invalid embedding dimension: ${embedDimStr}`);
+    }
+    merged.embedding.dimension = dim;
+  }
+
+  const rerankModel = getEnv("SKILL_ROUTER_RERANK_MODEL", "RERANK_MODEL");
+  if (rerankModel) {
+    merged.rerank.model = rerankModel;
+  }
+
   // HTTP server environment overrides
   if (merged.server) {
     if (process.env.HTTP_AUTH_ENABLED) {

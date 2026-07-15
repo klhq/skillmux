@@ -260,4 +260,21 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
       configure({});
     }
   });
+
+  test("GET /health returns 200 and status ok", async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/health`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const json = await res.json() as any;
+    expect(json).toEqual({ status: "ok" });
+  });
+
+  test("GET /metrics returns 200 and prometheus metrics text", async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/metrics`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    const text = await res.text();
+    expect(text).toContain("# HELP skill_router_requests_total");
+    expect(text).toContain("# TYPE skill_router_requests_total");
+  });
 });
