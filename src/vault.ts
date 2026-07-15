@@ -83,3 +83,27 @@ export function listSupportingFiles(vaultPath: string, skillId: string): string[
   walk(root);
   return files.sort();
 }
+
+export function getVaultMaxMtime(vaultPath: string): number {
+  try {
+    let maxMtime = statSync(vaultPath).mtimeMs;
+    const entries = readdirSync(vaultPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && SKILL_ID_PATTERN.test(entry.name)) {
+        try {
+          const folderPath = join(vaultPath, entry.name);
+          const folderMtime = statSync(folderPath).mtimeMs;
+          maxMtime = Math.max(maxMtime, folderMtime);
+
+          const fileMtime = statSync(join(folderPath, "SKILL.md")).mtimeMs;
+          maxMtime = Math.max(maxMtime, fileMtime);
+        } catch {
+          // Ignore deleted files
+        }
+      }
+    }
+    return maxMtime;
+  } catch {
+    return 0;
+  }
+}

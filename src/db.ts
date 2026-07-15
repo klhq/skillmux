@@ -44,6 +44,10 @@ export function openIndex(stateDir: string): Database {
     selected_skill_id TEXT,
     latency_ms INTEGER NOT NULL
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS index_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )`);
   return db;
 }
 
@@ -154,6 +158,21 @@ export function findExactMatch(db: Database, query: string): SkillRow | null {
           OR ' ' || lower(aliases) || ' ' LIKE ?`,
     )
     .get(cleanQuery, cleanQuery, `% ${cleanQuery} %`) as SkillRow | null;
+}
+
+export function getIndexMeta(db: Database, key: string): string | null {
+  const row = db
+    .query("SELECT value FROM index_meta WHERE key = ?")
+    .get(key) as { value: string } | null;
+  return row ? row.value : null;
+}
+
+export function setIndexMeta(db: Database, key: string, value: string): void {
+  db.run(
+    `INSERT INTO index_meta (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, value],
+  );
 }
 
 export function upsertVector(

@@ -459,3 +459,20 @@ describe("audit log contract", () => {
     });
   });
 });
+
+describe("on-demand lazy indexing (First Principles #2)", () => {
+  test("synchronizes the index before query execution if files changed on disk", async () => {
+    const dir = join(vaultDir, "lazy-test-skill");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "SKILL.md"),
+      `---\nname: Lazy Test Skill\ndescription: A skill created to test on-demand lazy indexing without watcher.\n---\n\n# Lazy Test Skill\nBody\n`,
+    );
+
+    // Call resolveSkill and verify it automatically re-indexes and matches the new skill
+    const res = await resolveSkill({ query: "Lazy Test Skill" });
+    expect(res.outcome).toBe("matched");
+    if (res.outcome !== "matched") throw new Error("unreachable");
+    expect(res.skill_id).toBe("lazy-test-skill");
+  });
+});

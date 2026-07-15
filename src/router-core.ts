@@ -7,11 +7,13 @@ import {
   deleteSkill,
   findExactMatch,
   ftsSearch,
+  getIndexMeta,
   getSkillRow,
   ingestVault,
   insertAudit,
   openIndex,
   replaceSkills,
+  setIndexMeta,
   skillCount,
   skillsNeedingVectors,
   toSkillRow,
@@ -32,6 +34,7 @@ import type {
 } from "./types";
 import {
   decodeUtf8Strict,
+  getVaultMaxMtime,
   listSupportingFiles,
   parseSkillMd,
   readSkill,
@@ -79,7 +82,9 @@ async function getEnv(): Promise<{ config: Config; db: Database }> {
   const config = overrides.config ?? (await loadConfig());
   const db = openIndex(expandHome(config.state_dir));
   if (skillCount(db) === 0) {
-    ingestVault(db, await scanVault(expandHome(config.vault_path)));
+    const vaultPath = expandHome(config.vault_path);
+    ingestVault(db, await scanVault(vaultPath));
+    setIndexMeta(db, "last_indexed_mtime", String(getVaultMaxMtime(vaultPath)));
   }
   env = { config, db };
   return env;
@@ -143,8 +148,10 @@ export async function rebuildIndex(
   onInvalid?: (skillId: string, error: unknown) => void,
 ): Promise<RebuildReport> {
   const { config, db } = await getEnv();
+  const vaultPath = expandHome(config.vault_path);
+  const currentMtime = getVaultMaxMtime(vaultPath);
   const invalidIds: string[] = [];
-  const skills = await scanVault(expandHome(config.vault_path), (skillId, error) => {
+  const skills = await scanVault(vaultPath, (skillId, error) => {
     invalidIds.push(skillId);
     onInvalid?.(skillId, error);
   });
@@ -158,7 +165,38 @@ export async function rebuildIndex(
     }
   }
   replaceSkills(db, rows);
+  setIndexMeta(db, "last_indexed_mtime", String(currentMtime));
   return { indexed: rows.length, retained };
+}
+
+/**
+ * On-Demand Lazy Indexing (First Principles #2):
+ * Checks the max mtime of the vault directory and re-indexes only if files have changed.
+ * This runs synchronously to block queries until the lexical index is correct.
+ */
+export async function syncVaultIfNeeded(): Promise<void> {
+  const { config, db } = await getEnv();
+  const vaultPath = expandHome(config.vault_path);
+  const currentMtime = getVaultMaxMtime(vaultPath);
+  const lastIndexed = getIndexMeta(db, "last_indexed_mtime");
+
+  if (lastIndexed === null || currentMtime > Number(lastIndexed)) {
+    const invalidIds: string[] = [];
+    const skills = await scanVault(vaultPath, (skillId, error) => {
+      invalidIds.push(skillId);
+      console.error(`warning: keeping previous index entry for ${skillId}: ${error}`);
+    });
+    const rows = skills.map(toSkillRow);
+    for (const skillId of invalidIds) {
+      const previous = getSkillRow(db, skillId);
+      if (previous) {
+        rows.push(previous);
+      }
+    }
+    replaceSkills(db, rows);
+    setIndexMeta(db, "last_indexed_mtime", String(currentMtime));
+    backfillEmbeddings().catch(() => {});
+  }
 }
 
 /**
@@ -260,6 +298,7 @@ export async function startVaultWatcher(): Promise<() => void> {
 export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveResult> {
   const t0 = performance.now();
   const { config, db } = await getEnv();
+  await syncVaultIfNeeded();
 
   // Short-circuit: exact match on skill_id, title, or alias (First Principles #1)
   const exactMatch = findExactMatch(db, input.query);
@@ -377,6 +416,7 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
 
 export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {
   const { config, db } = await getEnv();
+  await syncVaultIfNeeded();
   if (getSkillRow(db, input.skill_id) === null) {
     throw new Error(`SKILL_NOT_FOUND: no skill '${input.skill_id}' in the index`);
   }
