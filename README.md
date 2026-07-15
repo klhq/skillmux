@@ -66,9 +66,71 @@ bun run build              # → dist/skill-router
 dist/skill-router serve
 ```
 
+## Docker Usage
+
+The `skill-router` is packaged and distributed as a Docker image in two variants:
+
+1. **`klhq/skill-router:latest` (Battery-Included, ~1.2GB)**: Bundles quantized `BAAI/bge-m3` and `BAAI/bge-reranker-v2-m3` ONNX models for in-process local inference out of the box. No external model servers required.
+2. **`klhq/skill-router:slim` (Model-free, ~150MB)**: Excludes weights. Runs in FTS5 lexical-only mode by default, or integrates with your custom remote API endpoints.
+
+### Running HTTP Server (Docker Default)
+
+To run as an HTTP MCP service (default in Docker):
+
+```sh
+# Battery-included (runs local in-process ONNX models)
+docker run -d \
+  -name skill-router \
+  -v ~/.agents/skills:/vault:ro \
+  -v skill-router-data:/data \
+  -p 3000:3000 \
+  klhq/skill-router:latest
+
+# Slim (requires external model endpoints, or runs lexical-only degraded)
+docker run -d \
+  -name skill-router-slim \
+  -v ~/.agents/skills:/vault:ro \
+  -v skill-router-data:/data \
+  -p 3000:3000 \
+  -e EMBED_BASE_URL="http://embeddings-host:8080" \
+  -e RERANK_BASE_URL="http://reranker-host:7997" \
+  klhq/skill-router:slim
+```
+
+Connect your MCP client to the HTTP endpoint (e.g. standard Streamable HTTP transport):
+- POST messages to `http://localhost:3000`
+
+### Running Stdio Server in Docker
+
+If your agent runs locally and expects a piped stdio process:
+
+```sh
+docker run -i --rm \
+  -v ~/.agents/skills:/vault:ro \
+  klhq/skill-router:latest serve --transport stdio
+```
+
 ## Configuration
 
-See [`config.example.toml`](config.example.toml) — vault path, state directory, recall depths, decision thresholds, endpoints. `SKILL_ROUTER_CONFIG` overrides the config path (default `~/.config/skill-router/config.toml`). The embeddings API key is read from the environment variable named by `embedding.api_key_env`; no secret ever lives in the config file.
+See [`config.example.toml`](config.example.toml) — vault path, state directory, recall depths, decision thresholds, endpoints. 
+
+### In-Process ONNX Sentinel (`local://`)
+To run inference in-process without an external server, configure:
+* `embedding.base_url = "local://"` (uses `Xenova/bge-m3`)
+* `rerank.base_url = "local://"` (uses `onnx-community/bge-reranker-v2-m3-ONNX`)
+
+This downloads quantized INT8 ONNX models and runs them locally inside the Bun process via `@huggingface/transformers`.
+
+### Environment Variable Overrides
+All core settings can be overridden via environment variables (handy for Docker):
+- `VAULT_PATH` / `SKILL_ROUTER_VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
+- `STATE_DIR` / `SKILL_ROUTER_STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
+- `EMBED_BASE_URL` — overrides `embedding.base_url`
+- `RERANK_BASE_URL` — overrides `rerank.base_url`
+- `SKILL_ROUTER_CONFIG` — path to custom `config.toml` (default `~/.config/skill-router/config.toml`)
+- `SKILL_ROUTER_MODELS_DIR` — path to directory storing downloaded local models (default `./.models`)
+
+The embeddings API key is read from the environment variable named by `embedding.api_key_env`; no secret ever lives in the config file.
 
 Calibrate thresholds against your own vault:
 

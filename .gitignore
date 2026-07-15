@@ -4,3 +4,4 @@ node_modules/
 .state/
 dist/
 *.bun-build
+.models/
