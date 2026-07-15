@@ -198,17 +198,17 @@
         },
         "embedding": {
           "type": "object",
-          "description": "Harrier embeddings via Bifrost (OpenAI-compatible), authenticated with vk-embed.",
+          "description": "Embeddings via OpenAI-compatible API.",
           "properties": {
             "base_url": {
               "type": "string",
               "format": "uri",
-              "description": "Bifrost OpenAI-compatible base URL (client calls POST {base_url}/v1/embeddings)."
+              "description": "OpenAI-compatible embeddings base URL (client calls POST {base_url}/v1/embeddings)."
             },
             "api_key_env": {
               "type": "string",
-              "description": "Name of the environment variable holding the vk-embed key. The key value itself never appears in config.",
-              "default": "BIFROST_VK_EMBED"
+              "description": "Name of the environment variable holding the embeddings API key. The key value itself never appears in config.",
+              "default": "SKILL_ROUTER_EMBED_KEY"
             },
             "model": { "const": "microsoft/harrier-oss-v1-0.6b" },
             "dimension": { "const": 1024 }
@@ -218,7 +218,7 @@
         },
         "rerank": {
           "type": "object",
-          "description": "bge-reranker via the workhorse Infinity endpoint DIRECTLY (Bifrost has no rerank passthrough). Client calls Infinity's native POST {base_url}/rerank.",
+          "description": "bge-reranker via Infinity-native API endpoint (POST {base_url}/rerank or {base_url}/v1/rerank).",
           "properties": {
             "base_url": { "type": "string", "format": "uri" },
             "model": { "const": "BAAI/bge-reranker-v2-m3" }
