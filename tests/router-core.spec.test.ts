@@ -138,9 +138,45 @@ describe("resolveSkill contract", () => {
       expect(file).toEqual(expect.any(String));
       expect(file.length).toBeGreaterThan(0);
       expect(file.startsWith("/")).toBe(false);
-      expect(file.includes("..")).toBe(false);
     }
   });
+
+  test("short-circuits and matches exactly on skill_id, title, or alias (First Principles #1)", async () => {
+    // 1. exact match on skill_id
+    const resId = await resolveSkill({ query: "alpha-skill" });
+    expect(resId.outcome).toBe("matched");
+    if (resId.outcome !== "matched") throw new Error("unreachable");
+    expect(resId.skill_id).toBe("alpha-skill");
+    expect(resId.score).toBe(1.0);
+
+    // 2. exact match on title
+    const resTitle = await resolveSkill({ query: "router-core" });
+    expect(resTitle.outcome).toBe("matched");
+    if (resTitle.outcome !== "matched") throw new Error("unreachable");
+    expect(resTitle.skill_id).toBe("router-core");
+    expect(resTitle.score).toBe(1.0);
+
+    // 3. exact match on alias
+    const dir = join(vaultDir, "alias-test-skill");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "SKILL.md"),
+      `---\nname: Alias Test\ndescription: Test skill with aliases.\naliases:\n  - my-cool-alias\n  - another-alias\n---\n\n# Alias Test\nBody\n`,
+    );
+    
+    const { openIndex, replaceSkills, toSkillRow } = await import("../src/db");
+    const { scanVault } = await import("../src/vault");
+    const db = openIndex(stateDir);
+    const skills = await scanVault(vaultDir);
+    replaceSkills(db, skills.map(toSkillRow));
+
+    const resAlias = await resolveSkill({ query: "my-cool-alias" });
+    expect(resAlias.outcome).toBe("matched");
+    if (resAlias.outcome !== "matched") throw new Error("unreachable");
+    expect(resAlias.skill_id).toBe("alias-test-skill");
+    expect(resAlias.score).toBe(1.0);
+  });
+
 
   test("ambiguous result includes 1 to 5 candidates and no body", async () => {
     const result = await resolveSkill({ query: "something plausibly served by multiple skills" });

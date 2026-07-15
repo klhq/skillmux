@@ -144,6 +144,18 @@ export function ftsSearch(db: Database, text: string, k: number): SkillRow[] {
     .all(query, k) as SkillRow[];
 }
 
+export function findExactMatch(db: Database, query: string): SkillRow | null {
+  const cleanQuery = query.trim().toLowerCase();
+  return db
+    .query(
+      `SELECT * FROM skills 
+       WHERE lower(skill_id) = ? 
+          OR lower(title) = ? 
+          OR ' ' || lower(aliases) || ' ' LIKE ?`,
+    )
+    .get(cleanQuery, cleanQuery, `% ${cleanQuery} %`) as SkillRow | null;
+}
+
 export function upsertVector(
   db: Database,
   skillId: string,

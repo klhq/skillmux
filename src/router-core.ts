@@ -5,6 +5,7 @@ import { buildAuditRow } from "./audit";
 import { expandHome, loadConfig } from "./config";
 import {
   deleteSkill,
+  findExactMatch,
   ftsSearch,
   getSkillRow,
   ingestVault,
@@ -259,6 +260,38 @@ export async function startVaultWatcher(): Promise<() => void> {
 export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveResult> {
   const t0 = performance.now();
   const { config, db } = await getEnv();
+
+  // Short-circuit: exact match on skill_id, title, or alias (First Principles #1)
+  const exactMatch = findExactMatch(db, input.query);
+  if (exactMatch) {
+    const delivery = await deliverSkill(db, config, exactMatch.skill_id);
+    const result: ResolveResult = {
+      outcome: "matched",
+      degraded: false,
+      skill_id: exactMatch.skill_id,
+      title: delivery.title,
+      content_sha256: delivery.content_sha256,
+      score: 1.0,
+      margin: 1.0,
+      body: delivery.body,
+      files: delivery.files,
+    };
+    insertAudit(
+      db,
+      buildAuditRow({
+        id: 0,
+        ts: new Date().toISOString(),
+        query: input.query,
+        outcome: "matched",
+        degraded: false,
+        candidates: [{ skill_id: exactMatch.skill_id, score: 1.0 }],
+        selected_skill_id: exactMatch.skill_id,
+        latency_ms: Math.round(performance.now() - t0),
+      }),
+    );
+    return result;
+  }
+
   const clients = getClients();
 
   const lexical = ftsSearch(db, input.query, config.recall.k_lexical);
