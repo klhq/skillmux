@@ -3,3 +3,4 @@ node_modules/
 *.sqlite3-*
 .state/
 dist/
+*.bun-build

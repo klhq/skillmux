@@ -3,21 +3,23 @@ import { join } from "node:path";
 import type { Config } from "./types";
 
 // Fallback values only; a config.toml (SKILL_ROUTER_CONFIG or default path)
-// overrides them. Threshold values are pre-calibration placeholders — the eval
-// harness (AC11) produces the real ones.
+// overrides them. Endpoints default to localhost placeholders — deployment-
+// specific hosts belong in the user's config.toml, never in code. Threshold
+// values are pre-calibration placeholders — the eval harness (AC11) produces
+// the real ones.
 const DEFAULTS: Config = {
   vault_path: "~/.agents/skills",
   state_dir: "~/.local/state/skill-router",
   recall: { k_lexical: 15, k_vector: 15 },
-  thresholds: { match_score: 0.9, match_margin: 0.15, candidate_floor: 0.3 },
+  thresholds: { match_score: 0.9, match_margin: 0.3, candidate_floor: 0.5 },
   embedding: {
-    base_url: "https://bifrost.home",
-    api_key_env: "BIFROST_VK_EMBED",
+    base_url: "http://127.0.0.1:8080",
+    api_key_env: "SKILL_ROUTER_EMBED_KEY",
     model: "microsoft/harrier-oss-v1-0.6b",
     dimension: 1024,
   },
   rerank: {
-    base_url: "http://workhorse.home:7997",
+    base_url: "http://127.0.0.1:7997",
     model: "BAAI/bge-reranker-v2-m3",
   },
   remote_timeout_ms: 2000,

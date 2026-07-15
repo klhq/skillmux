@@ -13,7 +13,7 @@ import {
 
 // Deterministic harness: temp vault + temp config + mocked remote clients.
 // The rerank mock keys on query substrings so each contract test lands on the
-// intended outcome without workhorse. Assertions below are unchanged from the
+// intended outcome without a remote host. Assertions below are unchanged from the
 // generated suite.
 const tmp = mkdtempSync(join(tmpdir(), "skill-router-test-"));
 const vaultDir = join(tmp, "vault");
@@ -68,7 +68,7 @@ beforeAll(() => {
       ``,
       `[embedding]`,
       `base_url = "http://127.0.0.1:9"`,
-      `api_key_env = "BIFROST_VK_EMBED"`,
+      `api_key_env = "SKILL_ROUTER_EMBED_KEY"`,
       `model = "microsoft/harrier-oss-v1-0.6b"`,
       `dimension = 1024`,
       ``,
@@ -116,6 +116,7 @@ describe("resolveSkill contract", () => {
     const result = await resolveSkill({ query: "exactly one ideal skill" });
 
     expect(result.outcome).toBe("matched");
+    if (result.outcome !== "matched") throw new Error("unreachable");
     expect(result.degraded).toBe(false);
     expect(result.skill_id).toMatch(/^[a-z0-9][a-z0-9-]{1,127}$/);
     expect(result.title).toEqual(expect.any(String));
@@ -132,6 +133,7 @@ describe("resolveSkill contract", () => {
     const result = await resolveSkill({ query: "skill with references and scripts" });
 
     expect(result.outcome).toBe("matched");
+    if (result.outcome !== "matched") throw new Error("unreachable");
     for (const file of result.files) {
       expect(file).toEqual(expect.any(String));
       expect(file.length).toBeGreaterThan(0);
@@ -144,6 +146,7 @@ describe("resolveSkill contract", () => {
     const result = await resolveSkill({ query: "something plausibly served by multiple skills" });
 
     expect(result.outcome).toBe("ambiguous");
+    if (result.outcome !== "ambiguous") throw new Error("unreachable");
     expect(result.candidates.length).toBeGreaterThanOrEqual(1);
     expect(result.candidates.length).toBeLessThanOrEqual(5);
     expect(result).not.toHaveProperty("body");
@@ -161,6 +164,7 @@ describe("resolveSkill contract", () => {
     const result = await resolveSkill({ query: "fallback when reranker is offline", forceDegraded: true });
 
     expect(result.outcome).toBe("ambiguous");
+    if (result.outcome !== "ambiguous") throw new Error("unreachable");
     expect(result.degraded).toBe(true);
     for (const candidate of result.candidates) {
       expect(candidate.rerank_score).toBeNull();
@@ -171,6 +175,7 @@ describe("resolveSkill contract", () => {
     const result = await resolveSkill({ query: "completely unrelated request with no skill match" });
 
     expect(result.outcome).toBe("no_match");
+    if (result.outcome !== "no_match") throw new Error("unreachable");
     expect(result.message).toEqual(expect.any(String));
     expect(result.message.length).toBeGreaterThan(0);
     expect(result).not.toHaveProperty("body");
@@ -229,6 +234,7 @@ describe("decision logic", () => {
     });
 
     expect(result.outcome).toBe("matched");
+    if (result.outcome !== "matched") throw new Error("unreachable");
     expect(result.skill_id).toBe("alpha-skill");
     expect(result.score).toBe(0.92);
     expect(result.margin).toBeCloseTo(0.31);
@@ -265,6 +271,7 @@ describe("decision logic", () => {
     });
 
     expect(result.outcome).toBe("ambiguous");
+    if (result.outcome !== "ambiguous") throw new Error("unreachable");
     expect(result.candidates).toHaveLength(1);
   });
 
@@ -298,6 +305,7 @@ describe("decision logic", () => {
     });
 
     expect(result.outcome).toBe("matched");
+    if (result.outcome !== "matched") throw new Error("unreachable");
     expect(result.margin).toBe(0.93);
   });
 

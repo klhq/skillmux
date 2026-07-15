@@ -40,9 +40,14 @@ export function parseSkillMd(skillId: string, raw: string): VaultSkill {
   };
 }
 
+/** Strict decode: invalid UTF-8 throws instead of silently mangling (AC8). */
+export function decodeUtf8Strict(bytes: Uint8Array): string {
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
 export async function readSkill(vaultPath: string, skillId: string): Promise<VaultSkill> {
-  const raw = await Bun.file(join(vaultPath, skillId, "SKILL.md")).text();
-  return parseSkillMd(skillId, raw);
+  const bytes = await Bun.file(join(vaultPath, skillId, "SKILL.md")).bytes();
+  return parseSkillMd(skillId, decodeUtf8Strict(bytes));
 }
 
 export async function scanVault(
