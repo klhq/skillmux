@@ -49,7 +49,36 @@ function deepMerge<T>(base: T, override: unknown): T {
 export async function loadConfig(path?: string): Promise<Config> {
   const configPath = path ?? process.env.SKILL_ROUTER_CONFIG ?? DEFAULT_CONFIG_PATH;
   const file = Bun.file(expandHome(configPath));
-  if (!(await file.exists())) return structuredClone(DEFAULTS);
-  const parsed = Bun.TOML.parse(await file.text());
-  return deepMerge(structuredClone(DEFAULTS), parsed);
+
+  const baseConfig = structuredClone(DEFAULTS);
+  if (process.env.RUNNING_IN_DOCKER === "true") {
+    baseConfig.vault_path = "/vault";
+    baseConfig.state_dir = "/data";
+    baseConfig.embedding.base_url = "local://";
+    baseConfig.rerank.base_url = "local://";
+  }
+
+  let merged: Config;
+  if (!(await file.exists())) {
+    merged = baseConfig;
+  } else {
+    const parsed = Bun.TOML.parse(await file.text());
+    merged = deepMerge(baseConfig, parsed);
+  }
+
+  // Environment variable overrides (AC4)
+  if (process.env.VAULT_PATH) {
+    merged.vault_path = process.env.VAULT_PATH;
+  }
+  if (process.env.STATE_DIR) {
+    merged.state_dir = process.env.STATE_DIR;
+  }
+  if (process.env.EMBED_BASE_URL) {
+    merged.embedding.base_url = process.env.EMBED_BASE_URL;
+  }
+  if (process.env.RERANK_BASE_URL) {
+    merged.rerank.base_url = process.env.RERANK_BASE_URL;
+  }
+
+  return merged;
 }

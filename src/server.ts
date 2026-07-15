@@ -7,7 +7,7 @@ import { loadConfig } from "./config";
 import { backfillEmbeddings, configure, fetchSkill, resolveSkill } from "./router-core";
 import { SKILL_ID_PATTERN } from "./vault";
 
-export async function startServer(): Promise<void> {
+export async function startServer(opts?: { transport?: "stdio" | "http"; port?: number }): Promise<void> {
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
 
@@ -52,7 +52,43 @@ export async function startServer(): Promise<void> {
     },
   );
 
-  await server.connect(new StdioServerTransport());
+  const transportType = opts?.transport ?? "stdio";
+  if (transportType === "http") {
+    const { WebStandardStreamableHTTPServerTransport } = await import(
+      "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
+    );
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+    });
+    await server.connect(transport);
+
+    const port = opts?.port ?? Number(process.env.PORT || 3000);
+    const bunServer = Bun.serve({
+      port,
+      async fetch(req) {
+        if (req.method === "OPTIONS") {
+          return new Response(null, {
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type, MCP-Protocol-Version",
+            },
+          });
+        }
+        const res = await transport.handleRequest(req);
+        const headers = new Headers(res.headers);
+        headers.set("Access-Control-Allow-Origin", "*");
+        return new Response(res.body, {
+          status: res.status,
+          statusText: res.statusText,
+          headers,
+        });
+      },
+    });
+    console.log(`skill-router serving over HTTP on port ${bunServer.port}`);
+  } else {
+    await server.connect(new StdioServerTransport());
+  }
 
   // model host offline (AC7/AC8) — lexical-only service is the floor.
   backfillEmbeddings().catch(() => {});
