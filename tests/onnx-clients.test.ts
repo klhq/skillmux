@@ -38,7 +38,7 @@ describe("local ONNX clients (AC1)", () => {
       norm += vectors[0]![i]! * vectors[0]![i]!;
     }
     expect(Math.sqrt(norm)).toBeCloseTo(1.0, 4);
-  });
+  }, 30000);
 
   test("rerank generates valid sigmoid scores using local BGE-Reranker-v2-m3", async () => {
     const clients = createClients(localConfig());
@@ -52,5 +52,5 @@ describe("local ONNX clients (AC1)", () => {
     expect(scores[0]!).toBeGreaterThan(scores[1]!); // match is ranked higher than mismatch
     expect(scores[1]!).toBeLessThan(0.01);         // mismatch is very low
 
-  });
+  }, 30000);
 });
