@@ -61,4 +61,73 @@ describe("Docker and env variable configuration (AC4)", () => {
     const configOverridden = await loadConfig("/does/not/exist/config.toml");
     expect(configOverridden.vault_path).toBe("/env/vault/override");
   });
+
+
+  test("supports EMBED_MODEL and SKILL_ROUTER_EMBED_MODEL overrides for embedding.model", async () => {
+    process.env.EMBED_MODEL = "legacy/embed-model";
+    let config = await loadConfig("/does/not/exist/config.toml");
+    expect(config.embedding.model).toBe("legacy/embed-model");
+
+    delete process.env.EMBED_MODEL;
+    process.env.SKILL_ROUTER_EMBED_MODEL = "namespaced/embed-model";
+    config = await loadConfig("/does/not/exist/config.toml");
+    expect(config.embedding.model).toBe("namespaced/embed-model");
+  });
+
+  test("prefers SKILL_ROUTER_EMBED_MODEL over EMBED_MODEL when both are set", async () => {
+    process.env.EMBED_MODEL = "legacy/embed-model";
+    process.env.SKILL_ROUTER_EMBED_MODEL = "namespaced/embed-model";
+
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.embedding.model).toBe("namespaced/embed-model");
+  });
+
+  test("parses EMBED_DIMENSION and SKILL_ROUTER_EMBED_DIMENSION as integers for embedding.dimension", async () => {
+    process.env.EMBED_DIMENSION = "1536";
+    let config = await loadConfig("/does/not/exist/config.toml");
+    expect(config.embedding.dimension).toBe(1536);
+    expect(typeof config.embedding.dimension).toBe("number");
+
+    delete process.env.EMBED_DIMENSION;
+    process.env.SKILL_ROUTER_EMBED_DIMENSION = "2048";
+    config = await loadConfig("/does/not/exist/config.toml");
+    expect(config.embedding.dimension).toBe(2048);
+    expect(typeof config.embedding.dimension).toBe("number");
+  });
+
+  test("prefers SKILL_ROUTER_EMBED_DIMENSION over EMBED_DIMENSION when both are set", async () => {
+    process.env.EMBED_DIMENSION = "1536";
+    process.env.SKILL_ROUTER_EMBED_DIMENSION = "2048";
+
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.embedding.dimension).toBe(2048);
+  });
+
+  test("rejects non-integer embedding dimension overrides", async () => {
+    process.env.EMBED_DIMENSION = "not-an-integer";
+
+    await expect(loadConfig("/does/not/exist/config.toml")).rejects.toThrow();
+  });
+
+  test("supports RERANK_MODEL and SKILL_ROUTER_RERANK_MODEL overrides for rerank.model", async () => {
+    process.env.RERANK_MODEL = "legacy/rerank-model";
+    let config = await loadConfig("/does/not/exist/config.toml");
+    expect(config.rerank.model).toBe("legacy/rerank-model");
+
+    delete process.env.RERANK_MODEL;
+    process.env.SKILL_ROUTER_RERANK_MODEL = "namespaced/rerank-model";
+    config = await loadConfig("/does/not/exist/config.toml");
+    expect(config.rerank.model).toBe("namespaced/rerank-model");
+  });
+
+  test("prefers SKILL_ROUTER_RERANK_MODEL over RERANK_MODEL when both are set", async () => {
+    process.env.RERANK_MODEL = "legacy/rerank-model";
+    process.env.SKILL_ROUTER_RERANK_MODEL = "namespaced/rerank-model";
+
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.rerank.model).toBe("namespaced/rerank-model");
+  });
 });
