@@ -14,19 +14,28 @@ interface RerankResponse {
 let localEmbedder: any = null;
 let localReranker: any = null;
 
-async function getLocalEmbedder(config: Config) {
-  if (localEmbedder) return localEmbedder;
-
-  const cacheDir = path.resolve(
+function resolveModelsDir(config: Config, baseUrl: string): string {
+  return path.resolve(
     process.env.SKILL_ROUTER_MODELS_DIR ||
-    expandHome(config.embedding.base_url.startsWith("local://") ? config.state_dir : "") ||
+    expandHome(baseUrl.startsWith("local://") ? config.state_dir : "") ||
     "./.models"
   );
+}
+
+async function setupTransformers(cacheDir: string) {
   process.env.HF_HUB_CACHE = cacheDir;
   process.env.HF_HOME = cacheDir;
 
   const { env, pipeline } = await import("@huggingface/transformers");
   env.cacheDir = cacheDir;
+  return pipeline;
+}
+
+async function getLocalEmbedder(config: Config) {
+  if (localEmbedder) return localEmbedder;
+
+  const cacheDir = resolveModelsDir(config, config.embedding.base_url);
+  const pipeline = await setupTransformers(cacheDir);
 
   localEmbedder = await pipeline("feature-extraction", config.embedding.model || "Xenova/bge-m3", {
     device: "cpu",
@@ -38,16 +47,8 @@ async function getLocalEmbedder(config: Config) {
 async function getLocalReranker(config: Config) {
   if (localReranker) return localReranker;
 
-  const cacheDir = path.resolve(
-    process.env.SKILL_ROUTER_MODELS_DIR ||
-    expandHome(config.rerank.base_url.startsWith("local://") ? config.state_dir : "") ||
-    "./.models"
-  );
-  process.env.HF_HUB_CACHE = cacheDir;
-  process.env.HF_HOME = cacheDir;
-
-  const { env, pipeline } = await import("@huggingface/transformers");
-  env.cacheDir = cacheDir;
+  const cacheDir = resolveModelsDir(config, config.rerank.base_url);
+  const pipeline = await setupTransformers(cacheDir);
 
   localReranker = await pipeline("text-classification", config.rerank.model || "onnx-community/bge-reranker-v2-m3-ONNX", {
     device: "cpu",
