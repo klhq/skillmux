@@ -89,4 +89,17 @@ describe("MetricsRegistry", () => {
 
     expect(body).toContain("skill_router_errors_total 2");
   });
+
+  test("renders the rate limit exceeded counter family and increments it", () => {
+    const metrics = new MetricsRegistry();
+
+    metrics.recordRateLimitExceeded();
+    metrics.recordRateLimitExceeded();
+
+    const body = metrics.render();
+
+    expect(body).toContain("# HELP skill_router_rate_limits_exceeded_total Total count of HTTP requests rejected by rate limiting.");
+    expect(body).toContain("# TYPE skill_router_rate_limits_exceeded_total counter");
+    expect(body).toContain("skill_router_rate_limits_exceeded_total 2");
+  });
 });

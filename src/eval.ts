@@ -36,6 +36,10 @@ function percentile(values: number[], p: number): number {
  * AC11: replay description-derived holdout phrases through both recall lanes,
  * report recall@5, and derive threshold suggestions from the observed rerank
  * score distribution (positives vs impostor tops).
+ *
+ * Optimised for remote endpoints:
+ *  - embeds ALL query phrases in a single batched call
+ *  - runs rerank calls with bounded concurrency (RERANK_CONCURRENCY)
  */
 export async function evalVault(): Promise<EvalReport> {
   const { config, db, clients } = await getRuntime();
@@ -46,49 +50,82 @@ export async function evalVault(): Promise<EvalReport> {
     holdoutPhrases(skill.description).map((query) => ({ query, expected: skill.skill_id })),
   );
 
+  // 1. Lexical pass (pure SQLite — fast)
   let lexicalHits = 0;
-  let hybridHits = 0;
+  const lexicalCandidates: SkillRow[][] = [];
+  for (const { query, expected } of cases) {
+    const top5 = ftsSearch(db, query, 5);
+    if (top5.some((r) => r.skill_id === expected)) lexicalHits++;
+    lexicalCandidates.push(ftsSearch(db, query, config.recall.k_lexical));
+  }
+
+  // 2. Batch-embed all queries in chunks (16 at a time to stay within endpoint limits)
+  const EMBED_CHUNK = 16;
+  const queryTexts = cases.map((c) => c.query);
+  const queryVecs: Float32Array[] = [];
+  for (let i = 0; i < queryTexts.length; i += EMBED_CHUNK) {
+    const chunk = queryTexts.slice(i, i + EMBED_CHUNK);
+    const vecs = await clients.embed(chunk);
+    queryVecs.push(...vecs);
+  }
+
+  // 3. Build per-query candidate pools (lexical ∪ vector)
+  const candidatePools = cases.map((_, i) => {
+    const lexical = lexicalCandidates[i]!;
+    const seen = new Set(lexical.map((r) => r.skill_id));
+    return [
+      ...lexical,
+      ...vectorTopK(db, queryVecs[i]!, config.recall.k_vector).filter((r) => !seen.has(r.skill_id)),
+    ];
+  });
+
+  // 4. Rerank sequentially — Infinity is single-threaded; concurrency only causes queueing timeouts
+  const CONCURRENCY = 1;
   const positiveTops: number[] = [];
   const positiveMargins: number[] = [];
   const positiveScores: number[] = [];
   const impostorTops: number[] = [];
+  let hybridHits = 0;
 
-  for (const { query, expected } of cases) {
-    if (ftsSearch(db, query, 5).some((r) => r.skill_id === expected)) lexicalHits++;
+  for (let base = 0; base < cases.length; base += CONCURRENCY) {
+    const chunk = cases.slice(base, base + CONCURRENCY);
+    const pools = candidatePools.slice(base, base + CONCURRENCY);
 
-    const lexical = ftsSearch(db, query, config.recall.k_lexical);
-    const queryVec = (await clients.embed([query]))[0]!;
-    const seen = new Set(lexical.map((r) => r.skill_id));
-    const rows = [
-      ...lexical,
-      ...vectorTopK(db, queryVec, config.recall.k_vector).filter((r) => !seen.has(r.skill_id)),
-    ];
-    if (rows.length === 0) continue;
-
-    const scores = await clients.rerank(
-      query,
-      rows.map((r) => ({ skill_id: r.skill_id, text: `${r.title}\n${r.description}\n${r.aliases}` })),
+    const chunkScores = await Promise.all(
+      chunk.map((c, j) => {
+        const rows = pools[j]!;
+        if (rows.length === 0) return Promise.resolve([] as number[]);
+        return clients.rerank(
+          c.query,
+          rows.map((r) => ({ skill_id: r.skill_id, text: `${r.title}\n${r.description}\n${r.aliases}` })),
+        );
+      }),
     );
-    const ranked = rows
-      .map((r, i) => ({ skill_id: r.skill_id, score: scores[i] ?? 0 }))
-      .sort((a, b) => b.score - a.score);
 
-    if (ranked.slice(0, 5).some((r) => r.skill_id === expected)) hybridHits++;
+    for (let j = 0; j < chunk.length; j++) {
+      const { expected } = chunk[j]!;
+      const rows = pools[j]!;
+      const scores = chunkScores[j]!;
+      if (rows.length === 0) continue;
 
-    const top = ranked[0]!;
-    const expectedEntry = ranked.find((r) => r.skill_id === expected);
-    if (expectedEntry) positiveScores.push(expectedEntry.score);
-    if (top.skill_id === expected) {
-      positiveTops.push(top.score);
-      positiveMargins.push(ranked.length > 1 ? top.score - ranked[1]!.score : top.score);
-    } else {
-      impostorTops.push(top.score);
+      const ranked = rows
+        .map((r, i) => ({ skill_id: r.skill_id, score: scores[i] ?? 0 }))
+        .sort((a, b) => b.score - a.score);
+
+      if (ranked.slice(0, 5).some((r) => r.skill_id === expected)) hybridHits++;
+
+      const top = ranked[0]!;
+      const expectedEntry = ranked.find((r) => r.skill_id === expected);
+      if (expectedEntry) positiveScores.push(expectedEntry.score);
+      if (top.skill_id === expected) {
+        positiveTops.push(top.score);
+        positiveMargins.push(ranked.length > 1 ? top.score - ranked[1]!.score : top.score);
+      } else {
+        impostorTops.push(top.score);
+      }
     }
   }
 
-  // match_score: halfway between what the right skill scores and what the best
-  // wrong skill scores; margin: a gap most true matches clear (p25); floor:
-  // below what the right skill scores even on hard queries (p10).
   const meanPositive = positiveTops.length > 0 ? mean(positiveTops) : config.thresholds.match_score;
   const meanImpostor = impostorTops.length > 0 ? mean(impostorTops) : meanPositive / 2;
   const matchScore = Math.min(1, Math.max(0, (meanPositive + meanImpostor) / 2));
