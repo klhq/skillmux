@@ -1,9 +1,8 @@
 {
-  "$comment": "Historical schema superseded by docs/sdd/router-core/schema.json and docs/sdd/gte-hybrid-routing/spec.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://klh.app/schemas/skill-router/router-core.json",
-  "title": "Skill Router — router-core contract (updated for oss-docker)",
-  "description": "Typed contract for the skill-router MCP server: tool inputs/outputs (logical result payloads), config.toml, and the audit-log row. Updated for oss-docker to support customizable embedding and reranking models.",
+  "title": "Skill Router — router-core contract",
+  "description": "Typed contract for the skill-router MCP server: tool inputs/outputs, config.toml, and audit-log rows. The SKILL.md body must appear exactly once on the wire.",
   "$defs": {
     "SkillId": {
       "type": "string",
@@ -28,13 +27,9 @@
       "properties": {
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 512 },
-        "description": { "type": "string", "minLength": 1 },
-        "rerank_score": {
-          "type": ["number", "null"],
-          "description": "Reranker relevance score. null when degraded=true (reranker unreachable; FTS5-only recall)."
-        }
+        "description": { "type": "string", "minLength": 1 }
       },
-      "required": ["skill_id", "title", "description", "rerank_score"],
+      "required": ["skill_id", "title", "description"],
       "additionalProperties": false
     },
     "ResolveSkillInput": {
@@ -52,20 +47,20 @@
     },
     "MatchedResult": {
       "type": "object",
-      "description": "AC2: one candidate clearly dominates. Full SKILL.md delivered inline, byte-identical to disk at delivery time. Never returned when degraded (AC7) — encoded as const false.",
+      "description": "One reranked candidate clearly dominates. Full SKILL.md is delivered inline.",
       "properties": {
         "outcome": { "const": "matched" },
-        "degraded": { "const": false },
+        "retrieval": { "enum": ["exact", "reranked"] },
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 512 },
         "content_sha256": { "$ref": "#/$defs/Sha256Hex" },
         "score": {
           "type": "number",
-          "description": "Top rerank_score. Satisfies score >= config thresholds.match_score."
+          "description": "Top configured-reranker score. Satisfies score >= config thresholds.match_score."
         },
         "margin": {
           "type": "number",
-          "description": "Top minus second rerank_score. Satisfies margin >= config thresholds.match_margin. Equals score when there is exactly one candidate.",
+          "description": "Top minus second configured-reranker score. Equals score when there is exactly one candidate.",
           "minimum": 0
         },
         "body": {
@@ -80,15 +75,15 @@
           "uniqueItems": true
         }
       },
-      "required": ["outcome", "degraded", "skill_id", "title", "content_sha256", "score", "margin", "body", "files"],
+      "required": ["outcome", "retrieval", "skill_id", "title", "content_sha256", "score", "margin", "body", "files"],
       "additionalProperties": false
     },
     "AmbiguousResult": {
       "type": "object",
-      "description": "AC3: several plausible candidates; the calling LLM picks, then calls fetch_skill. No body. In degraded mode this is the only outcome besides no_match, with rerank_score null on every candidate.",
+      "description": "Several plausible candidates; the calling LLM picks, then calls fetch_skill.",
       "properties": {
         "outcome": { "const": "ambiguous" },
-        "degraded": { "type": "boolean" },
+        "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
         "candidates": {
           "type": "array",
           "items": { "$ref": "#/$defs/Candidate" },
@@ -96,7 +91,7 @@
           "maxItems": 5
         }
       },
-      "required": ["outcome", "degraded", "candidates"],
+      "required": ["outcome", "retrieval", "candidates"],
       "additionalProperties": false
     },
     "NoMatchResult": {
@@ -104,14 +99,14 @@
       "description": "AC4: no skill passed the relevance floor. Caller proceeds under its normal workflow; must not load an unrelated skill.",
       "properties": {
         "outcome": { "const": "no_match" },
-        "degraded": { "type": "boolean" },
+        "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
         "message": {
           "type": "string",
           "description": "Fixed guidance string telling the caller to proceed normally.",
           "minLength": 1
         }
       },
-      "required": ["outcome", "degraded", "message"],
+      "required": ["outcome", "retrieval", "message"],
       "additionalProperties": false
     },
     "ResolveSkillResult": {
@@ -155,7 +150,7 @@
     },
     "Config": {
       "type": "object",
-      "description": "config.toml, validated at startup. All five tuning parameters (AC6) live here — never hardcoded. Threshold values are produced by 'skill-router eval' (AC11).",
+      "description": "config.toml, validated at startup. Local ONNX is the default; remote inference is explicit.",
       "properties": {
         "vault_path": {
           "type": "string",
@@ -170,29 +165,16 @@
         "recall": {
           "type": "object",
           "properties": {
-            "k_lexical": { "type": "integer", "minimum": 1, "maximum": 100, "default": 15 },
-            "k_vector": { "type": "integer", "minimum": 1, "maximum": 100, "default": 15 }
+            "k_lexical": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
+            "k_vector": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
           },
           "required": ["k_lexical", "k_vector"],
           "additionalProperties": false
         },
         "thresholds": {
           "type": "object",
-          "description": "Calibrated by the eval harness against the real vault; the values below are placeholders until AC11 runs.",
+          "description": "Caller-facing shortlist policy. Reranker thresholds live under inference.thresholds.",
           "properties": {
-            "match_score": {
-              "type": "number",
-              "description": "T — minimum top rerank_score for outcome=matched."
-            },
-            "match_margin": {
-              "type": "number",
-              "description": "Δ — minimum (top − second) rerank_score gap for outcome=matched.",
-              "minimum": 0
-            },
-            "candidate_floor": {
-              "type": "number",
-              "description": "Minimum score for a candidate to appear in an ambiguous shortlist; all below ⇒ no_match. Applied to rerank_score, or to normalized BM25 rank order in degraded mode."
-            },
             "candidate_limit": {
               "type": "integer",
               "minimum": 1,
@@ -201,56 +183,100 @@
               "description": "Maximum number of candidates returned on ambiguous outcomes (top-k limit)."
             }
           },
-          "required": ["match_score", "match_margin", "candidate_floor", "candidate_limit"],
+          "required": ["candidate_limit"],
           "additionalProperties": false
         },
-        "embedding": {
+        "inference": { "$ref": "#/$defs/InferenceConfig" },
+        "server": { "$ref": "#/$defs/ServerConfig" }
+      },
+      "required": ["vault_path", "state_dir", "recall", "thresholds", "inference"],
+      "additionalProperties": false
+    },
+    "InferenceConfig": {
+      "oneOf": [
+        {
           "type": "object",
-          "description": "Embeddings via OpenAI-compatible API or in-process local sentinel.",
           "properties": {
-            "base_url": {
-              "type": "string",
-              "description": "OpenAI-compatible embeddings base URL (client calls POST {base_url}/v1/embeddings) or 'local://' sentinel."
-            },
-            "api_key_env": {
-              "type": "string",
-              "description": "Name of the environment variable holding the embeddings API key. The key value itself never appears in config.",
-              "default": "SKILL_ROUTER_EMBED_KEY"
-            },
-            "model": {
-              "type": "string",
-              "description": "Embedding model name."
-            },
-            "dimension": { "type": "integer", "description": "Embedding model dimension size." }
-          },
-          "required": ["base_url", "api_key_env", "model", "dimension"],
-          "additionalProperties": false
-        },
-        "rerank": {
-          "type": "object",
-          "description": "Reranker via Infinity-native API endpoint or in-process local sentinel.",
-          "properties": {
-            "base_url": {
-              "type": "string",
-              "description": "Reranker base URL (POST {base_url}/rerank) or 'local://' sentinel."
-            },
-            "model": {
-              "type": "string",
-              "description": "Reranker model name."
+            "mode": { "const": "local" },
+            "bundle": { "const": "gte-small-v1" },
+            "models_dir": { "type": "string", "default": "~/.cache/skill-router/models" },
+            "embedding": {
+              "type": "object",
+              "properties": {
+                "model": { "const": "Xenova/gte-small" },
+                "dimension": { "const": 384 },
+                "device": { "type": "string" },
+                "dtype": { "type": "string" }
+              },
+              "required": ["model", "dimension"],
+              "additionalProperties": false
             }
           },
-          "required": ["base_url", "model"],
+          "required": ["mode", "bundle", "models_dir", "embedding"],
           "additionalProperties": false
         },
-        "remote_timeout_ms": {
-          "type": "integer",
-          "description": "Per-request budget for embedding and rerank calls; exceeding it flips resolve_skill to the degraded lane (AC7).",
-          "minimum": 100,
-          "maximum": 30000,
-          "default": 2000
+        {
+          "type": "object",
+          "properties": {
+            "mode": { "const": "remote" },
+            "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 30000, "default": 2000 },
+            "embedding": {
+              "type": "object",
+              "properties": {
+                "provider": { "const": "openai" },
+                "base_url": { "type": "string", "format": "uri" },
+                "model": { "type": "string", "minLength": 1 },
+                "dimension": { "type": "integer", "minimum": 1 },
+                "api_key_env": { "type": "string", "minLength": 1 }
+              },
+              "required": ["provider", "base_url", "model", "dimension"],
+              "additionalProperties": false
+            },
+            "reranker": {
+              "type": "object",
+              "properties": {
+                "provider": { "const": "infinity" },
+                "base_url": { "type": "string", "format": "uri" },
+                "model": { "type": "string", "minLength": 1 },
+                "api_key_env": { "type": "string", "minLength": 1 }
+              },
+              "required": ["provider", "base_url", "model"],
+              "additionalProperties": false
+            },
+            "thresholds": {
+              "type": "object",
+              "description": "Model-specific calibrated values; required when reranker is configured.",
+              "properties": {
+                "match_score": { "type": "number" },
+                "match_margin": { "type": "number", "minimum": 0 },
+                "candidate_floor": { "type": "number" }
+              },
+              "required": ["match_score", "match_margin", "candidate_floor"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["mode", "timeout_ms", "embedding"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ServerConfig": {
+      "type": "object",
+      "properties": {
+        "auth_enabled": { "type": "boolean", "default": false },
+        "auth_token_env": { "type": "string", "default": "SKILL_ROUTER_AUTH_TOKEN" },
+        "allowed_origins": { "type": "array", "items": { "type": "string" }, "default": ["*"] },
+        "rate_limit": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "requests_per_minute": { "type": "integer", "minimum": 1, "default": 60 }
+          },
+          "required": ["enabled", "requests_per_minute"],
+          "additionalProperties": false
         }
       },
-      "required": ["vault_path", "state_dir", "recall", "thresholds", "embedding", "rerank", "remote_timeout_ms"],
+      "required": ["auth_enabled", "auth_token_env", "allowed_origins"],
       "additionalProperties": false
     },
     "AuditRow": {
@@ -261,7 +287,7 @@
         "ts": { "type": "string", "format": "date-time" },
         "query": { "type": "string" },
         "outcome": { "type": "string", "enum": ["matched", "ambiguous", "no_match"] },
-        "degraded": { "type": "boolean" },
+        "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
         "candidates": {
           "type": "array",
           "description": "skill_id + score of every reranked (or FTS5-ranked) candidate considered, best first.",
@@ -281,7 +307,7 @@
         },
         "latency_ms": { "type": "integer", "minimum": 0 }
       },
-      "required": ["id", "ts", "query", "outcome", "degraded", "candidates", "selected_skill_id", "latency_ms"],
+      "required": ["id", "ts", "query", "outcome", "retrieval", "candidates", "selected_skill_id", "latency_ms"],
       "additionalProperties": false
     }
   }

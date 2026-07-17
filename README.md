@@ -29,7 +29,7 @@ If the embedding or rerank endpoint is down or slow, the router **degrades inste
 | `resolve_skill` | `query` | outcome + metadata in `structuredContent`; on match the verbatim body as text content (exactly once on the wire) |
 | `fetch_skill` | `skill_id` | verbatim body, `content_sha256`, supporting-file paths |
 
-The full contract lives in [`docs/sdd/router-core/schema.json`](docs/sdd/router-core/schema.json) (JSON Schema 2020-12, language-neutral).
+The full contract lives in [`docs/schema.json`](docs/schema.json) (JSON Schema 2020-12, language-neutral).
 
 ## Requirements
 
@@ -177,4 +177,4 @@ bun test        # full suite (contract, hybrid recall, stdio e2e, watcher, eval)
 bun run build   # single-file binary via bun build --compile
 ```
 
-Design docs: [`docs/sdd/router-core/spec.md`](docs/sdd/router-core/spec.md) (approved spec) and [`docs/sdd/router-core/schema.json`](docs/sdd/router-core/schema.json) (typed contract).
+Reference: [`docs/configuration.md`](docs/configuration.md) and [`docs/schema.json`](docs/schema.json).
