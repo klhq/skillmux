@@ -37,8 +37,6 @@ beforeAll(async () => {
     [
       `vault_path = "${vaultDir}"`,
       `state_dir = "${join(tmp, "state")}"`,
-      `remote_timeout_ms = 200`,
-      ``,
       `[recall]`,
       `k_lexical = 15`,
       `k_vector = 15`,
@@ -47,16 +45,27 @@ beforeAll(async () => {
       `match_score = 0.9`,
       `match_margin = 0.2`,
       `candidate_floor = 0.4`,
+      `candidate_limit = 5`,
       ``,
-      `[embedding]`,
+      `[inference]`,
+      `mode = "remote"`,
+      `timeout_ms = 200`,
+      ``,
+      `[inference.embedding]`,
+      `provider = "openai"`,
       `base_url = "http://127.0.0.1:9"`,
-      `api_key_env = "SKILL_ROUTER_EMBED_KEY"`,
       `model = "microsoft/harrier-oss-v1-0.6b"`,
       `dimension = 1024`,
       ``,
-      `[rerank]`,
+      `[inference.reranker]`,
+      `provider = "infinity"`,
       `base_url = "http://127.0.0.1:9"`,
       `model = "BAAI/bge-reranker-v2-m3"`,
+      ``,
+      `[inference.thresholds]`,
+      `match_score = 0.9`,
+      `match_margin = 0.2`,
+      `candidate_floor = 0.4`,
     ].join("\n"),
   );
 
@@ -108,7 +117,7 @@ describe("MCP stdio server", () => {
 
     expect(result.isError).toBeFalsy();
     const payload = result.structuredContent as Record<string, unknown>;
-    expect(payload.degraded).toBe(true);
+    expect(payload.retrieval).toBe("lexical");
     expect(["ambiguous", "no_match"]).toContain(payload.outcome as string);
   });
 

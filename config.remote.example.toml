@@ -1,0 +1,25 @@
+# Connect stronger inference endpoints. The reranker section is optional.
+vault_path = "~/.agents/skills"
+
+[inference]
+mode = "remote"
+timeout_ms = 5000
+
+[inference.embedding]
+provider = "openai"
+base_url = "https://embedding.example.com"
+model = "your-embedding-model"
+dimension = 1024
+api_key_env = "EMBEDDING_API_KEY"
+
+[inference.reranker]
+provider = "infinity"
+base_url = "https://reranker.example.com"
+model = "your-reranker-model"
+api_key_env = "RERANKER_API_KEY"
+
+# Required when a reranker is configured. Calibrate these for your model.
+[inference.thresholds]
+match_score = 0.90
+match_margin = 0.30
+candidate_floor = 0.50

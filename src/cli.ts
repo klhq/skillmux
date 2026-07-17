@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 import { createClients } from "./clients";
 import { loadConfig } from "./config";
+import { expandHome } from "./config";
+import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
+import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 
 const [command] = Bun.argv.slice(2);
@@ -37,13 +40,33 @@ async function runEval(): Promise<void> {
     process.exit(1);
   }
   console.log(`holdout queries: ${report.queries}`);
-  console.log(`recall@5 lexical-only: ${report.lexical_recall_at_5.toFixed(3)}`);
-  console.log(`recall@5 hybrid:       ${report.hybrid_recall_at_5.toFixed(3)}`);
-  const s = report.suggested_thresholds;
-  console.log(`suggested config.toml [thresholds]:`);
-  console.log(`match_score = ${s.match_score.toFixed(3)}`);
-  console.log(`match_margin = ${s.match_margin.toFixed(3)}`);
-  console.log(`candidate_floor = ${s.candidate_floor.toFixed(3)}`);
+  console.log(`lexical recall@3: ${report.lexical.recall_at_3.toFixed(3)}`);
+  console.log(`lexical recall@5: ${report.lexical.recall_at_5.toFixed(3)}`);
+  console.log(`lexical MRR:      ${report.lexical.mrr.toFixed(3)}`);
+  console.log(`hybrid recall@3:  ${report.hybrid.recall_at_3.toFixed(3)}`);
+  console.log(`hybrid recall@5:  ${report.hybrid.recall_at_5.toFixed(3)}`);
+  console.log(`hybrid MRR:       ${report.hybrid.mrr.toFixed(3)}`);
+}
+
+async function runDoctor(): Promise<void> {
+  const report = await diagnose(await loadConfig());
+  console.log(`inference mode: ${report.mode}`);
+  console.log(`routing capability: ${report.capability}`);
+  for (const check of report.checks) console.log(`${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`);
+  if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
+}
+
+async function showConfig(): Promise<void> {
+  const config = await loadConfig();
+  const inference = config.inference.mode === "local"
+    ? { ...config.inference, models_dir: expandHome(config.inference.models_dir) }
+    : config.inference;
+  console.log(JSON.stringify({ ...config, vault_path: expandHome(config.vault_path), state_dir: expandHome(config.state_dir), inference }, null, 2));
+}
+
+async function runModelDownload(): Promise<void> {
+  const cacheDir = await downloadLocalModels(await loadConfig());
+  console.log(`models ready in ${cacheDir}`);
 }
 
 switch (command) {
@@ -70,7 +93,18 @@ switch (command) {
   case "eval":
     await runEval();
     break;
+  case "doctor":
+    await runDoctor();
+    break;
+  case "config":
+    if (Bun.argv[3] !== "show") throw new Error("usage: skill-router config show");
+    await showConfig();
+    break;
+  case "models":
+    if (Bun.argv[3] !== "download") throw new Error("usage: skill-router models download");
+    await runModelDownload();
+    break;
   default:
-    console.error("usage: skill-router <serve|index|eval> [--transport stdio|http] [--port N]");
+    console.error("usage: skill-router <serve|index|eval|doctor|config show|models download> [--transport stdio|http] [--port N]");
     process.exit(2);
 }

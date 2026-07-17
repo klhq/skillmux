@@ -42,17 +42,13 @@ function testConfig(): Config {
     state_dir: "/unused",
     recall: { k_lexical: 15, k_vector: 15 },
     thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-    embedding: {
-      base_url: `http://127.0.0.1:${server.port}`,
-      api_key_env: "SKILL_ROUTER_TEST_EMBED_KEY",
-      model: "microsoft/harrier-oss-v1-0.6b",
-      dimension: 3,
+    inference: {
+      mode: "remote",
+      timeout_ms: 2000,
+      embedding: { provider: "openai", base_url: `http://127.0.0.1:${server.port}`, api_key_env: "SKILL_ROUTER_TEST_EMBED_KEY", model: "microsoft/harrier-oss-v1-0.6b", dimension: 3 },
+      reranker: { provider: "infinity", base_url: `http://127.0.0.1:${server.port}/v1`, model: "BAAI/bge-reranker-v2-m3", api_key_env: "SKILL_ROUTER_TEST_RERANK_KEY" },
+      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
     },
-    rerank: {
-      base_url: `http://127.0.0.1:${server.port}/v1`,
-      model: "BAAI/bge-reranker-v2-m3",
-    },
-    remote_timeout_ms: 2000,
   };
 }
 
@@ -60,6 +56,8 @@ describe("embedding client", () => {
   test("posts texts to /v1/embeddings with bearer key and returns one vector per text", async () => {
     process.env.SKILL_ROUTER_TEST_EMBED_KEY = "vk-test-key";
     const clients = createClients(testConfig());
+    if (!clients.rerank) throw new Error("expected remote reranker");
+    const rerank = clients.rerank;
 
     const vectors = await clients.embed(["first text", "second text"]);
 
@@ -79,7 +77,9 @@ describe("embedding client", () => {
 
 describe("remote timeout budget (AC7)", () => {
   test("embed rejects when the endpoint exceeds remote_timeout_ms", async () => {
-    const clients = createClients({ ...testConfig(), remote_timeout_ms: 100 });
+    const config = testConfig();
+    if (config.inference.mode !== "remote") throw new Error("expected remote config");
+    const clients = createClients({ ...config, inference: { ...config.inference, timeout_ms: 100 } });
 
     await expect(clients.embed(["slow request"])).rejects.toThrow();
   });
@@ -87,9 +87,12 @@ describe("remote timeout budget (AC7)", () => {
 
 describe("rerank client", () => {
   test("posts query and documents to /rerank and returns scores in document order", async () => {
+    process.env.SKILL_ROUTER_TEST_RERANK_KEY = "rerank-test-key";
     const clients = createClients(testConfig());
+    if (!clients.rerank) throw new Error("expected remote reranker");
+    const rerank = clients.rerank;
 
-    const scores = await clients.rerank("route my task", [
+    const scores = await rerank("route my task", [
       { skill_id: "alpha-skill", text: "Alpha\nfirst description" },
       { skill_id: "beta-skill", text: "Beta\nsecond description" },
     ]);
@@ -98,6 +101,7 @@ describe("rerank client", () => {
     expect(scores[0]).toBeCloseTo(0.9);
     expect(scores[1]).toBeCloseTo(0.6);
     const req = requests.find((r) => r.path === "/v1/rerank")!;
+    expect(req.auth).toBe("Bearer rerank-test-key");
     expect(req.body).toMatchObject({
       model: "BAAI/bge-reranker-v2-m3",
       query: "route my task",

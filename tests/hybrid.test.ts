@@ -32,14 +32,18 @@ const config: Config = {
   state_dir: join(tmp, "state"),
   recall: { k_lexical: 15, k_vector: 15 },
   thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-  embedding: {
-    base_url: "http://127.0.0.1:9",
-    api_key_env: "SKILL_ROUTER_EMBED_KEY",
-    model: "microsoft/harrier-oss-v1-0.6b",
-    dimension: 3,
+  inference: {
+    mode: "remote",
+    timeout_ms: 2000,
+    embedding: {
+      provider: "openai",
+      base_url: "http://127.0.0.1:9",
+      model: "microsoft/harrier-oss-v1-0.6b",
+      dimension: 3,
+    },
+    reranker: { provider: "infinity", base_url: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
+      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
   },
-  rerank: { base_url: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
-  remote_timeout_ms: 2000,
 };
 
 beforeAll(async () => {
@@ -75,8 +79,12 @@ describe("hybrid recall (AC6)", () => {
   });
 
   test("re-embeds stored vectors when the configured dimension changes", async () => {
+    if (config.inference.mode !== "remote") throw new Error("expected remote config");
     configure({
-      config: { ...config, embedding: { ...config.embedding, dimension: 8 } },
+      config: {
+        ...config,
+        inference: { ...config.inference, embedding: { ...config.inference.embedding, dimension: 8 } },
+      },
       clients: {
         embed: async (texts) => texts.map(() => new Float32Array(8).fill(0.5)),
         rerank: async (_query, docs) => docs.map(() => 0.5),
@@ -91,7 +99,7 @@ describe("hybrid recall (AC6)", () => {
   test("CJK query terms reach lexical recall (degraded lane included)", async () => {
     configure({ config });
 
-    const result = await resolveSkill({ query: "容器 部署", forceDegraded: true });
+    const result = await resolveSkill({ query: "容器 部署", forceLexical: true });
 
     expect(result.outcome).toBe("ambiguous");
     if (result.outcome !== "ambiguous") throw new Error("unreachable");
@@ -111,12 +119,12 @@ describe("hybrid recall (AC6)", () => {
 
     const result = await resolveSkill({ query: "quantum flux routing" });
 
-    expect(result.degraded).toBe(true);
+    expect(result.retrieval).toBe("lexical");
     expect(result.outcome).not.toBe("matched");
     if (result.outcome !== "ambiguous") throw new Error(`expected ambiguous, got ${result.outcome}`);
     const ids = result.candidates.map((c) => c.skill_id);
     expect(ids).toContain("lexical-skill");
     expect(ids).not.toContain("semantic-skill");
-    for (const candidate of result.candidates) expect(candidate.rerank_score).toBeNull();
+    for (const candidate of result.candidates) expect(candidate).not.toHaveProperty("score");
   });
 });

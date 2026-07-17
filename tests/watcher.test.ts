@@ -26,14 +26,18 @@ const config: Config = {
   state_dir: join(tmp, "state"),
   recall: { k_lexical: 15, k_vector: 15 },
   thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-  embedding: {
-    base_url: "http://127.0.0.1:9",
-    api_key_env: "SKILL_ROUTER_EMBED_KEY",
-    model: "microsoft/harrier-oss-v1-0.6b",
-    dimension: 3,
+  inference: {
+    mode: "remote",
+    timeout_ms: 200,
+    embedding: {
+      provider: "openai",
+      base_url: "http://127.0.0.1:9",
+      model: "microsoft/harrier-oss-v1-0.6b",
+      dimension: 3,
+    },
+    reranker: { provider: "infinity", base_url: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
+      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
   },
-  rerank: { base_url: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
-  remote_timeout_ms: 200,
 };
 
 async function waitFor<T>(action: () => Promise<T>, timeoutMs = 10000): Promise<T> {
@@ -90,7 +94,7 @@ describe("vault watcher (AC8)", () => {
       // Observe through resolveSkill (pure index read): fetchSkill would mask
       // the watcher by cleaning up the stale row itself on the disk miss.
       await waitFor(async () => {
-        const result = await resolveSkill({ query: "zeppelin maintenance", forceDegraded: true });
+        const result = await resolveSkill({ query: "zeppelin maintenance", forceLexical: true });
         const ids = result.outcome === "ambiguous" ? result.candidates.map((c) => c.skill_id) : [];
         if (ids.includes("doomed-skill")) throw new Error("doomed-skill is still indexed");
       }, TEST_TIMEOUT_MS);
@@ -107,7 +111,7 @@ describe("vault watcher (AC8)", () => {
       writeFileSync(join(vaultDir, "fragile-skill", "SKILL.md"), "---\nname: [unclosed\n");
       await Bun.sleep(1500); // debounce + stable-stat window
 
-      const result = await resolveSkill({ query: "rare orchid greenhouse", forceDegraded: true });
+      const result = await resolveSkill({ query: "rare orchid greenhouse", forceLexical: true });
 
       expect(result.outcome).toBe("ambiguous");
       if (result.outcome !== "ambiguous") throw new Error("unreachable");

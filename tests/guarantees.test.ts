@@ -46,14 +46,18 @@ const config: Config = {
   state_dir: join(tmp, "state"),
   recall: { k_lexical: 15, k_vector: 15 },
   thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-  embedding: {
-    base_url: "http://127.0.0.1:9",
-    api_key_env: "SKILL_ROUTER_EMBED_KEY",
-    model: "microsoft/harrier-oss-v1-0.6b",
-    dimension: 3,
+  inference: {
+    mode: "remote",
+    timeout_ms: 200,
+    embedding: {
+      provider: "openai",
+      base_url: "http://127.0.0.1:9",
+      model: "microsoft/harrier-oss-v1-0.6b",
+      dimension: 3,
+    },
+    reranker: { provider: "infinity", base_url: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
+      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
   },
-  rerank: { base_url: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
-  remote_timeout_ms: 200,
 };
 
 beforeAll(() => {
@@ -82,7 +86,7 @@ describe("read-only guarantee (AC9)", () => {
 
     await rebuildIndex();
     await resolveSkill({ query: "audit log persistence questions" });
-    await resolveSkill({ query: "nothing remotely relevant", forceDegraded: true });
+    await resolveSkill({ query: "nothing remotely relevant", forceLexical: true });
     await fetchSkill({ skill_id: "audit-target" });
 
     const after = await vaultSnapshot();
@@ -123,14 +127,14 @@ describe("audit log persistence (AC10)", () => {
 
     const rows = db
       .query("SELECT * FROM audit ORDER BY id DESC LIMIT 1")
-      .all() as (Omit<AuditRow, "degraded" | "candidates"> & { degraded: number; candidates: string })[];
+      .all() as (Omit<AuditRow, "candidates"> & { candidates: string })[];
     const countAfter = (db.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n;
 
     expect(countAfter).toBe(countBefore + 1);
     const row = rows[0]!;
     expect(row.query).toBe("audit log persistence questions");
     expect(row.outcome).toBe("matched");
-    expect(row.degraded).toBe(0);
+    expect(row.retrieval).toBe("reranked");
     expect(row.selected_skill_id).toBe("audit-target");
     expect(row.latency_ms).toBeGreaterThanOrEqual(0);
     const candidates = JSON.parse(row.candidates) as { skill_id: string; score: number | null }[];

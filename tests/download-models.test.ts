@@ -17,24 +17,21 @@ function writeConfig(dir: string, content: string): string {
 }
 
 describe("download-models script (AC2)", () => {
-  test("downloads the configured embedding and rerank models with configured device and dtype", async () => {
+  test("downloads the configured local embedding model", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "skill-router-download-models-"));
     const configPath = writeConfig(
       tmp,
       [
-        `[embedding]`,
-        `base_url = "local://"`,
-        `api_key_env = "SKILL_ROUTER_EMBED_KEY"`,
+        `[inference]`,
+        `mode = "local"`,
+        `bundle = "gte-small-v1"`,
+        `models_dir = "${join(tmp, "models")}"`,
+        ``,
+        `[inference.embedding]`,
         `model = "custom/embed-model"`,
         `dimension = 1536`,
         `device = "cuda"`,
         `dtype = "fp16"`,
-        ``,
-        `[rerank]`,
-        `base_url = "local://"`,
-        `model = "custom/rerank-model"`,
-        `device = "webgpu"`,
-        `dtype = "q4"`,
       ].join("\n"),
     );
 
@@ -61,7 +58,6 @@ describe("download-models script (AC2)", () => {
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(stdout).toContain("custom/embed-model");
-    expect(stdout).toContain("custom/rerank-model");
 
     const entries = (await Bun.file(logPath).text())
       .trim()
@@ -72,31 +68,20 @@ describe("download-models script (AC2)", () => {
     expect(entries).toEqual([
       {
         embed: { model: "custom/embed-model", device: "cuda", dtype: "fp16" },
-        rerank: { model: "custom/rerank-model", device: "webgpu", dtype: "q4" },
       },
     ]);
 
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  test("honors model env overrides resolved through loadConfig", async () => {
+  test("uses the versioned local bundle defaults", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "skill-router-download-models-env-"));
     const configPath = writeConfig(
       tmp,
       [
-        `[embedding]`,
-        `base_url = "local://"`,
-        `api_key_env = "SKILL_ROUTER_EMBED_KEY"`,
-        `model = "config/embed-model"`,
-        `dimension = 1024`,
-        `device = "cpu"`,
-        `dtype = "q8"`,
-        ``,
-        `[rerank]`,
-        `base_url = "local://"`,
-        `model = "config/rerank-model"`,
-        `device = "cpu"`,
-        `dtype = "q8"`,
+        `[inference]`,
+        `mode = "local"`,
+        `models_dir = "${join(tmp, "models")}"`,
       ].join("\n"),
     );
 
@@ -107,8 +92,6 @@ describe("download-models script (AC2)", () => {
       env: {
         ...(process.env as Record<string, string>),
         SKILL_ROUTER_CONFIG: configPath,
-        EMBED_MODEL: "env/embed-model",
-        RERANK_MODEL: "env/rerank-model",
         MOCK_HF_DOWNLOAD: "true",
         MOCK_HF_LOG_PATH: logPath,
       },
@@ -124,8 +107,7 @@ describe("download-models script (AC2)", () => {
 
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
-    expect(stdout).toContain("env/embed-model");
-    expect(stdout).toContain("env/rerank-model");
+    expect(stdout).toContain("Xenova/gte-small");
 
     const entries = (await Bun.file(logPath).text())
       .trim()
@@ -135,8 +117,7 @@ describe("download-models script (AC2)", () => {
 
     expect(entries).toEqual([
       {
-        embed: { model: "env/embed-model", device: "cpu", dtype: "q8" },
-        rerank: { model: "env/rerank-model", device: "cpu", dtype: "q8" },
+        embed: { model: "Xenova/gte-small", device: "cpu", dtype: "q8" },
       },
     ]);
 

@@ -85,7 +85,7 @@ docker run --rm -v ~/.agents/skills:/vault:ro -p 3000:3000 klhq/skill-router:lat
 
 ## Contribution Workflow
 
-1. **Write Spec first**: For non-trivial features, draft a design specification in `docs/sdd/<feature>/spec.md` before coding.
+1. **Describe the change first**: For non-trivial features, agree on observable behavior and scope in the issue or pull request before coding.
 2. **Follow TDD**: Implement failing tests representing your spec's acceptance criteria before writing the code.
 3. **Commit Convention**: We follow [Conventional Commits](https://www.conventionalcommits.org/):
    - `feat: ...` for new features

@@ -7,7 +7,7 @@ export function buildAuditRow(row: AuditRow): AuditRow {
     ts: row.ts,
     query: row.query,
     outcome: row.outcome,
-    degraded: row.degraded,
+    retrieval: row.retrieval,
     candidates: row.candidates.map((c) => ({ skill_id: c.skill_id, score: c.score })),
     selected_skill_id: row.selected_skill_id,
     latency_ms: row.latency_ms,

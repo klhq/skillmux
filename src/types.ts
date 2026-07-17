@@ -4,10 +4,10 @@ export interface RecallConfig {
 }
 
 export interface Thresholds {
-  match_score: number;
-  match_margin: number;
-  candidate_floor: number;
   candidate_limit: number;
+  match_score?: number;
+  match_margin?: number;
+  candidate_floor?: number;
 }
 
 export type ONNXDevice =
@@ -39,21 +39,43 @@ export type ONNXDtype =
   | "q1"
   | "q1f16";
 
-export interface EmbeddingConfig {
-  base_url: string;
-  api_key_env: string;
+export interface ModelConfig {
   model: string;
-  dimension: number;
   device?: ONNXDevice;
   dtype?: ONNXDtype;
 }
 
-export interface RerankConfig {
+export interface LocalInferenceConfig {
+  mode: "local";
+  bundle: string;
+  models_dir: string;
+  embedding: ModelConfig & { dimension: number };
+}
+
+export interface RemoteEmbeddingConfig {
+  provider: "openai";
   base_url: string;
   model: string;
-  device?: ONNXDevice;
-  dtype?: ONNXDtype;
+  dimension: number;
+  api_key_env?: string;
 }
+
+export interface RemoteRerankerConfig {
+  provider: "infinity";
+  base_url: string;
+  model: string;
+  api_key_env?: string;
+}
+
+export interface RemoteInferenceConfig {
+  mode: "remote";
+  timeout_ms: number;
+  embedding: RemoteEmbeddingConfig;
+  reranker?: RemoteRerankerConfig;
+  thresholds?: Required<Omit<Thresholds, "candidate_limit">>;
+}
+
+export type InferenceConfig = LocalInferenceConfig | RemoteInferenceConfig;
 
 export interface RateLimitConfig {
   enabled: boolean;
@@ -72,9 +94,7 @@ export interface Config {
   state_dir: string;
   recall: RecallConfig;
   thresholds: Thresholds;
-  embedding: EmbeddingConfig;
-  rerank: RerankConfig;
-  remote_timeout_ms: number;
+  inference: InferenceConfig;
   server?: ServerConfig;
 }
 
@@ -82,12 +102,17 @@ export interface Candidate {
   skill_id: string;
   title: string;
   description: string;
-  rerank_score: number | null;
 }
+
+export interface RankedCandidate extends Candidate {
+  score: number | null;
+}
+
+export type RetrievalCapability = "exact" | "reranked" | "hybrid" | "lexical";
 
 export interface MatchedResult {
   outcome: "matched";
-  degraded: false;
+  retrieval: "exact" | "reranked";
   skill_id: string;
   title: string;
   content_sha256: string;
@@ -99,13 +124,13 @@ export interface MatchedResult {
 
 export interface AmbiguousResult {
   outcome: "ambiguous";
-  degraded: boolean;
+  retrieval: RetrievalCapability;
   candidates: Candidate[];
 }
 
 export interface NoMatchResult {
   outcome: "no_match";
-  degraded: boolean;
+  retrieval: RetrievalCapability;
   message: string;
 }
 
@@ -113,8 +138,8 @@ export type ResolveResult = MatchedResult | AmbiguousResult | NoMatchResult;
 
 export interface ResolveSkillInput {
   query: string;
-  /** Test/ops escape hatch: skip remote lanes. Not exposed on the MCP wire (schema allows only `query`). */
-  forceDegraded?: boolean;
+  /** Test/ops escape hatch: use lexical retrieval only. Not exposed on the MCP wire. */
+  forceLexical?: boolean;
 }
 
 export interface FetchSkillInput {
@@ -139,7 +164,7 @@ export interface AuditRow {
   ts: string;
   query: string;
   outcome: "matched" | "ambiguous" | "no_match";
-  degraded: boolean;
+  retrieval: RetrievalCapability;
   candidates: AuditCandidate[];
   selected_skill_id: string | null;
   latency_ms: number;
@@ -147,5 +172,5 @@ export interface AuditRow {
 
 export interface Clients {
   embed(texts: string[]): Promise<Float32Array[]>;
-  rerank(query: string, docs: { skill_id: string; text: string }[]): Promise<number[]>;
+  rerank?: (query: string, docs: { skill_id: string; text: string }[]) => Promise<number[]>;
 }

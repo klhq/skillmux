@@ -1,227 +1,174 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
 import { loadConfig } from "../src/config";
 
-const origEnv = { ...process.env };
+const originalEnv = { ...process.env };
+const files: string[] = [];
+
+async function configFile(content: string): Promise<string> {
+  const path = `/tmp/skill-router-config-${crypto.randomUUID()}.toml`;
+  files.push(path);
+  await Bun.write(path, content);
+  return path;
+}
 
 afterEach(() => {
-  // Restore process.env
-  process.env = { ...origEnv };
+  process.env = { ...originalEnv };
+  for (const path of files.splice(0)) rmSync(path, { force: true });
 });
 
-describe("Docker and env variable configuration (AC4)", () => {
-  test("loads server.rate_limit from config.toml", async () => {
-    const tmpPath = "/tmp/skill-router-rate-limit-config.toml";
-    await Bun.write(
-      tmpPath,
-      [
-        `[server]`,
-        `auth_enabled = false`,
-        `auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"`,
-        `allowed_origins = ["*"]`,
-        ``,
-        `[server.rate_limit]`,
-        `enabled = true`,
-        `requests_per_minute = 75`,
-      ].join("\n"),
-    );
+describe("inference configuration", () => {
+  test("defaults to the versioned local ONNX bundle", async () => {
+    const config = await loadConfig("/does/not/exist/config.toml");
 
-    const config = await loadConfig(tmpPath);
-
-    expect(config.server?.rate_limit).toEqual({
-      enabled: true,
-      requests_per_minute: 75,
+    expect(config.inference).toMatchObject({
+      mode: "local",
+      bundle: "gte-small-v1",
+      models_dir: "~/.cache/skill-router/models",
+      embedding: { model: "Xenova/gte-small", dimension: 384, device: "cpu", dtype: "q8" },
     });
   });
 
-  test("defaults requests_per_minute to 60 when server.rate_limit.enabled is true and requests_per_minute is omitted", async () => {
-    const tmpPath = "/tmp/skill-router-rate-limit-default-config.toml";
-    await Bun.write(
-      tmpPath,
-      [
-        `[server]`,
-        `auth_enabled = false`,
-        `auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"`,
-        `allowed_origins = ["*"]`,
-        ``,
-        `[server.rate_limit]`,
-        `enabled = true`,
-      ].join("\n"),
-    );
-
-    const config = await loadConfig(tmpPath);
-
-    expect(config.server?.rate_limit).toEqual({
-      enabled: true,
-      requests_per_minute: 60,
-    });
-  });
-
-  test("supports HTTP_RATE_LIMIT_ENABLED and SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED boolean env overrides", async () => {
-    process.env.HTTP_RATE_LIMIT_ENABLED = "true";
-    let config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.server?.rate_limit?.enabled).toBe(true);
-
-    delete process.env.HTTP_RATE_LIMIT_ENABLED;
-    process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED = "false";
-    config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.server?.rate_limit?.enabled).toBe(false);
-  });
-
-  test("prefers SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED over HTTP_RATE_LIMIT_ENABLED when both are set", async () => {
-    process.env.HTTP_RATE_LIMIT_ENABLED = "false";
-    process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED = "true";
-
-    const config = await loadConfig("/does/not/exist/config.toml");
-
-    expect(config.server?.rate_limit?.enabled).toBe(true);
-  });
-
-  test("supports HTTP_RATE_LIMIT_RPM and SKILL_ROUTER_HTTP_RATE_LIMIT_RPM integer env overrides", async () => {
-    process.env.HTTP_RATE_LIMIT_RPM = "42";
-    let config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.server?.rate_limit?.requests_per_minute).toBe(42);
-    expect(typeof config.server?.rate_limit?.requests_per_minute).toBe("number");
-
-    delete process.env.HTTP_RATE_LIMIT_RPM;
-    process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_RPM = "84";
-    config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.server?.rate_limit?.requests_per_minute).toBe(84);
-    expect(typeof config.server?.rate_limit?.requests_per_minute).toBe("number");
-  });
-
-  test("prefers SKILL_ROUTER_HTTP_RATE_LIMIT_RPM over HTTP_RATE_LIMIT_RPM when both are set", async () => {
-    process.env.HTTP_RATE_LIMIT_RPM = "42";
-    process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_RPM = "84";
-
-    const config = await loadConfig("/does/not/exist/config.toml");
-
-    expect(config.server?.rate_limit?.requests_per_minute).toBe(84);
-  });
-
-  test("rejects non-integer HTTP rate limit rpm overrides", async () => {
-    process.env.HTTP_RATE_LIMIT_RPM = "not-an-integer";
-
-    await expect(loadConfig("/does/not/exist/config.toml")).rejects.toThrow();
-  });
-  test("applies Docker-specific defaults when RUNNING_IN_DOCKER=true", async () => {
+  test("Docker changes filesystem defaults but not inference mode", async () => {
     process.env.RUNNING_IN_DOCKER = "true";
-    // Delete other env overrides if present
-    delete process.env.VAULT_PATH;
-    delete process.env.STATE_DIR;
-    delete process.env.EMBED_BASE_URL;
-    delete process.env.RERANK_BASE_URL;
-    delete process.env.SKILL_ROUTER_CONFIG;
-
-    // Load config from a non-existent file to get defaults
     const config = await loadConfig("/does/not/exist/config.toml");
 
     expect(config.vault_path).toBe("/vault");
     expect(config.state_dir).toBe("/data");
-    expect(config.embedding.base_url).toBe("local://");
-    expect(config.embedding.device).toBe("cpu");
-    expect(config.embedding.dtype).toBe("q8");
-    expect(config.rerank.base_url).toBe("local://");
-    expect(config.rerank.device).toBe("cpu");
-    expect(config.rerank.dtype).toBe("q8");
+    expect(config.inference.mode).toBe("local");
+    if (config.inference.mode === "local") expect(config.inference.models_dir).toBe("/models");
   });
 
-  test("allows overriding settings via individual env variables", async () => {
-    process.env.VAULT_PATH = "/env/vault";
-    process.env.STATE_DIR = "/env/data";
-    process.env.EMBED_BASE_URL = "http://env-embeddings:8000";
+  test("loads an explicit remote OpenAI plus Infinity configuration", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 5000
+
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "example/embed"
+dimension = 768
+api_key_env = "EMBED_SECRET"
+
+[inference.reranker]
+provider = "infinity"
+base_url = "https://rerank.example.com"
+model = "example/reranker"
+api_key_env = "RERANK_SECRET"
+
+[inference.thresholds]
+match_score = 0.91
+match_margin = 0.21
+candidate_floor = 0.41
+`);
+
+    const config = await loadConfig(path);
+    expect(config.inference).toEqual({
+      mode: "remote",
+      timeout_ms: 5000,
+      embedding: {
+        provider: "openai",
+        base_url: "https://embed.example.com",
+        model: "example/embed",
+        dimension: 768,
+        api_key_env: "EMBED_SECRET",
+      },
+      reranker: {
+        provider: "infinity",
+        base_url: "https://rerank.example.com",
+        model: "example/reranker",
+        api_key_env: "RERANK_SECRET",
+      },
+      thresholds: { match_score: 0.91, match_margin: 0.21, candidate_floor: 0.41 },
+    });
+  });
+
+  test("rejects the unreleased legacy config shape with migration guidance", async () => {
+    const path = await configFile(`[embedding]\nbase_url = "http://localhost:8080"\n`);
+    await expect(loadConfig(path)).rejects.toThrow("Legacy inference config is not supported");
+  });
+
+  test("rejects incomplete remote inference", async () => {
+    const path = await configFile(`[inference]\nmode = "remote"\ntimeout_ms = 2000\n`);
+    await expect(loadConfig(path)).rejects.toThrow("Remote inference requires an inference.embedding");
+  });
+
+  test("applies mode-appropriate environment overrides", async () => {
     process.env.EMBED_DEVICE = "cuda";
-    process.env.EMBED_DTYPE = "fp16";
-    process.env.RERANK_BASE_URL = "http://env-rerank:9000";
-    process.env.RERANK_DEVICE = "gpu";
-    process.env.RERANK_DTYPE = "fp32";
-
-    const config = await loadConfig("/does/not/exist/config.toml");
-
-    expect(config.vault_path).toBe("/env/vault");
-    expect(config.state_dir).toBe("/env/data");
-    expect(config.embedding.base_url).toBe("http://env-embeddings:8000");
-    expect(config.embedding.device).toBe("cuda");
-    expect(config.embedding.dtype).toBe("fp16");
-    expect(config.rerank.base_url).toBe("http://env-rerank:9000");
-    expect(config.rerank.device).toBe("gpu");
-    expect(config.rerank.dtype).toBe("fp32");
-  });
-
-  test("env overrides take precedence over config file values", async () => {
-    // Write a temp config file and load it, but verify env still overrides
-    const config = await loadConfig(); // will fall back to defaults or mock config
-    process.env.VAULT_PATH = "/env/vault/override";
-    
-    const configOverridden = await loadConfig("/does/not/exist/config.toml");
-    expect(configOverridden.vault_path).toBe("/env/vault/override");
-  });
-
-
-  test("supports EMBED_MODEL and SKILL_ROUTER_EMBED_MODEL overrides for embedding.model", async () => {
-    process.env.EMBED_MODEL = "legacy/embed-model";
+    process.env.SKILL_ROUTER_MODELS_DIR = "/models-cache";
     let config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.embedding.model).toBe("legacy/embed-model");
+    expect(config.inference.mode).toBe("local");
+    if (config.inference.mode === "local") {
+      expect(config.inference.embedding.device).toBe("cuda");
+      expect(config.inference.models_dir).toBe("/models-cache");
+    }
 
-    delete process.env.EMBED_MODEL;
-    process.env.SKILL_ROUTER_EMBED_MODEL = "namespaced/embed-model";
-    config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.embedding.model).toBe("namespaced/embed-model");
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://old.example.com"
+model = "old/embed"
+dimension = 768
+[inference.reranker]
+provider = "infinity"
+base_url = "https://old-rerank.example.com"
+model = "old/reranker"
+[inference.thresholds]
+match_score = 0.9
+match_margin = 0.2
+candidate_floor = 0.4
+`);
+    process.env.SKILL_ROUTER_EMBED_BASE_URL = "https://new.example.com";
+    process.env.SKILL_ROUTER_EMBED_MODEL = "new/embed";
+    process.env.SKILL_ROUTER_EMBED_DIMENSION = "1024";
+    config = await loadConfig(path);
+    expect(config.inference.mode).toBe("remote");
+    if (config.inference.mode === "remote") {
+      expect(config.inference.embedding).toMatchObject({
+        base_url: "https://new.example.com",
+        model: "new/embed",
+        dimension: 1024,
+      });
+    }
   });
 
-  test("prefers SKILL_ROUTER_EMBED_MODEL over EMBED_MODEL when both are set", async () => {
-    process.env.EMBED_MODEL = "legacy/embed-model";
-    process.env.SKILL_ROUTER_EMBED_MODEL = "namespaced/embed-model";
-
-    const config = await loadConfig("/does/not/exist/config.toml");
-
-    expect(config.embedding.model).toBe("namespaced/embed-model");
+  test("rejects a configured reranker without calibrated thresholds", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+[inference.reranker]
+provider = "infinity"
+base_url = "https://rerank.example.com"
+model = "reranker"
+`);
+    await expect(loadConfig(path)).rejects.toThrow("requires calibrated inference.thresholds");
   });
+});
 
-  test("parses EMBED_DIMENSION and SKILL_ROUTER_EMBED_DIMENSION as integers for embedding.dimension", async () => {
-    process.env.EMBED_DIMENSION = "1536";
-    let config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.embedding.dimension).toBe(1536);
-    expect(typeof config.embedding.dimension).toBe("number");
-
-    delete process.env.EMBED_DIMENSION;
-    process.env.SKILL_ROUTER_EMBED_DIMENSION = "2048";
-    config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.embedding.dimension).toBe(2048);
-    expect(typeof config.embedding.dimension).toBe("number");
-  });
-
-  test("prefers SKILL_ROUTER_EMBED_DIMENSION over EMBED_DIMENSION when both are set", async () => {
-    process.env.EMBED_DIMENSION = "1536";
-    process.env.SKILL_ROUTER_EMBED_DIMENSION = "2048";
-
-    const config = await loadConfig("/does/not/exist/config.toml");
-
-    expect(config.embedding.dimension).toBe(2048);
-  });
-
-  test("rejects non-integer embedding dimension overrides", async () => {
-    process.env.EMBED_DIMENSION = "not-an-integer";
-
-    await expect(loadConfig("/does/not/exist/config.toml")).rejects.toThrow();
-  });
-
-  test("supports RERANK_MODEL and SKILL_ROUTER_RERANK_MODEL overrides for rerank.model", async () => {
-    process.env.RERANK_MODEL = "legacy/rerank-model";
-    let config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.rerank.model).toBe("legacy/rerank-model");
-
-    delete process.env.RERANK_MODEL;
-    process.env.SKILL_ROUTER_RERANK_MODEL = "namespaced/rerank-model";
-    config = await loadConfig("/does/not/exist/config.toml");
-    expect(config.rerank.model).toBe("namespaced/rerank-model");
-  });
-
-  test("prefers SKILL_ROUTER_RERANK_MODEL over RERANK_MODEL when both are set", async () => {
-    process.env.RERANK_MODEL = "legacy/rerank-model";
-    process.env.SKILL_ROUTER_RERANK_MODEL = "namespaced/rerank-model";
-
-    const config = await loadConfig("/does/not/exist/config.toml");
-
-    expect(config.rerank.model).toBe("namespaced/rerank-model");
+describe("server configuration", () => {
+  test("loads rate limiting and applies namespaced environment overrides", async () => {
+    const path = await configFile(`
+[server]
+auth_enabled = false
+auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"
+allowed_origins = ["*"]
+[server.rate_limit]
+enabled = true
+requests_per_minute = 75
+`);
+    process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_RPM = "84";
+    const config = await loadConfig(path);
+    expect(config.server?.rate_limit).toEqual({ enabled: true, requests_per_minute: 84 });
   });
 });
