@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { evalVault } from "../src/eval";
+import { evalVault, loadEvalCases } from "../src/eval";
 import { backfillEmbeddings, configure, rebuildIndex } from "../src/router-core";
 import type { Config } from "../src/types";
 
@@ -45,6 +45,12 @@ afterAll(() => {
 });
 
 describe("local labeled evaluation", () => {
+  test("rejects malformed evaluation fixtures", () => {
+    const path = join(tmp, "invalid-queries.json");
+    writeFileSync(path, JSON.stringify([{ query: "", expected: [] }]));
+    expect(() => loadEvalCases(path)).toThrow();
+  });
+
   test("reports lexical and hybrid recall plus MRR without a reranker", async () => {
     const report = await evalVault([{ query: "why did my container stop", expected: ["docker-manager"] }]);
     expect(report.queries).toBe(1);

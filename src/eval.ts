@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import type { SkillRow } from "./db";
 import { ftsSearch, vectorTopK } from "./db";
 import { reciprocalRankFusion } from "./rrf";
@@ -9,6 +10,11 @@ export interface EvalCase {
   query: string;
   expected: string[];
 }
+
+const evalCasesSchema = z.array(z.object({
+  query: z.string().min(1),
+  expected: z.array(z.string().min(1)).min(1),
+}).strict());
 
 export interface EvalMetrics {
   recall_at_3: number;
@@ -42,7 +48,7 @@ function metrics(rankings: string[][], cases: EvalCase[]): EvalMetrics {
 }
 
 export function loadEvalCases(path = join(import.meta.dir, "..", "eval", "queries.json")): EvalCase[] {
-  return JSON.parse(readFileSync(path, "utf8")) as EvalCase[];
+  return evalCasesSchema.parse(JSON.parse(readFileSync(path, "utf8")));
 }
 
 export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
