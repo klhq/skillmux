@@ -17,6 +17,23 @@ describe("MetricsRegistry", () => {
     expect(body).toContain("# TYPE skill_router_errors_total counter");
   });
 
+  test("renders readiness and retrieval capability gauges", () => {
+    const registry = new MetricsRegistry();
+    registry.setReadiness({
+      status: "ready",
+      retrieval: "hybrid",
+      skills: 10,
+      index_current: true,
+      embedding: "ready",
+      reranker: "not_configured",
+    });
+
+    const output = registry.render();
+    expect(output).toContain("skill_router_ready 1");
+    expect(output).toContain('skill_router_retrieval_capability{capability="hybrid"} 1');
+    expect(output).toContain('skill_router_retrieval_capability{capability="lexical"} 0');
+  });
+
   test("increments request counter by MCP method label", () => {
     const metrics = new MetricsRegistry();
 

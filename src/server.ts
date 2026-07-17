@@ -23,6 +23,7 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
   await initializeRuntime(readinessState);
+  metricsRegistry.setReadiness(readinessState.get());
   const stopWatcher = await startVaultWatcher();
 
   const server = new McpServer({ name: "skill-router", version: "0.1.0" });
@@ -242,6 +243,7 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
         if (stopped) return;
         stopped = true;
         readinessState.set({ ...readinessState.get(), status: "stopping" });
+        metricsRegistry.setReadiness(readinessState.get());
         bunServer.stop(true);
         stopWatcher();
         await server.close();
@@ -256,6 +258,7 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
         if (stopped) return;
         stopped = true;
         readinessState.set({ ...readinessState.get(), status: "stopping" });
+        metricsRegistry.setReadiness(readinessState.get());
         stopWatcher();
         await server.close();
         closeRuntime();
