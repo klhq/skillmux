@@ -42,7 +42,14 @@ describe("runtime initialization", () => {
 
     await initializeRuntime(state);
 
-    expect(state.get()).toMatchObject({ status: "ready", retrieval: "hybrid", skills: 1, index_current: true, embedding: "ready" });
+    expect(state.get()).toMatchObject({
+      status: "ready",
+      retrieval: "hybrid",
+      skills: 1,
+      index_current: true,
+      embedding: "ready",
+      reranker: "not_configured",
+    });
   });
 
   test("reports lexical readiness when embedding is unavailable", async () => {

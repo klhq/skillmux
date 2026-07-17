@@ -65,9 +65,6 @@ const defaultClients: Clients = {
   embed: async () => {
     throw new Error("embedding client not configured");
   },
-  rerank: async () => {
-    throw new Error("rerank client not configured");
-  },
 };
 
 let overrides: Overrides = {};
