@@ -5,6 +5,7 @@ import { z } from "zod";
 import { createClients } from "./clients";
 import { loadConfig } from "./config";
 import { backfillEmbeddings, configure, fetchSkill, resolveSkill } from "./router-core";
+import { closeRuntime, startVaultWatcher } from "./router-core";
 import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
@@ -13,10 +14,16 @@ import { initializeRuntime } from "./lifecycle";
 export const metricsRegistry = new MetricsRegistry();
 export const readinessState = new ReadinessState();
 
-export async function startServer(opts?: { transport?: "stdio" | "http"; port?: number }): Promise<void> {
+export interface ServerHandle {
+  port?: number;
+  stop(): Promise<void>;
+}
+
+export async function startServer(opts?: { transport?: "stdio" | "http"; port?: number }): Promise<ServerHandle> {
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
   await initializeRuntime(readinessState);
+  const stopWatcher = await startVaultWatcher();
 
   const server = new McpServer({ name: "skill-router", version: "0.1.0" });
 
@@ -227,11 +234,34 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
         });
       },
     });
+    let stopped = false;
     console.log(`skill-router serving over HTTP on port ${bunServer.port}`);
+    return {
+      port: bunServer.port,
+      async stop() {
+        if (stopped) return;
+        stopped = true;
+        readinessState.set({ ...readinessState.get(), status: "stopping" });
+        bunServer.stop(true);
+        stopWatcher();
+        await server.close();
+        closeRuntime();
+      },
+    };
   } else {
     await server.connect(new StdioServerTransport());
+    let stopped = false;
+    return {
+      async stop() {
+        if (stopped) return;
+        stopped = true;
+        readinessState.set({ ...readinessState.get(), status: "stopping" });
+        stopWatcher();
+        await server.close();
+        closeRuntime();
+      },
+    };
   }
-
 }
 
 if (import.meta.main) await startServer();
