@@ -42,6 +42,13 @@ sha256sum --check SHA256SUMS
 ./skill-router-linux-amd64 config show
 ```
 
+Verify release assets from GitHub without cloning the repository:
+
+```bash
+gh release download v0.1.1 --repo klhq/skill-router
+sha256sum --check SHA256SUMS
+```
+
 Verify the container with a read-only vault mount:
 
 ```bash

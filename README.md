@@ -32,19 +32,39 @@ If embeddings are unavailable, the router remains ready with FTS5 lexical retrie
 
 The full contract lives in [`docs/schema.json`](docs/schema.json) (JSON Schema 2020-12, language-neutral).
 
-## Requirements
+## Install
 
-- [Bun](https://bun.sh) ≥ 1.3
-- A skill vault: one directory per skill with a `SKILL.md` in [agentskills.io](https://agentskills.io) format (`name`, `description`, optional `aliases` frontmatter). Default location `~/.agents/skills`.
-- Optional: OpenAI-compatible embeddings and an Infinity-native `/rerank` endpoint. Local GTE-small embeddings work without either service.
+### Linux Binary
+
+Download the latest release for your architecture:
+
+```sh
+# AMD64
+gh release download --repo klhq/skill-router \
+  --pattern 'skill-router-linux-*' \
+  --pattern 'SHA256SUMS'
+
+sha256sum --check SHA256SUMS
+# Install the binary matching your machine (amd64 or arm64)
+chmod +x skill-router-linux-amd64
+sudo install skill-router-linux-amd64 /usr/local/bin/skill-router
+skill-router config show
+```
+
+Release assets are also available at <https://github.com/klhq/skill-router/releases/latest>.
+
+Requirements at runtime:
+
+- A skill vault: one directory per skill with a `SKILL.md` in [agentskills.io](https://agentskills.io) format. Default: `~/.agents/skills`.
+- Optional remote OpenAI-compatible embeddings and Infinity-native reranking. The full binary uses local GTE-small embeddings by default.
 
 ## Quick start
 
+No config is required when the vault is at `~/.agents/skills`:
+
 ```sh
-bun install
-cp config.example.toml ~/.config/skill-router/config.toml   # then edit
-bun run src/cli.ts index    # build the index (< 5 s for ~100 skills)
-bun run src/cli.ts serve    # stdio MCP server
+skill-router index
+skill-router serve
 ```
 
 Register with your MCP client directly, e.g.:
@@ -53,26 +73,28 @@ Register with your MCP client directly, e.g.:
 {
   "mcpServers": {
     "skill-router": {
-      "command": "bun",
-      "args": ["run", "/path/to/skill-router/src/cli.ts", "serve"]
+      "command": "skill-router",
+      "args": ["serve"]
     }
   }
 }
 ```
 
-Or compile a single-file binary:
+To run from source instead:
 
 ```sh
-bun run build              # → dist/skill-router
-dist/skill-router serve
+bun install --frozen-lockfile
+bun run src/cli.ts serve
 ```
 
 ## Docker Usage
 
 The `skill-router` is packaged and distributed as a Docker image in two variants:
 
-1. **`klhq/skill-router:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
-2. **`klhq/skill-router:slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
+1. **`ghcr.io/klhq/skill-router:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
+2. **`ghcr.io/klhq/skill-router:latest-slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
+
+Both tags are multi-architecture manifests for Linux AMD64 and ARM64; Docker selects the correct image automatically.
 
 ### Running HTTP Server (Docker Default)
 
@@ -81,25 +103,24 @@ To run as an HTTP MCP service (default in Docker):
 ```sh
 # Battery-included (runs local in-process ONNX models)
 docker run -d \
-  -name skill-router \
+  --name skill-router \
   -v ~/.agents/skills:/vault:ro \
   -v skill-router-data:/data \
   -p 3000:3000 \
-  klhq/skill-router:latest
+  ghcr.io/klhq/skill-router:latest
 
-# Slim (requires external model endpoints, or runs lexical-only degraded)
+# Slim (configured remote embeddings, or lexical fallback)
 docker run -d \
-  -name skill-router-slim \
+  --name skill-router-slim \
   -v ~/.agents/skills:/vault:ro \
   -v skill-router-data:/data \
   -p 3000:3000 \
   -e EMBED_BASE_URL="http://embeddings-host:8080" \
-  -e RERANK_BASE_URL="http://reranker-host:7997" \
-  klhq/skill-router:slim
+  ghcr.io/klhq/skill-router:latest-slim
 ```
 
 Connect your MCP client to the HTTP endpoint (e.g. standard Streamable HTTP transport):
-- POST messages to `http://localhost:3000`
+- POST messages to `http://localhost:3000/mcp`
 
 #### HTTP server: auth, CORS, rate limiting
 
@@ -119,7 +140,7 @@ If your agent runs locally and expects a piped stdio process:
 ```sh
 docker run -i --rm \
   -v ~/.agents/skills:/vault:ro \
-  klhq/skill-router:latest serve --transport stdio
+  ghcr.io/klhq/skill-router:latest serve --transport stdio
 ```
 
 ## Configuration
@@ -143,7 +164,6 @@ All core settings can be overridden via environment variables (handy for Docker)
 - `EMBED_DEVICE` / `EMBED_DTYPE` — overrides local `inference.embedding.device` / `inference.embedding.dtype`
 - `RERANK_BASE_URL` / `SKILL_ROUTER_RERANK_BASE_URL` — overrides remote `inference.reranker.base_url`
 - `RERANK_MODEL` / `SKILL_ROUTER_RERANK_MODEL` — overrides `rerank.model`
-- `RERANK_DEVICE` / `RERANK_DTYPE` — overrides local `inference.reranker.device` / `inference.reranker.dtype`
 - `SKILL_ROUTER_CONFIG` — path to custom `config.toml` (default `~/.config/skill-router/config.toml`)
 - `SKILL_ROUTER_MODELS_DIR` — path to directory storing downloaded local models (default `./.models`)
 - `PORT` — HTTP listen port (default `3000`, HTTP transport only)
