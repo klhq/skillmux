@@ -1,8 +1,8 @@
 # Stage 1: Base - Install dependencies
 FROM oven/bun:1-slim AS base
 WORKDIR /app
-COPY package.json ./
-RUN bun install --production --trusted-dependency onnxruntime-node --trusted-dependency protobufjs
+COPY package.json bun.lock ./
+RUN bun install --production --frozen-lockfile
 
 # Stage 2: Models downloader
 FROM base AS models

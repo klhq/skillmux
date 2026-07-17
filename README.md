@@ -100,6 +100,16 @@ docker run -d \
 Connect your MCP client to the HTTP endpoint (e.g. standard Streamable HTTP transport):
 - POST messages to `http://localhost:3000`
 
+#### HTTP server: auth, CORS, rate limiting
+
+All of the below is `[server]` config in `config.toml`, overridable by environment variable — see [Environment Variable Overrides](#environment-variable-overrides).
+
+- **Bearer token auth** (off by default) — set `auth_enabled = true` and the token via the env var named by `auth_token_env` (default `SKILL_ROUTER_AUTH_TOKEN`). Requests need `Authorization: Bearer <token>`; missing/mismatched tokens get `401`, and a configured-but-empty token env var gets `500`.
+- **CORS** — `allowed_origins` (default `["*"]`) is checked against the request's `Origin` header; disallowed origins get `403`. `/health` and `/metrics` are excluded from auth but still CORS-checked.
+- **Rate limiting** (off by default) — per-token (when auth is enabled) or per-IP (`server.requestIP`, falling back to `X-Forwarded-For`) token-bucket limiting. Enable with `rate_limit.enabled = true` and set `rate_limit.requests_per_minute` (default `60`). Every response carries `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset`; over-limit requests get `429` plus `Retry-After`.
+- **`GET /health`** — liveness check, `{"status": "ok"}`.
+- **`GET /metrics`** — Prometheus text exposition: `skill_router_requests_total`, `skill_router_resolve_outcomes_total`, `skill_router_resolve_latency_seconds` (histogram), `skill_router_errors_total`, `skill_router_rate_limits_exceeded_total`.
+
 ### Running Stdio Server in Docker
 
 If your agent runs locally and expects a piped stdio process:
@@ -126,9 +136,20 @@ All core settings can be overridden via environment variables (handy for Docker)
 - `VAULT_PATH` / `SKILL_ROUTER_VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
 - `STATE_DIR` / `SKILL_ROUTER_STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
 - `EMBED_BASE_URL` — overrides `embedding.base_url`
+- `EMBED_MODEL` / `SKILL_ROUTER_EMBED_MODEL` — overrides `embedding.model`
+- `EMBED_DIMENSION` / `SKILL_ROUTER_EMBED_DIMENSION` — overrides `embedding.dimension`
+- `EMBED_DEVICE` / `EMBED_DTYPE` — overrides `embedding.device` / `embedding.dtype` (local ONNX inference only)
 - `RERANK_BASE_URL` — overrides `rerank.base_url`
+- `RERANK_MODEL` / `SKILL_ROUTER_RERANK_MODEL` — overrides `rerank.model`
+- `RERANK_DEVICE` / `RERANK_DTYPE` — overrides `rerank.device` / `rerank.dtype` (local ONNX inference only)
 - `SKILL_ROUTER_CONFIG` — path to custom `config.toml` (default `~/.config/skill-router/config.toml`)
 - `SKILL_ROUTER_MODELS_DIR` — path to directory storing downloaded local models (default `./.models`)
+- `PORT` — HTTP listen port (default `3000`, HTTP transport only)
+- `HTTP_AUTH_ENABLED` — overrides `server.auth_enabled` (`"true"` to enable)
+- `HTTP_AUTH_TOKEN_ENV` — overrides `server.auth_token_env`
+- `HTTP_ALLOWED_ORIGINS` — comma-separated list, overrides `server.allowed_origins`
+- `HTTP_RATE_LIMIT_ENABLED` / `SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED` — overrides `server.rate_limit.enabled` (`"true"` to enable)
+- `HTTP_RATE_LIMIT_RPM` / `SKILL_ROUTER_HTTP_RATE_LIMIT_RPM` — overrides `server.rate_limit.requests_per_minute`
 
 The embeddings API key is read from the environment variable named by `embedding.api_key_env`; no secret ever lives in the config file.
 

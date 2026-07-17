@@ -44,9 +44,13 @@ model = "BAAI/bge-reranker-v2-m3"
 device = "cpu"          # device to run local ONNX model on: "cpu", "cuda", "gpu", "wasm", "webgpu" (default: "cpu")
 dtype = "q8"            # data type/quantization for local ONNX model: "q8", "fp16", "fp32" (default: "q8")
 
-# HTTP server settings (CORS and bearer token authentication).
+# HTTP server settings (CORS, bearer token authentication, rate limiting).
 # Only relevant when serving over HTTP (--transport http).
 [server]
 auth_enabled = false               # enable bearer token authentication check (default: false)
 auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"  # env var name containing the expected API token (default: "SKILL_ROUTER_AUTH_TOKEN")
 allowed_origins = ["*"]            # list of whitelisted CORS origins (default: ["*"])
+
+[server.rate_limit]
+enabled = false           # enable per-token/per-IP rate limiting (default: false)
+requests_per_minute = 60  # token-bucket refill rate when enabled (default: 60)
