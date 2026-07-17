@@ -1,6 +1,3 @@
-# Minimal battery-included setup. This entire file is optional: these are the
-# built-in defaults. Copy it only when your skill vault is elsewhere.
+# This entire file is optional. Skill Router indexes an externally managed
+# agentskills.io-compatible vault and uses local GTE-small semantic retrieval.
 vault_path = "~/.agents/skills"
-
-[inference]
-mode = "local"

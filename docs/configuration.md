@@ -1,6 +1,6 @@
 # Configuration
 
-Skill Router defaults to local ONNX inference. Most users need no config file.
+Skill Router defaults to FTS5 plus local GTE-small semantic retrieval. Most users need no config file.
 
 ## Local mode
 
@@ -9,7 +9,7 @@ Skill Router defaults to local ONNX inference. Most users need no config file.
 mode = "local"
 ```
 
-The versioned `bge-m3-v1` bundle uses `Xenova/bge-m3` embeddings (1024 dimensions) and `onnx-community/bge-reranker-v2-m3-ONNX`, both quantized to q8 on CPU. Models are cached in `~/.cache/skill-router/models`.
+The versioned `gte-small-v1` bundle uses normalized, mean-pooled `Xenova/gte-small` embeddings (384 dimensions), quantized to q8 on CPU. Models are cached in `~/.cache/skill-router/models`. FTS5 and cosine result lists are combined with reciprocal-rank fusion; without a reranker the calling LLM selects from the ordered shortlist.
 
 Advanced local overrides:
 
@@ -19,22 +19,18 @@ mode = "local"
 models_dir = "~/.cache/skill-router/models"
 
 [inference.embedding]
-model = "Xenova/bge-m3"
-dimension = 1024
+model = "Xenova/gte-small"
+dimension = 384
 device = "cpu"
 dtype = "q8"
 
-[inference.reranker]
-model = "onnx-community/bge-reranker-v2-m3-ONNX"
-device = "cpu"
-dtype = "q8"
 ```
 
 Use `skill-router models download` to prefetch models and `skill-router doctor` to verify readiness.
 
 ## Remote mode
 
-See [`config.remote.example.toml`](../config.remote.example.toml). Embeddings must implement the OpenAI-compatible `POST /v1/embeddings` API. Reranking must implement Infinity's `POST /rerank` API. Credentials are optional and read from the environment variables named by `api_key_env`.
+See [`config.remote.example.toml`](../config.remote.example.toml). Embeddings must implement the OpenAI-compatible `POST /v1/embeddings` API. Optional reranking must implement Infinity's `POST /rerank` API. Credentials are read from the environment variables named by `api_key_env`.
 
 Remote embedding `dimension` is required. Changing the provider, model, or dimension invalidates stored vectors and safely rebuilds them.
 

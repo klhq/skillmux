@@ -1,4 +1,4 @@
-# Bring-your-own inference setup.
+# Connect stronger inference endpoints. The reranker section is optional.
 vault_path = "~/.agents/skills"
 
 [inference]

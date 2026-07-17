@@ -40,13 +40,12 @@ async function runEval(): Promise<void> {
     process.exit(1);
   }
   console.log(`holdout queries: ${report.queries}`);
-  console.log(`recall@5 lexical-only: ${report.lexical_recall_at_5.toFixed(3)}`);
-  console.log(`recall@5 hybrid:       ${report.hybrid_recall_at_5.toFixed(3)}`);
-  const s = report.suggested_thresholds;
-  console.log(`suggested config.toml [thresholds]:`);
-  console.log(`match_score = ${s.match_score.toFixed(3)}`);
-  console.log(`match_margin = ${s.match_margin.toFixed(3)}`);
-  console.log(`candidate_floor = ${s.candidate_floor.toFixed(3)}`);
+  console.log(`lexical recall@3: ${report.lexical.recall_at_3.toFixed(3)}`);
+  console.log(`lexical recall@5: ${report.lexical.recall_at_5.toFixed(3)}`);
+  console.log(`lexical MRR:      ${report.lexical.mrr.toFixed(3)}`);
+  console.log(`hybrid recall@3:  ${report.hybrid.recall_at_3.toFixed(3)}`);
+  console.log(`hybrid recall@5:  ${report.hybrid.recall_at_5.toFixed(3)}`);
+  console.log(`hybrid MRR:       ${report.hybrid.mrr.toFixed(3)}`);
 }
 
 async function runDoctor(): Promise<void> {

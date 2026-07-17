@@ -1,6 +1,6 @@
 # Spec: Explicit inference modes
 
-<!-- status: approved 2026-07-17 -->
+<!-- status: superseded by docs/sdd/gte-hybrid-routing/spec.md on 2026-07-17 -->
 
 ## Goal
 

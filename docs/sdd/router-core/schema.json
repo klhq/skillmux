@@ -27,13 +27,9 @@
       "properties": {
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 512 },
-        "description": { "type": "string", "minLength": 1 },
-        "rerank_score": {
-          "type": ["number", "null"],
-          "description": "BAAI/bge-reranker-v2-m3 relevance score. null when degraded=true (reranker unreachable; FTS5-only recall)."
-        }
+        "description": { "type": "string", "minLength": 1 }
       },
-      "required": ["skill_id", "title", "description", "rerank_score"],
+      "required": ["skill_id", "title", "description"],
       "additionalProperties": false
     },
     "ResolveSkillInput": {
@@ -51,10 +47,10 @@
     },
     "MatchedResult": {
       "type": "object",
-      "description": "AC2: one candidate clearly dominates. Full SKILL.md delivered inline, byte-identical to disk at delivery time. Never returned when degraded (AC7) — encoded as const false.",
+      "description": "One reranked candidate clearly dominates. Full SKILL.md is delivered inline.",
       "properties": {
         "outcome": { "const": "matched" },
-        "degraded": { "const": false },
+        "retrieval": { "const": "reranked" },
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 512 },
         "content_sha256": { "$ref": "#/$defs/Sha256Hex" },
@@ -79,15 +75,15 @@
           "uniqueItems": true
         }
       },
-      "required": ["outcome", "degraded", "skill_id", "title", "content_sha256", "score", "margin", "body", "files"],
+      "required": ["outcome", "retrieval", "skill_id", "title", "content_sha256", "score", "margin", "body", "files"],
       "additionalProperties": false
     },
     "AmbiguousResult": {
       "type": "object",
-      "description": "AC3: several plausible candidates; the calling LLM picks, then calls fetch_skill. No body. In degraded mode this is the only outcome besides no_match, with rerank_score null on every candidate.",
+      "description": "Several plausible candidates; the calling LLM picks, then calls fetch_skill.",
       "properties": {
         "outcome": { "const": "ambiguous" },
-        "degraded": { "type": "boolean" },
+        "retrieval": { "enum": ["reranked", "hybrid", "lexical"] },
         "candidates": {
           "type": "array",
           "items": { "$ref": "#/$defs/Candidate" },
@@ -95,7 +91,7 @@
           "maxItems": 5
         }
       },
-      "required": ["outcome", "degraded", "candidates"],
+      "required": ["outcome", "retrieval", "candidates"],
       "additionalProperties": false
     },
     "NoMatchResult": {
@@ -103,14 +99,14 @@
       "description": "AC4: no skill passed the relevance floor. Caller proceeds under its normal workflow; must not load an unrelated skill.",
       "properties": {
         "outcome": { "const": "no_match" },
-        "degraded": { "type": "boolean" },
+        "retrieval": { "enum": ["reranked", "hybrid", "lexical"] },
         "message": {
           "type": "string",
           "description": "Fixed guidance string telling the caller to proceed normally.",
           "minLength": 1
         }
       },
-      "required": ["outcome", "degraded", "message"],
+      "required": ["outcome", "retrieval", "message"],
       "additionalProperties": false
     },
     "ResolveSkillResult": {
@@ -215,31 +211,21 @@
           "type": "object",
           "properties": {
             "mode": { "const": "local" },
-            "bundle": { "const": "bge-m3-v1" },
+            "bundle": { "const": "gte-small-v1" },
             "models_dir": { "type": "string", "default": "~/.cache/skill-router/models" },
             "embedding": {
               "type": "object",
               "properties": {
-                "model": { "const": "Xenova/bge-m3" },
-                "dimension": { "const": 1024 },
+                "model": { "const": "Xenova/gte-small" },
+                "dimension": { "const": 384 },
                 "device": { "type": "string" },
                 "dtype": { "type": "string" }
               },
               "required": ["model", "dimension"],
               "additionalProperties": false
-            },
-            "reranker": {
-              "type": "object",
-              "properties": {
-                "model": { "const": "onnx-community/bge-reranker-v2-m3-ONNX" },
-                "device": { "type": "string" },
-                "dtype": { "type": "string" }
-              },
-              "required": ["model"],
-              "additionalProperties": false
             }
           },
-          "required": ["mode", "bundle", "models_dir", "embedding", "reranker"],
+          "required": ["mode", "bundle", "models_dir", "embedding"],
           "additionalProperties": false
         },
         {
@@ -271,7 +257,7 @@
               "additionalProperties": false
             }
           },
-          "required": ["mode", "timeout_ms", "embedding", "reranker"],
+          "required": ["mode", "timeout_ms", "embedding"],
           "additionalProperties": false
         }
       ]
@@ -303,7 +289,7 @@
         "ts": { "type": "string", "format": "date-time" },
         "query": { "type": "string" },
         "outcome": { "type": "string", "enum": ["matched", "ambiguous", "no_match"] },
-        "degraded": { "type": "boolean" },
+        "retrieval": { "enum": ["reranked", "hybrid", "lexical"] },
         "candidates": {
           "type": "array",
           "description": "skill_id + score of every reranked (or FTS5-ranked) candidate considered, best first.",
@@ -323,7 +309,7 @@
         },
         "latency_ms": { "type": "integer", "minimum": 0 }
       },
-      "required": ["id", "ts", "query", "outcome", "degraded", "candidates", "selected_skill_id", "latency_ms"],
+      "required": ["id", "ts", "query", "outcome", "retrieval", "candidates", "selected_skill_id", "latency_ms"],
       "additionalProperties": false
     }
   }

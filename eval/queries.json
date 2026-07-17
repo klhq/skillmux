@@ -1,0 +1,10 @@
+[
+  { "query": "why did my Docker container stop", "expected": ["docker-manager"] },
+  { "query": "check whether my GitHub PR checks failed", "expected": ["gh-diagnose"] },
+  { "query": "find accessibility problems in this page", "expected": ["check-fix-accessibility"] },
+  { "query": "look up the official API for a library", "expected": ["doc-lookup"] },
+  { "query": "write browser automation for this user flow", "expected": ["e2e-test", "agent-browser"] },
+  { "query": "audit this diff for injection and authentication bugs", "expected": ["security-review"] },
+  { "query": "what tasks are overdue", "expected": ["task-summary"] },
+  { "query": "make this explanation understandable to a beginner", "expected": ["eli5"] }
+]

@@ -126,8 +126,8 @@ No config is required for the battery-included local ONNX mode. See [`config.exa
 
 ### Inference Modes
 
-- `inference.mode = "local"` is the default and runs the versioned BGE-M3 ONNX bundle in process. Models download on first use or via `skill-router models download`.
-- `inference.mode = "remote"` uses an OpenAI-compatible embeddings endpoint and an Infinity-compatible reranker endpoint.
+- The zero-config default combines SQLite FTS5 with the small `Xenova/gte-small` embedding model and returns an ordered shortlist.
+- Configured OpenAI-compatible embeddings replace the local embedder. An optional Infinity-compatible reranker enables confident automatic matches.
 
 Run `skill-router doctor` to verify full hybrid routing. Run `skill-router config show` to inspect the effective configuration; it prints credential variable names, never credential values.
 
