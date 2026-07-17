@@ -10,6 +10,7 @@ import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
 import { initializeRuntime } from "./lifecycle";
+import type { Clients, Config } from "./types";
 
 export const metricsRegistry = new MetricsRegistry();
 export const readinessState = new ReadinessState();
@@ -19,9 +20,14 @@ export interface ServerHandle {
   stop(): Promise<void>;
 }
 
-export async function startServer(opts?: { transport?: "stdio" | "http"; port?: number }): Promise<ServerHandle> {
-  const config = await loadConfig();
-  configure({ config, clients: createClients(config) });
+export async function startServer(opts?: {
+  transport?: "stdio" | "http";
+  port?: number;
+  config?: Config;
+  clients?: Partial<Clients>;
+}): Promise<ServerHandle> {
+  const config = opts?.config ?? await loadConfig();
+  configure({ config, clients: opts?.clients ?? createClients(config) });
   await initializeRuntime(readinessState);
   metricsRegistry.setReadiness(readinessState.get());
   const stopWatcher = await startVaultWatcher();

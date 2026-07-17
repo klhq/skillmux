@@ -33,9 +33,8 @@ describe("server lifecycle", () => {
         embedding: { model: "Xenova/gte-small", dimension: 3 },
       },
     };
-    configure({ config, clients: { embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])) } });
-
-    const handle = await startServer({ transport: "http", port: 0 });
+    const clients = { embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])) };
+    const handle = await startServer({ transport: "http", port: 0, config, clients });
     await handle.stop();
     await handle.stop();
 
