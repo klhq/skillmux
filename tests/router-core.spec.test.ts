@@ -116,12 +116,12 @@ describe("resolveSkill contract", () => {
     expect(["matched", "ambiguous", "no_match"]).toContain(result.outcome);
   });
 
-  test("matched result includes all required fields with degraded fixed to false", async () => {
+  test("matched result includes all required fields with reranked retrieval", async () => {
     const result = await resolveSkill({ query: "exactly one ideal skill" });
 
     expect(result.outcome).toBe("matched");
     if (result.outcome !== "matched") throw new Error("unreachable");
-    expect(result.degraded).toBe(false);
+    expect(result.retrieval).toBe("reranked");
     expect(result.skill_id).toMatch(/^[a-z0-9][a-z0-9-]{1,127}$/);
     expect(result.title).toEqual(expect.any(String));
     expect(result.content_sha256).toMatch(/^[a-f0-9]{64}$/);
@@ -196,18 +196,18 @@ describe("resolveSkill contract", () => {
       expect(candidate.title.length).toBeGreaterThan(0);
       expect(candidate.description).toEqual(expect.any(String));
       expect(candidate.description.length).toBeGreaterThan(0);
-      expect(["number", "object"]).toContain(typeof candidate.rerank_score);
+      expect(candidate).not.toHaveProperty("score");
     }
   });
 
-  test("degraded ambiguous result forces every candidate rerank_score to null", async () => {
-    const result = await resolveSkill({ query: "fallback when reranker is offline", forceDegraded: true });
+  test("lexical ambiguous result hides internal scores", async () => {
+    const result = await resolveSkill({ query: "fallback when reranker is offline", forceLexical: true });
 
     expect(result.outcome).toBe("ambiguous");
     if (result.outcome !== "ambiguous") throw new Error("unreachable");
-    expect(result.degraded).toBe(true);
+    expect(result.retrieval).toBe("lexical");
     for (const candidate of result.candidates) {
-      expect(candidate.rerank_score).toBeNull();
+      expect(candidate).not.toHaveProperty("score");
     }
   });
 
@@ -223,9 +223,9 @@ describe("resolveSkill contract", () => {
   });
 
   test("degraded lane never returns matched", async () => {
-    const result = await resolveSkill({ query: "best possible match but remote models are unavailable", forceDegraded: true });
+    const result = await resolveSkill({ query: "best possible match but remote models are unavailable", forceLexical: true });
 
-    expect(result.degraded).toBe(true);
+    expect(result.retrieval).toBe("lexical");
     expect(result.outcome).not.toBe("matched");
   });
 });
@@ -261,10 +261,10 @@ describe("fetchSkill contract", () => {
 describe("decision logic", () => {
   test("returns matched only when score and margin meet config thresholds", () => {
     const result = decideResolveOutcome({
-      degraded: false,
+      reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", rerank_score: 0.92 },
-        { skill_id: "beta-skill", title: "Beta", description: "B", rerank_score: 0.61 },
+        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.92 },
+        { skill_id: "beta-skill", title: "Beta", description: "B", score: 0.61 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -283,10 +283,10 @@ describe("decision logic", () => {
 
   test("returns ambiguous when top score passes match_score but margin is below match_margin", () => {
     const result = decideResolveOutcome({
-      degraded: false,
+      reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", rerank_score: 0.92 },
-        { skill_id: "beta-skill", title: "Beta", description: "B", rerank_score: 0.88 },
+        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.92 },
+        { skill_id: "beta-skill", title: "Beta", description: "B", score: 0.88 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -301,9 +301,9 @@ describe("decision logic", () => {
 
   test("returns ambiguous when at least one candidate meets candidate_floor but matched thresholds are not met", () => {
     const result = decideResolveOutcome({
-      degraded: false,
+      reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", rerank_score: 0.55 },
+        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.55 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -320,9 +320,9 @@ describe("decision logic", () => {
 
   test("returns no_match when no candidate reaches candidate_floor", () => {
     const result = decideResolveOutcome({
-      degraded: false,
+      reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", rerank_score: 0.19 },
+        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.19 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -337,9 +337,9 @@ describe("decision logic", () => {
 
   test("single candidate matched uses margin equal to score", () => {
     const result = decideResolveOutcome({
-      degraded: false,
+      reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", rerank_score: 0.93 },
+        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.93 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -354,11 +354,11 @@ describe("decision logic", () => {
     expect(result.margin).toBe(0.93);
   });
 
-  test("degraded decision uses only ambiguous or no_match outcomes", () => {
+  test("non-reranked decision uses only ambiguous or no_match outcomes", () => {
     const result = decideResolveOutcome({
-      degraded: true,
+      reranked: false,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", rerank_score: null },
+        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: null },
       ],
       thresholds: {
         match_score: 0.9,
@@ -374,11 +374,11 @@ describe("decision logic", () => {
 
   test("limits candidates to candidate_limit when outcome is ambiguous", () => {
     const result = decideResolveOutcome({
-      degraded: false,
+      reranked: true,
       candidates: [
-        { skill_id: "a", title: "A", description: "A", rerank_score: 0.8 },
-        { skill_id: "b", title: "B", description: "B", rerank_score: 0.7 },
-        { skill_id: "c", title: "C", description: "C", rerank_score: 0.6 },
+        { skill_id: "a", title: "A", description: "A", score: 0.8 },
+        { skill_id: "b", title: "B", description: "B", score: 0.7 },
+        { skill_id: "c", title: "C", description: "C", score: 0.6 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -409,8 +409,7 @@ describe("config contract", () => {
     expect(config.thresholds.candidate_limit).toEqual(expect.any(Number));
     expect(["local", "remote"]).toContain(config.inference.mode);
     expect(config.inference.embedding.model).toEqual(expect.any(String));
-    expect(config.inference.embedding.dimension).toBe(1024);
-    expect(config.inference.reranker.model).toEqual(expect.any(String));
+    expect(config.inference.embedding.dimension).toBe(config.inference.mode === "local" ? 384 : 1024);
   });
 });
 
@@ -435,7 +434,7 @@ describe("audit log contract", () => {
       ts: "2026-07-14T21:22:00.000Z",
       query: "find me the best skill",
       outcome: "ambiguous",
-      degraded: true,
+      retrieval: "hybrid",
       candidates: [
         { skill_id: "alpha-skill", score: null },
         { skill_id: "beta-skill", score: null },
@@ -449,7 +448,7 @@ describe("audit log contract", () => {
       ts: "2026-07-14T21:22:00.000Z",
       query: "find me the best skill",
       outcome: "ambiguous",
-      degraded: true,
+      retrieval: "hybrid",
       candidates: [
         { skill_id: "alpha-skill", score: null },
         { skill_id: "beta-skill", score: null },

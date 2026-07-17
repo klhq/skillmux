@@ -98,7 +98,7 @@ describe("hybrid recall (AC6)", () => {
   test("CJK query terms reach lexical recall (degraded lane included)", async () => {
     configure({ config });
 
-    const result = await resolveSkill({ query: "容器 部署", forceDegraded: true });
+    const result = await resolveSkill({ query: "容器 部署", forceLexical: true });
 
     expect(result.outcome).toBe("ambiguous");
     if (result.outcome !== "ambiguous") throw new Error("unreachable");
@@ -118,12 +118,12 @@ describe("hybrid recall (AC6)", () => {
 
     const result = await resolveSkill({ query: "quantum flux routing" });
 
-    expect(result.degraded).toBe(true);
+    expect(result.retrieval).toBe("lexical");
     expect(result.outcome).not.toBe("matched");
     if (result.outcome !== "ambiguous") throw new Error(`expected ambiguous, got ${result.outcome}`);
     const ids = result.candidates.map((c) => c.skill_id);
     expect(ids).toContain("lexical-skill");
     expect(ids).not.toContain("semantic-skill");
-    for (const candidate of result.candidates) expect(candidate.rerank_score).toBeNull();
+    for (const candidate of result.candidates) expect(candidate).not.toHaveProperty("score");
   });
 });

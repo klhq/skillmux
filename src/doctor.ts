@@ -48,16 +48,17 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
       ok: actualDimension === embeddingDimension(config),
       detail: `dimension ${actualDimension}`,
     });
-    const scores = await clients.rerank("skill router diagnostic", [
-      { skill_id: "doctor", text: "Routes a task to an appropriate skill." },
-    ]);
-    checks.push({ name: "reranker", ok: scores.length === 1 && Number.isFinite(scores[0]), detail: "one finite score" });
+    if (clients.rerank) {
+      const scores = await clients.rerank("skill router diagnostic", [
+        { skill_id: "doctor", text: "Routes a task to an appropriate skill." },
+      ]);
+      checks.push({ name: "reranker", ok: scores.length === 1 && Number.isFinite(scores[0]), detail: "one finite score" });
+    }
   } catch (error) {
     checks.push({ name: "inference", ok: false, detail: String(error) });
   }
 
-  const inferenceReady = checks.some((check) => check.name === "embedding" && check.ok)
-    && checks.some((check) => check.name === "reranker" && check.ok);
+  const inferenceReady = checks.some((check) => check.name === "embedding" && check.ok);
   const coreReady = checks.some((check) => check.name === "vault" && check.ok)
     && checks.some((check) => check.name === "state" && check.ok);
   return {

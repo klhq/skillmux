@@ -24,7 +24,8 @@ import {
 import type { SkillRow } from "./db";
 import { decideResolveOutcome } from "./decision";
 import type {
-  Candidate,
+  RankedCandidate,
+  RetrievalCapability,
   Clients,
   Config,
   FetchSkillInput,
@@ -32,6 +33,7 @@ import type {
   ResolveResult,
   ResolveSkillInput,
 } from "./types";
+import { reciprocalRankFusion } from "./rrf";
 import {
   decodeUtf8Strict,
   getVaultMaxMtime,
@@ -307,7 +309,7 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
     const delivery = await deliverSkill(db, config, exactMatch.skill_id);
     const result: ResolveResult = {
       outcome: "matched",
-      degraded: false,
+      retrieval: "reranked",
       skill_id: exactMatch.skill_id,
       title: delivery.title,
       content_sha256: delivery.content_sha256,
@@ -323,7 +325,7 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
         ts: new Date().toISOString(),
         query: input.query,
         outcome: "matched",
-        degraded: false,
+        retrieval: "reranked",
         candidates: [{ skill_id: exactMatch.skill_id, score: 1.0 }],
         selected_skill_id: exactMatch.skill_id,
         latency_ms: Math.round(performance.now() - t0),
@@ -336,54 +338,49 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
 
   const lexical = ftsSearch(db, input.query, config.recall.k_lexical);
 
-  // Hybrid recall (AC6): FTS5 top-k ∪ cosine top-k, deduped, lexical first.
-  // Any remote failure — embed or rerank — flips the whole call to the
-  // degraded lexical-only lane (AC7); vector-only rows are dropped because
-  // without scores they are indistinguishable from noise.
-  let degraded = input.forceDegraded === true;
+  let retrieval: RetrievalCapability = "lexical";
   let rows = lexical;
-  if (!degraded) {
+  if (!input.forceLexical) {
     try {
       const queryVec = (await clients.embed([input.query]))[0]!;
-      const seen = new Set(lexical.map((r) => r.skill_id));
-      const nearest = vectorTopK(db, queryVec, config.recall.k_vector).filter((r) => !seen.has(r.skill_id));
-      rows = [...lexical, ...nearest];
+      const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
+      rows = reciprocalRankFusion(lexical, nearest);
+      retrieval = "hybrid";
     } catch {
-      degraded = true;
+      retrieval = "lexical";
     }
   }
 
   let scores: number[] | null = null;
-  if (!degraded && rows.length > 0) {
+  if (clients.rerank && retrieval === "hybrid" && rows.length > 0) {
     try {
       scores = await clients.rerank(
         input.query,
         rows.map((r) => ({ skill_id: r.skill_id, text: rerankText(r) })),
       );
+      retrieval = "reranked";
     } catch {
-      degraded = true;
+      scores = null;
     }
   }
-  if (degraded) rows = lexical;
 
-  // Best first (schema AuditRow.candidates); degraded keeps BM25 recall order.
-  const candidates: Candidate[] = rows
+  const rankedCandidates: RankedCandidate[] = rows
     .map((r, i) => ({
       skill_id: r.skill_id,
       title: r.title,
       description: r.description,
-      rerank_score: degraded || scores === null ? null : (scores[i] ?? null),
+      score: scores?.[i] ?? null,
     }))
-    .sort((a, b) => (b.rerank_score ?? -Infinity) - (a.rerank_score ?? -Infinity));
+    .sort((a, b) => scores === null ? 0 : (b.score ?? -Infinity) - (a.score ?? -Infinity));
 
-  const decision = decideResolveOutcome({ degraded, candidates, thresholds: config.thresholds });
+  const decision = decideResolveOutcome({ reranked: retrieval === "reranked", candidates: rankedCandidates, thresholds: config.thresholds });
 
   let result: ResolveResult;
   if (decision.outcome === "matched") {
     const delivery = await deliverSkill(db, config, decision.skill_id);
     result = {
       outcome: "matched",
-      degraded: false,
+      retrieval: "reranked",
       skill_id: decision.skill_id,
       title: delivery.title,
       content_sha256: delivery.content_sha256,
@@ -393,9 +390,13 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
       files: delivery.files,
     };
   } else if (decision.outcome === "ambiguous") {
-    result = { outcome: "ambiguous", degraded, candidates: decision.candidates };
+    result = {
+      outcome: "ambiguous",
+      retrieval,
+      candidates: decision.candidates.map(({ score: _score, ...candidate }) => candidate),
+    };
   } else {
-    result = { outcome: "no_match", degraded, message: NO_MATCH_MESSAGE };
+    result = { outcome: "no_match", retrieval, message: NO_MATCH_MESSAGE };
   }
 
   insertAudit(
@@ -405,8 +406,8 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
       ts: new Date().toISOString(),
       query: input.query,
       outcome: result.outcome,
-      degraded,
-      candidates: candidates.map((c) => ({ skill_id: c.skill_id, score: c.rerank_score })),
+      retrieval,
+      candidates: rankedCandidates.map((c) => ({ skill_id: c.skill_id, score: c.score })),
       selected_skill_id: result.outcome === "matched" ? result.skill_id : null,
       latency_ms: Math.round(performance.now() - t0),
     }),

@@ -8,20 +8,15 @@ if (config.inference.mode !== "local") throw new Error("Model prefetch requires 
 const embedModel = config.inference.embedding.model;
 const embedDevice = config.inference.embedding.device || "cpu";
 const embedDtype = config.inference.embedding.dtype || "q8";
-const rerankModel = config.inference.reranker.model;
-const rerankDevice = config.inference.reranker.device || "cpu";
-const rerankDtype = config.inference.reranker.dtype || "q8";
 
 if (process.env.MOCK_HF_DOWNLOAD === "true") {
   console.log(`[MOCK] Downloading ${embedModel} (embeddings)...`);
-  console.log(`[MOCK] Downloading ${rerankModel} (reranking)...`);
   if (process.env.MOCK_HF_LOG_PATH) {
     const fs = await import("node:fs");
     fs.appendFileSync(
       process.env.MOCK_HF_LOG_PATH,
       JSON.stringify({
-        embed: { model: embedModel, device: embedDevice, dtype: embedDtype },
-        rerank: { model: rerankModel, device: rerankDevice, dtype: rerankDtype }
+        embed: { model: embedModel, device: embedDevice, dtype: embedDtype }
       }) + "\n"
     );
   }
@@ -29,7 +24,7 @@ if (process.env.MOCK_HF_DOWNLOAD === "true") {
 }
 
 try {
-  console.log(`Downloading ${embedModel} (${embedDevice}, ${embedDtype}) and ${rerankModel} (${rerankDevice}, ${rerankDtype})...`);
+  console.log(`Downloading ${embedModel} (${embedDevice}, ${embedDtype})...`);
   const cacheDir = await downloadLocalModels(config);
   console.log(`Models ready in ${cacheDir}.`);
 } catch (error) {

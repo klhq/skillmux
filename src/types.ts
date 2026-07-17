@@ -50,7 +50,6 @@ export interface LocalInferenceConfig {
   bundle: string;
   models_dir: string;
   embedding: ModelConfig & { dimension: number };
-  reranker: ModelConfig;
 }
 
 export interface RemoteEmbeddingConfig {
@@ -72,7 +71,7 @@ export interface RemoteInferenceConfig {
   mode: "remote";
   timeout_ms: number;
   embedding: RemoteEmbeddingConfig;
-  reranker: RemoteRerankerConfig;
+  reranker?: RemoteRerankerConfig;
 }
 
 export type InferenceConfig = LocalInferenceConfig | RemoteInferenceConfig;
@@ -102,12 +101,17 @@ export interface Candidate {
   skill_id: string;
   title: string;
   description: string;
-  rerank_score: number | null;
 }
+
+export interface RankedCandidate extends Candidate {
+  score: number | null;
+}
+
+export type RetrievalCapability = "reranked" | "hybrid" | "lexical";
 
 export interface MatchedResult {
   outcome: "matched";
-  degraded: false;
+  retrieval: "reranked";
   skill_id: string;
   title: string;
   content_sha256: string;
@@ -119,13 +123,13 @@ export interface MatchedResult {
 
 export interface AmbiguousResult {
   outcome: "ambiguous";
-  degraded: boolean;
+  retrieval: RetrievalCapability;
   candidates: Candidate[];
 }
 
 export interface NoMatchResult {
   outcome: "no_match";
-  degraded: boolean;
+  retrieval: RetrievalCapability;
   message: string;
 }
 
@@ -133,8 +137,8 @@ export type ResolveResult = MatchedResult | AmbiguousResult | NoMatchResult;
 
 export interface ResolveSkillInput {
   query: string;
-  /** Test/ops escape hatch: skip remote lanes. Not exposed on the MCP wire (schema allows only `query`). */
-  forceDegraded?: boolean;
+  /** Test/ops escape hatch: use lexical retrieval only. Not exposed on the MCP wire. */
+  forceLexical?: boolean;
 }
 
 export interface FetchSkillInput {
@@ -159,7 +163,7 @@ export interface AuditRow {
   ts: string;
   query: string;
   outcome: "matched" | "ambiguous" | "no_match";
-  degraded: boolean;
+  retrieval: RetrievalCapability;
   candidates: AuditCandidate[];
   selected_skill_id: string | null;
   latency_ms: number;
@@ -167,5 +171,5 @@ export interface AuditRow {
 
 export interface Clients {
   embed(texts: string[]): Promise<Float32Array[]>;
-  rerank(query: string, docs: { skill_id: string; text: string }[]): Promise<number[]>;
+  rerank?: (query: string, docs: { skill_id: string; text: string }[]) => Promise<number[]>;
 }

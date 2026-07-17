@@ -43,6 +43,8 @@ function percentile(values: number[], p: number): number {
  */
 export async function evalVault(): Promise<EvalReport> {
   const { config, db, clients } = await getRuntime();
+  if (!clients.rerank) throw new Error("Evaluation requires a configured reranker.");
+  const rerank = clients.rerank;
   await backfillEmbeddings();
 
   const skills = db.query("SELECT * FROM skills").all() as SkillRow[];
@@ -95,7 +97,7 @@ export async function evalVault(): Promise<EvalReport> {
       chunk.map((c, j) => {
         const rows = pools[j]!;
         if (rows.length === 0) return Promise.resolve([] as number[]);
-        return clients.rerank(
+        return rerank(
           c.query,
           rows.map((r) => ({ skill_id: r.skill_id, text: `${r.title}\n${r.description}\n${r.aliases}` })),
         );

@@ -11,7 +11,6 @@ interface RerankResponse {
 
 // Lazy-loaded model instances for in-process ONNX inference
 let localEmbedder: any = null;
-let localReranker: any = null;
 
 function localInference(config: Config) {
   if (config.inference.mode !== "local") throw new Error("Local inference is not configured.");
@@ -41,20 +40,6 @@ async function getLocalEmbedder(config: Config) {
   return localEmbedder;
 }
 
-async function getLocalReranker(config: Config) {
-  if (localReranker) return localReranker;
-
-  const inference = localInference(config);
-  const cacheDir = expandHome(inference.models_dir);
-  const pipeline = await setupTransformers(cacheDir);
-
-  localReranker = await pipeline("text-classification", inference.reranker.model, {
-    device: inference.reranker.device || "cpu",
-    dtype: inference.reranker.dtype || "q8",
-  });
-  return localReranker;
-}
-
 /**
  * Real HTTP clients or in-process local ONNX inference clients.
  * Every remote HTTP call is bounded by inference.timeout_ms; timeouts and transport
@@ -62,7 +47,7 @@ async function getLocalReranker(config: Config) {
  * Local ONNX calls run in-process using @huggingface/transformers.
  */
 export function createClients(config: Config): Clients {
-  return {
+  const clients: Clients = {
     async embed(texts: string[]): Promise<Float32Array[]> {
       if (config.inference.mode === "local") {
         const pipe = await getLocalEmbedder(config);
@@ -92,27 +77,12 @@ export function createClients(config: Config): Clients {
       const byIndex = [...parsed.data].sort((a, b) => a.index - b.index);
       return byIndex.map((d) => Float32Array.from(d.embedding));
     },
-
-    async rerank(query: string, docs: { skill_id: string; text: string }[]): Promise<number[]> {
-      if (config.inference.mode === "local") {
-        const pipe = await getLocalReranker(config);
-        const scores = new Array<number>(docs.length);
-        for (let i = 0; i < docs.length; i++) {
-          const doc = docs[i]!;
-          const inputs = await pipe.tokenizer(query, {
-            text_pair: doc.text,
-            padding: true,
-            truncation: true,
-            return_tensors: "pt",
-          });
-          const output = await pipe.model(inputs);
-          const score = output.logits.sigmoid().data[0]!;
-          scores[i] = score;
-        }
-        return scores;
-      }
-
-      const reranker = config.inference.reranker;
+  };
+  if (config.inference.mode === "remote" && config.inference.reranker) {
+    const inference = config.inference;
+    clients.rerank = async (query, docs) => {
+      const reranker = inference.reranker;
+      if (!reranker) throw new Error("Reranker is not configured.");
       const apiKey = reranker.api_key_env ? process.env[reranker.api_key_env] : undefined;
       const response = await fetch(`${reranker.base_url.replace(/\/$/, "")}/rerank`, {
         method: "POST",
@@ -122,13 +92,14 @@ export function createClients(config: Config): Clients {
           query,
           documents: docs.map((d) => d.text),
         }),
-        signal: AbortSignal.timeout(config.inference.timeout_ms),
+        signal: AbortSignal.timeout(inference.timeout_ms),
       });
       if (!response.ok) throw new Error(`rerank endpoint returned ${response.status}`);
       const parsed = (await response.json()) as RerankResponse;
       const scores = new Array<number>(docs.length).fill(0);
       for (const result of parsed.results) scores[result.index] = result.relevance_score;
       return scores;
-    },
-  };
+    };
+  }
+  return clients;
 }

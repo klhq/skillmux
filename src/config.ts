@@ -4,7 +4,7 @@ import type { Config, ONNXDevice, ONNXDtype } from "./types";
 
 // Fallback values only; a config.toml (SKILL_ROUTER_CONFIG or default path)
 // overrides them. The local bundle is the zero-config OSS path.
-export const LOCAL_BUNDLE_ID = "bge-m3-v1";
+export const LOCAL_BUNDLE_ID = "gte-small-v1";
 
 const DEFAULTS: Config = {
   vault_path: "~/.agents/skills",
@@ -16,13 +16,8 @@ const DEFAULTS: Config = {
     bundle: LOCAL_BUNDLE_ID,
     models_dir: "~/.cache/skill-router/models",
     embedding: {
-      model: "Xenova/bge-m3",
-      dimension: 1024,
-      device: "cpu",
-      dtype: "q8",
-    },
-    reranker: {
-      model: "onnx-community/bge-reranker-v2-m3-ONNX",
+      model: "Xenova/gte-small",
+      dimension: 384,
       device: "cpu",
       dtype: "q8",
     },
@@ -116,16 +111,14 @@ export async function loadConfig(path?: string): Promise<Config> {
     if (process.env.SKILL_ROUTER_MODELS_DIR) merged.inference.models_dir = process.env.SKILL_ROUTER_MODELS_DIR;
     if (process.env.EMBED_DEVICE) merged.inference.embedding.device = process.env.EMBED_DEVICE as ONNXDevice;
     if (process.env.EMBED_DTYPE) merged.inference.embedding.dtype = process.env.EMBED_DTYPE as ONNXDtype;
-    if (process.env.RERANK_DEVICE) merged.inference.reranker.device = process.env.RERANK_DEVICE as ONNXDevice;
-    if (process.env.RERANK_DTYPE) merged.inference.reranker.dtype = process.env.RERANK_DTYPE as ONNXDtype;
   } else if (merged.inference.mode === "remote") {
-    if (!merged.inference.embedding || !merged.inference.reranker) {
-      throw new Error("Remote inference requires inference.embedding and inference.reranker sections.");
+    if (!merged.inference.embedding) {
+      throw new Error("Remote inference requires an inference.embedding section.");
     }
     if (merged.inference.embedding?.provider !== "openai") {
       throw new Error('Remote inference.embedding.provider must be "openai".');
     }
-    if (merged.inference.reranker?.provider !== "infinity") {
+    if (merged.inference.reranker && merged.inference.reranker.provider !== "infinity") {
       throw new Error('Remote inference.reranker.provider must be "infinity".');
     }
     if (!Number.isInteger(merged.inference.timeout_ms) || merged.inference.timeout_ms < 100) {
@@ -134,12 +127,12 @@ export async function loadConfig(path?: string): Promise<Config> {
     if (!merged.inference.embedding?.base_url || !merged.inference.embedding.model || !merged.inference.embedding.dimension) {
       throw new Error("Remote inference requires inference.embedding base_url, model, and dimension.");
     }
-    if (!merged.inference.reranker?.base_url || !merged.inference.reranker.model) {
-      throw new Error("Remote inference requires inference.reranker base_url and model.");
+    if (merged.inference.reranker && (!merged.inference.reranker.base_url || !merged.inference.reranker.model)) {
+      throw new Error("Configured inference.reranker requires base_url and model.");
     }
     for (const [name, value] of [
       ["inference.embedding.base_url", merged.inference.embedding.base_url],
-      ["inference.reranker.base_url", merged.inference.reranker.base_url],
+      ...(merged.inference.reranker ? [["inference.reranker.base_url", merged.inference.reranker.base_url] as const] : []),
     ] as const) {
       try {
         const url = new URL(value);
@@ -155,8 +148,8 @@ export async function loadConfig(path?: string): Promise<Config> {
     const rerankModel = getEnv("SKILL_ROUTER_RERANK_MODEL", "RERANK_MODEL");
     if (embedUrl) merged.inference.embedding.base_url = embedUrl;
     if (embedModel) merged.inference.embedding.model = embedModel;
-    if (rerankUrl) merged.inference.reranker.base_url = rerankUrl;
-    if (rerankModel) merged.inference.reranker.model = rerankModel;
+    if (rerankUrl && merged.inference.reranker) merged.inference.reranker.base_url = rerankUrl;
+    if (rerankModel && merged.inference.reranker) merged.inference.reranker.model = rerankModel;
     if (embedDimStr) {
       const dimension = Number(embedDimStr);
       if (!Number.isInteger(dimension) || dimension < 1) throw new Error(`Invalid embedding dimension: ${embedDimStr}`);

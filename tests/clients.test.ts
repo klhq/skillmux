@@ -55,6 +55,8 @@ describe("embedding client", () => {
   test("posts texts to /v1/embeddings with bearer key and returns one vector per text", async () => {
     process.env.SKILL_ROUTER_TEST_EMBED_KEY = "vk-test-key";
     const clients = createClients(testConfig());
+    if (!clients.rerank) throw new Error("expected remote reranker");
+    const rerank = clients.rerank;
 
     const vectors = await clients.embed(["first text", "second text"]);
 
@@ -86,8 +88,10 @@ describe("rerank client", () => {
   test("posts query and documents to /rerank and returns scores in document order", async () => {
     process.env.SKILL_ROUTER_TEST_RERANK_KEY = "rerank-test-key";
     const clients = createClients(testConfig());
+    if (!clients.rerank) throw new Error("expected remote reranker");
+    const rerank = clients.rerank;
 
-    const scores = await clients.rerank("route my task", [
+    const scores = await rerank("route my task", [
       { skill_id: "alpha-skill", text: "Alpha\nfirst description" },
       { skill_id: "beta-skill", text: "Beta\nsecond description" },
     ]);

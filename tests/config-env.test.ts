@@ -23,10 +23,9 @@ describe("inference configuration", () => {
 
     expect(config.inference).toMatchObject({
       mode: "local",
-      bundle: "bge-m3-v1",
+      bundle: "gte-small-v1",
       models_dir: "~/.cache/skill-router/models",
-      embedding: { model: "Xenova/bge-m3", dimension: 1024, device: "cpu", dtype: "q8" },
-      reranker: { model: "onnx-community/bge-reranker-v2-m3-ONNX", device: "cpu", dtype: "q8" },
+      embedding: { model: "Xenova/gte-small", dimension: 384, device: "cpu", dtype: "q8" },
     });
   });
 
@@ -87,7 +86,7 @@ api_key_env = "RERANK_SECRET"
 
   test("rejects incomplete remote inference", async () => {
     const path = await configFile(`[inference]\nmode = "remote"\ntimeout_ms = 2000\n`);
-    await expect(loadConfig(path)).rejects.toThrow("Remote inference requires inference.embedding");
+    await expect(loadConfig(path)).rejects.toThrow("Remote inference requires an inference.embedding");
   });
 
   test("applies mode-appropriate environment overrides", async () => {

@@ -85,7 +85,7 @@ describe("read-only guarantee (AC9)", () => {
 
     await rebuildIndex();
     await resolveSkill({ query: "audit log persistence questions" });
-    await resolveSkill({ query: "nothing remotely relevant", forceDegraded: true });
+    await resolveSkill({ query: "nothing remotely relevant", forceLexical: true });
     await fetchSkill({ skill_id: "audit-target" });
 
     const after = await vaultSnapshot();
@@ -133,7 +133,7 @@ describe("audit log persistence (AC10)", () => {
     const row = rows[0]!;
     expect(row.query).toBe("audit log persistence questions");
     expect(row.outcome).toBe("matched");
-    expect(row.degraded).toBe(0);
+    expect(row.retrieval).toBe("reranked");
     expect(row.selected_skill_id).toBe("audit-target");
     expect(row.latency_ms).toBeGreaterThanOrEqual(0);
     const candidates = JSON.parse(row.candidates) as { skill_id: string; score: number | null }[];

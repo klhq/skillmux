@@ -16,9 +16,5 @@ export async function downloadLocalModels(config: Config): Promise<string> {
     device: config.inference.embedding.device ?? "cpu",
     dtype: config.inference.embedding.dtype ?? "q8",
   });
-  await pipeline("text-classification", config.inference.reranker.model, {
-    device: config.inference.reranker.device ?? "cpu",
-    dtype: config.inference.reranker.dtype ?? "q8",
-  });
   return cacheDir;
 }

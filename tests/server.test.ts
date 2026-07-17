@@ -112,7 +112,7 @@ describe("MCP stdio server", () => {
 
     expect(result.isError).toBeFalsy();
     const payload = result.structuredContent as Record<string, unknown>;
-    expect(payload.degraded).toBe(true);
+    expect(payload.retrieval).toBe("lexical");
     expect(["ambiguous", "no_match"]).toContain(payload.outcome as string);
   });
 

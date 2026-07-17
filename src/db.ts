@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { AuditCandidate } from "./types";
+import type { AuditCandidate, AuditRow } from "./types";
 import type { VaultSkill } from "./vault";
 
 export interface SkillRow {
@@ -45,10 +45,15 @@ export function openIndex(stateDir: string): Database {
     query TEXT NOT NULL,
     outcome TEXT NOT NULL CHECK (outcome IN ('matched', 'ambiguous', 'no_match')),
     degraded INTEGER NOT NULL,
+    retrieval TEXT NOT NULL DEFAULT 'lexical',
     candidates TEXT NOT NULL,
     selected_skill_id TEXT,
     latency_ms INTEGER NOT NULL
   )`);
+  const auditColumns = db.query("PRAGMA table_info(audit)").all() as { name: string }[];
+  if (!auditColumns.some((column) => column.name === "retrieval")) {
+    db.run("ALTER TABLE audit ADD COLUMN retrieval TEXT NOT NULL DEFAULT 'lexical'");
+  }
   db.run(`CREATE TABLE IF NOT EXISTS index_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -251,7 +256,7 @@ export interface AuditInsert {
   ts: string;
   query: string;
   outcome: string;
-  degraded: boolean;
+  retrieval: AuditRow["retrieval"];
   candidates: AuditCandidate[];
   selected_skill_id: string | null;
   latency_ms: number;
@@ -259,13 +264,14 @@ export interface AuditInsert {
 
 export function insertAudit(db: Database, row: AuditInsert): void {
   db.run(
-    `INSERT INTO audit (ts, query, outcome, degraded, candidates, selected_skill_id, latency_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO audit (ts, query, outcome, degraded, retrieval, candidates, selected_skill_id, latency_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.ts,
       row.query,
       row.outcome,
-      row.degraded ? 1 : 0,
+      row.retrieval === "lexical" ? 1 : 0,
+      row.retrieval,
       JSON.stringify(row.candidates),
       row.selected_skill_id,
       row.latency_ms,
