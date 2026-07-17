@@ -7,7 +7,9 @@ export interface RateLimitCheckInput {
   nowMs: number;
   auth_enabled: boolean;
   req: Request;
-  server: any;
+  server: {
+    requestIP(request: Request): { address: string } | null;
+  };
 }
 
 export interface RateLimitCheckResult {
@@ -40,13 +42,13 @@ export class RateLimiter {
         id = token;
       }
     } else {
-      const ipAddr = input.server?.requestIP?.(input.req)?.address;
+      const ipAddr = input.server.requestIP(input.req)?.address;
       if (ipAddr) {
         id = ipAddr;
       } else {
         const xff = input.req.headers.get("x-forwarded-for");
         if (xff) {
-          id = xff.split(",")[0]!.trim();
+          id = xff.split(",", 1)[0]?.trim() || id;
         }
       }
     }
