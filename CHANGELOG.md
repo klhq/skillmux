@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-17
+
 ### Added
 - GitHub Actions CI for tests, type checking, binary builds, schema validation, and slim container builds.
 - Tag-driven GitHub releases with consistently named Linux AMD64/ARM64 binaries, checksums, multi-architecture GHCR images, SBOMs, and build provenance.
@@ -34,5 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `skill-router eval` CLI command for recall@5 threshold calibration against a vault's holdout queries.
 - Read-only vault guarantee and a SQLite-backed audit log of every `resolve_skill` call.
 
-[Unreleased]: https://github.com/klhq/skill-router/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/klhq/skill-router/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/klhq/skill-router/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/klhq/skill-router/releases/tag/v0.1.0

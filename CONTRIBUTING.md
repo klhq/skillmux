@@ -70,17 +70,17 @@ bun test tests/onnx-clients.test.ts
 To package the application into Docker container variants:
 
 ```bash
-# Build the slim variant (lexical-only or BYO endpoints, ~150MB)
-docker build --target slim -t klhq/skill-router:slim .
+# Build the slim variant (remote embeddings or lexical fallback)
+docker build --target slim -t skill-router:dev-slim .
 
-# Build the full battery-included variant (pre-caches models, ~1.2GB)
-docker build --target full -t klhq/skill-router:latest .
+# Build the full battery-included variant
+docker build --target full -t skill-router:dev .
 ```
 
 To test the container locally:
 
 ```bash
-docker run --rm -v ~/.agents/skills:/vault:ro -p 3000:3000 klhq/skill-router:latest
+docker run --rm -v ~/.agents/skills:/vault:ro -p 3000:3000 skill-router:dev
 ```
 
 ## Contribution Workflow
