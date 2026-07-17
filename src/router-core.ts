@@ -102,6 +102,11 @@ export async function getRuntime(): Promise<{ config: Config; db: Database; clie
   return { config, db, clients: getClients() };
 }
 
+export function closeRuntime(): void {
+  env?.db.close();
+  env = null;
+}
+
 /**
  * Zero-loss delivery (AC2): read SKILL.md from disk NOW, hash it, and if the
  * index is stale re-index that skill — never serve stale bytes.

@@ -8,6 +8,7 @@ import { backfillEmbeddings, configure, fetchSkill, resolveSkill } from "./route
 import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
+import { initializeRuntime } from "./lifecycle";
 
 export const metricsRegistry = new MetricsRegistry();
 export const readinessState = new ReadinessState();
@@ -15,6 +16,7 @@ export const readinessState = new ReadinessState();
 export async function startServer(opts?: { transport?: "stdio" | "http"; port?: number }): Promise<void> {
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
+  await initializeRuntime(readinessState);
 
   const server = new McpServer({ name: "skill-router", version: "0.1.0" });
 
@@ -230,8 +232,6 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
     await server.connect(new StdioServerTransport());
   }
 
-  // model host offline (AC7/AC8) — lexical-only service is the floor.
-  backfillEmbeddings().catch(() => {});
 }
 
 if (import.meta.main) await startServer();

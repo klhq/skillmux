@@ -285,7 +285,7 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     const ready = await fetch(`http://127.0.0.1:${port}/health/ready`);
     expect([200, 503]).toContain(ready.status);
     const payload = await ready.json() as Record<string, unknown>;
-    expect(["starting", "ready", "not_ready", "stopping"]).toContain(payload.status);
+    expect(["starting", "ready", "not_ready", "stopping"]).toContain(String(payload.status));
     expect(payload).toHaveProperty("index_current");
     expect(payload).toHaveProperty("embedding");
   });
