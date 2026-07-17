@@ -31,6 +31,8 @@ The release workflow publishes:
 - `ghcr.io/klhq/skill-router:<version>-slim` and moving slim-image tags
 - Multi-architecture `linux/amd64` and `linux/arm64` images with SBOM and provenance
 
+Container images are published to GitHub Container Registry only; the release workflow does not require external registry credentials.
+
 Verify downloaded binaries with:
 
 ```bash

@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTTP auth and CORS controls; device/dtype configuration for local ONNX inference.
 
 ### Fixed
+- Consolidated tag publishing into one GHCR release workflow, replacing the legacy Docker Hub-only workflow.
 - Optional server config handling made safe for partially-specified `config.toml` files.
 - ONNX device/dtype typing broadened to match `@huggingface/transformers`' accepted values.
 
