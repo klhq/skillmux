@@ -122,26 +122,26 @@ docker run -i --rm \
 
 ## Configuration
 
-See [`config.example.toml`](config.example.toml) — vault path, state directory, recall depths, decision thresholds, endpoints. 
+No config is required for the battery-included local ONNX mode. See [`config.example.toml`](config.example.toml) for the minimal local setup, [`config.remote.example.toml`](config.remote.example.toml) for bring-your-own endpoints, and [`docs/configuration.md`](docs/configuration.md) for advanced settings.
 
-### In-Process ONNX Sentinel (`local://`)
-To run inference in-process without an external server, configure:
-* `embedding.base_url = "local://"` (uses `Xenova/bge-m3`)
-* `rerank.base_url = "local://"` (uses `onnx-community/bge-reranker-v2-m3-ONNX`)
+### Inference Modes
 
-This downloads quantized INT8 ONNX models and runs them locally inside the Bun process via `@huggingface/transformers`.
+- `inference.mode = "local"` is the default and runs the versioned BGE-M3 ONNX bundle in process. Models download on first use or via `skill-router models download`.
+- `inference.mode = "remote"` uses an OpenAI-compatible embeddings endpoint and an Infinity-compatible reranker endpoint.
+
+Run `skill-router doctor` to verify full hybrid routing. Run `skill-router config show` to inspect the effective configuration; it prints credential variable names, never credential values.
 
 ### Environment Variable Overrides
 All core settings can be overridden via environment variables (handy for Docker):
 - `VAULT_PATH` / `SKILL_ROUTER_VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
 - `STATE_DIR` / `SKILL_ROUTER_STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
-- `EMBED_BASE_URL` — overrides `embedding.base_url`
+- `EMBED_BASE_URL` / `SKILL_ROUTER_EMBED_BASE_URL` — overrides remote `inference.embedding.base_url`
 - `EMBED_MODEL` / `SKILL_ROUTER_EMBED_MODEL` — overrides `embedding.model`
 - `EMBED_DIMENSION` / `SKILL_ROUTER_EMBED_DIMENSION` — overrides `embedding.dimension`
-- `EMBED_DEVICE` / `EMBED_DTYPE` — overrides `embedding.device` / `embedding.dtype` (local ONNX inference only)
-- `RERANK_BASE_URL` — overrides `rerank.base_url`
+- `EMBED_DEVICE` / `EMBED_DTYPE` — overrides local `inference.embedding.device` / `inference.embedding.dtype`
+- `RERANK_BASE_URL` / `SKILL_ROUTER_RERANK_BASE_URL` — overrides remote `inference.reranker.base_url`
 - `RERANK_MODEL` / `SKILL_ROUTER_RERANK_MODEL` — overrides `rerank.model`
-- `RERANK_DEVICE` / `RERANK_DTYPE` — overrides `rerank.device` / `rerank.dtype` (local ONNX inference only)
+- `RERANK_DEVICE` / `RERANK_DTYPE` — overrides local `inference.reranker.device` / `inference.reranker.dtype`
 - `SKILL_ROUTER_CONFIG` — path to custom `config.toml` (default `~/.config/skill-router/config.toml`)
 - `SKILL_ROUTER_MODELS_DIR` — path to directory storing downloaded local models (default `./.models`)
 - `PORT` — HTTP listen port (default `3000`, HTTP transport only)
@@ -151,7 +151,7 @@ All core settings can be overridden via environment variables (handy for Docker)
 - `HTTP_RATE_LIMIT_ENABLED` / `SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED` — overrides `server.rate_limit.enabled` (`"true"` to enable)
 - `HTTP_RATE_LIMIT_RPM` / `SKILL_ROUTER_HTTP_RATE_LIMIT_RPM` — overrides `server.rate_limit.requests_per_minute`
 
-The embeddings API key is read from the environment variable named by `embedding.api_key_env`; no secret ever lives in the config file.
+Remote API keys are read from the environment variables named by `inference.embedding.api_key_env` and `inference.reranker.api_key_env`; no secret ever lives in the config file.
 
 Calibrate thresholds against your own vault:
 

@@ -154,7 +154,7 @@
     },
     "Config": {
       "type": "object",
-      "description": "config.toml, validated at startup. All five tuning parameters (AC6) live here — never hardcoded. Threshold values are produced by 'skill-router eval' (AC11).",
+      "description": "config.toml, validated at startup. Local ONNX is the default; remote inference is explicit.",
       "properties": {
         "vault_path": {
           "type": "string",
@@ -203,45 +203,96 @@
           "required": ["match_score", "match_margin", "candidate_floor", "candidate_limit"],
           "additionalProperties": false
         },
-        "embedding": {
+        "inference": { "$ref": "#/$defs/InferenceConfig" },
+        "server": { "$ref": "#/$defs/ServerConfig" }
+      },
+      "required": ["vault_path", "state_dir", "recall", "thresholds", "inference"],
+      "additionalProperties": false
+    },
+    "InferenceConfig": {
+      "oneOf": [
+        {
           "type": "object",
-          "description": "Embeddings via OpenAI-compatible API.",
           "properties": {
-            "base_url": {
-              "type": "string",
-              "format": "uri",
-              "description": "OpenAI-compatible embeddings base URL (client calls POST {base_url}/v1/embeddings)."
+            "mode": { "const": "local" },
+            "bundle": { "const": "bge-m3-v1" },
+            "models_dir": { "type": "string", "default": "~/.cache/skill-router/models" },
+            "embedding": {
+              "type": "object",
+              "properties": {
+                "model": { "const": "Xenova/bge-m3" },
+                "dimension": { "const": 1024 },
+                "device": { "type": "string" },
+                "dtype": { "type": "string" }
+              },
+              "required": ["model", "dimension"],
+              "additionalProperties": false
             },
-            "api_key_env": {
-              "type": "string",
-              "description": "Name of the environment variable holding the embeddings API key. The key value itself never appears in config.",
-              "default": "SKILL_ROUTER_EMBED_KEY"
-            },
-            "model": { "const": "microsoft/harrier-oss-v1-0.6b" },
-            "dimension": { "const": 1024 }
+            "reranker": {
+              "type": "object",
+              "properties": {
+                "model": { "const": "onnx-community/bge-reranker-v2-m3-ONNX" },
+                "device": { "type": "string" },
+                "dtype": { "type": "string" }
+              },
+              "required": ["model"],
+              "additionalProperties": false
+            }
           },
-          "required": ["base_url", "api_key_env", "model", "dimension"],
+          "required": ["mode", "bundle", "models_dir", "embedding", "reranker"],
           "additionalProperties": false
         },
-        "rerank": {
+        {
           "type": "object",
-          "description": "bge-reranker via Infinity-native API endpoint (POST {base_url}/rerank or {base_url}/v1/rerank).",
           "properties": {
-            "base_url": { "type": "string", "format": "uri" },
-            "model": { "const": "BAAI/bge-reranker-v2-m3" }
+            "mode": { "const": "remote" },
+            "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 30000, "default": 2000 },
+            "embedding": {
+              "type": "object",
+              "properties": {
+                "provider": { "const": "openai" },
+                "base_url": { "type": "string", "format": "uri" },
+                "model": { "type": "string", "minLength": 1 },
+                "dimension": { "type": "integer", "minimum": 1 },
+                "api_key_env": { "type": "string", "minLength": 1 }
+              },
+              "required": ["provider", "base_url", "model", "dimension"],
+              "additionalProperties": false
+            },
+            "reranker": {
+              "type": "object",
+              "properties": {
+                "provider": { "const": "infinity" },
+                "base_url": { "type": "string", "format": "uri" },
+                "model": { "type": "string", "minLength": 1 },
+                "api_key_env": { "type": "string", "minLength": 1 }
+              },
+              "required": ["provider", "base_url", "model"],
+              "additionalProperties": false
+            }
           },
-          "required": ["base_url", "model"],
+          "required": ["mode", "timeout_ms", "embedding", "reranker"],
           "additionalProperties": false
-        },
-        "remote_timeout_ms": {
-          "type": "integer",
-          "description": "Per-request budget for embedding and rerank calls; exceeding it flips resolve_skill to the degraded lane (AC7).",
-          "minimum": 100,
-          "maximum": 30000,
-          "default": 2000
+        }
+      ]
+    },
+    "ServerConfig": {
+      "type": "object",
+      "properties": {
+        "auth_enabled": { "type": "boolean", "default": false },
+        "auth_token_env": { "type": "string", "default": "SKILL_ROUTER_AUTH_TOKEN" },
+        "allowed_origins": { "type": "array", "items": { "type": "string" }, "default": ["*"] },
+        "rate_limit": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "requests_per_minute": { "type": "integer", "minimum": 1, "default": 60 }
+          },
+          "required": ["enabled", "requests_per_minute"],
+          "additionalProperties": false
         }
       },
-      "required": ["vault_path", "state_dir", "recall", "thresholds", "embedding", "rerank", "remote_timeout_ms"],
+      "required": ["auth_enabled", "auth_token_env", "allowed_origins"],
       "additionalProperties": false
     },
     "AuditRow": {

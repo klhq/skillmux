@@ -22,7 +22,7 @@ Give agents without native skill triggering (Goose sub-recipe workers, opencode,
 - [ ] AC4 — On `no_match`, the response contains no body and no candidates, and states the caller should proceed under its normal workflow.
 - [ ] AC5 — `fetch_skill(skill_id: string)` returns the verbatim `SKILL.md` body, `content_sha256`, and `files` (relative paths of the skill's supporting files, not their contents) for any indexed skill, independent of any prior `resolve_skill` outcome. Unknown `skill_id` → MCP tool error.
 - [ ] AC6 — Decision logic (unit-testable with mocked model endpoints): candidates = FTS5 top-`k_lexical` ∪ cosine top-`k_vector` (dedup); reranker scores (query, title+description+aliases) pairs; outcome is `matched` iff top `rerank_score` ≥ `match_score` AND (top − second) ≥ `match_margin`; else `ambiguous` if ≥ 1 candidate ≥ `candidate_floor`; else `no_match`. All five parameters (`k_lexical`, `k_vector`, `match_score`, `match_margin`, `candidate_floor`) are read from `config.toml`, never hardcoded.
-- [ ] AC7 — Degraded lane: if the embedding or rerank endpoint is unreachable or exceeds `remote_timeout_ms`, `resolve_skill` still answers using FTS5-only recall, never returns `matched`, and sets `degraded: true`. Router startup and `resolve_skill` must both succeed with the model host fully offline.
+- [ ] AC7 — Degraded lane: if remote embedding or reranking is unreachable or exceeds `inference.timeout_ms`, `resolve_skill` still answers using FTS5-only recall, never returns `matched`, and sets `degraded: true`. Router startup and `resolve_skill` must both succeed with the model host fully offline.
 - [ ] AC8 — Indexing: `skill-router index` rebuilds the lexical index for the full 116-skill vault from scratch in < 5 s (embedding backfill may complete asynchronously). A running server reflects a vault file change (create/modify/delete) in the index within 5 s of the write stabilizing. A `SKILL.md` with invalid UTF-8 or unparseable frontmatter keeps its previous indexed version and logs a warning.
 - [ ] AC9 — Read-only guarantee: no code path writes under `~/.agents/skills`; all router writes are confined to its state directory. (Test: full index + resolve + fetch suite leaves vault mtimes/hashes unchanged.)
 - [ ] AC10 — Audit log: every `resolve_skill` call appends a row (timestamp, raw query, outcome, degraded flag, candidate `skill_id`s with scores, selected `skill_id` if matched, `latency_ms`) to a SQLite table in the state directory. Raw queries are stored deliberately (single-user private setup).
@@ -58,7 +58,7 @@ Give agents without native skill triggering (Goose sub-recipe workers, opencode,
 
 ## TBD — resolved in `schema.json` (2026-07-14)
 - Exact structured-content JSON schema for both tools (field types, error codes) → `docs/sdd/router-core/schema.json`.
-- Default `remote_timeout_ms` → **2000** (`Config.remote_timeout_ms`).
+- Default remote timeout → **2000 ms** (`Config.inference.timeout_ms`).
 
 ## Tasks
 

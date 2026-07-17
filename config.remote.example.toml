@@ -1,0 +1,19 @@
+# Bring-your-own inference setup.
+vault_path = "~/.agents/skills"
+
+[inference]
+mode = "remote"
+timeout_ms = 5000
+
+[inference.embedding]
+provider = "openai"
+base_url = "https://embedding.example.com"
+model = "your-embedding-model"
+dimension = 1024
+api_key_env = "EMBEDDING_API_KEY"
+
+[inference.reranker]
+provider = "infinity"
+base_url = "https://reranker.example.com"
+model = "your-reranker-model"
+api_key_env = "RERANKER_API_KEY"
