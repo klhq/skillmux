@@ -8,12 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- GitHub Actions CI for tests, type checking, binary builds, schema validation, and slim container builds.
+- Tag-driven GitHub releases with Linux binaries, checksums, multi-architecture GHCR images, SBOMs, and build provenance.
+- Weekly Dependabot updates for Bun/npm dependencies and GitHub Actions.
 - Separate liveness and readiness endpoints, readiness metrics, startup initialization, and graceful shutdown.
 - HTTP rate limiting (token-bucket, per-token/IP, `429` + `Retry-After`/`X-RateLimit-*` headers) and request metrics.
 - Model configuration overrides (`EMBED_MODEL`, `EMBED_DIMENSION`, `RERANK_MODEL`), a dynamic model downloader, and `/health` + `/metrics` (Prometheus) HTTP endpoints.
 - On-demand vault index sync so a running server folds vault changes into the index without a restart.
 - Exact skill-match short-circuiting in the recall path.
-- Docker packaging: `slim` (model-free) and `latest` (battery-included ONNX models) image variants, with a GitHub Actions workflow to build and publish both on tag push.
+- Docker packaging: `slim` (model-free) and `latest` (battery-included ONNX models) image variants.
 - Streamable HTTP transport alongside the original stdio transport.
 - HTTP auth and CORS controls; device/dtype configuration for local ONNX inference.
 
