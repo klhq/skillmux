@@ -7,8 +7,10 @@ import { loadConfig } from "./config";
 import { backfillEmbeddings, configure, fetchSkill, resolveSkill } from "./router-core";
 import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
+import { ReadinessState } from "./readiness";
 
 export const metricsRegistry = new MetricsRegistry();
+export const readinessState = new ReadinessState();
 
 export async function startServer(opts?: { transport?: "stdio" | "http"; port?: number }): Promise<void> {
   const config = await loadConfig();
@@ -150,7 +152,7 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
 
         const url = new URL(req.url);
         if (req.method === "GET") {
-          if (url.pathname === "/health") {
+          if (url.pathname === "/health" || url.pathname === "/health/live") {
             const headers = new Headers({ "Content-Type": "application/json" });
             if (allowOriginHeader) {
               headers.set("Access-Control-Allow-Origin", allowOriginHeader);
@@ -159,6 +161,15 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
               headers.set(key, value);
             }
             return new Response(JSON.stringify({ status: "ok" }), { status: 200, headers });
+          }
+          if (url.pathname === "/health/ready") {
+            const readiness = readinessState.get();
+            const headers = new Headers({ "Content-Type": "application/json" });
+            if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            return new Response(JSON.stringify(readiness), {
+              status: readiness.status === "ready" ? 200 : 503,
+              headers,
+            });
           }
           if (url.pathname === "/metrics") {
             const headers = new Headers({ "Content-Type": "text/plain; version=0.0.4" });
