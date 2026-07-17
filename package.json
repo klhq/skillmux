@@ -22,6 +22,8 @@
     "serve": "bun run src/cli.ts serve",
     "index": "bun run src/cli.ts index",
     "eval": "bun run src/cli.ts eval",
+    "doctor": "bun run src/cli.ts doctor",
+    "models:download": "bun run src/cli.ts models download",
     "build": "bun build --compile src/cli.ts --outfile dist/skill-router"
   },
   "devDependencies": {
