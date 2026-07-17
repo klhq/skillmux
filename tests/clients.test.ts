@@ -47,6 +47,7 @@ function testConfig(): Config {
       timeout_ms: 2000,
       embedding: { provider: "openai", base_url: `http://127.0.0.1:${server.port}`, api_key_env: "SKILL_ROUTER_TEST_EMBED_KEY", model: "microsoft/harrier-oss-v1-0.6b", dimension: 3 },
       reranker: { provider: "infinity", base_url: `http://127.0.0.1:${server.port}/v1`, model: "BAAI/bge-reranker-v2-m3", api_key_env: "SKILL_ROUTER_TEST_RERANK_KEY" },
+      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
     },
   };
 }

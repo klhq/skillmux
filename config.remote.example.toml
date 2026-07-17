@@ -17,3 +17,9 @@ provider = "infinity"
 base_url = "https://reranker.example.com"
 model = "your-reranker-model"
 api_key_env = "RERANKER_API_KEY"
+
+# Required when a reranker is configured. Calibrate these for your model.
+[inference.thresholds]
+match_score = 0.90
+match_margin = 0.30
+candidate_floor = 0.50

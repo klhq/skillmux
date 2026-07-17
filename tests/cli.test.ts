@@ -64,6 +64,11 @@ beforeAll(() => {
       `provider = "infinity"`,
       `base_url = "http://127.0.0.1:9"`,
       `model = "BAAI/bge-reranker-v2-m3"`,
+      ``,
+      `[inference.thresholds]`,
+      `match_score = 0.9`,
+      `match_margin = 0.2`,
+      `candidate_floor = 0.4`,
     ].join("\n"),
   );
 });

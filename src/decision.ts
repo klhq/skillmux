@@ -18,15 +18,24 @@ export function decideResolveOutcome({ reranked, candidates, thresholds }: Decis
   // shortlist goes to the calling LLM instead (AC7).
   if (!reranked) return { outcome: "ambiguous", candidates: candidates.slice(0, thresholds.candidate_limit) };
 
+  if (
+    thresholds.match_score === undefined
+    || thresholds.match_margin === undefined
+    || thresholds.candidate_floor === undefined
+  ) {
+    throw new Error("Reranked decisions require calibrated thresholds.");
+  }
+  const { match_score, match_margin, candidate_floor } = thresholds;
+
   const sorted = [...candidates].sort((a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity));
-  const eligible = sorted.filter((c) => (c.score ?? -Infinity) >= thresholds.candidate_floor);
+  const eligible = sorted.filter((c) => (c.score ?? -Infinity) >= candidate_floor);
   if (eligible.length === 0) return { outcome: "no_match" };
 
   const top = eligible[0]!;
   const topScore = top.score!;
   const margin = sorted.length === 1 ? topScore : topScore - (sorted[1]!.score ?? 0);
 
-  if (topScore >= thresholds.match_score && margin >= thresholds.match_margin) {
+  if (topScore >= match_score && margin >= match_margin) {
     return { outcome: "matched", skill_id: top.skill_id, score: topScore, margin };
   }
   return { outcome: "ambiguous", candidates: eligible.slice(0, thresholds.candidate_limit) };

@@ -33,3 +33,8 @@ Review fixes applied:
 | GHR-AC8 | Done | Minimal quick start; advanced retrieval remains optional |
 | GHR-AC9 | Done | Checked-in labeled local evaluation |
 | GHR-AC10 | Done | Local budgets and full automated verification passed |
+
+## Follow-up
+
+- Candidate generation defaults increased to 20 per lane while the public shortlist remains capped at 5.
+- Removed uncalibrated reranker thresholds from zero-config defaults; configured rerankers now require explicit model-specific thresholds.

@@ -9,10 +9,10 @@ Provide useful zero-config local skill routing with FTS5 plus a small GTE embedd
 ## Acceptance Criteria
 
 - [ ] GHR-AC1: With no inference configuration, Skill Router uses the versioned `gte-small-v1` bundle (`Xenova/gte-small`, q8, mean pooling, normalized 384-dimensional vectors) and does not load a local reranker.
-- [ ] GHR-AC2: Local retrieval unions FTS5/BM25 top `recall.k_lexical` and cosine top `recall.k_vector`, ranks the union with deterministic reciprocal-rank fusion, and returns at most `thresholds.candidate_limit` candidates.
+- [ ] GHR-AC2: Local retrieval unions FTS5/BM25 top `recall.k_lexical` and cosine top `recall.k_vector` (both default 20), ranks the union with deterministic reciprocal-rank fusion, and returns at most `thresholds.candidate_limit` candidates (default 5).
 - [ ] GHR-AC3: Without a reranker, `resolve_skill` returns `retrieval = "hybrid"` and never returns `outcome = "matched"`; if local embeddings fail, it returns `retrieval = "lexical"` and an FTS5-ordered shortlist.
 - [ ] GHR-AC4: Users may configure an OpenAI-compatible remote embedding endpoint without a reranker; users may additionally configure an Infinity-compatible reranker, but a reranker without a remote embedding endpoint is rejected.
-- [ ] GHR-AC5: When a configured reranker succeeds, the existing threshold policy may produce `matched`, `ambiguous`, or `no_match` with `retrieval = "reranked"`; reranker failure falls back to the hybrid shortlist rather than lexical-only retrieval.
+- [ ] GHR-AC5: A configured reranker requires explicit calibrated `inference.thresholds`; when reranking succeeds those values may produce `matched`, `ambiguous`, or `no_match` with `retrieval = "reranked"`, while reranker failure falls back to the hybrid shortlist.
 - [ ] GHR-AC6: Public candidates contain only `skill_id`, `title`, and `description`; `ResolveResult` exposes `retrieval = "exact" | "reranked" | "hybrid" | "lexical"` instead of `degraded`, while audit persistence retains internal scores and retrieval capability.
 - [ ] GHR-AC7: `skill-router models download` fetches only the local GTE bundle, and `skill-router doctor` separately reports lexical, embedding, and optional reranker readiness without requiring a reranker.
 - [ ] GHR-AC8: The quick start requires no inference settings; advanced top-k and candidate-limit settings remain configurable, while RRF constants and local model internals remain product defaults.

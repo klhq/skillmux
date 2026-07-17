@@ -4,10 +4,10 @@ export interface RecallConfig {
 }
 
 export interface Thresholds {
-  match_score: number;
-  match_margin: number;
-  candidate_floor: number;
   candidate_limit: number;
+  match_score?: number;
+  match_margin?: number;
+  candidate_floor?: number;
 }
 
 export type ONNXDevice =
@@ -72,6 +72,7 @@ export interface RemoteInferenceConfig {
   timeout_ms: number;
   embedding: RemoteEmbeddingConfig;
   reranker?: RemoteRerankerConfig;
+  thresholds?: Required<Omit<Thresholds, "candidate_limit">>;
 }
 
 export type InferenceConfig = LocalInferenceConfig | RemoteInferenceConfig;

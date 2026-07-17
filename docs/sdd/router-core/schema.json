@@ -165,29 +165,16 @@
         "recall": {
           "type": "object",
           "properties": {
-            "k_lexical": { "type": "integer", "minimum": 1, "maximum": 100, "default": 15 },
-            "k_vector": { "type": "integer", "minimum": 1, "maximum": 100, "default": 15 }
+            "k_lexical": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
+            "k_vector": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
           },
           "required": ["k_lexical", "k_vector"],
           "additionalProperties": false
         },
         "thresholds": {
           "type": "object",
-          "description": "Calibrated by the eval harness against the real vault; the values below are placeholders until AC11 runs.",
+          "description": "Caller-facing shortlist policy. Reranker thresholds live under inference.thresholds.",
           "properties": {
-            "match_score": {
-              "type": "number",
-              "description": "Minimum top configured-reranker score for outcome=matched."
-            },
-            "match_margin": {
-              "type": "number",
-              "description": "Minimum top-minus-second configured-reranker score gap for outcome=matched.",
-              "minimum": 0
-            },
-            "candidate_floor": {
-              "type": "number",
-              "description": "Minimum configured-reranker score for an ambiguous shortlist. Not applied to hybrid or lexical retrieval."
-            },
             "candidate_limit": {
               "type": "integer",
               "minimum": 1,
@@ -196,7 +183,7 @@
               "description": "Maximum number of candidates returned on ambiguous outcomes (top-k limit)."
             }
           },
-          "required": ["match_score", "match_margin", "candidate_floor", "candidate_limit"],
+          "required": ["candidate_limit"],
           "additionalProperties": false
         },
         "inference": { "$ref": "#/$defs/InferenceConfig" },
@@ -254,6 +241,17 @@
                 "api_key_env": { "type": "string", "minLength": 1 }
               },
               "required": ["provider", "base_url", "model"],
+              "additionalProperties": false
+            },
+            "thresholds": {
+              "type": "object",
+              "description": "Model-specific calibrated values; required when reranker is configured.",
+              "properties": {
+                "match_score": { "type": "number" },
+                "match_margin": { "type": "number", "minimum": 0 },
+                "candidate_floor": { "type": "number" }
+              },
+              "required": ["match_score", "match_margin", "candidate_floor"],
               "additionalProperties": false
             }
           },

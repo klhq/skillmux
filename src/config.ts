@@ -9,8 +9,8 @@ export const LOCAL_BUNDLE_ID = "gte-small-v1";
 const DEFAULTS: Config = {
   vault_path: "~/.agents/skills",
   state_dir: "~/.local/state/skill-router",
-  recall: { k_lexical: 15, k_vector: 15 },
-  thresholds: { match_score: 0.9, match_margin: 0.3, candidate_floor: 0.5, candidate_limit: 5 },
+  recall: { k_lexical: 20, k_vector: 20 },
+  thresholds: { candidate_limit: 5 },
   inference: {
     mode: "local",
     bundle: LOCAL_BUNDLE_ID,
@@ -129,6 +129,9 @@ export async function loadConfig(path?: string): Promise<Config> {
     }
     if (merged.inference.reranker && (!merged.inference.reranker.base_url || !merged.inference.reranker.model)) {
       throw new Error("Configured inference.reranker requires base_url and model.");
+    }
+    if (merged.inference.reranker && !merged.inference.thresholds) {
+      throw new Error("Configured inference.reranker requires calibrated inference.thresholds.");
     }
     for (const [name, value] of [
       ["inference.embedding.base_url", merged.inference.embedding.base_url],

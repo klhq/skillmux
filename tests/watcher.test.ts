@@ -36,6 +36,7 @@ const config: Config = {
       dimension: 3,
     },
     reranker: { provider: "infinity", base_url: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
+      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
   },
 };
 

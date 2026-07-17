@@ -36,21 +36,20 @@ Remote embedding `dimension` is required. Changing the provider, model, or dimen
 
 ## Advanced retrieval
 
-These defaults are conservative and optional:
+Candidate-generation depth is configurable but normally does not need tuning:
 
 ```toml
 [recall]
-k_lexical = 15
-k_vector = 15
+k_lexical = 20
+k_vector = 20
 
 [thresholds]
-match_score = 0.90
-match_margin = 0.30
-candidate_floor = 0.50
 candidate_limit = 5
 ```
 
-Thresholds are model- and vault-specific. Prefer ambiguous results over lowering them without representative evaluation data.
+The router considers up to 20 candidates from each retrieval lane but returns at most 5 to the calling LLM.
+
+Reranker thresholds have no universal default because score distributions are model-specific. When configuring a reranker, provide calibrated `inference.thresholds.match_score`, `inference.thresholds.match_margin`, and `inference.thresholds.candidate_floor`; otherwise configuration is rejected rather than silently applying unsuitable values.
 
 ## HTTP server
 

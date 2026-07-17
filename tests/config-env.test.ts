@@ -57,6 +57,11 @@ provider = "infinity"
 base_url = "https://rerank.example.com"
 model = "example/reranker"
 api_key_env = "RERANK_SECRET"
+
+[inference.thresholds]
+match_score = 0.91
+match_margin = 0.21
+candidate_floor = 0.41
 `);
 
     const config = await loadConfig(path);
@@ -76,6 +81,7 @@ api_key_env = "RERANK_SECRET"
         model: "example/reranker",
         api_key_env: "RERANK_SECRET",
       },
+      thresholds: { match_score: 0.91, match_margin: 0.21, candidate_floor: 0.41 },
     });
   });
 
@@ -112,6 +118,10 @@ dimension = 768
 provider = "infinity"
 base_url = "https://old-rerank.example.com"
 model = "old/reranker"
+[inference.thresholds]
+match_score = 0.9
+match_margin = 0.2
+candidate_floor = 0.4
 `);
     process.env.SKILL_ROUTER_EMBED_BASE_URL = "https://new.example.com";
     process.env.SKILL_ROUTER_EMBED_MODEL = "new/embed";
@@ -125,6 +135,24 @@ model = "old/reranker"
         dimension: 1024,
       });
     }
+  });
+
+  test("rejects a configured reranker without calibrated thresholds", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+[inference.reranker]
+provider = "infinity"
+base_url = "https://rerank.example.com"
+model = "reranker"
+`);
+    await expect(loadConfig(path)).rejects.toThrow("requires calibrated inference.thresholds");
   });
 });
 

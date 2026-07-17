@@ -373,7 +373,14 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
     }))
     .sort((a, b) => scores === null ? 0 : (b.score ?? -Infinity) - (a.score ?? -Infinity));
 
-  const decision = decideResolveOutcome({ reranked: retrieval === "reranked", candidates: rankedCandidates, thresholds: config.thresholds });
+  const decisionThresholds = retrieval === "reranked" && config.inference.mode === "remote"
+    ? { candidate_limit: config.thresholds.candidate_limit, ...config.inference.thresholds }
+    : config.thresholds;
+  const decision = decideResolveOutcome({
+    reranked: retrieval === "reranked",
+    candidates: rankedCandidates,
+    thresholds: decisionThresholds,
+  });
 
   let result: ResolveResult;
   if (decision.outcome === "matched") {
