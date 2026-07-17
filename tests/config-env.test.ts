@@ -90,6 +90,11 @@ candidate_floor = 0.41
     await expect(loadConfig(path)).rejects.toThrow("Legacy inference config is not supported");
   });
 
+  test("rejects malformed config values before runtime", async () => {
+    const path = await configFile(`[recall]\nk_lexical = "twenty"\n`);
+    await expect(loadConfig(path)).rejects.toThrow();
+  });
+
   test("rejects incomplete remote inference", async () => {
     const path = await configFile(`[inference]\nmode = "remote"\ntimeout_ms = 2000\n`);
     await expect(loadConfig(path)).rejects.toThrow("Remote inference requires an inference.embedding");

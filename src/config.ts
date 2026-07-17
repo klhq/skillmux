@@ -1,6 +1,72 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { z } from "zod";
 import type { Config, ONNXDevice, ONNXDtype } from "./types";
+
+const onnxDeviceSchema = z.enum([
+  "cpu", "auto", "gpu", "wasm", "webgpu", "cuda", "dml", "coreml",
+  "webnn", "webnn-npu", "webnn-gpu", "webnn-cpu",
+]);
+const onnxDtypeSchema = z.enum([
+  "q8", "auto", "fp32", "fp16", "int8", "uint8", "q4", "bnb4", "q4f16",
+  "q2", "q2f16", "q1", "q1f16",
+]);
+
+const modelSchema = z.object({
+  model: z.string().min(1),
+  device: onnxDeviceSchema.optional(),
+  dtype: onnxDtypeSchema.optional(),
+}).strict();
+
+const remoteThresholdsSchema = z.object({
+  match_score: z.number(),
+  match_margin: z.number().nonnegative(),
+  candidate_floor: z.number(),
+}).strict();
+
+const configSchema = z.object({
+  vault_path: z.string().min(1),
+  state_dir: z.string().min(1),
+  recall: z.object({ k_lexical: z.number().int().positive(), k_vector: z.number().int().positive() }).strict(),
+  thresholds: z.object({
+    candidate_limit: z.number().int().positive(),
+    match_score: z.number().optional(),
+    match_margin: z.number().nonnegative().optional(),
+    candidate_floor: z.number().optional(),
+  }).strict(),
+  inference: z.discriminatedUnion("mode", [
+    z.object({
+      mode: z.literal("local"),
+      bundle: z.string().min(1),
+      models_dir: z.string().min(1),
+      embedding: modelSchema.extend({ dimension: z.number().int().positive() }),
+    }).strict(),
+    z.object({
+      mode: z.literal("remote"),
+      timeout_ms: z.number().int().min(100),
+      embedding: z.object({
+        provider: z.literal("openai"),
+        base_url: z.url(),
+        model: z.string().min(1),
+        dimension: z.number().int().positive(),
+        api_key_env: z.string().min(1).optional(),
+      }).strict(),
+      reranker: z.object({
+        provider: z.literal("infinity"),
+        base_url: z.url(),
+        model: z.string().min(1),
+        api_key_env: z.string().min(1).optional(),
+      }).strict().optional(),
+      thresholds: remoteThresholdsSchema.optional(),
+    }).strict(),
+  ]),
+  server: z.object({
+    auth_enabled: z.boolean(),
+    auth_token_env: z.string().min(1),
+    allowed_origins: z.array(z.string()),
+    rate_limit: z.object({ enabled: z.boolean(), requests_per_minute: z.number().int().positive() }).strict().optional(),
+  }).strict().optional(),
+}).strict();
 
 // Fallback values only; a config.toml (SKILL_ROUTER_CONFIG or default path)
 // overrides them. The local bundle is the zero-config OSS path.
@@ -87,18 +153,21 @@ export async function loadConfig(path?: string): Promise<Config> {
       );
     }
     if (isPlainObject(parsed.inference) && parsed.inference.mode === "remote") {
+      if (!isPlainObject(parsed.inference.embedding)) {
+        throw new Error("Remote inference requires an inference.embedding section.");
+      }
       const withoutInference = { ...parsed };
       delete withoutInference.inference;
       merged = {
         ...deepMerge(baseConfig, withoutInference),
-        inference: parsed.inference as unknown as Config["inference"],
+        inference: configSchema.shape.inference.parse(parsed.inference),
       };
     } else {
       merged = deepMerge(baseConfig, parsed);
     }
   }
 
-  // Environment variable overrides (AC4)
+  // Environment variable overrides.
   if (process.env.VAULT_PATH) {
     merged.vault_path = process.env.VAULT_PATH;
   }
@@ -197,5 +266,5 @@ export async function loadConfig(path?: string): Promise<Config> {
     }
   }
 
-  return merged;
+  return configSchema.parse(merged) as Config;
 }

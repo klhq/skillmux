@@ -60,7 +60,7 @@ interface Overrides {
 }
 
 // Remote clients default to failing fast, which routes resolveSkill into the
-// degraded lane (AC7). Real HTTP clients arrive with their own tests (Task 4).
+// Production clients are installed during server startup; tests can inject fakes.
 const defaultClients: Clients = {
   embed: async () => {
     throw new Error("embedding client not configured");
@@ -105,7 +105,7 @@ export function closeRuntime(): void {
 }
 
 /**
- * Zero-loss delivery (AC2): read SKILL.md from disk NOW, hash it, and if the
+ * Zero-loss delivery: read SKILL.md from disk now, hash it, and if the
  * index is stale re-index that skill — never serve stale bytes.
  */
 async function deliverSkill(db: Database, config: Config, skillId: string): Promise<FetchSkillResult> {
@@ -143,7 +143,7 @@ export interface RebuildReport {
 }
 
 /**
- * Full from-scratch rebuild of the lexical index (AC8). Skills whose SKILL.md
+ * Full from-scratch rebuild of the lexical index. Skills whose SKILL.md
  * fails to parse keep their previously indexed row (`retained`) so a bad write
  * never evicts a working skill. Vectors persist by content hash; changed
  * content is re-embedded by the next backfill.
@@ -206,7 +206,7 @@ export async function syncVaultIfNeeded(): Promise<void> {
 /**
  * Embed every skill missing a current vector (new or content changed).
  * Called by `skill-router index` and at server startup; failure is tolerated —
- * resolve falls back to lexical-only recall until vectors exist (AC8).
+ * resolve falls back to lexical-only recall until vectors exist.
  */
 export async function backfillEmbeddings(): Promise<number> {
   const { config, db } = await getEnv();
@@ -266,7 +266,7 @@ async function reindexOneSkill(db: Database, vaultPath: string, skillId: string)
 }
 
 /**
- * Watch the vault and fold file changes into the index within seconds (AC8).
+ * Watch the vault and fold file changes into the index within seconds.
  * Events are debounced per skill; a write that fails to parse keeps the
  * previous index entry. Returns a stop function.
  */

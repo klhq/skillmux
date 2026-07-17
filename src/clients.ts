@@ -1,5 +1,6 @@
 import type { Clients, Config } from "./types";
 import { expandHome } from "./config";
+import type { pipeline as createPipeline } from "@huggingface/transformers";
 
 interface EmbeddingResponse {
   data: { index: number; embedding: number[] }[];
@@ -10,7 +11,9 @@ interface RerankResponse {
 }
 
 // Lazy-loaded model instances for in-process ONNX inference
-let localEmbedder: any = null;
+type FeatureExtractor = Awaited<ReturnType<typeof createPipeline<"feature-extraction">>>;
+
+let localEmbedder: FeatureExtractor | null = null;
 
 function localInference(config: Config) {
   if (config.inference.mode !== "local") throw new Error("Local inference is not configured.");
@@ -26,7 +29,7 @@ async function setupTransformers(cacheDir: string) {
   return pipeline;
 }
 
-async function getLocalEmbedder(config: Config) {
+async function getLocalEmbedder(config: Config): Promise<FeatureExtractor> {
   if (localEmbedder) return localEmbedder;
 
   const inference = localInference(config);
@@ -43,7 +46,7 @@ async function getLocalEmbedder(config: Config) {
 /**
  * Real HTTP clients or in-process local ONNX inference clients.
  * Every remote HTTP call is bounded by inference.timeout_ms; timeouts and transport
- * errors reject, which resolveSkill turns into the degraded lane (AC7).
+ * errors reject so resolveSkill can fall back to the strongest available retrieval lane.
  * Local ONNX calls run in-process using @huggingface/transformers.
  */
 export function createClients(config: Config): Clients {
@@ -53,10 +56,16 @@ export function createClients(config: Config): Clients {
         const pipe = await getLocalEmbedder(config);
         const output = await pipe(texts, { pooling: "mean", normalize: true });
         const dim = output.dims[1];
+        if (dim === undefined || output.dims.length !== 2 || output.dims[0] !== texts.length) {
+          throw new Error(`Embedding model returned unexpected dimensions: ${output.dims.join("x")}`);
+        }
         const result: Float32Array[] = [];
         for (let i = 0; i < texts.length; i++) {
-          const slice = output.data.subarray(i * dim, (i + 1) * dim);
-          result.push(new Float32Array(slice));
+          const row = output.slice(i, null).tolist();
+          if (!Array.isArray(row) || row.some((value) => typeof value !== "number")) {
+            throw new Error("Embedding model returned non-numeric values.");
+          }
+          result.push(Float32Array.from(row));
         }
         return result;
       }

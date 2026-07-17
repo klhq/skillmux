@@ -97,3 +97,17 @@ describe("skill-router index CLI (AC8)", () => {
     expect(result.stderr).toContain("second-skill");
   });
 });
+
+describe("skill-router serve CLI", () => {
+  test("rejects invalid transport values", async () => {
+    const result = await runCli("serve", "--transport", "websocket");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--transport must be stdio or http");
+  });
+
+  test("rejects invalid port values", async () => {
+    const result = await runCli("serve", "--port", "not-a-port");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--port must be an integer between 0 and 65535");
+  });
+});
