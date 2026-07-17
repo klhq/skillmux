@@ -55,8 +55,6 @@ beforeAll(() => {
     [
       `vault_path = "${vaultDir}"`,
       `state_dir = "${stateDir}"`,
-      `remote_timeout_ms = 2000`,
-      ``,
       `[recall]`,
       `k_lexical = 15`,
       `k_vector = 15`,
@@ -65,14 +63,20 @@ beforeAll(() => {
       `match_score = 0.9`,
       `match_margin = 0.2`,
       `candidate_floor = 0.4`,
+      `candidate_limit = 5`,
       ``,
-      `[embedding]`,
+      `[inference]`,
+      `mode = "remote"`,
+      `timeout_ms = 2000`,
+      ``,
+      `[inference.embedding]`,
+      `provider = "openai"`,
       `base_url = "http://127.0.0.1:9"`,
-      `api_key_env = "SKILL_ROUTER_EMBED_KEY"`,
       `model = "microsoft/harrier-oss-v1-0.6b"`,
       `dimension = 1024`,
       ``,
-      `[rerank]`,
+      `[inference.reranker]`,
+      `provider = "infinity"`,
       `base_url = "http://127.0.0.1:9"`,
       `model = "BAAI/bge-reranker-v2-m3"`,
       ``,
@@ -403,14 +407,10 @@ describe("config contract", () => {
     expect(config.thresholds.match_margin).toEqual(expect.any(Number));
     expect(config.thresholds.candidate_floor).toEqual(expect.any(Number));
     expect(config.thresholds.candidate_limit).toEqual(expect.any(Number));
-    expect(config.embedding.base_url).toMatch(/^https?:\/\//);
-    expect(config.embedding.api_key_env).toEqual(expect.any(String));
-    expect(config.embedding.model).toBe("microsoft/harrier-oss-v1-0.6b");
-    expect(config.embedding.dimension).toBe(1024);
-    expect(config.rerank.base_url).toMatch(/^https?:\/\//);
-    expect(config.rerank.model).toBe("BAAI/bge-reranker-v2-m3");
-    expect(config.remote_timeout_ms).toBeGreaterThanOrEqual(100);
-    expect(config.remote_timeout_ms).toBeLessThanOrEqual(30000);
+    expect(["local", "remote"]).toContain(config.inference.mode);
+    expect(config.inference.embedding.model).toEqual(expect.any(String));
+    expect(config.inference.embedding.dimension).toBe(1024);
+    expect(config.inference.reranker.model).toEqual(expect.any(String));
   });
 });
 

@@ -5,20 +5,16 @@ import { createClients } from "../src/clients";
 function localConfig(): Config {
   return {
     vault_path: "/unused",
-    state_dir: "./.models", // models are cached at workspace ./.models
+    state_dir: "/unused",
     recall: { k_lexical: 15, k_vector: 15 },
     thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-    embedding: {
-      base_url: "local://",
-      api_key_env: "SKILL_ROUTER_EMBED_KEY",
-      model: "Xenova/bge-m3",
-      dimension: 1024,
+    inference: {
+      mode: "local",
+      bundle: "bge-m3-v1",
+      models_dir: "./.models",
+      embedding: { model: "Xenova/bge-m3", dimension: 1024, device: "cpu", dtype: "q8" },
+      reranker: { model: "onnx-community/bge-reranker-v2-m3-ONNX", device: "cpu", dtype: "q8" },
     },
-    rerank: {
-      base_url: "local://",
-      model: "onnx-community/bge-reranker-v2-m3-ONNX",
-    },
-    remote_timeout_ms: 5000,
   };
 }
 

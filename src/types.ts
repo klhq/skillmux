@@ -39,21 +39,43 @@ export type ONNXDtype =
   | "q1"
   | "q1f16";
 
-export interface EmbeddingConfig {
-  base_url: string;
-  api_key_env: string;
+export interface ModelConfig {
   model: string;
-  dimension: number;
   device?: ONNXDevice;
   dtype?: ONNXDtype;
 }
 
-export interface RerankConfig {
+export interface LocalInferenceConfig {
+  mode: "local";
+  bundle: string;
+  models_dir: string;
+  embedding: ModelConfig & { dimension: number };
+  reranker: ModelConfig;
+}
+
+export interface RemoteEmbeddingConfig {
+  provider: "openai";
   base_url: string;
   model: string;
-  device?: ONNXDevice;
-  dtype?: ONNXDtype;
+  dimension: number;
+  api_key_env?: string;
 }
+
+export interface RemoteRerankerConfig {
+  provider: "infinity";
+  base_url: string;
+  model: string;
+  api_key_env?: string;
+}
+
+export interface RemoteInferenceConfig {
+  mode: "remote";
+  timeout_ms: number;
+  embedding: RemoteEmbeddingConfig;
+  reranker: RemoteRerankerConfig;
+}
+
+export type InferenceConfig = LocalInferenceConfig | RemoteInferenceConfig;
 
 export interface RateLimitConfig {
   enabled: boolean;
@@ -72,9 +94,7 @@ export interface Config {
   state_dir: string;
   recall: RecallConfig;
   thresholds: Thresholds;
-  embedding: EmbeddingConfig;
-  rerank: RerankConfig;
-  remote_timeout_ms: number;
+  inference: InferenceConfig;
   server?: ServerConfig;
 }
 
