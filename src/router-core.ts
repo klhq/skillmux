@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { watch } from "node:fs";
 import { join } from "node:path";
 import { buildAuditRow } from "./audit";
-import { expandHome, loadConfig } from "./config";
+import { embeddingDimension, embeddingFingerprint, expandHome, loadConfig } from "./config";
 import {
   deleteSkill,
   findExactMatch,
@@ -207,7 +207,8 @@ export async function syncVaultIfNeeded(): Promise<void> {
 export async function backfillEmbeddings(): Promise<number> {
   const { config, db } = await getEnv();
   const clients = getClients();
-  const pending = skillsNeedingVectors(db, config.embedding.dimension);
+  const fingerprint = embeddingFingerprint(config);
+  const pending = skillsNeedingVectors(db, embeddingDimension(config), fingerprint);
   if (pending.length === 0) return 0;
 
   const BATCH_SIZE = 10;
@@ -217,7 +218,7 @@ export async function backfillEmbeddings(): Promise<number> {
     try {
       const vectors = await clients.embed(chunk.map(rerankText));
       chunk.forEach((row, j) => {
-        upsertVector(db, row.skill_id, row.content_sha256, vectors[j]!);
+        upsertVector(db, row.skill_id, row.content_sha256, fingerprint, vectors[j]!);
       });
       count += chunk.length;
     } catch (err) {

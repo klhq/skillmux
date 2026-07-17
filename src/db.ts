@@ -31,9 +31,14 @@ export function openIndex(stateDir: string): Database {
   db.run(`CREATE TABLE IF NOT EXISTS vectors (
     skill_id TEXT PRIMARY KEY,
     content_sha256 TEXT NOT NULL,
+    embedding_fingerprint TEXT NOT NULL DEFAULT '',
     dim INTEGER NOT NULL,
     vec BLOB NOT NULL
   )`);
+  const vectorColumns = db.query("PRAGMA table_info(vectors)").all() as { name: string }[];
+  if (!vectorColumns.some((column) => column.name === "embedding_fingerprint")) {
+    db.run("ALTER TABLE vectors ADD COLUMN embedding_fingerprint TEXT NOT NULL DEFAULT ''");
+  }
   db.run(`CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -179,13 +184,17 @@ export function upsertVector(
   db: Database,
   skillId: string,
   contentSha256: string,
+  embeddingFingerprint: string,
   vec: Float32Array,
 ): void {
   db.run(
-    `INSERT INTO vectors (skill_id, content_sha256, dim, vec) VALUES (?, ?, ?, ?)
+    `INSERT INTO vectors (skill_id, content_sha256, embedding_fingerprint, dim, vec) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(skill_id) DO UPDATE SET
-       content_sha256 = excluded.content_sha256, dim = excluded.dim, vec = excluded.vec`,
-    [skillId, contentSha256, vec.length, new Uint8Array(vec.buffer, vec.byteOffset, vec.byteLength)],
+       content_sha256 = excluded.content_sha256,
+       embedding_fingerprint = excluded.embedding_fingerprint,
+       dim = excluded.dim,
+       vec = excluded.vec`,
+    [skillId, contentSha256, embeddingFingerprint, vec.length, new Uint8Array(vec.buffer, vec.byteOffset, vec.byteLength)],
   );
 }
 
@@ -193,16 +202,17 @@ export function upsertVector(
  * Skills with no usable stored vector: none at all, content changed since
  * embedding, or embedded at a different dimension than currently configured.
  */
-export function skillsNeedingVectors(db: Database, dimension: number): SkillRow[] {
+export function skillsNeedingVectors(db: Database, dimension: number, embeddingFingerprint: string): SkillRow[] {
   return db
     .query(
       `SELECT s.* FROM skills s
        LEFT JOIN vectors v ON v.skill_id = s.skill_id
-         AND v.content_sha256 = s.content_sha256
-         AND v.dim = ?
-       WHERE v.skill_id IS NULL`,
+          AND v.content_sha256 = s.content_sha256
+          AND v.dim = ?
+          AND v.embedding_fingerprint = ?
+        WHERE v.skill_id IS NULL`,
     )
-    .all(dimension) as SkillRow[];
+    .all(dimension, embeddingFingerprint) as SkillRow[];
 }
 
 function cosine(a: Float32Array, b: Float32Array): number {
