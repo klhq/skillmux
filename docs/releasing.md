@@ -26,7 +26,7 @@ The release workflow publishes:
 - `skill-router-linux-amd64`
 - `skill-router-linux-arm64`
 - `SHA256SUMS`
-- GitHub build provenance attestations
+- GitHub build provenance attestations when the repository is public
 - Full image: `:<version>`, `:<major>.<minor>`, `:<major>`, and `:latest`
 - Slim image: `:<version>-slim`, `:<major>.<minor>-slim`, `:<major>-slim`, and `:latest-slim`
 - Multi-architecture `linux/amd64` and `linux/arm64` images with SBOM and provenance
@@ -34,6 +34,7 @@ The release workflow publishes:
 Each Docker tag is a multi-architecture manifest. Users run the same tag on AMD64 and ARM64; Docker automatically pulls the matching image.
 
 Container images are published to GitHub Container Registry only; the release workflow does not require external registry credentials.
+Private repositories still publish BuildKit SBOM/provenance with container images, but GitHub artifact attestations are skipped because GitHub does not support them for user-owned private repositories.
 
 Verify downloaded binaries with:
 
