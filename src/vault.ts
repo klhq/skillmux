@@ -40,7 +40,7 @@ export function parseSkillMd(skillId: string, raw: string): VaultSkill {
   };
 }
 
-/** Strict decode: invalid UTF-8 throws instead of silently mangling (AC8). */
+/** Strict decode: invalid UTF-8 throws instead of silently mangling content. */
 export function decodeUtf8Strict(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }

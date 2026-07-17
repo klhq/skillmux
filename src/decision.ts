@@ -15,7 +15,7 @@ export function decideResolveOutcome({ reranked, candidates, thresholds }: Decis
   if (candidates.length === 0) return { outcome: "no_match" };
 
   // Degraded lane: no comparable scores exist, so never match; the (BM25-ordered)
-  // shortlist goes to the calling LLM instead (AC7).
+  // Without calibrated reranker scores, the shortlist goes to the calling LLM.
   if (!reranked) return { outcome: "ambiguous", candidates: candidates.slice(0, thresholds.candidate_limit) };
 
   if (

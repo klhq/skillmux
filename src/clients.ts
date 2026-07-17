@@ -46,7 +46,7 @@ async function getLocalEmbedder(config: Config): Promise<FeatureExtractor> {
 /**
  * Real HTTP clients or in-process local ONNX inference clients.
  * Every remote HTTP call is bounded by inference.timeout_ms; timeouts and transport
- * errors reject, which resolveSkill turns into the degraded lane (AC7).
+ * errors reject so resolveSkill can fall back to the strongest available retrieval lane.
  * Local ONNX calls run in-process using @huggingface/transformers.
  */
 export function createClients(config: Config): Clients {

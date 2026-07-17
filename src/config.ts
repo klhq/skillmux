@@ -28,7 +28,12 @@ const configSchema = z.object({
   vault_path: z.string().min(1),
   state_dir: z.string().min(1),
   recall: z.object({ k_lexical: z.number().int().positive(), k_vector: z.number().int().positive() }).strict(),
-  thresholds: z.object({ candidate_limit: z.number().int().positive() }).strict(),
+  thresholds: z.object({
+    candidate_limit: z.number().int().positive(),
+    match_score: z.number().optional(),
+    match_margin: z.number().nonnegative().optional(),
+    candidate_floor: z.number().optional(),
+  }).strict(),
   inference: z.discriminatedUnion("mode", [
     z.object({
       mode: z.literal("local"),
@@ -162,7 +167,7 @@ export async function loadConfig(path?: string): Promise<Config> {
     }
   }
 
-  // Environment variable overrides (AC4)
+  // Environment variable overrides.
   if (process.env.VAULT_PATH) {
     merged.vault_path = process.env.VAULT_PATH;
   }
