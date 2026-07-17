@@ -23,13 +23,15 @@ The tag must exactly match `v` plus the `package.json` version. A mismatch stops
 
 The release workflow publishes:
 
-- `skill-router-linux-x64`
+- `skill-router-linux-amd64`
 - `skill-router-linux-arm64`
 - `SHA256SUMS`
 - GitHub build provenance attestations
-- `ghcr.io/klhq/skill-router:<version>` and moving full-image tags
-- `ghcr.io/klhq/skill-router:<version>-slim` and moving slim-image tags
+- Full image: `:<version>`, `:<major>.<minor>`, `:<major>`, and `:latest`
+- Slim image: `:<version>-slim`, `:<major>.<minor>-slim`, `:<major>-slim`, and `:latest-slim`
 - Multi-architecture `linux/amd64` and `linux/arm64` images with SBOM and provenance
+
+Each Docker tag is a multi-architecture manifest. Users run the same tag on AMD64 and ARM64; Docker automatically pulls the matching image.
 
 Container images are published to GitHub Container Registry only; the release workflow does not require external registry credentials.
 
@@ -37,7 +39,7 @@ Verify downloaded binaries with:
 
 ```bash
 sha256sum --check SHA256SUMS
-./skill-router-linux-x64 config show
+./skill-router-linux-amd64 config show
 ```
 
 Verify the container with a read-only vault mount:

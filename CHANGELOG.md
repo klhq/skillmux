@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - GitHub Actions CI for tests, type checking, binary builds, schema validation, and slim container builds.
-- Tag-driven GitHub releases with Linux binaries, checksums, multi-architecture GHCR images, SBOMs, and build provenance.
+- Tag-driven GitHub releases with consistently named Linux AMD64/ARM64 binaries, checksums, multi-architecture GHCR images, SBOMs, and build provenance.
 - Weekly Dependabot updates for Bun/npm dependencies and GitHub Actions.
 - Separate liveness and readiness endpoints, readiness metrics, startup initialization, and graceful shutdown.
 - HTTP rate limiting (token-bucket, per-token/IP, `429` + `Retry-After`/`X-RateLimit-*` headers) and request metrics.
