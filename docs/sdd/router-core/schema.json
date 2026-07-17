@@ -50,17 +50,17 @@
       "description": "One reranked candidate clearly dominates. Full SKILL.md is delivered inline.",
       "properties": {
         "outcome": { "const": "matched" },
-        "retrieval": { "const": "reranked" },
+        "retrieval": { "enum": ["exact", "reranked"] },
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 512 },
         "content_sha256": { "$ref": "#/$defs/Sha256Hex" },
         "score": {
           "type": "number",
-          "description": "Top rerank_score. Satisfies score >= config thresholds.match_score."
+          "description": "Top configured-reranker score. Satisfies score >= config thresholds.match_score."
         },
         "margin": {
           "type": "number",
-          "description": "Top minus second rerank_score. Satisfies margin >= config thresholds.match_margin. Equals score when there is exactly one candidate.",
+          "description": "Top minus second configured-reranker score. Equals score when there is exactly one candidate.",
           "minimum": 0
         },
         "body": {
@@ -83,7 +83,7 @@
       "description": "Several plausible candidates; the calling LLM picks, then calls fetch_skill.",
       "properties": {
         "outcome": { "const": "ambiguous" },
-        "retrieval": { "enum": ["reranked", "hybrid", "lexical"] },
+        "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
         "candidates": {
           "type": "array",
           "items": { "$ref": "#/$defs/Candidate" },
@@ -99,7 +99,7 @@
       "description": "AC4: no skill passed the relevance floor. Caller proceeds under its normal workflow; must not load an unrelated skill.",
       "properties": {
         "outcome": { "const": "no_match" },
-        "retrieval": { "enum": ["reranked", "hybrid", "lexical"] },
+        "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
         "message": {
           "type": "string",
           "description": "Fixed guidance string telling the caller to proceed normally.",
@@ -177,16 +177,16 @@
           "properties": {
             "match_score": {
               "type": "number",
-              "description": "T — minimum top rerank_score for outcome=matched."
+              "description": "Minimum top configured-reranker score for outcome=matched."
             },
             "match_margin": {
               "type": "number",
-              "description": "Δ — minimum (top − second) rerank_score gap for outcome=matched.",
+              "description": "Minimum top-minus-second configured-reranker score gap for outcome=matched.",
               "minimum": 0
             },
             "candidate_floor": {
               "type": "number",
-              "description": "Minimum score for a candidate to appear in an ambiguous shortlist; all below ⇒ no_match. Applied to rerank_score, or to normalized BM25 rank order in degraded mode."
+              "description": "Minimum configured-reranker score for an ambiguous shortlist. Not applied to hybrid or lexical retrieval."
             },
             "candidate_limit": {
               "type": "integer",
@@ -289,7 +289,7 @@
         "ts": { "type": "string", "format": "date-time" },
         "query": { "type": "string" },
         "outcome": { "type": "string", "enum": ["matched", "ambiguous", "no_match"] },
-        "retrieval": { "enum": ["reranked", "hybrid", "lexical"] },
+        "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
         "candidates": {
           "type": "array",
           "description": "skill_id + score of every reranked (or FTS5-ranked) candidate considered, best first.",

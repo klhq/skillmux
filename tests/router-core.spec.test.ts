@@ -121,7 +121,7 @@ describe("resolveSkill contract", () => {
 
     expect(result.outcome).toBe("matched");
     if (result.outcome !== "matched") throw new Error("unreachable");
-    expect(result.retrieval).toBe("reranked");
+    expect(["exact", "reranked"]).toContain(result.retrieval);
     expect(result.skill_id).toMatch(/^[a-z0-9][a-z0-9-]{1,127}$/);
     expect(result.title).toEqual(expect.any(String));
     expect(result.content_sha256).toMatch(/^[a-f0-9]{64}$/);

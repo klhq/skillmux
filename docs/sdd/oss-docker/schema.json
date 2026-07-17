@@ -1,4 +1,5 @@
 {
+  "$comment": "Historical schema superseded by docs/sdd/router-core/schema.json and docs/sdd/gte-hybrid-routing/spec.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://klh.app/schemas/skill-router/router-core.json",
   "title": "Skill Router — router-core contract (updated for oss-docker)",

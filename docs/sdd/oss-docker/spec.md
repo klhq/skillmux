@@ -1,5 +1,7 @@
 # Spec: Skill Router — OSS & Docker (oss-docker)
 
+<!-- inference and response contract superseded by docs/sdd/gte-hybrid-routing/spec.md on 2026-07-17 -->
+
 <!-- status: approved 2026-07-15 -->
 
 ## Goal

@@ -126,7 +126,7 @@ describe("audit log persistence (AC10)", () => {
 
     const rows = db
       .query("SELECT * FROM audit ORDER BY id DESC LIMIT 1")
-      .all() as (Omit<AuditRow, "degraded" | "candidates"> & { degraded: number; candidates: string })[];
+      .all() as (Omit<AuditRow, "candidates"> & { candidates: string })[];
     const countAfter = (db.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n;
 
     expect(countAfter).toBe(countBefore + 1);

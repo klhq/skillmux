@@ -1,5 +1,7 @@
 # Spec: Skill Router — core (router-core)
 
+<!-- response and retrieval contract superseded by docs/sdd/gte-hybrid-routing/spec.md on 2026-07-17 -->
+
 <!-- status: approved 2026-07-14 -->
 
 ## Goal

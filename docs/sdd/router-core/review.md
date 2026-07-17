@@ -1,5 +1,7 @@
 # Review — router-core (2026-07-15)
 
+<!-- historical review; response contract superseded by docs/sdd/gte-hybrid-routing/spec.md -->
+
 Diff: full implementation of spec tasks 1–7 (~2000 lines; new: clients, hybrid recall, MCP stdio server, CLI, watcher, eval harness, guarantee tests; OSS-readiness: generic config defaults, config.example.toml, README).
 
 Note: the goose `sdd-review` fan-out returned empty passes (all workers hit max-turns); this review was performed inline per the skill's fallback. Build/test results below were run directly, not taken from the recipe banner.

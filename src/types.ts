@@ -107,11 +107,11 @@ export interface RankedCandidate extends Candidate {
   score: number | null;
 }
 
-export type RetrievalCapability = "reranked" | "hybrid" | "lexical";
+export type RetrievalCapability = "exact" | "reranked" | "hybrid" | "lexical";
 
 export interface MatchedResult {
   outcome: "matched";
-  retrieval: "reranked";
+  retrieval: "exact" | "reranked";
   skill_id: string;
   title: string;
   content_sha256: string;

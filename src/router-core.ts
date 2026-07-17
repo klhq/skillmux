@@ -309,7 +309,7 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
     const delivery = await deliverSkill(db, config, exactMatch.skill_id);
     const result: ResolveResult = {
       outcome: "matched",
-      retrieval: "reranked",
+      retrieval: "exact",
       skill_id: exactMatch.skill_id,
       title: delivery.title,
       content_sha256: delivery.content_sha256,
@@ -325,7 +325,7 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
         ts: new Date().toISOString(),
         query: input.query,
         outcome: "matched",
-        retrieval: "reranked",
+        retrieval: "exact",
         candidates: [{ skill_id: exactMatch.skill_id, score: 1.0 }],
         selected_skill_id: exactMatch.skill_id,
         latency_ms: Math.round(performance.now() - t0),
