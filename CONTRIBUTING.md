@@ -93,3 +93,5 @@ docker run --rm -v ~/.agents/skills:/vault:ro -p 3000:3000 klhq/skill-router:lat
    - `docs: ...` for documentation changes
    - `test: ...` for adding or modifying tests
 4. **Code Quality**: Write type-safe TypeScript. Do not disable strict compiler flags.
+
+Pull requests run the test suite, TypeScript validation, compiled binary build, JSON Schema validation, and a slim Docker image build. Release procedure is documented in [`docs/releasing.md`](docs/releasing.md).
