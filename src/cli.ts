@@ -84,7 +84,19 @@ switch (command) {
         i++;
       }
     }
-    await startServer({ transport, port });
+    const handle = await startServer({ transport, port });
+    let stopping = false;
+    const shutdown = async () => {
+      if (stopping) return;
+      stopping = true;
+      const timeout = setTimeout(() => process.exit(1), 10_000);
+      timeout.unref();
+      await handle.stop();
+      clearTimeout(timeout);
+      process.exit(0);
+    };
+    process.once("SIGTERM", shutdown);
+    process.once("SIGINT", shutdown);
     break;
   }
   case "index":

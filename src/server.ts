@@ -5,14 +5,32 @@ import { z } from "zod";
 import { createClients } from "./clients";
 import { loadConfig } from "./config";
 import { backfillEmbeddings, configure, fetchSkill, resolveSkill } from "./router-core";
+import { closeRuntime, startVaultWatcher } from "./router-core";
 import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
+import { ReadinessState } from "./readiness";
+import { initializeRuntime } from "./lifecycle";
+import type { Clients, Config } from "./types";
 
 export const metricsRegistry = new MetricsRegistry();
+export const readinessState = new ReadinessState();
 
-export async function startServer(opts?: { transport?: "stdio" | "http"; port?: number }): Promise<void> {
-  const config = await loadConfig();
-  configure({ config, clients: createClients(config) });
+export interface ServerHandle {
+  port?: number;
+  stop(): Promise<void>;
+}
+
+export async function startServer(opts?: {
+  transport?: "stdio" | "http";
+  port?: number;
+  config?: Config;
+  clients?: Partial<Clients>;
+}): Promise<ServerHandle> {
+  const config = opts?.config ?? await loadConfig();
+  configure({ config, clients: opts?.clients ?? createClients(config) });
+  await initializeRuntime(readinessState);
+  metricsRegistry.setReadiness(readinessState.get());
+  const stopWatcher = await startVaultWatcher();
 
   const server = new McpServer({ name: "skill-router", version: "0.1.0" });
 
@@ -150,7 +168,7 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
 
         const url = new URL(req.url);
         if (req.method === "GET") {
-          if (url.pathname === "/health") {
+          if (url.pathname === "/health" || url.pathname === "/health/live") {
             const headers = new Headers({ "Content-Type": "application/json" });
             if (allowOriginHeader) {
               headers.set("Access-Control-Allow-Origin", allowOriginHeader);
@@ -159,6 +177,15 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
               headers.set(key, value);
             }
             return new Response(JSON.stringify({ status: "ok" }), { status: 200, headers });
+          }
+          if (url.pathname === "/health/ready") {
+            const readiness = readinessState.get();
+            const headers = new Headers({ "Content-Type": "application/json" });
+            if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            return new Response(JSON.stringify(readiness), {
+              status: readiness.status === "ready" ? 200 : 503,
+              headers,
+            });
           }
           if (url.pathname === "/metrics") {
             const headers = new Headers({ "Content-Type": "text/plain; version=0.0.4" });
@@ -214,13 +241,36 @@ export async function startServer(opts?: { transport?: "stdio" | "http"; port?: 
         });
       },
     });
+    let stopped = false;
     console.log(`skill-router serving over HTTP on port ${bunServer.port}`);
+    return {
+      port: bunServer.port,
+      async stop() {
+        if (stopped) return;
+        stopped = true;
+        readinessState.set({ ...readinessState.get(), status: "stopping" });
+        metricsRegistry.setReadiness(readinessState.get());
+        bunServer.stop(true);
+        stopWatcher();
+        await server.close();
+        closeRuntime();
+      },
+    };
   } else {
     await server.connect(new StdioServerTransport());
+    let stopped = false;
+    return {
+      async stop() {
+        if (stopped) return;
+        stopped = true;
+        readinessState.set({ ...readinessState.get(), status: "stopping" });
+        metricsRegistry.setReadiness(readinessState.get());
+        stopWatcher();
+        await server.close();
+        closeRuntime();
+      },
+    };
   }
-
-  // model host offline (AC7/AC8) — lexical-only service is the floor.
-  backfillEmbeddings().catch(() => {});
 }
 
 if (import.meta.main) await startServer();

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Separate liveness and readiness endpoints, readiness metrics, startup initialization, and graceful shutdown.
 - HTTP rate limiting (token-bucket, per-token/IP, `429` + `Retry-After`/`X-RateLimit-*` headers) and request metrics.
 - Model configuration overrides (`EMBED_MODEL`, `EMBED_DIMENSION`, `RERANK_MODEL`), a dynamic model downloader, and `/health` + `/metrics` (Prometheus) HTTP endpoints.
 - On-demand vault index sync so a running server folds vault changes into the index without a restart.
@@ -25,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial `router-core`: hybrid recall (SQLite FTS5/BM25 ∪ embedding cosine) with cross-encoder reranking, exposed via two MCP tools — `resolve_skill` and `fetch_skill`.
 - Zero-loss delivery: `sha256(body)` verified against the file on disk at delivery time.
-- Graceful degradation to lexical-only (`degraded: true`) when the embedding/rerank endpoint is unavailable.
+- Graceful fallback to lexical retrieval when embedding is unavailable.
 - `skill-router eval` CLI command for recall@5 threshold calibration against a vault's holdout queries.
 - Read-only vault guarantee and a SQLite-backed audit log of every `resolve_skill` call.
 

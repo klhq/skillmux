@@ -1,3 +1,5 @@
+import type { ReadinessSnapshot } from "./readiness";
+
 export class MetricsRegistry {
   private requests = new Map<string, number>();
   private outcomes = new Map<string, number>();
@@ -10,6 +12,11 @@ export class MetricsRegistry {
 
   private errors = 0;
   private rateLimitsExceeded = 0;
+  private readiness: ReadinessSnapshot | null = null;
+
+  setReadiness(readiness: ReadinessSnapshot) {
+    this.readiness = readiness;
+  }
 
   recordRequest(method: string) {
     this.requests.set(method, (this.requests.get(method) || 0) + 1);
@@ -79,6 +86,15 @@ export class MetricsRegistry {
     lines.push("# HELP skill_router_rate_limits_exceeded_total Total count of HTTP requests rejected by rate limiting.");
     lines.push("# TYPE skill_router_rate_limits_exceeded_total counter");
     lines.push(`skill_router_rate_limits_exceeded_total ${this.rateLimitsExceeded}`);
+
+    lines.push("# HELP skill_router_ready Whether the service is ready to route requests.");
+    lines.push("# TYPE skill_router_ready gauge");
+    lines.push(`skill_router_ready ${this.readiness?.status === "ready" ? 1 : 0}`);
+    lines.push("# HELP skill_router_retrieval_capability Active retrieval capability.");
+    lines.push("# TYPE skill_router_retrieval_capability gauge");
+    for (const capability of ["exact", "reranked", "hybrid", "lexical"]) {
+      lines.push(`skill_router_retrieval_capability{capability="${capability}"} ${this.readiness?.retrieval === capability ? 1 : 0}`);
+    }
 
     return lines.join("\n") + "\n";
   }

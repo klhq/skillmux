@@ -65,9 +65,6 @@ const defaultClients: Clients = {
   embed: async () => {
     throw new Error("embedding client not configured");
   },
-  rerank: async () => {
-    throw new Error("rerank client not configured");
-  },
 };
 
 let overrides: Overrides = {};
@@ -100,6 +97,11 @@ function getClients(): Clients {
 export async function getRuntime(): Promise<{ config: Config; db: Database; clients: Clients }> {
   const { config, db } = await getEnv();
   return { config, db, clients: getClients() };
+}
+
+export function closeRuntime(): void {
+  env?.db.close();
+  env = null;
 }
 
 /**

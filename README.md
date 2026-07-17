@@ -13,14 +13,15 @@ resolve_skill("convert this spreadsheet to markdown")
   hybrid recall: SQLite FTS5 (BM25)  ∪  embedding cosine (brute-force)
         │
         ▼
-  cross-encoder rerank  →  matched | ambiguous | no_match
+  reciprocal-rank fusion → shortlist
+  optional reranker      → matched | ambiguous | no_match
 ```
 
 - **matched** — one skill clearly wins: full `SKILL.md` delivered inline, `sha256(body) == content_sha256 ==` hash of the file on disk at delivery time. Stale index? It re-indexes and delivers fresh bytes — never stale ones.
-- **ambiguous** — up to 5 candidates (id, title, description, score). The calling LLM picks and calls `fetch_skill`. The router advises; it never decides for you.
+- **ambiguous** — up to 10 candidates (id, title, description). The calling LLM picks and calls `fetch_skill`.
 - **no_match** — proceed under your normal workflow; don't load an unrelated skill.
 
-If the embedding or rerank endpoint is down or slow, the router **degrades instead of failing**: FTS5-only recall, never `matched`, `degraded: true`. Startup and resolution work with the model host fully offline.
+If embeddings are unavailable, the router remains ready with FTS5 lexical retrieval. If an optional reranker is unavailable, it preserves the hybrid shortlist instead of failing.
 
 ### Tools
 
@@ -35,7 +36,7 @@ The full contract lives in [`docs/schema.json`](docs/schema.json) (JSON Schema 2
 
 - [Bun](https://bun.sh) ≥ 1.3
 - A skill vault: one directory per skill with a `SKILL.md` in [agentskills.io](https://agentskills.io) format (`name`, `description`, optional `aliases` frontmatter). Default location `~/.agents/skills`.
-- Optional (for the hybrid lane): an OpenAI-compatible embeddings endpoint and an [Infinity](https://github.com/michaelfeil/infinity)-native `/rerank` endpoint. Without them the router still works, lexical-only.
+- Optional: OpenAI-compatible embeddings and an Infinity-native `/rerank` endpoint. Local GTE-small embeddings work without either service.
 
 ## Quick start
 
@@ -70,8 +71,8 @@ dist/skill-router serve
 
 The `skill-router` is packaged and distributed as a Docker image in two variants:
 
-1. **`klhq/skill-router:latest` (Battery-Included, ~1.2GB)**: Bundles quantized `BAAI/bge-m3` and `BAAI/bge-reranker-v2-m3` ONNX models for in-process local inference out of the box. No external model servers required.
-2. **`klhq/skill-router:slim` (Model-free, ~150MB)**: Excludes weights. Runs in FTS5 lexical-only mode by default, or integrates with your custom remote API endpoints.
+1. **`klhq/skill-router:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
+2. **`klhq/skill-router:slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
 
 ### Running HTTP Server (Docker Default)
 
@@ -107,7 +108,8 @@ All of the below is `[server]` config in `config.toml`, overridable by environme
 - **Bearer token auth** (off by default) — set `auth_enabled = true` and the token via the env var named by `auth_token_env` (default `SKILL_ROUTER_AUTH_TOKEN`). Requests need `Authorization: Bearer <token>`; missing/mismatched tokens get `401`, and a configured-but-empty token env var gets `500`.
 - **CORS** — `allowed_origins` (default `["*"]`) is checked against the request's `Origin` header; disallowed origins get `403`. `/health` and `/metrics` are excluded from auth but still CORS-checked.
 - **Rate limiting** (off by default) — per-token (when auth is enabled) or per-IP (`server.requestIP`, falling back to `X-Forwarded-For`) token-bucket limiting. Enable with `rate_limit.enabled = true` and set `rate_limit.requests_per_minute` (default `60`). Every response carries `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset`; over-limit requests get `429` plus `Retry-After`.
-- **`GET /health`** — liveness check, `{"status": "ok"}`.
+- **`GET /health/live`** — lightweight liveness check. Legacy `GET /health` remains an alias.
+- **`GET /health/ready`** — readiness with active retrieval capability, skill count, index state, and inference status.
 - **`GET /metrics`** — Prometheus text exposition: `skill_router_requests_total`, `skill_router_resolve_outcomes_total`, `skill_router_resolve_latency_seconds` (histogram), `skill_router_errors_total`, `skill_router_rate_limits_exceeded_total`.
 
 ### Running Stdio Server in Docker
@@ -129,7 +131,7 @@ No config is required for the battery-included local ONNX mode. See [`config.exa
 - The zero-config default combines SQLite FTS5 with the small `Xenova/gte-small` embedding model and returns an ordered shortlist.
 - Configured OpenAI-compatible embeddings replace the local embedder. An optional Infinity-compatible reranker enables confident automatic matches.
 
-Run `skill-router doctor` to verify full hybrid routing. Run `skill-router config show` to inspect the effective configuration; it prints credential variable names, never credential values.
+Run `skill-router doctor` to verify routing capability. Run `skill-router config show` to inspect effective configuration; it prints credential variable names, never values.
 
 ### Environment Variable Overrides
 All core settings can be overridden via environment variables (handy for Docker):
@@ -153,14 +155,13 @@ All core settings can be overridden via environment variables (handy for Docker)
 
 Remote API keys are read from the environment variables named by `inference.embedding.api_key_env` and `inference.reranker.api_key_env`; no secret ever lives in the config file.
 
-Calibrate thresholds against your own vault:
+Evaluate lexical and local hybrid retrieval against the checked-in labeled queries:
 
 ```sh
 bun run src/cli.ts eval
-# holdout queries: 212
-# recall@5 lexical-only: 0.868
-# recall@5 hybrid:       0.943
-# suggested config.toml [thresholds]: ...
+# holdout queries: 8
+# lexical recall@5: 1.000
+# hybrid recall@5:  1.000
 ```
 
 ## Guarantees

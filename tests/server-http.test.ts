@@ -277,6 +277,19 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     expect(json).toEqual({ status: "ok" });
   });
 
+  test("separates liveness from readiness", async () => {
+    const live = await fetch(`http://127.0.0.1:${port}/health/live`);
+    expect(live.status).toBe(200);
+    expect(await live.json()).toEqual({ status: "ok" });
+
+    const ready = await fetch(`http://127.0.0.1:${port}/health/ready`);
+    expect([200, 503]).toContain(ready.status);
+    const payload = await ready.json() as Record<string, unknown>;
+    expect(["starting", "ready", "not_ready", "stopping"]).toContain(String(payload.status));
+    expect(payload).toHaveProperty("index_current");
+    expect(payload).toHaveProperty("embedding");
+  });
+
   test("GET /metrics returns 200 and prometheus metrics text", async () => {
     const res = await fetch(`http://127.0.0.1:${port}/metrics`);
     expect(res.status).toBe(200);
