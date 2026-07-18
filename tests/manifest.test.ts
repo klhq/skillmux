@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseManifest, validateManifest } from "../src/manifest";
+import { parseManifest, serializeManifest, validateManifest } from "../src/manifest";
 
 describe("parseManifest", () => {
   test("parses a valid skr.toml into typed core/project/targets", () => {
@@ -112,5 +112,40 @@ dir = "~/.claude/skills"
 `);
     const result = validateManifest(manifest, new Set());
     expect(result.notes).toEqual(["[project.infra] repos path not found locally, skipped: /does/not/exist/on/this/machine"]);
+  });
+});
+
+describe("serializeManifest", () => {
+  test("round-trips through parseManifest for core, project, and targets", () => {
+    const manifest = parseManifest(`
+[core]
+skills = ["writing-clearly", "code-review"]
+
+[project.infra]
+repos = ["~/workspace/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+project = true
+`);
+
+    const roundTripped = parseManifest(serializeManifest(manifest));
+
+    expect(roundTripped).toEqual(manifest);
+  });
+
+  test("serializes an empty manifest (no project groups, no targets) parseably", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const roundTripped = parseManifest(serializeManifest(manifest));
+
+    expect(roundTripped).toEqual(manifest);
   });
 });

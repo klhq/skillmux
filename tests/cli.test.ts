@@ -18,9 +18,12 @@ function writeSkill(id: string, description: string) {
   );
 }
 
-async function runCli(...args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+async function runCliEnv(
+  args: string[],
+  extraEnv: Record<string, string>,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bun", "run", cliPath, ...args], {
-    env: { ...(process.env as Record<string, string>), SKILL_ROUTER_CONFIG: configPath },
+    env: { ...(process.env as Record<string, string>), SKILL_ROUTER_CONFIG: configPath, ...extraEnv },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -30,6 +33,10 @@ async function runCli(...args: string[]): Promise<{ exitCode: number; stdout: st
     proc.exited,
   ]);
   return { exitCode, stdout, stderr };
+}
+
+async function runCli(...args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  return runCliEnv(args, {});
 }
 
 beforeAll(() => {
@@ -116,7 +123,7 @@ describe("skr CLI usage", () => {
   test("unknown command usage message names the skr binary, not skill-router", async () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("usage: skr <serve|index|sync|eval|doctor|config show|models download>");
+    expect(result.stderr).toContain("usage: skr <serve|index|sync|init|eval|doctor|config show|models download>");
   });
 
   test("config subcommand usage error names the skr binary", async () => {
@@ -155,5 +162,62 @@ describe("skr sync CLI", () => {
 
     rmSync(join(vaultDir, "skr.toml"), { force: true });
     rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+describe("skr init CLI", () => {
+  // deriveTargetName reads the *parent* dir's name (e.g. ~/.claude/skills -> "claude"),
+  // so fixtures nest a "skills" leaf under a distinctly-named parent.
+  function makeSurface(parentPrefix: string): { surface: string; parent: string; targetName: string } {
+    const parent = mkdtempSync(join(tmpdir(), parentPrefix));
+    const surface = join(parent, "skills");
+    mkdirSync(surface);
+    const targetName = (parent.split("/").pop() as string).toLowerCase();
+    return { surface, parent, targetName };
+  }
+
+  test("detects surfaces and writes nothing when run without --target", async () => {
+    const { surface, parent } = makeSurface("skill-router-init-cli-detect-");
+    mkdirSync(join(surface, "existing-skill"));
+    writeFileSync(join(surface, "existing-skill", "SKILL.md"), "---\nname: existing-skill\n---\nbody");
+
+    const result = await runCliEnv(["init"], { SKR_INIT_SURFACES: surface });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(surface);
+    expect(result.stdout).toContain("1 skills");
+    expect(existsSync(join(vaultDir, "skr.toml"))).toBe(false);
+
+    rmSync(parent, { recursive: true, force: true });
+  });
+
+  test("requires --yes when --target is given (interactive confirm not supported non-interactively)", async () => {
+    const { surface, parent, targetName } = makeSurface("skill-router-init-cli-noyes-");
+
+    const result = await runCliEnv(["init", "--target", targetName], { SKR_INIT_SURFACES: surface });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--yes");
+
+    rmSync(parent, { recursive: true, force: true });
+  });
+
+  test("adopts a confirmed target with --target and --yes, writes skr.toml, and prints the last mile", async () => {
+    const { surface, parent, targetName } = makeSurface("skill-router-init-cli-confirm-");
+    writeFileSync(join(surface, "not-touched.txt"), "keep me");
+
+    const result = await runCliEnv(["init", "--target", targetName, "--yes"], {
+      SKR_INIT_SURFACES: surface,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(vaultDir, "skr.toml"))).toBe(true);
+    expect(existsSync(join(surface, ".skr"))).toBe(true);
+    expect(existsSync(join(surface, "not-touched.txt"))).toBe(true);
+    expect(result.stdout).toContain(`"command": "skr"`);
+    expect(result.stdout).toContain("resolve_skill");
+
+    rmSync(join(vaultDir, "skr.toml"), { force: true });
+    rmSync(parent, { recursive: true, force: true });
   });
 });

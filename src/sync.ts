@@ -72,6 +72,23 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   return { added, removed };
 }
 
+export interface AdoptTargetResult {
+  adopted: boolean;
+}
+
+/**
+ * Marks an existing directory as skr-owned without touching its content —
+ * the consented, one-time adoption skr init performs (see SkrMarker in
+ * schema.json: "the only path allowed to create a .skr marker on a
+ * previously-unmarked directory"). syncTarget's fresh-dir case handles the
+ * "doesn't exist yet" side of that rule; this handles "already exists".
+ */
+export function adoptTarget(dir: string, targetName: string): AdoptTargetResult {
+  if (readSkrMarker(dir)) return { adopted: false };
+  writeSkrMarker(dir, targetName);
+  return { adopted: true };
+}
+
 export interface RestoreMonolithResult {
   restored: boolean;
 }
