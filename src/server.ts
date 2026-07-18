@@ -213,8 +213,8 @@ export async function startServer(opts?: {
           }
         }
 
-        // GET /stats — respects server.auth_enabled (unlike /health and /metrics above,
-        // gated before the Token Auth Check block since audit queries carry raw user text).
+        // GET /stats — placed after the Token Auth Check above (unlike /health and /metrics,
+        // which return earlier and stay open) since audit queries carry raw user text.
         if (req.method === "GET" && url.pathname === "/stats") {
           const since = url.searchParams.get("since") ?? "";
           if (!SINCE_PATTERN.test(since)) {
@@ -226,6 +226,7 @@ export async function startServer(opts?: {
           const { db } = await getRuntime();
           const headers = new Headers({ "Content-Type": "application/json" });
           if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+          for (const [key, value] of Object.entries(rateLimitResult.headers)) headers.set(key, value);
           return new Response(JSON.stringify(getStats(db, since)), { status: 200, headers });
         }
 
