@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { insertAudit, openIndex } from "../src/db";
+import { startServer } from "../src/server";
 
 const tmp = mkdtempSync(join(tmpdir(), "skill-router-cli-"));
 const vaultDir = join(tmp, "vault");
@@ -123,7 +125,7 @@ describe("skr CLI usage", () => {
   test("unknown command usage message names the skr binary, not skill-router", async () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("usage: skr <serve|index|sync|init|eval|doctor|config show|models download>");
+    expect(result.stderr).toContain("usage: skr <serve|index|sync|init|report|eval|doctor|config show|models download>");
   });
 
   test("config subcommand usage error names the skr binary", async () => {
@@ -219,5 +221,76 @@ describe("skr init CLI", () => {
 
     rmSync(join(vaultDir, "skr.toml"), { force: true });
     rmSync(parent, { recursive: true, force: true });
+  });
+});
+
+describe("skr report CLI", () => {
+  test("requires --since", async () => {
+    const result = await runCli("report");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--since");
+  });
+
+  test("--db <path> renders a report from a local sqlite audit db", async () => {
+    const dbDir = mkdtempSync(join(tmpdir(), "skill-router-report-db-"));
+    const db = openIndex(dbDir);
+    insertAudit(db, {
+      ts: new Date().toISOString(),
+      query: "in window",
+      outcome: "matched",
+      retrieval: "reranked",
+      candidates: [{ skill_id: "first-skill", score: 0.9 }],
+      selected_skill_id: "first-skill",
+      latency_ms: 4,
+    });
+    db.close();
+
+    const result = await runCli("report", "--db", join(dbDir, "index.sqlite3"), "--since", "30d");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("matched=1 ambiguous=0 no_match=0");
+    expect(result.stdout).toContain("first-skill matched=1 candidate=1");
+
+    rmSync(dbDir, { recursive: true, force: true });
+  });
+
+  test("--server <url> renders a report fetched from a running skill-router server", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skill-router-report-server-"));
+    const skill = join(root, "vault", "server-report-skill");
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(join(skill, "SKILL.md"), "---\nname: Server report skill\ndescription: test\n---\nbody");
+    const handle = await startServer({
+      transport: "http",
+      port: 0,
+      config: {
+        vault_path: join(root, "vault"),
+        state_dir: join(root, "state"),
+        recall: { k_lexical: 20, k_vector: 20 },
+        thresholds: { candidate_limit: 10 },
+        inference: {
+          mode: "local",
+          bundle: "gte-small-v1",
+          models_dir: join(root, "models"),
+          embedding: { model: "Xenova/gte-small", dimension: 3 },
+        },
+      },
+      clients: { embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])) },
+    });
+
+    const result = await runCli("report", "--server", `http://127.0.0.1:${handle.port}`, "--since", "30d");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("matched=0 ambiguous=0 no_match=0");
+
+    await handle.stop();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("defaults to the configured state_dir's audit db when neither --server nor --db is given", async () => {
+    const result = await runCli("report", "--since", "30d");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("outcomes: matched=0 ambiguous=0 no_match=0");
   });
 });

@@ -5,7 +5,8 @@ import { z } from "zod";
 import { createClients } from "./clients";
 import { loadConfig } from "./config";
 import { backfillEmbeddings, configure, fetchSkill, resolveSkill } from "./router-core";
-import { closeRuntime, startVaultWatcher } from "./router-core";
+import { closeRuntime, getRuntime, startVaultWatcher } from "./router-core";
+import { getStats, SINCE_PATTERN } from "./stats";
 import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
@@ -210,6 +211,23 @@ export async function startServer(opts?: {
           if (!token || token !== expectedToken) {
             return new Response("Unauthorized", { status: 401 });
           }
+        }
+
+        // GET /stats — placed after the Token Auth Check above (unlike /health and /metrics,
+        // which return earlier and stay open) since audit queries carry raw user text.
+        if (req.method === "GET" && url.pathname === "/stats") {
+          const since = url.searchParams.get("since") ?? "";
+          if (!SINCE_PATTERN.test(since)) {
+            return new Response(
+              JSON.stringify({ error: "since must be a relative window (e.g. 30d) or an absolute ISO-8601 date" }),
+              { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+          }
+          const { db } = await getRuntime();
+          const headers = new Headers({ "Content-Type": "application/json" });
+          if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+          for (const [key, value] of Object.entries(rateLimitResult.headers)) headers.set(key, value);
+          return new Response(JSON.stringify(getStats(db, since)), { status: 200, headers });
         }
 
         // Record request metrics
