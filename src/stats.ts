@@ -1,4 +1,5 @@
-import type { AuditRow } from "./types";
+import type { Database } from "bun:sqlite";
+import type { AuditCandidate, AuditRow } from "./types";
 
 export const SINCE_PATTERN = /^(\d+[hdwmy]|\d{4}-\d{2}-\d{2}([T ].+)?)$/;
 
@@ -99,4 +100,37 @@ export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsR
     skills,
     top_no_match_queries,
   };
+}
+
+interface AuditTableRow {
+  id: number;
+  ts: string;
+  query: string;
+  outcome: AuditRow["outcome"];
+  retrieval: AuditRow["retrieval"];
+  candidates: string;
+  selected_skill_id: string | null;
+  latency_ms: number;
+}
+
+export function queryAuditRows(db: Database, sinceIso: string): AuditRow[] {
+  const rows = db
+    .query("SELECT id, ts, query, outcome, retrieval, candidates, selected_skill_id, latency_ms FROM audit WHERE ts >= ? ORDER BY ts ASC")
+    .all(sinceIso) as AuditTableRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    ts: row.ts,
+    query: row.query,
+    outcome: row.outcome,
+    retrieval: row.retrieval,
+    candidates: JSON.parse(row.candidates) as AuditCandidate[],
+    selected_skill_id: row.selected_skill_id,
+    latency_ms: row.latency_ms,
+  }));
+}
+
+export function getStats(db: Database, since: string, now: Date = new Date()): StatsResponse {
+  const sinceDate = parseSince(since, now);
+  const rows = queryAuditRows(db, sinceDate.toISOString());
+  return computeStats(rows, sinceDate, now);
 }

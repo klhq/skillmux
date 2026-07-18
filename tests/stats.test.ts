@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { computeStats, parseSince } from "../src/stats";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { insertAudit, openIndex } from "../src/db";
+import { computeStats, getStats, parseSince, queryAuditRows } from "../src/stats";
 import type { AuditRow } from "../src/types";
 
 function auditRow(overrides: Partial<AuditRow>): AuditRow {
@@ -106,5 +110,77 @@ describe("computeStats", () => {
       { query: "frequent query", count: 2 },
       { query: "rare query", count: 1 },
     ]);
+  });
+});
+
+describe("queryAuditRows", () => {
+  test("reads rows at or after the since timestamp, parsing the JSON candidates column", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skill-router-stats-"));
+    const db = openIndex(stateDir);
+    insertAudit(db, {
+      ts: "2026-06-01T00:00:00.000Z",
+      query: "too old",
+      outcome: "no_match",
+      retrieval: "lexical",
+      candidates: [],
+      selected_skill_id: null,
+      latency_ms: 3,
+    });
+    insertAudit(db, {
+      ts: "2026-07-10T00:00:00.000Z",
+      query: "in window",
+      outcome: "matched",
+      retrieval: "reranked",
+      candidates: [{ skill_id: "writing-clearly", score: 0.9 }],
+      selected_skill_id: "writing-clearly",
+      latency_ms: 12,
+    });
+
+    const rows = queryAuditRows(db, "2026-07-01T00:00:00.000Z");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      query: "in window",
+      outcome: "matched",
+      candidates: [{ skill_id: "writing-clearly", score: 0.9 }],
+      selected_skill_id: "writing-clearly",
+    });
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+});
+
+describe("getStats", () => {
+  test("combines parseSince + queryAuditRows + computeStats against a real db", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skill-router-stats-"));
+    const db = openIndex(stateDir);
+    const now = new Date("2026-07-19T00:00:00.000Z");
+    insertAudit(db, {
+      ts: "2026-07-10T00:00:00.000Z",
+      query: "in window",
+      outcome: "matched",
+      retrieval: "reranked",
+      candidates: [{ skill_id: "writing-clearly", score: 0.9 }],
+      selected_skill_id: "writing-clearly",
+      latency_ms: 12,
+    });
+    insertAudit(db, {
+      ts: "2026-01-01T00:00:00.000Z",
+      query: "too old",
+      outcome: "no_match",
+      retrieval: "lexical",
+      candidates: [],
+      selected_skill_id: null,
+      latency_ms: 3,
+    });
+
+    const result = getStats(db, "30d", now);
+
+    expect(result.outcome_totals).toEqual({ matched: 1, ambiguous: 0, no_match: 0 });
+    expect(result.until).toBe(now.toISOString());
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
   });
 });
