@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -19,6 +20,13 @@ export const readinessState = new ReadinessState();
 export interface ServerHandle {
   port?: number;
   stop(): Promise<void>;
+}
+
+function safeTokenEquals(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 export async function startServer(opts?: {
@@ -208,7 +216,7 @@ export async function startServer(opts?: {
           }
           const authHeader = req.headers.get("authorization") || "";
           const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-          if (!token || token !== expectedToken) {
+          if (!token || !safeTokenEquals(token, expectedToken)) {
             return new Response("Unauthorized", { status: 401 });
           }
         }
