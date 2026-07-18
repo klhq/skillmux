@@ -6,6 +6,18 @@ import { SKILL_ID_PATTERN } from "./vault";
 
 export const DEFAULT_SURFACE_CANDIDATES = ["~/.claude/skills", "~/.agents/skills"];
 
+/**
+ * Test/ops escape hatch: comma-separated absolute paths overriding
+ * DEFAULT_SURFACE_CANDIDATES. Not part of config.toml — "others as
+ * configured" (spec.md) is deliberately left as an implementation-time
+ * choice, same as the proposal heuristic. Exists primarily so tests never
+ * probe the real $HOME's ~/.claude/skills or ~/.agents/skills.
+ */
+export function surfaceCandidates(): string[] {
+  const override = process.env.SKR_INIT_SURFACES;
+  return override ? override.split(",").filter((p) => p.length > 0) : DEFAULT_SURFACE_CANDIDATES;
+}
+
 export interface SurfaceCandidate {
   path: string;
   exists: boolean;

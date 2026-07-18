@@ -6,6 +6,7 @@ import { loadConfig } from "./config";
 import { expandHome } from "./config";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
+import { applyInit, deriveTargetName, detectSurfaces, printLastMile, surfaceCandidates } from "./init";
 import { parseManifest, validateManifest } from "./manifest";
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
@@ -204,6 +205,68 @@ async function runSync(args: string[]): Promise<void> {
     }
 }
 
+function parseInitArgs(args: string[]): { targets: string[]; yes: boolean } {
+    const targets: string[] = [];
+    let yes = false;
+    for (let i = 0; i < args.length; i++) {
+        const option = args[i];
+        if (option === "--target") {
+            const value = args[i + 1];
+            if (!value) throw new Error("--target requires a name");
+            targets.push(value);
+            i++;
+        } else if (option === "--yes") {
+            yes = true;
+        } else {
+            throw new Error(`unknown init option: ${option}`);
+        }
+    }
+    return { targets, yes };
+}
+
+async function runInit(args: string[]): Promise<void> {
+    const { targets: requestedTargets, yes } = parseInitArgs(args);
+    const config = await loadConfig();
+    const vaultPath = expandHome(config.vault_path);
+
+    const candidates = detectSurfaces(surfaceCandidates().map(expandHome));
+    for (const candidate of candidates) {
+        const name = deriveTargetName(candidate.path);
+        if (!candidate.exists) {
+            console.log(`${name} (${candidate.path}): not found`);
+            continue;
+        }
+        const kind = candidate.isSymlink ? "symlink" : "real dir";
+        const marked = candidate.alreadyMarked ? ", already skr-managed" : "";
+        console.log(`${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`);
+    }
+
+    if (requestedTargets.length === 0) {
+        console.log("\nno --target specified — nothing written. Re-run with --target <name> --yes to adopt a surface.");
+        return;
+    }
+
+    if (!yes) {
+        throw new Error(
+            "usage: skr init --target <name> [--target <name>...] --yes (interactive per-target confirm is not available non-interactively)",
+        );
+    }
+
+    const byName = new Map(
+        candidates.filter((c) => c.exists).map((c) => [deriveTargetName(c.path), c] as const),
+    );
+    for (const name of requestedTargets) {
+        if (!byName.has(name)) throw new Error(`unknown --target "${name}": not among detected surfaces`);
+    }
+
+    const confirmedTargets = requestedTargets.map((name) => ({ name, dir: byName.get(name)!.path }));
+    applyInit(vaultPath, confirmedTargets);
+
+    console.log(`\nwrote ${join(vaultPath, "skr.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`);
+    console.log(`run "skr sync" next to materialize [core] skills into these targets.\n`);
+    console.log(printLastMile());
+}
+
 switch (command) {
     case "serve": {
         const { startServer } = await import("./server");
@@ -229,6 +292,9 @@ switch (command) {
     case "sync":
         await runSync(Bun.argv.slice(3));
         break;
+    case "init":
+        await runInit(Bun.argv.slice(3));
+        break;
     case "eval":
         await runEval();
         break;
@@ -247,7 +313,7 @@ switch (command) {
         break;
     default:
         console.error(
-            "usage: skr <serve|index|sync|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook]",
+            "usage: skr <serve|index|sync|init|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes]",
         );
         process.exit(2);
 }
