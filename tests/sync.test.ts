@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync,
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  adoptTarget,
   installPostMergeHook,
   readSkrMarker,
   resolveProjectPinDir,
@@ -241,5 +242,35 @@ describe("installPostMergeHook", () => {
     expect(() => installPostMergeHook(vaultPath)).toThrow();
 
     rmSync(vaultPath, { recursive: true, force: true });
+  });
+});
+
+describe("adoptTarget", () => {
+  test("marks an existing directory in place without touching its content", () => {
+    const dir = tmpDir("skill-router-sync-adopt-");
+    writeFileSync(join(dir, "pre-existing-skill"), "a real file, not a symlink skr created");
+
+    const result = adoptTarget(dir, "claude");
+
+    expect(result.adopted).toBe(true);
+    expect(readSkrMarker(dir)?.target).toBe("claude");
+    expect(readFileSync(join(dir, "pre-existing-skill"), "utf-8")).toBe(
+      "a real file, not a symlink skr created",
+    );
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("is idempotent: adopting an already-marked directory is a no-op", () => {
+    const dir = tmpDir("skill-router-sync-adopt-marked-");
+    adoptTarget(dir, "claude");
+    const markerBefore = readSkrMarker(dir);
+
+    const result = adoptTarget(dir, "claude");
+
+    expect(result.adopted).toBe(false);
+    expect(readSkrMarker(dir)?.created_at).toBe(markerBefore?.created_at);
+
+    rmSync(dir, { recursive: true, force: true });
   });
 });
