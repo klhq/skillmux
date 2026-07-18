@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, relative } from "node:path";
 
 export const SKR_MARKER_FILENAME = ".skr";
 
@@ -82,4 +83,48 @@ export function restoreMonolith(targetDir: string, vaultPath: string): RestoreMo
   rmSync(targetDir, { recursive: true, force: true });
   symlinkSync(vaultPath, targetDir);
   return { restored: true };
+}
+
+export function resolveProjectPinDir(targetDir: string, repo: string): string {
+  return join(repo, relative(homedir(), targetDir));
+}
+
+export interface ProjectGroupInput {
+  repos: string[];
+  skills: string[];
+}
+
+export interface SyncProjectTargetsParams {
+  vaultPath: string;
+  targetDir: string;
+  targetName: string;
+  projectGroups: Record<string, ProjectGroupInput>;
+}
+
+export interface ProjectPinSyncResult extends SyncTargetResult {
+  group: string;
+  repo: string;
+  pinDir: string;
+}
+
+export function syncProjectTargets(
+  params: SyncProjectTargetsParams,
+  options: SyncTargetOptions = {},
+): ProjectPinSyncResult[] {
+  const { vaultPath, targetDir, targetName, projectGroups } = params;
+  const results: ProjectPinSyncResult[] = [];
+
+  for (const [group, projectGroup] of Object.entries(projectGroups)) {
+    for (const repo of projectGroup.repos) {
+      if (!existsSync(repo)) continue;
+      const pinDir = resolveProjectPinDir(targetDir, repo);
+      const result = syncTarget(
+        { vaultPath, targetDir: pinDir, targetName, coreSkillIds: projectGroup.skills },
+        options,
+      );
+      results.push({ group, repo, pinDir, ...result });
+    }
+  }
+
+  return results;
 }

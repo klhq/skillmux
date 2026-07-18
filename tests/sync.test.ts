@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readlinkSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSkrMarker, restoreMonolith, syncTarget } from "../src/sync";
+import { readSkrMarker, resolveProjectPinDir, restoreMonolith, syncProjectTargets, syncTarget } from "../src/sync";
 
 function tmpDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -136,5 +136,50 @@ describe("restoreMonolith", () => {
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+describe("resolveProjectPinDir", () => {
+  test("joins the repo path with the target dir's path relative to $HOME", () => {
+    const targetDir = join(homedir(), ".claude", "skills");
+    const repo = "/workspace/projects/infra";
+
+    expect(resolveProjectPinDir(targetDir, repo)).toBe(join(repo, ".claude", "skills"));
+  });
+});
+
+describe("syncProjectTargets", () => {
+  test("materializes a pin dir per repo in each project group, skipping repos that don't exist locally", () => {
+    const vaultPath = tmpDir("skill-router-sync-vault-");
+    mkdirSync(join(vaultPath, "terraform-plans"));
+    const targetDir = join(homedir(), ".claude", "skills");
+
+    const existingRepo = tmpDir("skill-router-sync-repo-");
+    const missingRepo = "/does/not/exist/on/this/machine";
+
+    const results = syncProjectTargets({
+      vaultPath,
+      targetDir,
+      targetName: "claude",
+      projectGroups: {
+        infra: { repos: [existingRepo, missingRepo], skills: ["terraform-plans"] },
+      },
+    });
+
+    expect(results).toEqual([
+      {
+        group: "infra",
+        repo: existingRepo,
+        pinDir: resolveProjectPinDir(targetDir, existingRepo),
+        added: ["terraform-plans"],
+        removed: [],
+      },
+    ]);
+    expect(readlinkSync(join(existingRepo, ".claude", "skills", "terraform-plans"))).toBe(
+      join(vaultPath, "terraform-plans"),
+    );
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(existingRepo, { recursive: true, force: true });
   });
 });
