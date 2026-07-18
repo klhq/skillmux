@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { insertAudit, openIndex } from "../src/db";
-import { computeStats, getStats, parseSince, queryAuditRows } from "../src/stats";
+import { computeStats, getStats, parseSince, queryAuditRows, renderStatsText } from "../src/stats";
 import type { AuditRow } from "../src/types";
 
 function auditRow(overrides: Partial<AuditRow>): AuditRow {
@@ -182,5 +182,34 @@ describe("getStats", () => {
 
     db.close();
     rmSync(stateDir, { recursive: true, force: true });
+  });
+});
+
+describe("renderStatsText", () => {
+  test("renders window, outcome totals, per-skill counts, and top no_match queries", () => {
+    const stats = computeStats(
+      [
+        auditRow({ outcome: "matched", selected_skill_id: "writing-clearly", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+        auditRow({ outcome: "no_match", query: "obscure task" }),
+      ],
+      new Date("2026-06-19T00:00:00.000Z"),
+      new Date("2026-07-19T00:00:00.000Z"),
+    );
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain("window: 2026-06-19T00:00:00.000Z .. 2026-07-19T00:00:00.000Z");
+    expect(text).toContain("matched=1 ambiguous=0 no_match=1");
+    expect(text).toContain("writing-clearly matched=1 candidate=1");
+    expect(text).toContain(`"obscure task" (1)`);
+  });
+
+  test("renders placeholders when there are no skills or no_match queries", () => {
+    const stats = computeStats([], new Date("2026-06-19T00:00:00.000Z"), new Date("2026-07-19T00:00:00.000Z"));
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain("skills:\n  (none)");
+    expect(text).toContain("top no_match queries:\n  (none)");
   });
 });

@@ -134,3 +134,32 @@ export function getStats(db: Database, since: string, now: Date = new Date()): S
   const rows = queryAuditRows(db, sinceDate.toISOString());
   return computeStats(rows, sinceDate, now);
 }
+
+export function renderStatsText(stats: StatsResponse): string {
+  const lines: string[] = [];
+  lines.push(`window: ${stats.since} .. ${stats.until}`);
+  lines.push(
+    `outcomes: matched=${stats.outcome_totals.matched} ambiguous=${stats.outcome_totals.ambiguous} ` +
+      `no_match=${stats.outcome_totals.no_match} (ambiguous_rate=${stats.ambiguous_rate.toFixed(3)})`,
+  );
+
+  lines.push("skills:");
+  if (stats.skills.length === 0) {
+    lines.push("  (none)");
+  } else {
+    for (const skill of stats.skills) {
+      lines.push(`  ${skill.skill_id} matched=${skill.matched_count} candidate=${skill.candidate_count}`);
+    }
+  }
+
+  lines.push("top no_match queries:");
+  if (stats.top_no_match_queries.length === 0) {
+    lines.push("  (none)");
+  } else {
+    for (const entry of stats.top_no_match_queries) {
+      lines.push(`  "${entry.query}" (${entry.count})`);
+    }
+  }
+
+  return lines.join("\n");
+}
