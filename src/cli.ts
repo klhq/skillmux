@@ -1,11 +1,21 @@
 #!/usr/bin/env bun
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { createClients } from "./clients";
 import { loadConfig } from "./config";
 import { expandHome } from "./config";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
+import { parseManifest, validateManifest } from "./manifest";
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
+import {
+  installPostMergeHook,
+  restoreMonolith as restoreMonolithTarget,
+  syncProjectTargets,
+  syncTarget,
+} from "./sync";
+import { scanVault } from "./vault";
 
 const [command] = Bun.argv.slice(2);
 type Transport = "stdio" | "http";
@@ -116,6 +126,84 @@ async function runModelDownload(): Promise<void> {
     console.log(`models ready in ${cacheDir}`);
 }
 
+function parseSyncArgs(args: string[]): {
+    dryRun: boolean;
+    restoreMonolith: boolean;
+    installHook: boolean;
+} {
+    let dryRun = false;
+    let restoreMonolith = false;
+    let installHook = false;
+    for (const arg of args) {
+        if (arg === "--dry-run") dryRun = true;
+        else if (arg === "--restore-monolith") restoreMonolith = true;
+        else if (arg === "--install-hook") installHook = true;
+        else throw new Error(`unknown sync option: ${arg}`);
+    }
+    return { dryRun, restoreMonolith, installHook };
+}
+
+async function runSync(args: string[]): Promise<void> {
+    const { dryRun, restoreMonolith, installHook } = parseSyncArgs(args);
+    const config = await loadConfig();
+    const vaultPath = expandHome(config.vault_path);
+
+    if (installHook) {
+        const result = installPostMergeHook(vaultPath);
+        console.log(
+            result.installed
+                ? "installed post-merge hook"
+                : "post-merge hook already installed",
+        );
+    }
+
+    const manifestPath = join(vaultPath, "skr.toml");
+    if (!existsSync(manifestPath)) {
+        console.log("no skr.toml found at vault root — nothing to sync");
+        return;
+    }
+
+    const manifest = parseManifest(await Bun.file(manifestPath).text());
+    const vaultSkillIds = new Set(
+        (await scanVault(vaultPath)).map((skill) => skill.skill_id),
+    );
+    const { notes } = validateManifest(manifest, vaultSkillIds);
+    for (const note of notes) console.log(`note: ${note}`);
+
+    for (const [targetName, target] of Object.entries(manifest.targets)) {
+        const targetDir = expandHome(target.dir);
+
+        if (restoreMonolith) {
+            const result = restoreMonolithTarget(targetDir, vaultPath);
+            console.log(
+                result.restored
+                    ? `${targetName}: restored to a vault symlink`
+                    : `${targetName}: not owned by skr, left untouched`,
+            );
+            continue;
+        }
+
+        const suffix = dryRun ? " (dry-run)" : "";
+        const result = syncTarget(
+            { vaultPath, targetDir, targetName, coreSkillIds: manifest.core.skills },
+            { dryRun },
+        );
+        console.log(`${targetName}: +${result.added.length} -${result.removed.length}${suffix}`);
+
+        if (target.project) {
+            const projectResults = syncProjectTargets(
+                { vaultPath, targetDir, targetName, projectGroups: manifest.project ?? {} },
+                { dryRun },
+            );
+            for (const projectResult of projectResults) {
+                console.log(
+                    `  ${projectResult.group} -> ${projectResult.pinDir}: +${projectResult.added.length} -${projectResult.removed.length}${suffix}`,
+                );
+            }
+        }
+    }
+}
+
 switch (command) {
     case "serve": {
         const { startServer } = await import("./server");
@@ -138,6 +226,9 @@ switch (command) {
     case "index":
         await runIndex();
         break;
+    case "sync":
+        await runSync(Bun.argv.slice(3));
+        break;
     case "eval":
         await runEval();
         break;
@@ -156,7 +247,7 @@ switch (command) {
         break;
     default:
         console.error(
-            "usage: skr <serve|index|eval|doctor|config show|models download> [--transport stdio|http] [--port N]",
+            "usage: skr <serve|index|sync|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook]",
         );
         process.exit(2);
 }

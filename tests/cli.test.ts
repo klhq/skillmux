@@ -116,7 +116,7 @@ describe("skr CLI usage", () => {
   test("unknown command usage message names the skr binary, not skill-router", async () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("usage: skr <serve|index|eval|doctor|config show|models download>");
+    expect(result.stderr).toContain("usage: skr <serve|index|sync|eval|doctor|config show|models download>");
   });
 
   test("config subcommand usage error names the skr binary", async () => {
@@ -129,5 +129,31 @@ describe("skr CLI usage", () => {
     const result = await runCli("models", "bogus");
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("usage: skr models download");
+  });
+});
+
+describe("skr sync CLI", () => {
+  test("reports nothing to sync when no skr.toml exists at the vault root", async () => {
+    const result = await runCli("sync");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("no skr.toml");
+  });
+
+  test("materializes [targets.*] from skr.toml into core-skill symlinks with a .skr marker", async () => {
+    const targetDir = join(tmp, "sync-target");
+    writeFileSync(
+      join(vaultDir, "skr.toml"),
+      [`[core]`, `skills = ["first-skill"]`, ``, `[targets.test]`, `dir = "${targetDir}"`].join("\n"),
+    );
+
+    const result = await runCli("sync");
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(targetDir, "first-skill"))).toBe(true);
+    expect(existsSync(join(targetDir, ".skr"))).toBe(true);
+
+    rmSync(join(vaultDir, "skr.toml"), { force: true });
+    rmSync(targetDir, { recursive: true, force: true });
   });
 });
