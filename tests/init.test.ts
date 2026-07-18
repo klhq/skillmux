@@ -46,7 +46,7 @@ describe("detectSurfaces", () => {
     const surface = join(root, "skills");
     symlinkSync(vault, surface);
 
-    const [candidate] = detectSurfaces([surface]);
+    const candidate = detectSurfaces([surface])[0]!;
 
     expect(candidate.exists).toBe(true);
     expect(candidate.isSymlink).toBe(true);
