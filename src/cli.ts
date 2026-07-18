@@ -1,15 +1,18 @@
 #!/usr/bin/env bun
+import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createClients } from "./clients";
 import { loadConfig } from "./config";
 import { expandHome } from "./config";
+import { openIndex } from "./db";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
 import { applyInit, deriveTargetName, detectSurfaces, printLastMile, surfaceCandidates } from "./init";
 import { parseManifest, validateManifest } from "./manifest";
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
+import { getStats, renderStatsText, type StatsResponse } from "./stats";
 import {
   installPostMergeHook,
   restoreMonolith as restoreMonolithTarget,
@@ -267,6 +270,50 @@ async function runInit(args: string[]): Promise<void> {
     console.log(printLastMile());
 }
 
+function parseReportArgs(args: string[]): { server?: string; db?: string; since?: string } {
+    let server: string | undefined;
+    let db: string | undefined;
+    let since: string | undefined;
+    for (let i = 0; i < args.length; i++) {
+        const option = args[i];
+        const value = args[i + 1];
+        if (option === "--server") {
+            if (!value) throw new Error("--server requires a URL");
+            server = value;
+            i++;
+        } else if (option === "--db") {
+            if (!value) throw new Error("--db requires a path");
+            db = value;
+            i++;
+        } else if (option === "--since") {
+            if (!value) throw new Error("--since requires a window");
+            since = value;
+            i++;
+        } else {
+            throw new Error(`unknown report option: ${option}`);
+        }
+    }
+    if (server && db) throw new Error("--server and --db are mutually exclusive");
+    return { server, db, since };
+}
+
+async function runReport(args: string[]): Promise<void> {
+    const { server, db: dbPath, since } = parseReportArgs(args);
+    if (!since) throw new Error("usage: skr report [--server <url> | --db <path>] --since <window>");
+
+    if (server) {
+        const url = `${server.replace(/\/$/, "")}/stats?since=${encodeURIComponent(since)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`skr report --server failed: ${res.status} ${await res.text()}`);
+        console.log(renderStatsText((await res.json()) as StatsResponse));
+        return;
+    }
+
+    const db = dbPath ? new Database(dbPath, { readonly: true }) : openIndex(expandHome((await loadConfig()).state_dir));
+    console.log(renderStatsText(getStats(db, since)));
+    db.close();
+}
+
 switch (command) {
     case "serve": {
         const { startServer } = await import("./server");
@@ -295,6 +342,9 @@ switch (command) {
     case "init":
         await runInit(Bun.argv.slice(3));
         break;
+    case "report":
+        await runReport(Bun.argv.slice(3));
+        break;
     case "eval":
         await runEval();
         break;
@@ -313,7 +363,7 @@ switch (command) {
         break;
     default:
         console.error(
-            "usage: skr <serve|index|sync|init|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes]",
+            "usage: skr <serve|index|sync|init|report|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window",
         );
         process.exit(2);
 }
