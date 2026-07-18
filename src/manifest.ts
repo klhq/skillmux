@@ -31,6 +31,27 @@ export function parseManifest(toml: string): Manifest {
   return manifestSchema.parse(parsed);
 }
 
+function tomlStringArray(values: string[]): string {
+  return `[${values.map((v) => JSON.stringify(v)).join(", ")}]`;
+}
+
+/** Purpose-built serializer for this manifest's fixed shape — not a general TOML writer. */
+export function serializeManifest(manifest: Manifest): string {
+  const sections: string[] = [`[core]\nskills = ${tomlStringArray(manifest.core.skills)}`];
+
+  for (const [name, group] of Object.entries(manifest.project ?? {})) {
+    sections.push(
+      `[project.${name}]\nrepos = ${tomlStringArray(group.repos)}\nskills = ${tomlStringArray(group.skills)}`,
+    );
+  }
+
+  for (const [name, target] of Object.entries(manifest.targets)) {
+    sections.push(`[targets.${name}]\ndir = ${JSON.stringify(target.dir)}\nproject = ${target.project}`);
+  }
+
+  return `${sections.join("\n\n")}\n`;
+}
+
 export interface ManifestValidationResult {
   notes: string[];
 }
