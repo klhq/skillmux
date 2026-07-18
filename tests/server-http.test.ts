@@ -61,7 +61,10 @@ beforeAll(async () => {
 
   // Set config path override
   process.env.SKILL_ROUTER_CONFIG = configPath;
-  
+  // This suite asserts the CORS preflight response shape, not the default
+  // allowed_origins posture (which is deny-by-default) — opt in explicitly.
+  process.env.HTTP_ALLOWED_ORIGINS = "*";
+
   // Start server on a random port (0)
   const origServe = Bun.serve;
   let capturedPort = 0;
@@ -84,6 +87,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
+  delete process.env.HTTP_ALLOWED_ORIGINS;
 });
 
 function parseSSEResponse(text: string): any {

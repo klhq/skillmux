@@ -126,9 +126,10 @@ Connect your MCP client to the HTTP endpoint (e.g. standard Streamable HTTP tran
 
 All of the below is `[server]` config in `config.toml`, overridable by environment variable — see [Environment Variable Overrides](#environment-variable-overrides).
 
+- **Bind address** (`hostname`, default `127.0.0.1`) — HTTP transport binds loopback-only by default, so a zero-config `skr serve --transport http` isn't reachable from the network. Inside Docker (`RUNNING_IN_DOCKER=true`) this defaults to `0.0.0.0` instead, since the container's own loopback isn't reachable through port-mapping. Set `hostname` (or `HTTP_HOSTNAME`) explicitly to expose the server beyond localhost.
 - **Bearer token auth** (off by default) — set `auth_enabled = true` and the token via the env var named by `auth_token_env` (default `SKILL_ROUTER_AUTH_TOKEN`). Requests need `Authorization: Bearer <token>`; missing/mismatched tokens get `401`, and a configured-but-empty token env var gets `500`.
-- **CORS** — `allowed_origins` (default `["*"]`) is checked against the request's `Origin` header; disallowed origins get `403`. `/health` and `/metrics` are excluded from auth but still CORS-checked.
-- **Rate limiting** (off by default) — per-token (when auth is enabled) or per-IP (`server.requestIP`, falling back to `X-Forwarded-For`) token-bucket limiting. Enable with `rate_limit.enabled = true` and set `rate_limit.requests_per_minute` (default `60`). Every response carries `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset`; over-limit requests get `429` plus `Retry-After`.
+- **CORS** — `allowed_origins` (default `[]`, deny-by-default) is checked against the request's `Origin` header; disallowed origins get `403`. Requests with no `Origin` header (curl, MCP clients, server-to-server) are unaffected either way — only browser-issued cross-origin requests are gated. `/health` and `/metrics` are excluded from auth but still CORS-checked.
+- **Rate limiting** (off by default) — per-token (when auth is enabled) or per-IP (`server.requestIP`) token-bucket limiting. Enable with `rate_limit.enabled = true` and set `rate_limit.requests_per_minute` (default `60`). The `X-Forwarded-For` header is ignored unless `rate_limit.trust_proxy = true` — it's client-supplied and spoofable, so only opt in when a trusted reverse proxy sets it. Every response carries `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset`; over-limit requests get `429` plus `Retry-After`.
 - **`GET /health/live`** — lightweight liveness check. Legacy `GET /health` remains an alias.
 - **`GET /health/ready`** — readiness with active retrieval capability, skill count, index state, and inference status.
 - **`GET /metrics`** — Prometheus text exposition: `skill_router_requests_total`, `skill_router_resolve_outcomes_total`, `skill_router_resolve_latency_seconds` (histogram), `skill_router_errors_total`, `skill_router_rate_limits_exceeded_total`.
@@ -167,11 +168,13 @@ All core settings can be overridden via environment variables (handy for Docker)
 - `SKILL_ROUTER_CONFIG` — path to custom `config.toml` (default `~/.config/skill-router/config.toml`)
 - `SKILL_ROUTER_MODELS_DIR` — path to directory storing downloaded local models (default `./.models`)
 - `PORT` — HTTP listen port (default `3000`, HTTP transport only)
+- `HTTP_HOSTNAME` — overrides `server.hostname` (default `127.0.0.1`, `0.0.0.0` inside Docker)
 - `HTTP_AUTH_ENABLED` — overrides `server.auth_enabled` (`"true"` to enable)
 - `HTTP_AUTH_TOKEN_ENV` — overrides `server.auth_token_env`
 - `HTTP_ALLOWED_ORIGINS` — comma-separated list, overrides `server.allowed_origins`
 - `HTTP_RATE_LIMIT_ENABLED` / `SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED` — overrides `server.rate_limit.enabled` (`"true"` to enable)
 - `HTTP_RATE_LIMIT_RPM` / `SKILL_ROUTER_HTTP_RATE_LIMIT_RPM` — overrides `server.rate_limit.requests_per_minute`
+- `HTTP_RATE_LIMIT_TRUST_PROXY` / `SKILL_ROUTER_HTTP_RATE_LIMIT_TRUST_PROXY` — overrides `server.rate_limit.trust_proxy` (`"true"` to trust `X-Forwarded-For`)
 
 Remote API keys are read from the environment variables named by `inference.embedding.api_key_env` and `inference.reranker.api_key_env`; no secret ever lives in the config file.
 

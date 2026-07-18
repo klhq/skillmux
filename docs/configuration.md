@@ -55,13 +55,17 @@ Reranker thresholds have no universal default because score distributions are mo
 
 ```toml
 [server]
+hostname = "127.0.0.1"
 auth_enabled = false
 auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"
-allowed_origins = ["*"]
+allowed_origins = []
 
 [server.rate_limit]
 enabled = false
 requests_per_minute = 60
+trust_proxy = false
 ```
 
-Only enable HTTP on a shared interface with authentication and an appropriate origin allowlist.
+Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`) — a zero-config `skr serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
+
+Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, `auth_enabled = true` with a token, and populate `allowed_origins` with the specific origins that need browser access. `rate_limit.trust_proxy` should stay `false` unless a trusted reverse proxy sets `X-Forwarded-For` — it's otherwise a client-controlled, spoofable header and trusting it defeats per-client rate limiting.

@@ -170,6 +170,28 @@ model = "reranker"
 });
 
 describe("server configuration", () => {
+  test("defaults to loopback-only binding and deny-by-default CORS", async () => {
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.server?.hostname).toBe("127.0.0.1");
+    expect(config.server?.allowed_origins).toEqual([]);
+    expect(config.server?.auth_enabled).toBe(false);
+  });
+
+  test("Docker binds 0.0.0.0 so port-mapping can reach the container", async () => {
+    process.env.RUNNING_IN_DOCKER = "true";
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.server?.hostname).toBe("0.0.0.0");
+  });
+
+  test("HTTP_HOSTNAME overrides the configured hostname", async () => {
+    process.env.HTTP_HOSTNAME = "0.0.0.0";
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.server?.hostname).toBe("0.0.0.0");
+  });
+
   test("loads rate limiting and applies namespaced environment overrides", async () => {
     const path = await configFile(`
 [server]
@@ -183,5 +205,20 @@ requests_per_minute = 75
     process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_RPM = "84";
     const config = await loadConfig(path);
     expect(config.server?.rate_limit).toEqual({ enabled: true, requests_per_minute: 84 });
+  });
+
+  test("SKILL_ROUTER_HTTP_RATE_LIMIT_TRUST_PROXY overrides rate_limit.trust_proxy", async () => {
+    const path = await configFile(`
+[server]
+auth_enabled = false
+auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"
+allowed_origins = ["*"]
+[server.rate_limit]
+enabled = true
+requests_per_minute = 60
+`);
+    process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_TRUST_PROXY = "true";
+    const config = await loadConfig(path);
+    expect(config.server?.rate_limit?.trust_proxy).toBe(true);
   });
 });
