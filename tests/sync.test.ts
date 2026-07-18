@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readlinkSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSkrMarker, resolveProjectPinDir, restoreMonolith, syncProjectTargets, syncTarget } from "../src/sync";
+import {
+  installPostMergeHook,
+  readSkrMarker,
+  resolveProjectPinDir,
+  restoreMonolith,
+  syncProjectTargets,
+  syncTarget,
+} from "../src/sync";
 
 function tmpDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -181,5 +188,50 @@ describe("syncProjectTargets", () => {
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(existingRepo, { recursive: true, force: true });
+  });
+});
+
+describe("installPostMergeHook", () => {
+  function gitVault(): string {
+    const vaultPath = tmpDir("skill-router-sync-hook-vault-");
+    mkdirSync(join(vaultPath, ".git", "hooks"), { recursive: true });
+    return vaultPath;
+  }
+
+  test("installs an executable post-merge hook that runs skr sync", () => {
+    const vaultPath = gitVault();
+
+    const result = installPostMergeHook(vaultPath);
+
+    expect(result.installed).toBe(true);
+    const hookPath = join(vaultPath, ".git", "hooks", "post-merge");
+    const content = readFileSync(hookPath, "utf-8");
+    expect(content).toContain("skr sync");
+    expect(statSync(hookPath).mode & 0o111).toBeGreaterThan(0);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("re-running is idempotent: no duplicate content, reports already installed", () => {
+    const vaultPath = gitVault();
+    installPostMergeHook(vaultPath);
+    const firstContent = readFileSync(join(vaultPath, ".git", "hooks", "post-merge"), "utf-8");
+
+    const result = installPostMergeHook(vaultPath);
+
+    expect(result.installed).toBe(false);
+    expect(readFileSync(join(vaultPath, ".git", "hooks", "post-merge"), "utf-8")).toBe(firstContent);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("refuses to clobber a pre-existing post-merge hook it doesn't manage", () => {
+    const vaultPath = gitVault();
+    const hookPath = join(vaultPath, ".git", "hooks", "post-merge");
+    writeFileSync(hookPath, "#!/bin/sh\necho some other tool's hook\n");
+
+    expect(() => installPostMergeHook(vaultPath)).toThrow();
+
+    rmSync(vaultPath, { recursive: true, force: true });
   });
 });

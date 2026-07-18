@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 
@@ -127,4 +127,25 @@ export function syncProjectTargets(
   }
 
   return results;
+}
+
+const HOOK_MARKER = "# managed-by: skr sync --install-hook";
+
+export interface InstallHookResult {
+  installed: boolean;
+}
+
+export function installPostMergeHook(vaultPath: string): InstallHookResult {
+  const hookPath = join(vaultPath, ".git", "hooks", "post-merge");
+
+  if (existsSync(hookPath)) {
+    const existing = readFileSync(hookPath, "utf-8");
+    if (existing.includes(HOOK_MARKER)) return { installed: false };
+    throw new Error(`${hookPath} already exists and is not managed by skr — refusing to overwrite`);
+  }
+
+  const script = `#!/bin/sh\n${HOOK_MARKER}\nskr sync\n`;
+  writeFileSync(hookPath, script);
+  chmodSync(hookPath, 0o755);
+  return { installed: true };
 }
