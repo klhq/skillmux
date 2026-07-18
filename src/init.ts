@@ -1,7 +1,7 @@
-import { existsSync, lstatSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import type { Manifest } from "./manifest";
-import { readSkrMarker } from "./sync";
+import { serializeManifest, type Manifest } from "./manifest";
+import { adoptTarget, readSkrMarker } from "./sync";
 import { SKILL_ID_PATTERN } from "./vault";
 
 export const DEFAULT_SURFACE_CANDIDATES = ["~/.claude/skills", "~/.agents/skills"];
@@ -51,4 +51,33 @@ export function proposeManifest(_candidates: SurfaceCandidate[]): Pick<Manifest,
 /** e.g. ~/.claude/skills -> "claude"; ~/.agents/skills -> "agents". */
 export function deriveTargetName(path: string): string {
   return basename(dirname(path)).replace(/^\./, "").toLowerCase();
+}
+
+export interface ConfirmedTarget {
+  name: string;
+  dir: string;
+}
+
+/**
+ * Writes skr.toml with the conservative-default core/project and the
+ * confirmed targets, then adopts each confirmed dir in place (creating it
+ * first if it doesn't exist yet). Unconfirmed candidates are simply never
+ * passed in — this function never discovers paths on its own.
+ */
+export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]): Manifest {
+  const manifest: Manifest = {
+    ...proposeManifest([]),
+    targets: Object.fromEntries(
+      confirmedTargets.map((target) => [target.name, { dir: target.dir, project: false }]),
+    ),
+  };
+
+  writeFileSync(join(vaultPath, "skr.toml"), serializeManifest(manifest));
+
+  for (const target of confirmedTargets) {
+    if (!existsSync(target.dir)) mkdirSync(target.dir, { recursive: true });
+    adoptTarget(target.dir, target.name);
+  }
+
+  return manifest;
 }

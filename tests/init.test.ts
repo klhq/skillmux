@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deriveTargetName, detectSurfaces, proposeManifest } from "../src/init";
+import { applyInit, deriveTargetName, detectSurfaces, proposeManifest } from "../src/init";
+import { readSkrMarker } from "../src/sync";
 
 function tmpDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -70,5 +71,39 @@ describe("deriveTargetName", () => {
 
   test("derives 'agents' from ~/.agents/skills", () => {
     expect(deriveTargetName("/Users/lance/.agents/skills")).toBe("agents");
+  });
+});
+
+describe("applyInit", () => {
+  test("writes skr.toml with an empty core and the confirmed targets, then adopts each dir in place", () => {
+    const vaultPath = tmpDir("skill-router-init-apply-vault-");
+    const claudeDir = tmpDir("skill-router-init-apply-claude-");
+    writeFileSync(join(claudeDir, "pre-existing-skill.md"), "not touched by init");
+
+    const manifest = applyInit(vaultPath, [{ name: "claude", dir: claudeDir }]);
+
+    expect(manifest).toEqual({
+      core: { skills: [] },
+      project: {},
+      targets: { claude: { dir: claudeDir, project: false } },
+    });
+    expect(readFileSync(join(vaultPath, "skr.toml"), "utf-8")).toContain("[targets.claude]");
+    expect(readSkrMarker(claudeDir)?.target).toBe("claude");
+    expect(readFileSync(join(claudeDir, "pre-existing-skill.md"), "utf-8")).toBe("not touched by init");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(claudeDir, { recursive: true, force: true });
+  });
+
+  test("creates a confirmed target dir that doesn't exist yet before adopting it", () => {
+    const vaultPath = tmpDir("skill-router-init-apply-vault-");
+    const targetDir = join(tmpDir("skill-router-init-apply-fresh-"), "claude");
+
+    applyInit(vaultPath, [{ name: "claude", dir: targetDir }]);
+
+    expect(readSkrMarker(targetDir)?.target).toBe("claude");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
   });
 });
