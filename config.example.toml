@@ -1,3 +1,5 @@
 # This entire file is optional. Skill Router indexes an externally managed
 # agentskills.io-compatible vault and uses local GTE-small semantic retrieval.
-vault_path = "~/.agents/skills"
+# vault_path is a neutral path, never a harness's static-loading scan
+# surface (e.g. ~/.agents/skills) — see docs/sdd/skr-cli/think.md.
+vault_path = "~/skills"

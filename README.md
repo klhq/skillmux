@@ -55,12 +55,12 @@ Release assets are also available at <https://github.com/klhq/skill-router/relea
 
 Requirements at runtime:
 
-- A skill vault: one directory per skill with a `SKILL.md` in [agentskills.io](https://agentskills.io) format. Default: `~/.agents/skills`.
+- A skill vault: one directory per skill with a `SKILL.md` in [agentskills.io](https://agentskills.io) format. Default: `~/skills`.
 - Optional remote OpenAI-compatible embeddings and Infinity-native reranking. The full binary uses local GTE-small embeddings by default.
 
 ## Quick start
 
-No config is required when the vault is at `~/.agents/skills`:
+No config is required when the vault is at `~/skills`:
 
 ```sh
 skr index
@@ -104,7 +104,7 @@ To run as an HTTP MCP service (default in Docker):
 # Battery-included (runs local in-process ONNX models)
 docker run -d \
   --name skill-router \
-  -v ~/.agents/skills:/vault:ro \
+  -v ~/skills:/vault:ro \
   -v skill-router-data:/data \
   -p 3000:3000 \
   ghcr.io/klhq/skill-router:latest
@@ -112,7 +112,7 @@ docker run -d \
 # Slim (configured remote embeddings, or lexical fallback)
 docker run -d \
   --name skill-router-slim \
-  -v ~/.agents/skills:/vault:ro \
+  -v ~/skills:/vault:ro \
   -v skill-router-data:/data \
   -p 3000:3000 \
   -e EMBED_BASE_URL="http://embeddings-host:8080" \
@@ -139,7 +139,7 @@ If your agent runs locally and expects a piped stdio process:
 
 ```sh
 docker run -i --rm \
-  -v ~/.agents/skills:/vault:ro \
+  -v ~/skills:/vault:ro \
   ghcr.io/klhq/skill-router:latest serve --transport stdio
 ```
 

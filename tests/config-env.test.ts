@@ -17,6 +17,14 @@ afterEach(() => {
   for (const path of files.splice(0)) rmSync(path, { force: true });
 });
 
+describe("filesystem defaults", () => {
+  test("defaults vault_path to the neutral ~/skills, not the scanned ~/.agents/skills load surface", async () => {
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.vault_path).toBe("~/skills");
+  });
+});
+
 describe("inference configuration", () => {
   test("defaults to the versioned local ONNX bundle", async () => {
     const config = await loadConfig("/does/not/exist/config.toml");

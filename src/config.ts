@@ -73,7 +73,7 @@ const configSchema = z.object({
 export const LOCAL_BUNDLE_ID = "gte-small-v1";
 
 const DEFAULTS: Config = {
-  vault_path: "~/.agents/skills",
+  vault_path: "~/skills",
   state_dir: "~/.local/state/skill-router",
   recall: { k_lexical: 20, k_vector: 20 },
   thresholds: { candidate_limit: 5 },
