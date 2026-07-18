@@ -26,7 +26,7 @@ dtype = "q8"
 
 ```
 
-Use `skill-router models download` to prefetch models and `skill-router doctor` to verify readiness.
+Use `skr models download` to prefetch models and `skr doctor` to verify readiness.
 
 ## Remote mode
 
