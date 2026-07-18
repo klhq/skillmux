@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { z } from "zod";
+import { expandHome } from "./config";
 import { SKILL_ID_PATTERN } from "./vault";
 
 const groupNameSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/).max(64);
@@ -33,7 +35,15 @@ export interface ManifestValidationResult {
   notes: string[];
 }
 
+const CORE_SKILL_LIMIT = 25;
+
 export function validateManifest(manifest: Manifest, vaultSkillIds: Set<string>): ManifestValidationResult {
+  if (manifest.core.skills.length > CORE_SKILL_LIMIT) {
+    throw new Error(
+      `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${CORE_SKILL_LIMIT}`,
+    );
+  }
+
   const coreSet = new Set(manifest.core.skills);
   for (const skillId of manifest.core.skills) {
     if (!vaultSkillIds.has(skillId)) {
@@ -49,6 +59,11 @@ export function validateManifest(manifest: Manifest, vaultSkillIds: Set<string>)
       }
       if (coreSet.has(skillId)) {
         throw new Error(`skill "${skillId}" appears in both [core] and [project.${groupName}]`);
+      }
+    }
+    for (const repo of group.repos) {
+      if (!existsSync(expandHome(repo))) {
+        notes.push(`[project.${groupName}] repos path not found locally, skipped: ${repo}`);
       }
     }
   }

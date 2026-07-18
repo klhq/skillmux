@@ -85,4 +85,32 @@ dir = "~/.claude/skills"
     const result = validateManifest(manifest, new Set(["core-skill", "infra-skill"]));
     expect(result.notes).toEqual([]);
   });
+
+  test("throws naming the count when [core] exceeds 25 skills", () => {
+    const skillIds = Array.from({ length: 26 }, (_, i) => `skill-${i}`);
+    const manifest = parseManifest(`
+[core]
+skills = ${JSON.stringify(skillIds)}
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    expect(() => validateManifest(manifest, new Set(skillIds))).toThrow("26");
+  });
+
+  test("skips a [project.*].repos path that doesn't exist locally with a note, not an error", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = ["/does/not/exist/on/this/machine"]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    const result = validateManifest(manifest, new Set());
+    expect(result.notes).toEqual(["[project.infra] repos path not found locally, skipped: /does/not/exist/on/this/machine"]);
+  });
 });
