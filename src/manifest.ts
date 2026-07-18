@@ -28,3 +28,30 @@ export function parseManifest(toml: string): Manifest {
   const parsed = Bun.TOML.parse(toml) as Record<string, unknown>;
   return manifestSchema.parse(parsed);
 }
+
+export interface ManifestValidationResult {
+  notes: string[];
+}
+
+export function validateManifest(manifest: Manifest, vaultSkillIds: Set<string>): ManifestValidationResult {
+  const coreSet = new Set(manifest.core.skills);
+  for (const skillId of manifest.core.skills) {
+    if (!vaultSkillIds.has(skillId)) {
+      throw new Error(`[core] skill "${skillId}" does not exist in the vault`);
+    }
+  }
+
+  const notes: string[] = [];
+  for (const [groupName, group] of Object.entries(manifest.project ?? {})) {
+    for (const skillId of group.skills) {
+      if (!vaultSkillIds.has(skillId)) {
+        throw new Error(`[project.${groupName}] skill "${skillId}" does not exist in the vault`);
+      }
+      if (coreSet.has(skillId)) {
+        throw new Error(`skill "${skillId}" appears in both [core] and [project.${groupName}]`);
+      }
+    }
+  }
+
+  return { notes };
+}
