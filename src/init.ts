@@ -81,3 +81,30 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
 
   return manifest;
 }
+
+/** Verbatim from docs/sdd/skr-cli/think.md §3.3 — the shared instruction-stack paragraph. */
+export const DISCOVERY_PARAGRAPH =
+  "Skills: only a curated core is loaded statically. Before improvising a " +
+  "multi-step workflow, or when a task smells like a domain you have no loaded " +
+  "skill for (career/resume, trading, SEO, i18n, design, one-off tooling), " +
+  "call `resolve_skill` with a one-line task description. `matched` → follow " +
+  "the returned SKILL.md. `ambiguous` → pick from the candidates and " +
+  "`fetch_skill`. `no_match` → proceed normally; don't force an unrelated " +
+  "skill.";
+
+export const MCP_REGISTRATION_SNIPPET = JSON.stringify(
+  { mcpServers: { "skill-router": { command: "skr", args: ["serve"] } } },
+  null,
+  2,
+);
+
+/** §3.4 step 4: "print the last mile" — MCP registration command + discovery paragraph. */
+export function printLastMile(): string {
+  return [
+    "Register with your MCP client:",
+    MCP_REGISTRATION_SNIPPET,
+    "",
+    "Add this paragraph to your shared agent instructions (~80 tokens, the entire T3 discovery mechanism):",
+    DISCOVERY_PARAGRAPH,
+  ].join("\n");
+}

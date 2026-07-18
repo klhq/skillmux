@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyInit, deriveTargetName, detectSurfaces, proposeManifest } from "../src/init";
+import { applyInit, deriveTargetName, detectSurfaces, printLastMile, proposeManifest } from "../src/init";
 import { readSkrMarker } from "../src/sync";
 
 function tmpDir(prefix: string): string {
@@ -71,6 +71,16 @@ describe("deriveTargetName", () => {
 
   test("derives 'agents' from ~/.agents/skills", () => {
     expect(deriveTargetName("/Users/lance/.agents/skills")).toBe("agents");
+  });
+});
+
+describe("printLastMile", () => {
+  test("includes the MCP registration command and the exact §3.3 discovery paragraph", () => {
+    const text = printLastMile();
+
+    expect(text).toContain(`"command": "skr"`);
+    expect(text).toContain("resolve_skill");
+    expect(text).toContain("no_match");
   });
 });
 
