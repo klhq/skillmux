@@ -153,6 +153,14 @@ describe("resolveProjectPinDir", () => {
 
     expect(resolveProjectPinDir(targetDir, repo)).toBe(join(repo, ".claude", "skills"));
   });
+
+  test("throws instead of escaping the repo when targetDir isn't under $HOME", () => {
+    expect(() => resolveProjectPinDir("/vault", "/workspace/projects/infra")).toThrow("$HOME");
+  });
+
+  test("throws instead of pinning at the repo root when targetDir equals $HOME exactly", () => {
+    expect(() => resolveProjectPinDir(homedir(), "/workspace/projects/infra")).toThrow("$HOME");
+  });
 });
 
 describe("syncProjectTargets", () => {

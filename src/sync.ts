@@ -86,7 +86,13 @@ export function restoreMonolith(targetDir: string, vaultPath: string): RestoreMo
 }
 
 export function resolveProjectPinDir(targetDir: string, repo: string): string {
-  return join(repo, relative(homedir(), targetDir));
+  const rel = relative(homedir(), targetDir);
+  if (rel === "" || rel.startsWith("..")) {
+    throw new Error(
+      `target dir "${targetDir}" must be inside $HOME to compute a project pin dir (got relative path "${rel}")`,
+    );
+  }
+  return join(repo, rel);
 }
 
 export interface ProjectGroupInput {
