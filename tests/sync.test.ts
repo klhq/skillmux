@@ -75,4 +75,36 @@ describe("syncTarget", () => {
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
+
+  test("dry-run reports the add/remove diff without writing anything", () => {
+    const vaultPath = tmpDir("skill-router-sync-vault-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    const targetDir = join(tmpDir("skill-router-sync-dryrun-"), "claude");
+
+    const result = syncTarget(
+      { vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] },
+      { dryRun: true },
+    );
+
+    expect(result.added).toEqual(["writing-clearly"]);
+    expect(result.removed).toEqual([]);
+    expect(existsSync(targetDir)).toBe(false);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("dry-run still refuses an existing unmarked target dir", () => {
+    const vaultPath = tmpDir("skill-router-sync-vault-");
+    const targetDir = tmpDir("skill-router-sync-dryrun-unmarked-");
+
+    expect(() =>
+      syncTarget(
+        { vaultPath, targetDir, targetName: "claude", coreSkillIds: [] },
+        { dryRun: true },
+      ),
+    ).toThrow("not owned by skr");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
 });

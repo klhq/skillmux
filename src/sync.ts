@@ -36,10 +36,16 @@ export interface SyncTargetResult {
   removed: string[];
 }
 
-export function syncTarget(params: SyncTargetParams): SyncTargetResult {
+export interface SyncTargetOptions {
+  dryRun?: boolean;
+}
+
+export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions = {}): SyncTargetResult {
   const { vaultPath, targetDir, targetName, coreSkillIds } = params;
+  const { dryRun = false } = options;
 
   if (!existsSync(targetDir)) {
+    if (dryRun) return { added: [...coreSkillIds], removed: [] };
     mkdirSync(targetDir, { recursive: true });
     for (const skillId of coreSkillIds) {
       symlinkSync(join(vaultPath, skillId), join(targetDir, skillId));
@@ -56,9 +62,10 @@ export function syncTarget(params: SyncTargetParams): SyncTargetResult {
   const existing = readdirSync(targetDir).filter((name) => name !== SKR_MARKER_FILENAME);
 
   const removed = existing.filter((name) => !desired.has(name));
-  for (const name of removed) unlinkSync(join(targetDir, name));
-
   const added = coreSkillIds.filter((skillId) => !existing.includes(skillId));
+  if (dryRun) return { added, removed };
+
+  for (const name of removed) unlinkSync(join(targetDir, name));
   for (const skillId of added) symlinkSync(join(vaultPath, skillId), join(targetDir, skillId));
 
   return { added, removed };
