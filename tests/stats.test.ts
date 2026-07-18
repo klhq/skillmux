@@ -1,5 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { parseSince } from "../src/stats";
+import { computeStats, parseSince } from "../src/stats";
+import type { AuditRow } from "../src/types";
+
+function auditRow(overrides: Partial<AuditRow>): AuditRow {
+  return {
+    id: 1,
+    ts: "2026-07-10T00:00:00.000Z",
+    query: "test query",
+    outcome: "no_match",
+    retrieval: "lexical",
+    candidates: [],
+    selected_skill_id: null,
+    latency_ms: 5,
+    ...overrides,
+  };
+}
 
 describe("parseSince", () => {
   test("parses a relative days window into a Date offset from now", () => {
@@ -24,5 +39,72 @@ describe("parseSince", () => {
 
   test("throws on a malformed since string", () => {
     expect(() => parseSince("not-a-window")).toThrow("invalid --since window: not-a-window");
+  });
+});
+
+describe("computeStats", () => {
+  const since = new Date("2026-06-19T00:00:00.000Z");
+  const until = new Date("2026-07-19T00:00:00.000Z");
+
+  test("tallies outcome_totals across rows", () => {
+    const rows = [
+      auditRow({ outcome: "matched", selected_skill_id: "writing-clearly", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+      auditRow({ outcome: "ambiguous", candidates: [{ skill_id: "writing-clearly", score: 0.5 }, { skill_id: "code-review", score: 0.4 }] }),
+      auditRow({ outcome: "no_match" }),
+    ];
+
+    const result = computeStats(rows, since, until);
+
+    expect(result.outcome_totals).toEqual({ matched: 1, ambiguous: 1, no_match: 1 });
+    expect(result.since).toBe(since.toISOString());
+    expect(result.until).toBe(until.toISOString());
+  });
+
+  test("computes ambiguous_rate as ambiguous over total, and 0 with no rows", () => {
+    const rows = [
+      auditRow({ outcome: "matched", selected_skill_id: "a", candidates: [{ skill_id: "a", score: 0.9 }] }),
+      auditRow({ outcome: "ambiguous", candidates: [{ skill_id: "a", score: 0.5 }] }),
+      auditRow({ outcome: "ambiguous", candidates: [{ skill_id: "a", score: 0.5 }] }),
+      auditRow({ outcome: "no_match" }),
+    ];
+
+    expect(computeStats(rows, since, until).ambiguous_rate).toBe(0.5);
+    expect(computeStats([], since, until).ambiguous_rate).toBe(0);
+  });
+
+  test("aggregates per-skill matched_count and candidate_count, deduped within a row, sorted by matched_count desc", () => {
+    const rows = [
+      auditRow({
+        outcome: "matched",
+        selected_skill_id: "writing-clearly",
+        candidates: [{ skill_id: "writing-clearly", score: 0.9 }, { skill_id: "code-review", score: 0.6 }],
+      }),
+      auditRow({
+        outcome: "ambiguous",
+        candidates: [{ skill_id: "code-review", score: 0.5 }, { skill_id: "writing-clearly", score: 0.5 }],
+      }),
+    ];
+
+    const result = computeStats(rows, since, until);
+
+    expect(result.skills).toEqual([
+      { skill_id: "writing-clearly", matched_count: 1, candidate_count: 2 },
+      { skill_id: "code-review", matched_count: 0, candidate_count: 2 },
+    ]);
+  });
+
+  test("collects top_no_match_queries sorted by count desc, capped at 20 distinct queries", () => {
+    const rows = [
+      auditRow({ outcome: "no_match", query: "frequent query" }),
+      auditRow({ outcome: "no_match", query: "frequent query" }),
+      auditRow({ outcome: "no_match", query: "rare query" }),
+    ];
+
+    const result = computeStats(rows, since, until);
+
+    expect(result.top_no_match_queries).toEqual([
+      { query: "frequent query", count: 2 },
+      { query: "rare query", count: 1 },
+    ]);
   });
 });
