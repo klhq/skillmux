@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const SKR_MARKER_FILENAME = ".skr";
@@ -48,5 +48,18 @@ export function syncTarget(params: SyncTargetParams): SyncTargetResult {
     return { added: [...coreSkillIds], removed: [] };
   }
 
-  throw new Error(`not owned by skr — run skr init`);
+  if (!readSkrMarker(targetDir)) {
+    throw new Error(`not owned by skr — run skr init`);
+  }
+
+  const desired = new Set(coreSkillIds);
+  const existing = readdirSync(targetDir).filter((name) => name !== SKR_MARKER_FILENAME);
+
+  const removed = existing.filter((name) => !desired.has(name));
+  for (const name of removed) unlinkSync(join(targetDir, name));
+
+  const added = coreSkillIds.filter((skillId) => !existing.includes(skillId));
+  for (const skillId of added) symlinkSync(join(vaultPath, skillId), join(targetDir, skillId));
+
+  return { added, removed };
 }

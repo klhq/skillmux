@@ -35,4 +35,44 @@ describe("syncTarget", () => {
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
+
+  test("refuses to touch an existing target dir that lacks a .skr marker", () => {
+    const vaultPath = tmpDir("skill-router-sync-vault-");
+    const targetDir = tmpDir("skill-router-sync-unmarked-");
+
+    expect(() =>
+      syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: [] }),
+    ).toThrow("not owned by skr");
+    expect(existsSync(join(targetDir, ".skr"))).toBe(false);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("rebuilds an already-marked target: adds missing and removes stale symlinks", () => {
+    const vaultPath = tmpDir("skill-router-sync-vault-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    mkdirSync(join(vaultPath, "code-review"));
+    const targetDir = join(tmpDir("skill-router-sync-marked-"), "claude");
+
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
+    const markerBefore = readSkrMarker(targetDir);
+
+    const result = syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "claude",
+      coreSkillIds: ["code-review"],
+    });
+
+    expect(result.added).toEqual(["code-review"]);
+    expect(result.removed).toEqual(["writing-clearly"]);
+    expect(existsSync(join(targetDir, "writing-clearly"))).toBe(false);
+    expect(readlinkSync(join(targetDir, "code-review"))).toBe(join(vaultPath, "code-review"));
+    // created_at is not updated by subsequent syncs
+    expect(readSkrMarker(targetDir)?.created_at).toBe(markerBefore?.created_at);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
 });
