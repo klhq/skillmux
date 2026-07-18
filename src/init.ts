@@ -1,7 +1,8 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { SKILL_ID_PATTERN } from "./vault";
+import type { Manifest } from "./manifest";
 import { readSkrMarker } from "./sync";
+import { SKILL_ID_PATTERN } from "./vault";
 
 export const DEFAULT_SURFACE_CANDIDATES = ["~/.claude/skills", "~/.agents/skills"];
 
@@ -36,4 +37,13 @@ export function detectSurfaces(candidatePaths: string[]): SurfaceCandidate[] {
       alreadyMarked: readSkrMarker(path) !== null,
     };
   });
+}
+
+/**
+ * Conservative default: no slash-command/workflow-router detection heuristic
+ * at TDD time (spec.md, "skr init" AC) — evidence-only, nothing proposed
+ * until a concrete heuristic is agreed.
+ */
+export function proposeManifest(_candidates: SurfaceCandidate[]): Pick<Manifest, "core" | "project"> {
+  return { core: { skills: [] }, project: {} };
 }

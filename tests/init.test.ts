@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectSurfaces } from "../src/init";
+import { detectSurfaces, proposeManifest } from "../src/init";
 
 function tmpDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -52,5 +52,13 @@ describe("detectSurfaces", () => {
     expect(candidate.skillCount).toBe(1);
 
     rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("proposeManifest", () => {
+  test("proposes an empty core list and no project groups regardless of detected surfaces (conservative default)", () => {
+    const candidates = detectSurfaces(["/does/not/exist/on/this/machine"]);
+
+    expect(proposeManifest(candidates)).toEqual({ core: { skills: [] }, project: {} });
   });
 });
