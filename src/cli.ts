@@ -146,17 +146,17 @@ switch (command) {
         break;
     case "config":
         if (Bun.argv[3] !== "show")
-            throw new Error("usage: skill-router config show");
+            throw new Error("usage: skr config show");
         await showConfig();
         break;
     case "models":
         if (Bun.argv[3] !== "download")
-            throw new Error("usage: skill-router models download");
+            throw new Error("usage: skr models download");
         await runModelDownload();
         break;
     default:
         console.error(
-            "usage: skill-router <serve|index|eval|doctor|config show|models download> [--transport stdio|http] [--port N]",
+            "usage: skr <serve|index|eval|doctor|config show|models download> [--transport stdio|http] [--port N]",
         );
         process.exit(2);
 }

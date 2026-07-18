@@ -15,7 +15,7 @@
   },
   "homepage": "https://github.com/klhq/skill-router#readme",
   "bin": {
-    "skill-router": "./src/cli.ts"
+    "skr": "./src/cli.ts"
   },
   "scripts": {
     "test": "bun test",
@@ -24,7 +24,7 @@
     "eval": "bun run src/cli.ts eval",
     "doctor": "bun run src/cli.ts doctor",
     "models:download": "bun run src/cli.ts models download",
-    "build": "bun build --compile src/cli.ts --outfile dist/skill-router"
+    "build": "bun build --compile src/cli.ts --outfile dist/skr"
   },
   "devDependencies": {
     "bun-types": "^1.3.14"

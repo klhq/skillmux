@@ -47,24 +47,24 @@ gh release download --repo klhq/skill-router \
 sha256sum --check SHA256SUMS
 # Install the binary matching your machine (amd64 or arm64)
 chmod +x skill-router-linux-amd64
-sudo install skill-router-linux-amd64 /usr/local/bin/skill-router
-skill-router config show
+sudo install skill-router-linux-amd64 /usr/local/bin/skr
+skr config show
 ```
 
 Release assets are also available at <https://github.com/klhq/skill-router/releases/latest>.
 
 Requirements at runtime:
 
-- A skill vault: one directory per skill with a `SKILL.md` in [agentskills.io](https://agentskills.io) format. Default: `~/.agents/skills`.
+- A skill vault: one directory per skill with a `SKILL.md` in [agentskills.io](https://agentskills.io) format. Default: `~/skills`.
 - Optional remote OpenAI-compatible embeddings and Infinity-native reranking. The full binary uses local GTE-small embeddings by default.
 
 ## Quick start
 
-No config is required when the vault is at `~/.agents/skills`:
+No config is required when the vault is at `~/skills`:
 
 ```sh
-skill-router index
-skill-router serve
+skr index
+skr serve
 ```
 
 Register with your MCP client directly, e.g.:
@@ -73,7 +73,7 @@ Register with your MCP client directly, e.g.:
 {
   "mcpServers": {
     "skill-router": {
-      "command": "skill-router",
+      "command": "skr",
       "args": ["serve"]
     }
   }
@@ -104,7 +104,7 @@ To run as an HTTP MCP service (default in Docker):
 # Battery-included (runs local in-process ONNX models)
 docker run -d \
   --name skill-router \
-  -v ~/.agents/skills:/vault:ro \
+  -v ~/skills:/vault:ro \
   -v skill-router-data:/data \
   -p 3000:3000 \
   ghcr.io/klhq/skill-router:latest
@@ -112,7 +112,7 @@ docker run -d \
 # Slim (configured remote embeddings, or lexical fallback)
 docker run -d \
   --name skill-router-slim \
-  -v ~/.agents/skills:/vault:ro \
+  -v ~/skills:/vault:ro \
   -v skill-router-data:/data \
   -p 3000:3000 \
   -e EMBED_BASE_URL="http://embeddings-host:8080" \
@@ -139,7 +139,7 @@ If your agent runs locally and expects a piped stdio process:
 
 ```sh
 docker run -i --rm \
-  -v ~/.agents/skills:/vault:ro \
+  -v ~/skills:/vault:ro \
   ghcr.io/klhq/skill-router:latest serve --transport stdio
 ```
 
@@ -152,7 +152,7 @@ No config is required for the battery-included local ONNX mode. See [`config.exa
 - The zero-config default combines SQLite FTS5 with the small `Xenova/gte-small` embedding model and returns an ordered shortlist.
 - Configured OpenAI-compatible embeddings replace the local embedder. An optional Infinity-compatible reranker enables confident automatic matches.
 
-Run `skill-router doctor` to verify routing capability. Run `skill-router config show` to inspect effective configuration; it prints credential variable names, never values.
+Run `skr doctor` to verify routing capability. Run `skr config show` to inspect effective configuration; it prints credential variable names, never values.
 
 ### Environment Variable Overrides
 All core settings can be overridden via environment variables (handy for Docker):

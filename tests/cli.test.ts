@@ -111,3 +111,23 @@ describe("skill-router serve CLI", () => {
     expect(result.stderr).toContain("--port must be an integer between 0 and 65535");
   });
 });
+
+describe("skr CLI usage", () => {
+  test("unknown command usage message names the skr binary, not skill-router", async () => {
+    const result = await runCli("bogus-command");
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("usage: skr <serve|index|eval|doctor|config show|models download>");
+  });
+
+  test("config subcommand usage error names the skr binary", async () => {
+    const result = await runCli("config", "bogus");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("usage: skr config show");
+  });
+
+  test("models subcommand usage error names the skr binary", async () => {
+    const result = await runCli("models", "bogus");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("usage: skr models download");
+  });
+});
