@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSkrMarker, syncTarget } from "../src/sync";
+import { readSkrMarker, restoreMonolith, syncTarget } from "../src/sync";
 
 function tmpDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -103,6 +103,36 @@ describe("syncTarget", () => {
         { dryRun: true },
       ),
     ).toThrow("not owned by skr");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+describe("restoreMonolith", () => {
+  test("replaces a .skr-marked target directory with a symlink to the vault root", () => {
+    const vaultPath = tmpDir("skill-router-sync-vault-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    const targetDir = join(tmpDir("skill-router-sync-restore-"), "claude");
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
+
+    const result = restoreMonolith(targetDir, vaultPath);
+
+    expect(result.restored).toBe(true);
+    expect(readlinkSync(targetDir)).toBe(vaultPath);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { force: true });
+  });
+
+  test("leaves an unmarked directory untouched", () => {
+    const vaultPath = tmpDir("skill-router-sync-vault-");
+    const targetDir = tmpDir("skill-router-sync-restore-unmarked-");
+
+    const result = restoreMonolith(targetDir, vaultPath);
+
+    expect(result.restored).toBe(false);
+    expect(existsSync(targetDir)).toBe(true);
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });

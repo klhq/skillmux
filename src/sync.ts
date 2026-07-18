@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const SKR_MARKER_FILENAME = ".skr";
@@ -69,4 +69,17 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   for (const skillId of added) symlinkSync(join(vaultPath, skillId), join(targetDir, skillId));
 
   return { added, removed };
+}
+
+export interface RestoreMonolithResult {
+  restored: boolean;
+}
+
+export function restoreMonolith(targetDir: string, vaultPath: string): RestoreMonolithResult {
+  if (!readSkrMarker(targetDir)) {
+    return { restored: false };
+  }
+  rmSync(targetDir, { recursive: true, force: true });
+  symlinkSync(vaultPath, targetDir);
+  return { restored: true };
 }
