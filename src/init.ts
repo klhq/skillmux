@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Manifest } from "./manifest";
 import { readSkrMarker } from "./sync";
 import { SKILL_ID_PATTERN } from "./vault";
@@ -46,4 +46,9 @@ export function detectSurfaces(candidatePaths: string[]): SurfaceCandidate[] {
  */
 export function proposeManifest(_candidates: SurfaceCandidate[]): Pick<Manifest, "core" | "project"> {
   return { core: { skills: [] }, project: {} };
+}
+
+/** e.g. ~/.claude/skills -> "claude"; ~/.agents/skills -> "agents". */
+export function deriveTargetName(path: string): string {
+  return basename(dirname(path)).replace(/^\./, "").toLowerCase();
 }

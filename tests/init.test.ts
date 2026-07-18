@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectSurfaces, proposeManifest } from "../src/init";
+import { deriveTargetName, detectSurfaces, proposeManifest } from "../src/init";
 
 function tmpDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -60,5 +60,15 @@ describe("proposeManifest", () => {
     const candidates = detectSurfaces(["/does/not/exist/on/this/machine"]);
 
     expect(proposeManifest(candidates)).toEqual({ core: { skills: [] }, project: {} });
+  });
+});
+
+describe("deriveTargetName", () => {
+  test("derives 'claude' from ~/.claude/skills", () => {
+    expect(deriveTargetName("/Users/lance/.claude/skills")).toBe("claude");
+  });
+
+  test("derives 'agents' from ~/.agents/skills", () => {
+    expect(deriveTargetName("/Users/lance/.agents/skills")).toBe("agents");
   });
 });
