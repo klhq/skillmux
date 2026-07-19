@@ -1,6 +1,8 @@
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { type ScanFinding, readTextFileOrNull, scanContent } from "./scan";
+import { decodeUtf8Strict, listSupportingFiles, parseSkillMd } from "./vault";
 
 export interface RepoSource {
   url: string;
@@ -38,6 +40,34 @@ export async function cloneToTemp(url: string): Promise<string> {
     throw new Error(`git clone failed for ${url}: ${stderr.trim()}`);
   }
   return dir;
+}
+
+export interface ValidationResult {
+  findings: ScanFinding[];
+}
+
+export async function validateSkillCandidate(skillId: string, dir: string): Promise<ValidationResult> {
+  const bytes = await Bun.file(join(dir, "SKILL.md")).bytes();
+  const body = decodeUtf8Strict(bytes);
+  parseSkillMd(skillId, body);
+
+  const findings: ScanFinding[] = scanContent(body).map((match) => ({
+    ...match,
+    skill_id: skillId,
+    file: "SKILL.md",
+  }));
+
+  const vaultPath = dirname(dir);
+  const dirName = basename(dir);
+  for (const rel of listSupportingFiles(vaultPath, dirName)) {
+    const content = await readTextFileOrNull(join(dir, rel));
+    if (content === null) continue;
+    for (const match of scanContent(content)) {
+      findings.push({ ...match, skill_id: skillId, file: rel });
+    }
+  }
+
+  return { findings };
 }
 
 export interface ResolvedSkillDir {
