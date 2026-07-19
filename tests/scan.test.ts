@@ -173,6 +173,37 @@ describe("scanPath", () => {
 
     rmSync(vaultDir, { recursive: true, force: true });
   });
+
+  test("flags (not silently drops) a skill whose SKILL.md fails to parse, in vault-wide mode", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skr-scan-unparseable-"));
+    writeSkill(vaultDir, "clean-skill", "---\nname: Clean\ndescription: d\n---\nNothing risky.");
+    writeSkill(vaultDir, "broken-skill", "---\nname: [unclosed\n");
+
+    const result = await scanPath(vaultDir);
+
+    expect(result.scanned).toBe(2);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ skill_id: "broken-skill", rule_id: "unparseable-skill", severity: "medium" }),
+    );
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("flags (not silently drops) a non-UTF-8 SKILL.md in single-skill-dir mode", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skr-scan-unparseable-single-"));
+    const skillDir = join(vaultDir, "broken-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), Buffer.from([0xff, 0xfe, 0xff]));
+
+    const result = await scanPath(skillDir);
+
+    expect(result.scanned).toBe(1);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ skill_id: "broken-skill", rule_id: "unparseable-skill", severity: "medium" }),
+    );
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
 });
 
 describe("renderScanText", () => {

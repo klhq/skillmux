@@ -298,11 +298,16 @@ describe("skr report CLI", () => {
 });
 
 describe("skr scan CLI", () => {
-  test("scans the configured vault by default and reports no findings for clean skills", async () => {
+  test("scans the configured vault by default and flags the pre-existing unparseable skill, but nothing else", async () => {
+    // second-skill's SKILL.md was corrupted by the "index CLI" suite above (unterminated
+    // frontmatter) — this test asserts that skip surfaces as a finding, not that the vault
+    // is pristine.
     const result = await runCli("scan");
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("no findings");
+    expect(result.stdout).toContain("second-skill");
+    expect(result.stdout).toContain("unparseable-skill");
+    expect(result.stdout).not.toContain("first-skill/");
   });
 
   test("flags a risky skill in the vault and always exits 0 without --fail-on", async () => {
@@ -327,7 +332,7 @@ describe("skr scan CLI", () => {
     rmSync(join(vaultDir, "risky-skill-2"), { recursive: true, force: true });
   });
 
-  test("--fail-on high exits 0 when the vault has no findings", async () => {
+  test("--fail-on high exits 0 when no finding reaches high severity", async () => {
     const result = await runCli("scan", "--fail-on", "high");
 
     expect(result.exitCode).toBe(0);
@@ -339,7 +344,8 @@ describe("skr scan CLI", () => {
     expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(result.stdout);
     expect(parsed.scanned).toBeGreaterThan(0);
-    expect(parsed.findings).toEqual([]);
+    expect(Array.isArray(parsed.findings)).toBe(true);
+    expect(parsed.findings.some((f: { skill_id: string }) => f.skill_id === "first-skill")).toBe(false);
   });
 
   test("accepts a <path> argument to scan a single skill dir instead of the configured vault", async () => {
@@ -361,5 +367,12 @@ describe("skr scan CLI", () => {
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("--fail-on must be low, medium, or high");
+  });
+
+  test("rejects more than one <path> argument", async () => {
+    const result = await runCli("scan", join(vaultDir, "first-skill"), join(vaultDir, "second-skill"));
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("skr scan accepts at most one <path> argument");
   });
 });

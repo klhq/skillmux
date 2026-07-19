@@ -184,27 +184,35 @@ async function collectSkillTargets(
   return targets;
 }
 
+interface ResolvedScanTargets {
+  targets: ScanContentTarget[];
+  /** skill_ids whose SKILL.md could not be parsed/decoded — must still be counted and
+   *  flagged, never silently dropped, or a malformed SKILL.md becomes a scan-evasion trick. */
+  unparseable: string[];
+}
+
 /** Single-skill-dir mode when `rootPath` itself holds a SKILL.md; otherwise treats
  *  `rootPath` as a vault root and enumerates every skill dir under it. */
-async function resolveScanTargets(rootPath: string): Promise<ScanContentTarget[]> {
+async function resolveScanTargets(rootPath: string): Promise<ResolvedScanTargets> {
   if (existsSync(join(rootPath, "SKILL.md"))) {
     const skillId = basename(rootPath);
     const vaultPath = dirname(rootPath);
     const body = await readTextFileOrNull(join(rootPath, "SKILL.md"));
-    if (body === null) return [];
-    return collectSkillTargets(vaultPath, skillId, body);
+    if (body === null) return { targets: [], unparseable: [skillId] };
+    return { targets: await collectSkillTargets(vaultPath, skillId, body), unparseable: [] };
   }
 
-  const skills = await scanVault(rootPath);
+  const unparseable: string[] = [];
+  const skills = await scanVault(rootPath, (skillId) => unparseable.push(skillId));
   const targets: ScanContentTarget[] = [];
   for (const skill of skills) {
     targets.push(...(await collectSkillTargets(rootPath, skill.skill_id, skill.body)));
   }
-  return targets;
+  return { targets, unparseable };
 }
 
 export async function scanPath(rootPath: string): Promise<ScanResult> {
-  const targets = await resolveScanTargets(rootPath);
+  const { targets, unparseable } = await resolveScanTargets(rootPath);
   const findings: ScanFinding[] = [];
   const skillIds = new Set<string>();
   for (const target of targets) {
@@ -212,6 +220,16 @@ export async function scanPath(rootPath: string): Promise<ScanResult> {
     for (const match of scanContent(target.content)) {
       findings.push({ ...match, skill_id: target.skill_id, file: target.file });
     }
+  }
+  for (const skillId of unparseable) {
+    skillIds.add(skillId);
+    findings.push({
+      skill_id: skillId,
+      file: "SKILL.md",
+      rule_id: "unparseable-skill",
+      severity: "medium",
+      message: "SKILL.md could not be parsed or decoded — content was not scanned; review manually",
+    });
   }
   return { scanned: skillIds.size, findings };
 }
