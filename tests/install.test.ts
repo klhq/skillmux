@@ -193,6 +193,22 @@ describe("installIntoVault", () => {
     rmSync(sourceDir, { recursive: true, force: true });
   });
 
+  test("excludes a .git directory from the source when copying into the vault", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skr-install-vault-git-"));
+    const sourceDir = mkdtempSync(join(tmpdir(), "skr-install-source-git-"));
+    writeFileSync(join(sourceDir, "SKILL.md"), "---\nname: New Skill\n---\nbody");
+    mkdirSync(join(sourceDir, ".git", "objects"), { recursive: true });
+    writeFileSync(join(sourceDir, ".git", "config"), "[core]\n");
+
+    const targetDir = installIntoVault(vaultDir, "new-skill", sourceDir);
+
+    expect(existsSync(join(targetDir, ".git"))).toBe(false);
+    expect(existsSync(join(targetDir, "SKILL.md"))).toBe(true);
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(sourceDir, { recursive: true, force: true });
+  });
+
   test("aborts when the skill_id already exists in the vault and --force was not passed", () => {
     const vaultDir = mkdtempSync(join(tmpdir(), "skr-install-vault-conflict-"));
     mkdirSync(join(vaultDir, "existing-skill"));

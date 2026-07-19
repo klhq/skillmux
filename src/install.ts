@@ -85,7 +85,7 @@ export function installIntoVault(vaultPath: string, skillId: string, sourceDir: 
     }
     rmSync(targetDir, { recursive: true, force: true });
   }
-  cpSync(sourceDir, targetDir, { recursive: true });
+  cpSync(sourceDir, targetDir, { recursive: true, filter: (src) => basename(src) !== ".git" });
   return targetDir;
 }
 
