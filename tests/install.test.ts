@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cloneToTemp, resolveRepoSource, resolveSkillDir, validateSkillCandidate } from "../src/install";
+import { cloneToTemp, installIntoVault, resolveRepoSource, resolveSkillDir, validateSkillCandidate } from "../src/install";
 
 const GIT_ENV = {
   ...process.env,
@@ -152,5 +152,50 @@ describe("validateSkillCandidate", () => {
     );
 
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("installIntoVault", () => {
+  test("copies the resolved skill directory into vault_path under its skill_id", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skr-install-vault-"));
+    const sourceDir = mkdtempSync(join(tmpdir(), "skr-install-source-"));
+    writeFileSync(join(sourceDir, "SKILL.md"), "---\nname: New Skill\n---\nbody");
+
+    const targetDir = installIntoVault(vaultDir, "new-skill", sourceDir);
+
+    expect(targetDir).toBe(join(vaultDir, "new-skill"));
+    expect(readFileSync(join(targetDir, "SKILL.md"), "utf-8")).toContain("New Skill");
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(sourceDir, { recursive: true, force: true });
+  });
+
+  test("aborts when the skill_id already exists in the vault and --force was not passed", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skr-install-vault-conflict-"));
+    mkdirSync(join(vaultDir, "existing-skill"));
+    writeFileSync(join(vaultDir, "existing-skill", "SKILL.md"), "---\nname: Old\n---\noriginal");
+    const sourceDir = mkdtempSync(join(tmpdir(), "skr-install-source-conflict-"));
+    writeFileSync(join(sourceDir, "SKILL.md"), "---\nname: New\n---\nreplacement");
+
+    expect(() => installIntoVault(vaultDir, "existing-skill", sourceDir)).toThrow(/existing-skill.*--force/s);
+    expect(readFileSync(join(vaultDir, "existing-skill", "SKILL.md"), "utf-8")).toContain("original");
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(sourceDir, { recursive: true, force: true });
+  });
+
+  test("overwrites the existing skill when force is true", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skr-install-vault-force-"));
+    mkdirSync(join(vaultDir, "existing-skill"));
+    writeFileSync(join(vaultDir, "existing-skill", "SKILL.md"), "---\nname: Old\n---\noriginal");
+    const sourceDir = mkdtempSync(join(tmpdir(), "skr-install-source-force-"));
+    writeFileSync(join(sourceDir, "SKILL.md"), "---\nname: New\n---\nreplacement");
+
+    installIntoVault(vaultDir, "existing-skill", sourceDir, true);
+
+    expect(readFileSync(join(vaultDir, "existing-skill", "SKILL.md"), "utf-8")).toContain("replacement");
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(sourceDir, { recursive: true, force: true });
   });
 });

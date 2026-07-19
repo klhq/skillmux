@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { type ScanFinding, readTextFileOrNull, scanContent } from "./scan";
@@ -68,6 +68,18 @@ export async function validateSkillCandidate(skillId: string, dir: string): Prom
   }
 
   return { findings };
+}
+
+export function installIntoVault(vaultPath: string, skillId: string, sourceDir: string, force = false): string {
+  const targetDir = join(vaultPath, skillId);
+  if (existsSync(targetDir)) {
+    if (!force) {
+      throw new Error(`skill "${skillId}" already exists in the vault at ${targetDir} — pass --force to overwrite`);
+    }
+    rmSync(targetDir, { recursive: true, force: true });
+  }
+  cpSync(sourceDir, targetDir, { recursive: true });
+  return targetDir;
 }
 
 export interface ResolvedSkillDir {
