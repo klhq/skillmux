@@ -215,3 +215,20 @@ export async function scanPath(rootPath: string): Promise<ScanResult> {
   }
   return { scanned: skillIds.size, findings };
 }
+
+export function renderScanText(result: ScanResult): string {
+  const skillWord = result.scanned === 1 ? "skill" : "skills";
+  if (result.findings.length === 0) {
+    return `scanned ${result.scanned} ${skillWord}, no findings`;
+  }
+  const lines: string[] = [`scanned ${result.scanned} ${skillWord}, ${result.findings.length} finding(s)`];
+  for (const finding of result.findings) {
+    const location = finding.line !== undefined ? `${finding.file}:${finding.line}` : finding.file;
+    lines.push(`[${finding.severity}] ${finding.skill_id}/${location} ${finding.rule_id} — ${finding.message}`);
+  }
+  return lines.join("\n");
+}
+
+export function renderScanJson(result: ScanResult): string {
+  return JSON.stringify(result, null, 2);
+}

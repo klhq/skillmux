@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { scanContent, scanPath } from "../src/scan";
+import { renderScanJson, renderScanText, scanContent, scanPath } from "../src/scan";
+import type { ScanResult } from "../src/scan";
 
 function writeSkill(vaultDir: string, id: string, body: string) {
   const dir = join(vaultDir, id);
@@ -171,5 +172,55 @@ describe("scanPath", () => {
     expect(result.findings).toEqual([]);
 
     rmSync(vaultDir, { recursive: true, force: true });
+  });
+});
+
+describe("renderScanText", () => {
+  test("prints a summary line with no findings mention when there are none", () => {
+    const result: ScanResult = { scanned: 3, findings: [] };
+
+    const text = renderScanText(result);
+
+    expect(text).toContain("scanned 3 skill");
+    expect(text).toContain("no findings");
+  });
+
+  test("prints severity, skill_id, file, rule_id, and message for each finding", () => {
+    const result: ScanResult = {
+      scanned: 1,
+      findings: [
+        {
+          skill_id: "risky-skill",
+          file: "SKILL.md",
+          rule_id: "prompt-injection-phrase",
+          severity: "high",
+          message: 'contains instruction-override phrase: "ignore previous instructions"',
+          line: 3,
+        },
+      ],
+    };
+
+    const text = renderScanText(result);
+
+    expect(text).toContain("high");
+    expect(text).toContain("risky-skill");
+    expect(text).toContain("SKILL.md:3");
+    expect(text).toContain("prompt-injection-phrase");
+    expect(text).toContain("ignore previous instructions");
+  });
+});
+
+describe("renderScanJson", () => {
+  test("round-trips scanned and findings through JSON.parse", () => {
+    const result: ScanResult = {
+      scanned: 2,
+      findings: [
+        { skill_id: "a", file: "SKILL.md", rule_id: "secret-pattern", severity: "high", message: "m" },
+      ],
+    };
+
+    const parsed = JSON.parse(renderScanJson(result));
+
+    expect(parsed).toEqual(result);
   });
 });
