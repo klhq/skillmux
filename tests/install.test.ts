@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cloneToTemp, resolveRepoSource } from "../src/install";
+import { cloneToTemp, resolveRepoSource, resolveSkillDir } from "../src/install";
 
 const GIT_ENV = {
   ...process.env,
@@ -72,5 +72,44 @@ describe("cloneToTemp", () => {
     const nonexistentDir = join(tmpdir(), "skr-install-does-not-exist-12345");
 
     await expect(cloneToTemp(`file://${nonexistentDir}`)).rejects.toThrow(/git clone failed/);
+  });
+});
+
+describe("resolveSkillDir", () => {
+  test("resolves a skill at an explicit skillPath within the clone", () => {
+    const cloneDir = mkdtempSync(join(tmpdir(), "skr-install-clonedir-"));
+    const skillDir = join(cloneDir, "skills", "csv-formatter");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: CSV Formatter\n---\nbody");
+
+    const resolved = resolveSkillDir(cloneDir, "skillshare", "skills/csv-formatter");
+
+    expect(resolved).toEqual({ skillId: "csv-formatter", dir: skillDir });
+
+    rmSync(cloneDir, { recursive: true, force: true });
+  });
+
+  test("resolves the clone root itself when it has a SKILL.md and no skillPath is given", () => {
+    const cloneDir = mkdtempSync(join(tmpdir(), "skr-install-clonedir-"));
+    writeFileSync(join(cloneDir, "SKILL.md"), "---\nname: Root Skill\n---\nbody");
+
+    const resolved = resolveSkillDir(cloneDir, "my-skill");
+
+    expect(resolved).toEqual({ skillId: "my-skill", dir: cloneDir });
+
+    rmSync(cloneDir, { recursive: true, force: true });
+  });
+
+  test("errors listing discovered skill dirs when root has no SKILL.md and no path was given", () => {
+    const cloneDir = mkdtempSync(join(tmpdir(), "skr-install-clonedir-"));
+    for (const id of ["alpha-skill", "beta-skill"]) {
+      mkdirSync(join(cloneDir, id), { recursive: true });
+      writeFileSync(join(cloneDir, id, "SKILL.md"), "---\nname: x\n---\nbody");
+    }
+    mkdirSync(join(cloneDir, "not-a-skill"));
+
+    expect(() => resolveSkillDir(cloneDir, "skillshare")).toThrow(/alpha-skill.*beta-skill/s);
+
+    rmSync(cloneDir, { recursive: true, force: true });
   });
 });

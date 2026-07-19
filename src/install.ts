@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 export interface RepoSource {
   url: string;
@@ -38,4 +38,27 @@ export async function cloneToTemp(url: string): Promise<string> {
     throw new Error(`git clone failed for ${url}: ${stderr.trim()}`);
   }
   return dir;
+}
+
+export interface ResolvedSkillDir {
+  skillId: string;
+  dir: string;
+}
+
+export function resolveSkillDir(cloneDir: string, fallbackName: string, skillPath?: string): ResolvedSkillDir {
+  if (skillPath) {
+    return { skillId: basename(skillPath), dir: join(cloneDir, skillPath) };
+  }
+  if (existsSync(join(cloneDir, "SKILL.md"))) {
+    return { skillId: fallbackName, dir: cloneDir };
+  }
+  const discovered = readdirSync(cloneDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(cloneDir, entry.name, "SKILL.md")))
+    .map((entry) => entry.name)
+    .sort();
+  throw new Error(
+    discovered.length > 0
+      ? `no SKILL.md at repo root; found skill dirs: ${discovered.join(", ")} — pass a path to select one, e.g. owner/repo/${discovered[0]}`
+      : "no SKILL.md at repo root and no skill dirs found under it",
+  );
 }
