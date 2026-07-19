@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 export interface RepoSource {
   url: string;
   skillPath?: string;
@@ -19,4 +23,19 @@ export function resolveRepoSource(repo: string): RepoSource {
   }
   const url = `https://github.com/${owner}/${name}.git`;
   return rest.length > 0 ? { url, skillPath: rest.join("/") } : { url };
+}
+
+export async function cloneToTemp(url: string): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "skr-install-"));
+  const proc = Bun.spawn(["git", "clone", "--quiet", "--depth", "1", url, dir], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    rmSync(dir, { recursive: true, force: true });
+    throw new Error(`git clone failed for ${url}: ${stderr.trim()}`);
+  }
+  return dir;
 }
