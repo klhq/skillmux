@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { decodeUtf8Strict, listSupportingFiles, scanVault } from "./vault";
+
 export type ScanSeverity = "low" | "medium" | "high";
 
 export interface RuleMatch {
@@ -140,4 +144,74 @@ export const RULES: Rule[] = [promptInjectionPhraseRule, invisibleUnicodeRule, s
 
 export function scanContent(content: string): RuleMatch[] {
   return RULES.flatMap((rule) => rule(content));
+}
+
+export interface ScanFinding extends RuleMatch {
+  skill_id: string;
+  file: string;
+}
+
+export interface ScanResult {
+  scanned: number;
+  findings: ScanFinding[];
+}
+
+interface ScanContentTarget {
+  skill_id: string;
+  file: string;
+  content: string;
+}
+
+async function readTextFileOrNull(path: string): Promise<string | null> {
+  try {
+    const bytes = await Bun.file(path).bytes();
+    return decodeUtf8Strict(bytes);
+  } catch {
+    return null;
+  }
+}
+
+async function collectSkillTargets(
+  vaultPath: string,
+  skillId: string,
+  skillMdBody: string,
+): Promise<ScanContentTarget[]> {
+  const targets: ScanContentTarget[] = [{ skill_id: skillId, file: "SKILL.md", content: skillMdBody }];
+  for (const rel of listSupportingFiles(vaultPath, skillId)) {
+    const content = await readTextFileOrNull(join(vaultPath, skillId, rel));
+    if (content !== null) targets.push({ skill_id: skillId, file: rel, content });
+  }
+  return targets;
+}
+
+/** Single-skill-dir mode when `rootPath` itself holds a SKILL.md; otherwise treats
+ *  `rootPath` as a vault root and enumerates every skill dir under it. */
+async function resolveScanTargets(rootPath: string): Promise<ScanContentTarget[]> {
+  if (existsSync(join(rootPath, "SKILL.md"))) {
+    const skillId = basename(rootPath);
+    const vaultPath = dirname(rootPath);
+    const body = await readTextFileOrNull(join(rootPath, "SKILL.md"));
+    if (body === null) return [];
+    return collectSkillTargets(vaultPath, skillId, body);
+  }
+
+  const skills = await scanVault(rootPath);
+  const targets: ScanContentTarget[] = [];
+  for (const skill of skills) {
+    targets.push(...(await collectSkillTargets(rootPath, skill.skill_id, skill.body)));
+  }
+  return targets;
+}
+
+export async function scanPath(rootPath: string): Promise<ScanResult> {
+  const targets = await resolveScanTargets(rootPath);
+  const findings: ScanFinding[] = [];
+  const skillIds = new Set<string>();
+  for (const target of targets) {
+    skillIds.add(target.skill_id);
+    for (const match of scanContent(target.content)) {
+      findings.push({ ...match, skill_id: target.skill_id, file: target.file });
+    }
+  }
+  return { scanned: skillIds.size, findings };
 }
