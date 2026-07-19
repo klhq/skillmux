@@ -113,13 +113,15 @@ export async function startServer(opts?: {
     );
 
     const port = opts?.port ?? Number(process.env.PORT || 3000);
+    const hostname = config.server?.hostname ?? "127.0.0.1";
     const bunServer = Bun.serve({
       port,
+      hostname,
       async fetch(req, server) {
         const serverConfig = config.server || {
           auth_enabled: false,
           auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
-          allowed_origins: ["*"],
+          allowed_origins: [],
         };
         const origin = req.headers.get("origin") || "";
         const allowedOrigins = serverConfig.allowed_origins;
@@ -268,7 +270,7 @@ export async function startServer(opts?: {
       },
     });
     let stopped = false;
-    console.log(`skill-router serving over HTTP on port ${bunServer.port}`);
+    console.log(`skill-router serving over HTTP on ${hostname}:${bunServer.port}`);
     return {
       port: bunServer.port,
       async stop() {

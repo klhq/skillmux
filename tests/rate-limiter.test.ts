@@ -128,8 +128,30 @@ describe("RateLimiter", () => {
     expect(firstIpB.allowed).toBe(true);
   });
 
-  test("falls back to X-Forwarded-For when server.requestIP(req) is unavailable", () => {
+  test("ignores client-supplied X-Forwarded-For by default, sharing one fallback bucket (anti-spoofing)", () => {
     const limiter = new RateLimiter({ enabled: true, requests_per_minute: 1 });
+    const nowMs = 1_700_000_000_000;
+
+    const first = limiter.check({
+      nowMs,
+      auth_enabled: false,
+      req: new Request("http://localhost/", { headers: { "x-forwarded-for": "198.51.100.42, 10.0.0.1" } }),
+      server: { requestIP: () => null },
+    });
+    // A spoofed, distinct X-Forwarded-For must NOT buy a fresh bucket without trust_proxy.
+    const second = limiter.check({
+      nowMs,
+      auth_enabled: false,
+      req: new Request("http://localhost/", { headers: { "x-forwarded-for": "198.51.100.42, 10.0.0.2" } }),
+      server: { requestIP: () => null },
+    });
+
+    expect(first.allowed).toBe(true);
+    expect(second.allowed).toBe(false);
+  });
+
+  test("honors X-Forwarded-For when trust_proxy is true and server.requestIP(req) is unavailable", () => {
+    const limiter = new RateLimiter({ enabled: true, requests_per_minute: 1, trust_proxy: true });
     const nowMs = 1_700_000_000_000;
 
     const first = limiter.check({
@@ -141,12 +163,12 @@ describe("RateLimiter", () => {
     const second = limiter.check({
       nowMs,
       auth_enabled: false,
-      req: new Request("http://localhost/", { headers: { "x-forwarded-for": "198.51.100.42, 10.0.0.2" } }),
+      req: new Request("http://localhost/", { headers: { "x-forwarded-for": "198.51.100.43, 10.0.0.2" } }),
       server: { requestIP: () => null },
     });
 
     expect(first.allowed).toBe(true);
-    expect(second.allowed).toBe(false);
+    expect(second.allowed).toBe(true);
   });
 
   test("falls back to 127.0.0.1 when neither requestIP nor X-Forwarded-For are available", () => {

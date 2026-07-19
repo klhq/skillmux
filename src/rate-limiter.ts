@@ -21,11 +21,13 @@ export interface RateLimitCheckResult {
 export class RateLimiter {
   private enabled: boolean;
   private requests_per_minute: number;
+  private trust_proxy: boolean;
   private buckets = new Map<string, Bucket>();
 
-  constructor(config: { enabled: boolean; requests_per_minute: number }) {
+  constructor(config: { enabled: boolean; requests_per_minute: number; trust_proxy?: boolean }) {
     this.enabled = config.enabled;
     this.requests_per_minute = config.requests_per_minute;
+    this.trust_proxy = config.trust_proxy ?? false;
   }
 
   check(input: RateLimitCheckInput): RateLimitCheckResult {
@@ -45,7 +47,9 @@ export class RateLimiter {
       const ipAddr = input.server.requestIP(input.req)?.address;
       if (ipAddr) {
         id = ipAddr;
-      } else {
+      } else if (this.trust_proxy) {
+        // X-Forwarded-For is client-supplied and spoofable; only honor it
+        // when trust_proxy opts in (i.e. a trusted reverse proxy sets it).
         const xff = input.req.headers.get("x-forwarded-for");
         if (xff) {
           id = xff.split(",", 1)[0]?.trim() || id;

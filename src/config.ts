@@ -64,7 +64,12 @@ const configSchema = z.object({
     auth_enabled: z.boolean(),
     auth_token_env: z.string().min(1),
     allowed_origins: z.array(z.string()),
-    rate_limit: z.object({ enabled: z.boolean(), requests_per_minute: z.number().int().positive() }).strict().optional(),
+    hostname: z.string().min(1).optional(),
+    rate_limit: z.object({
+      enabled: z.boolean(),
+      requests_per_minute: z.number().int().positive(),
+      trust_proxy: z.boolean().optional(),
+    }).strict().optional(),
   }).strict().optional(),
 }).strict();
 
@@ -91,7 +96,15 @@ const DEFAULTS: Config = {
   server: {
     auth_enabled: false,
     auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
-    allowed_origins: ["*"],
+    // Deny-by-default CORS: only requests that send no Origin header (curl,
+    // MCP clients, server-to-server) pass; browser-issued cross-origin
+    // requests are rejected until an origin is explicitly allow-listed.
+    allowed_origins: [],
+    // Loopback-only by default so a zero-config `skr serve --transport http`
+    // isn't reachable from the network. Docker overrides this to 0.0.0.0
+    // below since the container's own loopback isn't reachable through
+    // port-mapping.
+    hostname: "127.0.0.1",
     rate_limit: {
       enabled: false,
       requests_per_minute: 60,
@@ -140,6 +153,7 @@ export async function loadConfig(path?: string): Promise<Config> {
     baseConfig.vault_path = "/vault";
     baseConfig.state_dir = "/data";
     if (baseConfig.inference.mode === "local") baseConfig.inference.models_dir = "/models";
+    if (baseConfig.server) baseConfig.server.hostname = "0.0.0.0";
   }
 
   let merged: Config;
@@ -242,6 +256,9 @@ export async function loadConfig(path?: string): Promise<Config> {
     if (process.env.HTTP_ALLOWED_ORIGINS) {
       merged.server.allowed_origins = process.env.HTTP_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
     }
+    if (process.env.HTTP_HOSTNAME) {
+      merged.server.hostname = process.env.HTTP_HOSTNAME;
+    }
 
     if (!merged.server.rate_limit) {
       merged.server.rate_limit = { enabled: false, requests_per_minute: 60 };
@@ -259,6 +276,11 @@ export async function loadConfig(path?: string): Promise<Config> {
         throw new Error(`Invalid rate limit RPM: ${rateLimitRPMStr}`);
       }
       merged.server.rate_limit.requests_per_minute = rpm;
+    }
+
+    const rateLimitTrustProxyStr = getEnv("SKILL_ROUTER_HTTP_RATE_LIMIT_TRUST_PROXY", "HTTP_RATE_LIMIT_TRUST_PROXY");
+    if (rateLimitTrustProxyStr) {
+      merged.server.rate_limit.trust_proxy = rateLimitTrustProxyStr === "true";
     }
 
     if (merged.server.rate_limit.enabled && merged.server.rate_limit.requests_per_minute === undefined) {
