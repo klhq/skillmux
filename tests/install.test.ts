@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cloneToTemp, installIntoVault, resolveRepoSource, resolveSkillDir, validateSkillCandidate } from "../src/install";
+import {
+  cloneToTemp,
+  deriveRepoName,
+  installIntoVault,
+  resolveRepoSource,
+  resolveSkillDir,
+  validateSkillCandidate,
+} from "../src/install";
 
 const GIT_ENV = {
   ...process.env,
@@ -44,6 +51,12 @@ describe("resolveRepoSource", () => {
     expect(source).toEqual({ url: "https://gitlab.example.com/team/skills.git" });
   });
 
+  test("passes a file:// URL through unchanged", () => {
+    const source = resolveRepoSource("file:///tmp/local-skill-repo");
+
+    expect(source).toEqual({ url: "file:///tmp/local-skill-repo" });
+  });
+
   test("passes a git@ SSH URL through unchanged", () => {
     const source = resolveRepoSource("git@github.com:runkids/skillshare.git");
 
@@ -52,6 +65,16 @@ describe("resolveRepoSource", () => {
 
   test("rejects a bare name with no owner segment", () => {
     expect(() => resolveRepoSource("skillshare")).toThrow(/owner\/repo/);
+  });
+});
+
+describe("deriveRepoName", () => {
+  test("derives the repo name from an https clone URL", () => {
+    expect(deriveRepoName("https://github.com/runkids/skillshare.git")).toBe("skillshare");
+  });
+
+  test("derives the repo name from a git@ SSH URL", () => {
+    expect(deriveRepoName("git@github.com:runkids/skillshare.git")).toBe("skillshare");
   });
 });
 

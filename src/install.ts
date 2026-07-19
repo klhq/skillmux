@@ -9,7 +9,7 @@ export interface RepoSource {
   skillPath?: string;
 }
 
-const GIT_URL_PREFIXES = ["http://", "https://", "git://", "ssh://"];
+const GIT_URL_PREFIXES = ["http://", "https://", "git://", "ssh://", "file://"];
 const SCP_LIKE_URL_PATTERN = /^[^/\s]+@[^/\s]+:/;
 
 function isGitUrl(repo: string): boolean {
@@ -25,6 +25,13 @@ export function resolveRepoSource(repo: string): RepoSource {
   }
   const url = `https://github.com/${owner}/${name}.git`;
   return rest.length > 0 ? { url, skillPath: rest.join("/") } : { url };
+}
+
+export function deriveRepoName(url: string): string {
+  const cleaned = url.replace(/\.git$/, "");
+  const segment = cleaned.split(/[/:]/).filter(Boolean).pop();
+  if (!segment) throw new Error(`could not derive a repo name from "${url}"`);
+  return segment;
 }
 
 export async function cloneToTemp(url: string): Promise<string> {

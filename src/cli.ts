@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createClients } from "./clients";
 import { loadConfig } from "./config";
@@ -9,6 +9,14 @@ import { openIndex } from "./db";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
 import { applyInit, deriveTargetName, detectSurfaces, printLastMile, surfaceCandidates } from "./init";
+import {
+  cloneToTemp,
+  deriveRepoName,
+  installIntoVault,
+  resolveRepoSource,
+  resolveSkillDir,
+  validateSkillCandidate,
+} from "./install";
 import { parseManifest, validateManifest } from "./manifest";
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
@@ -350,6 +358,69 @@ async function runScan(args: string[]): Promise<void> {
     process.exitCode = scanExitCode(result.findings, failOn);
 }
 
+function parseInstallArgs(args: string[]): {
+    repo?: string;
+    force: boolean;
+    dryRun: boolean;
+    failOn?: ScanSeverity;
+} {
+    let repo: string | undefined;
+    let force = false;
+    let dryRun = false;
+    let failOn: ScanSeverity | undefined;
+    for (let i = 0; i < args.length; i++) {
+        const option = args[i];
+        if (option === "--force") force = true;
+        else if (option === "--dry-run") dryRun = true;
+        else if (option === "--fail-on") {
+            const value = args[++i];
+            if (value !== "low" && value !== "medium" && value !== "high") {
+                throw new Error("--fail-on must be low, medium, or high");
+            }
+            failOn = value;
+        } else if (option?.startsWith("--")) {
+            throw new Error(`unknown install option: ${option}`);
+        } else if (repo !== undefined) {
+            throw new Error("skr install accepts at most one <repo> argument");
+        } else {
+            repo = option;
+        }
+    }
+    return { repo, force, dryRun, failOn };
+}
+
+async function runInstall(args: string[]): Promise<void> {
+    const { repo, force, dryRun, failOn } = parseInstallArgs(args);
+    if (!repo) {
+        throw new Error("usage: skr install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run]");
+    }
+
+    const source = resolveRepoSource(repo);
+    const cloneDir = await cloneToTemp(source.url);
+    try {
+        const resolved = resolveSkillDir(cloneDir, deriveRepoName(source.url), source.skillPath);
+        const { findings } = await validateSkillCandidate(resolved.skillId, resolved.dir);
+        console.log(renderScanText({ scanned: 1, findings }));
+
+        if (scanExitCode(findings, failOn) !== 0) {
+            process.exitCode = 1;
+            console.error(`aborting install: a finding met the --fail-on ${failOn} threshold`);
+            return;
+        }
+
+        const vaultPath = expandHome((await loadConfig()).vault_path);
+        if (dryRun) {
+            console.log(`dry-run: would install "${resolved.skillId}" into ${join(vaultPath, resolved.skillId)}`);
+            return;
+        }
+
+        const targetDir = installIntoVault(vaultPath, resolved.skillId, resolved.dir, force);
+        console.log(`installed "${resolved.skillId}" into ${targetDir}`);
+    } finally {
+        rmSync(cloneDir, { recursive: true, force: true });
+    }
+}
+
 switch (command) {
     case "serve": {
         const { startServer } = await import("./server");
@@ -384,6 +455,9 @@ switch (command) {
     case "scan":
         await runScan(Bun.argv.slice(3));
         break;
+    case "install":
+        await runInstall(Bun.argv.slice(3));
+        break;
     case "eval":
         await runEval();
         break;
@@ -402,7 +476,7 @@ switch (command) {
         break;
     default:
         console.error(
-            "usage: skr <serve|index|sync|init|report|scan|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high]",
+            "usage: skr <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]]",
         );
         process.exit(2);
 }
