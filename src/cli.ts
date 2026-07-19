@@ -12,6 +12,7 @@ import { applyInit, deriveTargetName, detectSurfaces, printLastMile, surfaceCand
 import { parseManifest, validateManifest } from "./manifest";
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
+import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
 import { getStats, renderStatsText, type StatsResponse } from "./stats";
 import {
   installPostMergeHook,
@@ -314,6 +315,41 @@ async function runReport(args: string[]): Promise<void> {
     db.close();
 }
 
+function parseScanArgs(args: string[]): { path?: string; format: "text" | "json"; failOn?: ScanSeverity } {
+    let path: string | undefined;
+    let format: "text" | "json" = "text";
+    let failOn: ScanSeverity | undefined;
+    for (let i = 0; i < args.length; i++) {
+        const option = args[i];
+        if (option === "--format") {
+            const value = args[++i];
+            if (value !== "text" && value !== "json") throw new Error("--format must be text or json");
+            format = value;
+        } else if (option === "--fail-on") {
+            const value = args[++i];
+            if (value !== "low" && value !== "medium" && value !== "high") {
+                throw new Error("--fail-on must be low, medium, or high");
+            }
+            failOn = value;
+        } else if (option?.startsWith("--")) {
+            throw new Error(`unknown scan option: ${option}`);
+        } else if (path !== undefined) {
+            throw new Error("skr scan accepts at most one <path> argument");
+        } else {
+            path = option;
+        }
+    }
+    return { path, format, failOn };
+}
+
+async function runScan(args: string[]): Promise<void> {
+    const { path, format, failOn } = parseScanArgs(args);
+    const rootPath = path ? expandHome(path) : expandHome((await loadConfig()).vault_path);
+    const result = await scanPath(rootPath);
+    console.log(format === "json" ? renderScanJson(result) : renderScanText(result));
+    process.exitCode = scanExitCode(result.findings, failOn);
+}
+
 switch (command) {
     case "serve": {
         const { startServer } = await import("./server");
@@ -345,6 +381,9 @@ switch (command) {
     case "report":
         await runReport(Bun.argv.slice(3));
         break;
+    case "scan":
+        await runScan(Bun.argv.slice(3));
+        break;
     case "eval":
         await runEval();
         break;
@@ -363,7 +402,7 @@ switch (command) {
         break;
     default:
         console.error(
-            "usage: skr <serve|index|sync|init|report|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window",
+            "usage: skr <serve|index|sync|init|report|scan|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high]",
         );
         process.exit(2);
 }
