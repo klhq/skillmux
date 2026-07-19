@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderScanJson, renderScanText, scanContent, scanPath } from "../src/scan";
-import type { ScanResult } from "../src/scan";
+import { renderScanJson, renderScanText, scanContent, scanExitCode, scanPath } from "../src/scan";
+import type { ScanFinding, ScanResult } from "../src/scan";
 
 function writeSkill(vaultDir: string, id: string, body: string) {
   const dir = join(vaultDir, id);
@@ -222,5 +222,32 @@ describe("renderScanJson", () => {
     const parsed = JSON.parse(renderScanJson(result));
 
     expect(parsed).toEqual(result);
+  });
+});
+
+describe("scanExitCode", () => {
+  const mediumFinding: ScanFinding = {
+    skill_id: "a",
+    file: "SKILL.md",
+    rule_id: "suspicious-url",
+    severity: "medium",
+    message: "m",
+  };
+
+  test("returns 0 when failOn is not given, regardless of findings", () => {
+    expect(scanExitCode([mediumFinding], undefined)).toBe(0);
+  });
+
+  test("returns 1 when a finding's severity is at or above the failOn threshold", () => {
+    expect(scanExitCode([mediumFinding], "medium")).toBe(1);
+    expect(scanExitCode([mediumFinding], "low")).toBe(1);
+  });
+
+  test("returns 0 when every finding's severity is below the failOn threshold", () => {
+    expect(scanExitCode([mediumFinding], "high")).toBe(0);
+  });
+
+  test("returns 0 with no findings even when failOn is given", () => {
+    expect(scanExitCode([], "low")).toBe(0);
   });
 });

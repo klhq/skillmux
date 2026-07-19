@@ -232,3 +232,11 @@ export function renderScanText(result: ScanResult): string {
 export function renderScanJson(result: ScanResult): string {
   return JSON.stringify(result, null, 2);
 }
+
+const SEVERITY_RANK: Record<ScanSeverity, number> = { low: 0, medium: 1, high: 2 };
+
+export function scanExitCode(findings: RuleMatch[], failOn: ScanSeverity | undefined): number {
+  if (!failOn) return 0;
+  const threshold = SEVERITY_RANK[failOn];
+  return findings.some((f) => SEVERITY_RANK[f.severity] >= threshold) ? 1 : 0;
+}
