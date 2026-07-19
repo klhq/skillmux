@@ -155,6 +155,33 @@ No config is required for the battery-included local ONNX mode. See [`config.exa
 
 Run `skr doctor` to verify routing capability. Run `skr config show` to inspect effective configuration; it prints credential variable names, never values.
 
+### Security scanning
+
+`skr scan [<path>]` inspects skill content for prompt-injection and data-exfiltration risk indicators
+before it's served over MCP or HTTP. It's offline (no network call, no inference config needed),
+read-only, and advisory-only — it never blocks `skr index`/`sync`/`init`, which don't call it
+automatically.
+
+```sh
+skr scan                          # scan the configured vault_path
+skr scan ~/skills/some-skill      # scan a single candidate skill dir before adding it
+skr scan --format json            # machine-readable { scanned, findings } for CI
+skr scan --fail-on high           # exit 1 if any finding is high severity (for CI gating)
+```
+
+The v1 rule set covers four categories, each attached to the finding as `rule_id` with a fixed
+`severity`:
+
+| `rule_id` | `severity` | Flags |
+|---|---|---|
+| `prompt-injection-phrase` | `high` | Known instruction-override phrases (e.g. "ignore previous instructions") |
+| `invisible-unicode` | `high` | Zero-width/invisible Unicode code points, including hidden tag-character payloads |
+| `secret-pattern` | `high` | Hardcoded-credential-shaped strings (AWS-style keys, PEM blocks, `api_key=`/`token=` assignments) |
+| `suspicious-url` | `medium` | Bare-IP-address URLs, or URLs paired with exfiltration-suggesting text |
+
+`skr scan` is unrelated to the `audit` SQLite table / `skr report` — that's query telemetry (what got
+routed where); `skr scan` is content security (what's in the vault).
+
 ### Environment Variable Overrides
 All core settings can be overridden via environment variables (handy for Docker):
 - `VAULT_PATH` / `SKILL_ROUTER_VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
