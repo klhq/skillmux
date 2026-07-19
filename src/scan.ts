@@ -162,7 +162,7 @@ interface ScanContentTarget {
   content: string;
 }
 
-async function readTextFileOrNull(path: string): Promise<string | null> {
+export async function readTextFileOrNull(path: string): Promise<string | null> {
   try {
     const bytes = await Bun.file(path).bytes();
     return decodeUtf8Strict(bytes);

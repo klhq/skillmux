@@ -182,6 +182,29 @@ The v1 rule set covers four categories, each attached to the finding as `rule_id
 `skr scan` is unrelated to the `audit` SQLite table / `skr report` — that's query telemetry (what got
 routed where); `skr scan` is content security (what's in the vault).
 
+### Installing skills
+
+`skr install <repo>[/path]` fetches one skill from a git repo (GitHub shorthand, full HTTPS/SSH URL,
+or `file://`) into the configured `vault_path`, so onboarding doesn't require a second CLI just to
+pull a skill in. It's a convenience fetch, not a distribution system:
+
+```sh
+skr install runkids/skillshare                    # repo root must itself be a skill
+skr install runkids/skillshare/skills/csv-tool     # select one skill out of a multi-skill repo
+skr install owner/repo --dry-run                   # preview id, target path, and scan findings
+skr install owner/repo --force                     # overwrite an existing skill_id
+skr install owner/repo --fail-on high               # abort the install if scan findings meet the threshold
+```
+
+The fetched skill is validated the same way `skr scan` validates the vault — malformed `SKILL.md`
+aborts the install, and scan findings are printed before anything is written (advisory by default;
+`--fail-on` opts into blocking, matching `skr scan`'s severity levels). Materialization is a plain
+file copy, not a symlink — the temporary clone is deleted once the install completes.
+
+`skr install` intentionally does **not** handle updates, uninstalls, version pinning, or
+core/project/routed tier assignment (that's `skr sync`'s domain) — it only ever fetches one skill,
+once. Use `skr sync` afterward if the installed skill needs to be pinned into a tier.
+
 ### Environment Variable Overrides
 All core settings can be overridden via environment variables (handy for Docker):
 - `VAULT_PATH` / `SKILL_ROUTER_VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
