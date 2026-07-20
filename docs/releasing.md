@@ -23,8 +23,8 @@ The tag must exactly match `v` plus the `package.json` version. A mismatch stops
 
 The release workflow publishes:
 
-- `skill-router-linux-amd64`
-- `skill-router-linux-arm64`
+- `skillmux-linux-amd64`
+- `skillmux-linux-arm64`
 - `SHA256SUMS`
 - GitHub build provenance attestations when the repository is public
 - Full image: `:<version>`, `:<major>.<minor>`, `:<major>`, and `:latest`
@@ -40,13 +40,13 @@ Verify downloaded binaries with:
 
 ```bash
 sha256sum --check SHA256SUMS
-./skill-router-linux-amd64 config show
+./skillmux-linux-amd64 config show
 ```
 
 Verify release assets from GitHub without cloning the repository:
 
 ```bash
-gh release download v0.1.1 --repo klhq/skill-router
+gh release download v0.1.1 --repo klhq/skillmux
 sha256sum --check SHA256SUMS
 ```
 
@@ -56,7 +56,7 @@ Verify the container with a read-only vault mount:
 docker run --rm \
   -v ~/.agents/skills:/vault:ro \
   -p 3000:3000 \
-  ghcr.io/klhq/skill-router:latest
+  ghcr.io/klhq/skillmux:latest
 
 curl --fail http://127.0.0.1:3000/health/ready
 ```

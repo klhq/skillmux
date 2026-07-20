@@ -7,7 +7,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 // Remote endpoints point at a dead port — startup and resolve_skill must still
 // work (AC7: fully offline model host).
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-server-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-server-"));
 const vaultDir = join(tmp, "vault");
 const configPath = join(tmp, "config.toml");
 
@@ -72,9 +72,9 @@ beforeAll(async () => {
   const transport = new StdioClientTransport({
     command: "bun",
     args: ["run", join(import.meta.dir, "..", "src", "server.ts")],
-    env: { ...(process.env as Record<string, string>), SKILL_ROUTER_CONFIG: configPath },
+    env: { ...(process.env as Record<string, string>), SKILLMUX_CONFIG: configPath },
   });
-  client = new Client({ name: "skill-router-test", version: "0.0.0" });
+  client = new Client({ name: "skillmux-test", version: "0.0.0" });
   await client.connect(transport);
 });
 

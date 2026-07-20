@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-rate-limit-test-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-rate-limit-test-"));
 const vaultDir = join(tmp, "vault");
 const configPath = join(tmp, "config.toml");
 let port: number;

@@ -9,7 +9,7 @@ import type { Config } from "../src/types";
 // vocabulary with semantic-skill's description; only the embedding lane can
 // surface it. Vectors are deterministic: query and semantic-skill map close
 // together, everything else far away.
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-hybrid-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-hybrid-"));
 const vaultDir = join(tmp, "vault");
 
 function writeSkill(id: string, description: string) {

@@ -2,27 +2,34 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, sy
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 
-export const SKR_MARKER_FILENAME = ".skr";
+export const SKILLMUX_MARKER_FILENAME = ".skillmux";
+export const LEGACY_MARKER_FILENAME = ".skr";
 
-export interface SkrMarker {
-  managed_by: "skr";
+export interface SkillmuxMarker {
+  managed_by: "skillmux" | "skr";
   target: string;
   created_at: string;
 }
 
-export function readSkrMarker(dir: string): SkrMarker | null {
-  const markerPath = join(dir, SKR_MARKER_FILENAME);
-  if (!existsSync(markerPath)) return null;
-  return JSON.parse(readFileSync(markerPath, "utf-8")) as SkrMarker;
+export function readSkillmuxMarker(dir: string): SkillmuxMarker | null {
+  const newPath = join(dir, SKILLMUX_MARKER_FILENAME);
+  if (existsSync(newPath)) {
+    return JSON.parse(readFileSync(newPath, "utf-8")) as SkillmuxMarker;
+  }
+  const legacyPath = join(dir, LEGACY_MARKER_FILENAME);
+  if (existsSync(legacyPath)) {
+    return JSON.parse(readFileSync(legacyPath, "utf-8")) as SkillmuxMarker;
+  }
+  return null;
 }
 
-function writeSkrMarker(dir: string, targetName: string): void {
-  const marker: SkrMarker = {
-    managed_by: "skr",
+function writeSkillmuxMarker(dir: string, targetName: string): void {
+  const marker: SkillmuxMarker = {
+    managed_by: "skillmux",
     target: targetName,
     created_at: new Date().toISOString(),
   };
-  writeFileSync(join(dir, SKR_MARKER_FILENAME), JSON.stringify(marker, null, 2));
+  writeFileSync(join(dir, SKILLMUX_MARKER_FILENAME), JSON.stringify(marker, null, 2));
 }
 
 export interface SyncTargetParams {
@@ -51,16 +58,16 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
     for (const skillId of coreSkillIds) {
       symlinkSync(join(vaultPath, skillId), join(targetDir, skillId));
     }
-    writeSkrMarker(targetDir, targetName);
+    writeSkillmuxMarker(targetDir, targetName);
     return { added: [...coreSkillIds], removed: [] };
   }
 
-  if (!readSkrMarker(targetDir)) {
-    throw new Error(`not owned by skr — run skr init`);
+  if (!readSkillmuxMarker(targetDir)) {
+    throw new Error(`not owned by skillmux — run skillmux init`);
   }
 
   const desired = new Set(coreSkillIds);
-  const existing = readdirSync(targetDir).filter((name) => name !== SKR_MARKER_FILENAME);
+  const existing = readdirSync(targetDir).filter((name) => name !== SKILLMUX_MARKER_FILENAME && name !== LEGACY_MARKER_FILENAME);
 
   const removed = existing.filter((name) => !desired.has(name));
   const added = coreSkillIds.filter((skillId) => !existing.includes(skillId));
@@ -84,8 +91,8 @@ export interface AdoptTargetResult {
  * "doesn't exist yet" side of that rule; this handles "already exists".
  */
 export function adoptTarget(dir: string, targetName: string): AdoptTargetResult {
-  if (readSkrMarker(dir)) return { adopted: false };
-  writeSkrMarker(dir, targetName);
+  if (readSkillmuxMarker(dir)) return { adopted: false };
+  writeSkillmuxMarker(dir, targetName);
   return { adopted: true };
 }
 
@@ -94,7 +101,7 @@ export interface RestoreMonolithResult {
 }
 
 export function restoreMonolith(targetDir: string, vaultPath: string): RestoreMonolithResult {
-  if (!readSkrMarker(targetDir)) {
+  if (!readSkillmuxMarker(targetDir)) {
     return { restored: false };
   }
   rmSync(targetDir, { recursive: true, force: true });
@@ -152,7 +159,8 @@ export function syncProjectTargets(
   return results;
 }
 
-const HOOK_MARKER = "# managed-by: skr sync --install-hook";
+export const HOOK_MARKER = "# managed-by: skillmux sync --install-hook";
+export const LEGACY_HOOK_MARKER = "# managed-by: skr sync --install-hook";
 
 export interface InstallHookResult {
   installed: boolean;
@@ -163,11 +171,11 @@ export function installPostMergeHook(vaultPath: string): InstallHookResult {
 
   if (existsSync(hookPath)) {
     const existing = readFileSync(hookPath, "utf-8");
-    if (existing.includes(HOOK_MARKER)) return { installed: false };
-    throw new Error(`${hookPath} already exists and is not managed by skr — refusing to overwrite`);
+    if (existing.includes(HOOK_MARKER) || existing.includes(LEGACY_HOOK_MARKER)) return { installed: false };
+    throw new Error(`${hookPath} already exists and is not managed by skillmux — refusing to overwrite`);
   }
 
-  const script = `#!/bin/sh\n${HOOK_MARKER}\nskr sync\n`;
+  const script = `#!/bin/sh\n${HOOK_MARKER}\nskillmux sync\n`;
   writeFileSync(hookPath, script);
   chmodSync(hookPath, 0o755);
   return { installed: true };

@@ -35,7 +35,7 @@ export function deriveRepoName(url: string): string {
 }
 
 export async function cloneToTemp(url: string): Promise<string> {
-  const dir = mkdtempSync(join(tmpdir(), "skr-install-"));
+  const dir = mkdtempSync(join(tmpdir(), "skillmux-install-"));
   const proc = Bun.spawn(["git", "clone", "--quiet", "--depth", "1", url, dir], {
     stdout: "pipe",
     stderr: "pipe",

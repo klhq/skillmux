@@ -6,7 +6,7 @@ import { evalVault, loadEvalCases } from "../src/eval";
 import { backfillEmbeddings, configure, rebuildIndex } from "../src/router-core";
 import type { Config } from "../src/types";
 
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-eval-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-eval-"));
 const vault = join(tmp, "vault");
 const config: Config = {
   vault_path: vault,

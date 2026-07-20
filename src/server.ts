@@ -22,6 +22,20 @@ export interface ServerHandle {
   stop(): Promise<void>;
 }
 
+let warnedAuthToken = false;
+function resolveAuthToken(envName: string): string {
+  const value = process.env[envName];
+  if (value) return value;
+  if (envName === "SKILLMUX_AUTH_TOKEN" && process.env.SKILL_ROUTER_AUTH_TOKEN) {
+    if (!warnedAuthToken) {
+      warnedAuthToken = true;
+      console.error("skillmux: SKILL_ROUTER_AUTH_TOKEN is deprecated, set SKILLMUX_AUTH_TOKEN instead");
+    }
+    return process.env.SKILL_ROUTER_AUTH_TOKEN;
+  }
+  return "";
+}
+
 function safeTokenEquals(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -41,7 +55,7 @@ export async function startServer(opts?: {
   metricsRegistry.setReadiness(readinessState.get());
   const stopWatcher = await startVaultWatcher();
 
-  const server = new McpServer({ name: "skill-router", version: "0.1.0" });
+  const server = new McpServer({ name: "skillmux", version: "0.1.0" });
 
   // Transport rule from schema.json: the SKILL.md body appears exactly once on
   // the wire — verbatim as text content; structuredContent carries the metadata.
@@ -120,7 +134,7 @@ export async function startServer(opts?: {
       async fetch(req, server) {
         const serverConfig = config.server || {
           auth_enabled: false,
-          auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
+          auth_token_env: "SKILLMUX_AUTH_TOKEN",
           allowed_origins: [],
         };
         const origin = req.headers.get("origin") || "";
@@ -212,7 +226,7 @@ export async function startServer(opts?: {
 
         // Token Auth Check
         if (serverConfig.auth_enabled) {
-          const expectedToken = process.env[serverConfig.auth_token_env] ?? "";
+          const expectedToken = resolveAuthToken(serverConfig.auth_token_env);
           if (!expectedToken) {
             return new Response("Server authentication configured but token environment variable is empty", { status: 500 });
           }
@@ -270,7 +284,7 @@ export async function startServer(opts?: {
       },
     });
     let stopped = false;
-    console.log(`skill-router serving over HTTP on ${hostname}:${bunServer.port}`);
+    console.log(`skillmux serving over HTTP on ${hostname}:${bunServer.port}`);
     return {
       port: bunServer.port,
       async stop() {

@@ -1,6 +1,6 @@
-# Contributing to skill-router
+# Contributing to skillmux
 
-Thank you for your interest in contributing to `skill-router`! This document outlines our development workflows, coding standards, and repository conventions.
+Thank you for your interest in contributing to `skillmux`! This document outlines our development workflows, coding standards, and repository conventions.
 
 ## Development Setup
 
@@ -16,8 +16,8 @@ We use **Bun** for both runtime execution and package management.
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/klhq/skill-router.git
-cd skill-router
+git clone https://github.com/klhq/skillmux.git
+cd skillmux
 bun install
 ```
 
@@ -71,16 +71,16 @@ To package the application into Docker container variants:
 
 ```bash
 # Build the slim variant (remote embeddings or lexical fallback)
-docker build --target slim -t skill-router:dev-slim .
+docker build --target slim -t skillmux:dev-slim .
 
 # Build the full battery-included variant
-docker build --target full -t skill-router:dev .
+docker build --target full -t skillmux:dev .
 ```
 
 To test the container locally:
 
 ```bash
-docker run --rm -v ~/.agents/skills:/vault:ro -p 3000:3000 skill-router:dev
+docker run --rm -v ~/.agents/skills:/vault:ro -p 3000:3000 skillmux:dev
 ```
 
 ## Contribution Workflow

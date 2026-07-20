@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { configure, fetchSkill, resolveSkill, startVaultWatcher } from "../src/router-core";
 import type { Config } from "../src/types";
 
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-watch-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-watch-"));
 const vaultDir = join(tmp, "vault");
 
 // Watcher tests are wall-clock sensitive (debounce + stable-stat + polling);

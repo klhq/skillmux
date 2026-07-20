@@ -18,7 +18,7 @@ function writeConfig(dir: string, content: string): string {
 
 describe("download-models script (AC2)", () => {
   test("downloads the configured local embedding model", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "skill-router-download-models-"));
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-download-models-"));
     const configPath = writeConfig(
       tmp,
       [
@@ -41,7 +41,7 @@ describe("download-models script (AC2)", () => {
       cwd: path.dirname(scriptPath),
       env: {
         ...(process.env as Record<string, string>),
-        SKILL_ROUTER_CONFIG: configPath,
+        SKILLMUX_CONFIG: configPath,
         MOCK_HF_DOWNLOAD: "true",
         MOCK_HF_LOG_PATH: logPath,
       },
@@ -75,7 +75,7 @@ describe("download-models script (AC2)", () => {
   });
 
   test("uses the versioned local bundle defaults", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "skill-router-download-models-env-"));
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-download-models-env-"));
     const configPath = writeConfig(
       tmp,
       [
@@ -91,7 +91,7 @@ describe("download-models script (AC2)", () => {
       cwd: path.dirname(scriptPath),
       env: {
         ...(process.env as Record<string, string>),
-        SKILL_ROUTER_CONFIG: configPath,
+        SKILLMUX_CONFIG: configPath,
         MOCK_HF_DOWNLOAD: "true",
         MOCK_HF_LOG_PATH: logPath,
       },

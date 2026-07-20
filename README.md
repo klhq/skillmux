@@ -1,4 +1,4 @@
-# skill-router
+# skillmux
 
 A local, read-only [MCP](https://modelcontextprotocol.io) stdio server that gives agents **on-demand skill discovery**: route a natural-language task description to the right skill in your vault and deliver its `SKILL.md` byte-for-byte, verified by SHA-256.
 
@@ -40,18 +40,18 @@ Download the latest release for your architecture:
 
 ```sh
 # AMD64
-gh release download --repo klhq/skill-router \
-  --pattern 'skill-router-linux-*' \
+gh release download --repo klhq/skillmux \
+  --pattern 'skillmux-linux-*' \
   --pattern 'SHA256SUMS'
 
 sha256sum --check SHA256SUMS
 # Install the binary matching your machine (amd64 or arm64)
-chmod +x skill-router-linux-amd64
-sudo install skill-router-linux-amd64 /usr/local/bin/skr
-skr config show
+chmod +x skillmux-linux-amd64
+sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
+skillmux config show
 ```
 
-Release assets are also available at <https://github.com/klhq/skill-router/releases/latest>.
+Release assets are also available at <https://github.com/klhq/skillmux/releases/latest>.
 
 Requirements at runtime:
 
@@ -63,8 +63,8 @@ Requirements at runtime:
 No config is required when the vault is at `~/skills`:
 
 ```sh
-skr index
-skr serve
+skillmux index
+skillmux serve
 ```
 
 Register with your MCP client directly, e.g.:
@@ -72,8 +72,8 @@ Register with your MCP client directly, e.g.:
 ```json
 {
   "mcpServers": {
-    "skill-router": {
-      "command": "skr",
+    "skillmux": {
+      "command": "skillmux",
       "args": ["serve"]
     }
   }
@@ -89,10 +89,10 @@ bun run src/cli.ts serve
 
 ## Docker Usage
 
-The `skill-router` is packaged and distributed as a Docker image in two variants:
+The `skillmux` is packaged and distributed as a Docker image in two variants:
 
-1. **`ghcr.io/klhq/skill-router:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
-2. **`ghcr.io/klhq/skill-router:latest-slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
+1. **`ghcr.io/klhq/skillmux:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
+2. **`ghcr.io/klhq/skillmux:latest-slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
 
 Both tags are multi-architecture manifests for Linux AMD64 and ARM64; Docker selects the correct image automatically.
 
@@ -103,20 +103,20 @@ To run as an HTTP MCP service (default in Docker):
 ```sh
 # Battery-included (runs local in-process ONNX models)
 docker run -d \
-  --name skill-router \
+  --name skillmux \
   -v ~/skills:/vault:ro \
-  -v skill-router-data:/data \
+  -v skillmux-data:/data \
   -p 3000:3000 \
-  ghcr.io/klhq/skill-router:latest
+  ghcr.io/klhq/skillmux:latest
 
 # Slim (configured remote embeddings, or lexical fallback)
 docker run -d \
-  --name skill-router-slim \
+  --name skillmux-slim \
   -v ~/skills:/vault:ro \
-  -v skill-router-data:/data \
+  -v skillmux-data:/data \
   -p 3000:3000 \
   -e EMBED_BASE_URL="http://embeddings-host:8080" \
-  ghcr.io/klhq/skill-router:latest-slim
+  ghcr.io/klhq/skillmux:latest-slim
 ```
 
 Connect your MCP client to the HTTP endpoint (e.g. standard Streamable HTTP transport):
@@ -126,8 +126,8 @@ Connect your MCP client to the HTTP endpoint (e.g. standard Streamable HTTP tran
 
 All of the below is `[server]` config in `config.toml`, overridable by environment variable — see [Environment Variable Overrides](#environment-variable-overrides).
 
-- **Bind address** (`hostname`, default `127.0.0.1`) — HTTP transport binds loopback-only by default, so a zero-config `skr serve --transport http` isn't reachable from the network. Inside Docker (`RUNNING_IN_DOCKER=true`) this defaults to `0.0.0.0` instead, since the container's own loopback isn't reachable through port-mapping. Set `hostname` (or `HTTP_HOSTNAME`) explicitly to expose the server beyond localhost.
-- **Bearer token auth** (off by default) — set `auth_enabled = true` and the token via the env var named by `auth_token_env` (default `SKILL_ROUTER_AUTH_TOKEN`). Requests need `Authorization: Bearer <token>`; missing/mismatched tokens get `401`, and a configured-but-empty token env var gets `500`.
+- **Bind address** (`hostname`, default `127.0.0.1`) — HTTP transport binds loopback-only by default, so a zero-config `skillmux serve --transport http` isn't reachable from the network. Inside Docker (`RUNNING_IN_DOCKER=true`) this defaults to `0.0.0.0` instead, since the container's own loopback isn't reachable through port-mapping. Set `hostname` (or `HTTP_HOSTNAME`) explicitly to expose the server beyond localhost.
+- **Bearer token auth** (off by default) — set `auth_enabled = true` and the token via the env var named by `auth_token_env` (default `SKILLMUX_AUTH_TOKEN`). Requests need `Authorization: Bearer <token>`; missing/mismatched tokens get `401`, and a configured-but-empty token env var gets `500`.
 - **CORS** — `allowed_origins` (default `[]`, deny-by-default) is checked against the request's `Origin` header; disallowed origins get `403`. Requests with no `Origin` header (curl, MCP clients, server-to-server) are unaffected either way — only browser-issued cross-origin requests are gated. `/health` and `/metrics` are excluded from auth but still CORS-checked.
 - **Rate limiting** (off by default) — per-token (when auth is enabled) or per-IP (`server.requestIP`) token-bucket limiting. Enable with `rate_limit.enabled = true` and set `rate_limit.requests_per_minute` (default `60`). The `X-Forwarded-For` header is ignored unless `rate_limit.trust_proxy = true` — it's client-supplied and spoofable, so only opt in when a trusted reverse proxy sets it. Every response carries `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset`; over-limit requests get `429` plus `Retry-After`.
 - **`GET /health/live`** — lightweight liveness check. Legacy `GET /health` remains an alias.
@@ -141,7 +141,7 @@ If your agent runs locally and expects a piped stdio process:
 ```sh
 docker run -i --rm \
   -v ~/skills:/vault:ro \
-  ghcr.io/klhq/skill-router:latest serve --transport stdio
+  ghcr.io/klhq/skillmux:latest serve --transport stdio
 ```
 
 ## Configuration
@@ -153,20 +153,20 @@ No config is required for the battery-included local ONNX mode. See [`config.exa
 - The zero-config default combines SQLite FTS5 with the small `Xenova/gte-small` embedding model and returns an ordered shortlist.
 - Configured OpenAI-compatible embeddings replace the local embedder. An optional Infinity-compatible reranker enables confident automatic matches.
 
-Run `skr doctor` to verify routing capability. Run `skr config show` to inspect effective configuration; it prints credential variable names, never values.
+Run `skillmux doctor` to verify routing capability. Run `skillmux config show` to inspect effective configuration; it prints credential variable names, never values.
 
 ### Security scanning
 
-`skr scan [<path>]` inspects skill content for prompt-injection and data-exfiltration risk indicators
+`skillmux scan [<path>]` inspects skill content for prompt-injection and data-exfiltration risk indicators
 before it's served over MCP or HTTP. It's offline (no network call, no inference config needed),
-read-only, and advisory-only — it never blocks `skr index`/`sync`/`init`, which don't call it
+read-only, and advisory-only — it never blocks `skillmux index`/`sync`/`init`, which don't call it
 automatically.
 
 ```sh
-skr scan                          # scan the configured vault_path
-skr scan ~/skills/some-skill      # scan a single candidate skill dir before adding it
-skr scan --format json            # machine-readable { scanned, findings } for CI
-skr scan --fail-on high           # exit 1 if any finding is high severity (for CI gating)
+skillmux scan                          # scan the configured vault_path
+skillmux scan ~/skills/some-skill      # scan a single candidate skill dir before adding it
+skillmux scan --format json            # machine-readable { scanned, findings } for CI
+skillmux scan --fail-on high           # exit 1 if any finding is high severity (for CI gating)
 ```
 
 The v1 rule set covers four categories, each attached to the finding as `rule_id` with a fixed
@@ -179,52 +179,52 @@ The v1 rule set covers four categories, each attached to the finding as `rule_id
 | `secret-pattern` | `high` | Hardcoded-credential-shaped strings (AWS-style keys, PEM blocks, `api_key=`/`token=` assignments) |
 | `suspicious-url` | `medium` | Bare-IP-address URLs, or URLs paired with exfiltration-suggesting text |
 
-`skr scan` is unrelated to the `audit` SQLite table / `skr report` — that's query telemetry (what got
-routed where); `skr scan` is content security (what's in the vault).
+`skillmux scan` is unrelated to the `audit` SQLite table / `skillmux report` — that's query telemetry (what got
+routed where); `skillmux scan` is content security (what's in the vault).
 
 ### Installing skills
 
-`skr install <repo>[/path]` fetches one skill from a git repo (GitHub shorthand, full HTTPS/SSH URL,
+`skillmux install <repo>[/path]` fetches one skill from a git repo (GitHub shorthand, full HTTPS/SSH URL,
 or `file://`) into the configured `vault_path`, so onboarding doesn't require a second CLI just to
 pull a skill in. It's a convenience fetch, not a distribution system:
 
 ```sh
-skr install runkids/skillshare                    # repo root must itself be a skill
-skr install runkids/skillshare/skills/csv-tool     # select one skill out of a multi-skill repo
-skr install owner/repo --dry-run                   # preview id, target path, and scan findings
-skr install owner/repo --force                     # overwrite an existing skill_id
-skr install owner/repo --fail-on high               # abort the install if scan findings meet the threshold
+skillmux install runkids/skillshare                    # repo root must itself be a skill
+skillmux install runkids/skillshare/skills/csv-tool     # select one skill out of a multi-skill repo
+skillmux install owner/repo --dry-run                   # preview id, target path, and scan findings
+skillmux install owner/repo --force                     # overwrite an existing skill_id
+skillmux install owner/repo --fail-on high               # abort the install if scan findings meet the threshold
 ```
 
-The fetched skill is validated the same way `skr scan` validates the vault — malformed `SKILL.md`
+The fetched skill is validated the same way `skillmux scan` validates the vault — malformed `SKILL.md`
 aborts the install, and scan findings are printed before anything is written (advisory by default;
-`--fail-on` opts into blocking, matching `skr scan`'s severity levels). Materialization is a plain
+`--fail-on` opts into blocking, matching `skillmux scan`'s severity levels). Materialization is a plain
 file copy, not a symlink — the temporary clone is deleted once the install completes.
 
-`skr install` intentionally does **not** handle updates, uninstalls, version pinning, or
-core/project/routed tier assignment (that's `skr sync`'s domain) — it only ever fetches one skill,
-once. Use `skr sync` afterward if the installed skill needs to be pinned into a tier.
+`skillmux install` intentionally does **not** handle updates, uninstalls, version pinning, or
+core/project/routed tier assignment (that's `skillmux sync`'s domain) — it only ever fetches one skill,
+once. Use `skillmux sync` afterward if the installed skill needs to be pinned into a tier.
 
 ### Environment Variable Overrides
 All core settings can be overridden via environment variables (handy for Docker):
-- `VAULT_PATH` / `SKILL_ROUTER_VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
-- `STATE_DIR` / `SKILL_ROUTER_STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
-- `EMBED_BASE_URL` / `SKILL_ROUTER_EMBED_BASE_URL` — overrides remote `inference.embedding.base_url`
-- `EMBED_MODEL` / `SKILL_ROUTER_EMBED_MODEL` — overrides `embedding.model`
-- `EMBED_DIMENSION` / `SKILL_ROUTER_EMBED_DIMENSION` — overrides `embedding.dimension`
+- `VAULT_PATH` / `SKILLMUX_VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
+- `STATE_DIR` / `SKILLMUX_STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
+- `EMBED_BASE_URL` / `SKILLMUX_EMBED_BASE_URL` — overrides remote `inference.embedding.base_url`
+- `EMBED_MODEL` / `SKILLMUX_EMBED_MODEL` — overrides `embedding.model`
+- `EMBED_DIMENSION` / `SKILLMUX_EMBED_DIMENSION` — overrides `embedding.dimension`
 - `EMBED_DEVICE` / `EMBED_DTYPE` — overrides local `inference.embedding.device` / `inference.embedding.dtype`
-- `RERANK_BASE_URL` / `SKILL_ROUTER_RERANK_BASE_URL` — overrides remote `inference.reranker.base_url`
-- `RERANK_MODEL` / `SKILL_ROUTER_RERANK_MODEL` — overrides `rerank.model`
-- `SKILL_ROUTER_CONFIG` — path to custom `config.toml` (default `~/.config/skill-router/config.toml`)
-- `SKILL_ROUTER_MODELS_DIR` — path to directory storing downloaded local models (default `./.models`)
+- `RERANK_BASE_URL` / `SKILLMUX_RERANK_BASE_URL` — overrides remote `inference.reranker.base_url`
+- `RERANK_MODEL` / `SKILLMUX_RERANK_MODEL` — overrides `rerank.model`
+- `SKILLMUX_CONFIG` — path to custom `config.toml` (default `~/.config/skillmux/config.toml`)
+- `SKILLMUX_MODELS_DIR` — path to directory storing downloaded local models (default `./.models`)
 - `PORT` — HTTP listen port (default `3000`, HTTP transport only)
 - `HTTP_HOSTNAME` — overrides `server.hostname` (default `127.0.0.1`, `0.0.0.0` inside Docker)
 - `HTTP_AUTH_ENABLED` — overrides `server.auth_enabled` (`"true"` to enable)
 - `HTTP_AUTH_TOKEN_ENV` — overrides `server.auth_token_env`
 - `HTTP_ALLOWED_ORIGINS` — comma-separated list, overrides `server.allowed_origins`
-- `HTTP_RATE_LIMIT_ENABLED` / `SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED` — overrides `server.rate_limit.enabled` (`"true"` to enable)
-- `HTTP_RATE_LIMIT_RPM` / `SKILL_ROUTER_HTTP_RATE_LIMIT_RPM` — overrides `server.rate_limit.requests_per_minute`
-- `HTTP_RATE_LIMIT_TRUST_PROXY` / `SKILL_ROUTER_HTTP_RATE_LIMIT_TRUST_PROXY` — overrides `server.rate_limit.trust_proxy` (`"true"` to trust `X-Forwarded-For`)
+- `HTTP_RATE_LIMIT_ENABLED` / `SKILLMUX_HTTP_RATE_LIMIT_ENABLED` — overrides `server.rate_limit.enabled` (`"true"` to enable)
+- `HTTP_RATE_LIMIT_RPM` / `SKILLMUX_HTTP_RATE_LIMIT_RPM` — overrides `server.rate_limit.requests_per_minute`
+- `HTTP_RATE_LIMIT_TRUST_PROXY` / `SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY` — overrides `server.rate_limit.trust_proxy` (`"true"` to trust `X-Forwarded-For`)
 
 Remote API keys are read from the environment variables named by `inference.embedding.api_key_env` and `inference.reranker.api_key_env`; no secret ever lives in the config file.
 

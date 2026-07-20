@@ -1,5 +1,6 @@
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 import type { Config, ONNXDevice, ONNXDtype } from "./types";
 
@@ -79,13 +80,13 @@ export const LOCAL_BUNDLE_ID = "gte-small-v1";
 
 const DEFAULTS: Config = {
   vault_path: "~/skills",
-  state_dir: "~/.local/state/skill-router",
+  state_dir: "~/.local/state/skillmux",
   recall: { k_lexical: 20, k_vector: 20 },
   thresholds: { candidate_limit: 5 },
   inference: {
     mode: "local",
     bundle: LOCAL_BUNDLE_ID,
-    models_dir: "~/.cache/skill-router/models",
+    models_dir: "~/.cache/skillmux/models",
     embedding: {
       model: "Xenova/gte-small",
       dimension: 384,
@@ -95,7 +96,7 @@ const DEFAULTS: Config = {
   },
   server: {
     auth_enabled: false,
-    auth_token_env: "SKILL_ROUTER_AUTH_TOKEN",
+    auth_token_env: "SKILLMUX_AUTH_TOKEN",
     // Deny-by-default CORS: only requests that send no Origin header (curl,
     // MCP clients, server-to-server) pass; browser-issued cross-origin
     // requests are rejected until an origin is explicitly allow-listed.
@@ -112,7 +113,7 @@ const DEFAULTS: Config = {
   },
 };
 
-export const DEFAULT_CONFIG_PATH = "~/.config/skill-router/config.toml";
+export const DEFAULT_CONFIG_PATH = "~/.config/skillmux/config.toml";
 
 export function embeddingDimension(config: Config): number {
   return config.inference.embedding.dimension;
@@ -144,8 +145,34 @@ function deepMerge<T>(base: T, override: unknown): T {
   return out as T;
 }
 
+export const warnedEnv = new Set<string>();
+
+function migrateLegacyDir(legacy: string, next: string): void {
+  const legacyPath = expandHome(legacy);
+  const nextPath = expandHome(next);
+  if (existsSync(nextPath) || !existsSync(legacyPath)) return;
+  mkdirSync(dirname(nextPath), { recursive: true });
+  renameSync(legacyPath, nextPath);
+  console.error(`skillmux: migrated ${legacyPath} -> ${nextPath}`);
+}
+
+export function migrateLegacyPaths(): void {
+  migrateLegacyDir("~/.config/skill-router", "~/.config/skillmux");
+  migrateLegacyDir("~/.local/state/skill-router", "~/.local/state/skillmux");
+  migrateLegacyDir("~/.cache/skill-router", "~/.cache/skillmux");
+}
+
 export async function loadConfig(path?: string): Promise<Config> {
-  const configPath = path ?? process.env.SKILL_ROUTER_CONFIG ?? DEFAULT_CONFIG_PATH;
+  migrateLegacyPaths();
+  let configEnv = process.env.SKILLMUX_CONFIG;
+  if (configEnv === undefined && process.env.SKILL_ROUTER_CONFIG !== undefined) {
+    if (!warnedEnv.has("SKILL_ROUTER_CONFIG")) {
+      warnedEnv.add("SKILL_ROUTER_CONFIG");
+      console.error("skillmux: SKILL_ROUTER_CONFIG is deprecated, use SKILLMUX_CONFIG instead");
+    }
+    configEnv = process.env.SKILL_ROUTER_CONFIG;
+  }
+  const configPath = path ?? configEnv ?? DEFAULT_CONFIG_PATH;
   const file = Bun.file(expandHome(configPath));
 
   const baseConfig = structuredClone(DEFAULTS);
@@ -188,10 +215,29 @@ export async function loadConfig(path?: string): Promise<Config> {
   if (process.env.STATE_DIR) {
     merged.state_dir = process.env.STATE_DIR;
   }
-  const getEnv = (prefixed: string, unprefixed: string) => process.env[prefixed] || process.env[unprefixed];
+  const getEnv = (newPrefixed: string, unprefixed: string) => {
+    const legacyPrefixed = newPrefixed.replace(/^SKILLMUX_/, "SKILL_ROUTER_");
+    if (process.env[newPrefixed] !== undefined) return process.env[newPrefixed];
+    if (process.env[legacyPrefixed] !== undefined) {
+      if (!warnedEnv.has(legacyPrefixed)) {
+        warnedEnv.add(legacyPrefixed);
+        console.error(`skillmux: ${legacyPrefixed} is deprecated, use ${newPrefixed} instead`);
+      }
+      return process.env[legacyPrefixed];
+    }
+    return process.env[unprefixed];
+  };
 
   if (merged.inference.mode === "local") {
-    if (process.env.SKILL_ROUTER_MODELS_DIR) merged.inference.models_dir = process.env.SKILL_ROUTER_MODELS_DIR;
+    let modelsDirEnv = process.env.SKILLMUX_MODELS_DIR;
+    if (modelsDirEnv === undefined && process.env.SKILL_ROUTER_MODELS_DIR !== undefined) {
+      if (!warnedEnv.has("SKILL_ROUTER_MODELS_DIR")) {
+        warnedEnv.add("SKILL_ROUTER_MODELS_DIR");
+        console.error("skillmux: SKILL_ROUTER_MODELS_DIR is deprecated, use SKILLMUX_MODELS_DIR instead");
+      }
+      modelsDirEnv = process.env.SKILL_ROUTER_MODELS_DIR;
+    }
+    if (modelsDirEnv) merged.inference.models_dir = modelsDirEnv;
     if (process.env.EMBED_DEVICE) merged.inference.embedding.device = process.env.EMBED_DEVICE as ONNXDevice;
     if (process.env.EMBED_DTYPE) merged.inference.embedding.dtype = process.env.EMBED_DTYPE as ONNXDtype;
   } else if (merged.inference.mode === "remote") {
@@ -227,11 +273,11 @@ export async function loadConfig(path?: string): Promise<Config> {
         throw new Error(`${name} must be an HTTP(S) URL.`);
       }
     }
-    const embedUrl = getEnv("SKILL_ROUTER_EMBED_BASE_URL", "EMBED_BASE_URL");
-    const embedModel = getEnv("SKILL_ROUTER_EMBED_MODEL", "EMBED_MODEL");
-    const embedDimStr = getEnv("SKILL_ROUTER_EMBED_DIMENSION", "EMBED_DIMENSION");
-    const rerankUrl = getEnv("SKILL_ROUTER_RERANK_BASE_URL", "RERANK_BASE_URL");
-    const rerankModel = getEnv("SKILL_ROUTER_RERANK_MODEL", "RERANK_MODEL");
+    const embedUrl = getEnv("SKILLMUX_EMBED_BASE_URL", "EMBED_BASE_URL");
+    const embedModel = getEnv("SKILLMUX_EMBED_MODEL", "EMBED_MODEL");
+    const embedDimStr = getEnv("SKILLMUX_EMBED_DIMENSION", "EMBED_DIMENSION");
+    const rerankUrl = getEnv("SKILLMUX_RERANK_BASE_URL", "RERANK_BASE_URL");
+    const rerankModel = getEnv("SKILLMUX_RERANK_MODEL", "RERANK_MODEL");
     if (embedUrl) merged.inference.embedding.base_url = embedUrl;
     if (embedModel) merged.inference.embedding.model = embedModel;
     if (rerankUrl && merged.inference.reranker) merged.inference.reranker.base_url = rerankUrl;
@@ -264,12 +310,12 @@ export async function loadConfig(path?: string): Promise<Config> {
       merged.server.rate_limit = { enabled: false, requests_per_minute: 60 };
     }
 
-    const rateLimitEnabledStr = getEnv("SKILL_ROUTER_HTTP_RATE_LIMIT_ENABLED", "HTTP_RATE_LIMIT_ENABLED");
+    const rateLimitEnabledStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_ENABLED", "HTTP_RATE_LIMIT_ENABLED");
     if (rateLimitEnabledStr) {
       merged.server.rate_limit.enabled = rateLimitEnabledStr === "true";
     }
 
-    const rateLimitRPMStr = getEnv("SKILL_ROUTER_HTTP_RATE_LIMIT_RPM", "HTTP_RATE_LIMIT_RPM");
+    const rateLimitRPMStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_RPM", "HTTP_RATE_LIMIT_RPM");
     if (rateLimitRPMStr) {
       const rpm = Number(rateLimitRPMStr);
       if (!Number.isInteger(rpm)) {
@@ -278,7 +324,7 @@ export async function loadConfig(path?: string): Promise<Config> {
       merged.server.rate_limit.requests_per_minute = rpm;
     }
 
-    const rateLimitTrustProxyStr = getEnv("SKILL_ROUTER_HTTP_RATE_LIMIT_TRUST_PROXY", "HTTP_RATE_LIMIT_TRUST_PROXY");
+    const rateLimitTrustProxyStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY", "HTTP_RATE_LIMIT_TRUST_PROXY");
     if (rateLimitTrustProxyStr) {
       merged.server.rate_limit.trust_proxy = rateLimitTrustProxyStr === "true";
     }

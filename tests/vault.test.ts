@@ -59,7 +59,7 @@ description: Unterminated
   });
 
   test("listSupportingFiles ignores SKILL.md and returns sorted relative paths", () => {
-    const tmp = mkdtempSync(join(tmpdir(), "skill-router-vault-test-"));
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-vault-test-"));
     const skillId = "test-skill";
     const skillDir = join(tmp, skillId);
     mkdirSync(skillDir, { recursive: true });

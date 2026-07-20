@@ -29,7 +29,7 @@ describe("db utils", () => {
     let db: Database;
 
     beforeAll(() => {
-      tmp = mkdtempSync(join(tmpdir(), "skill-router-db-test-"));
+      tmp = mkdtempSync(join(tmpdir(), "skillmux-db-test-"));
       db = openIndex(tmp);
     });
 

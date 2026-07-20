@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { parseManifest, serializeManifest, validateManifest } from "../src/manifest";
+import { parseManifest, resolveManifestPath, serializeManifest, validateManifest } from "../src/manifest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("parseManifest", () => {
-  test("parses a valid skr.toml into typed core/project/targets", () => {
+  test("parses a valid skillmux.toml into typed core/project/targets", () => {
     const toml = `
 [core]
 skills = ["writing-clearly", "code-review"]
@@ -147,5 +150,37 @@ dir = "~/.claude/skills"
     const roundTripped = parseManifest(serializeManifest(manifest));
 
     expect(roundTripped).toEqual(manifest);
+  });
+});
+
+describe("resolveManifestPath (Shim 3)", () => {
+  test("resolves skillmux.toml when it exists", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-manifest-resolve-"));
+    writeFileSync(join(tmp, "skillmux.toml"), "core = { skills = [] }");
+    writeFileSync(join(tmp, "skr.toml"), "core = { skills = [] }");
+
+    const path = resolveManifestPath(tmp);
+    expect(path).toBe(join(tmp, "skillmux.toml"));
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("falls back to skr.toml when skillmux.toml does not exist", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-manifest-resolve-"));
+    writeFileSync(join(tmp, "skr.toml"), "core = { skills = [] }");
+
+    const path = resolveManifestPath(tmp);
+    expect(path).toBe(join(tmp, "skr.toml"));
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("returns null when neither exist", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-manifest-resolve-"));
+
+    const path = resolveManifestPath(tmp);
+    expect(path).toBeNull();
+
+    rmSync(tmp, { recursive: true, force: true });
   });
 });

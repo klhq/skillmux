@@ -114,7 +114,7 @@ describe("scanContent — suspicious-url rule", () => {
 
 describe("scanPath", () => {
   test("vault-wide mode scans every skill dir and attaches skill_id + file to findings", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "skr-scan-vault-"));
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-scan-vault-"));
     writeSkill(vaultDir, "clean-skill", "---\nname: Clean\ndescription: A clean skill.\n---\nNothing risky here.");
     writeSkill(
       vaultDir,
@@ -134,7 +134,7 @@ describe("scanPath", () => {
   });
 
   test("single-skill-dir mode scans one skill when path points directly at a SKILL.md dir", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "skr-scan-single-"));
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-scan-single-"));
     const skillDir = writeSkill(vaultDir, "candidate-skill", "api_key = \"sk-abcdefghijklmnopqrstuvwx\"");
 
     const result = await scanPath(skillDir);
@@ -148,7 +148,7 @@ describe("scanPath", () => {
   });
 
   test("scans text supporting files and reports their relative path, not SKILL.md", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "skr-scan-supporting-"));
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-scan-supporting-"));
     const skillDir = writeSkill(vaultDir, "with-reference", "---\nname: Ref\ndescription: d\n---\nbody");
     writeFileSync(join(skillDir, "reference.md"), "api_key = \"sk-abcdefghijklmnopqrstuvwx\"");
 
@@ -162,7 +162,7 @@ describe("scanPath", () => {
   });
 
   test("skips supporting files that are not valid UTF-8 instead of throwing", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "skr-scan-binary-"));
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-scan-binary-"));
     const skillDir = writeSkill(vaultDir, "with-binary", "---\nname: Bin\ndescription: d\n---\nbody");
     writeFileSync(join(skillDir, "logo.png"), Buffer.from([0xff, 0xd8, 0xff, 0xff, 0xff]));
 
@@ -175,7 +175,7 @@ describe("scanPath", () => {
   });
 
   test("flags (not silently drops) a skill whose SKILL.md fails to parse, in vault-wide mode", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "skr-scan-unparseable-"));
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-scan-unparseable-"));
     writeSkill(vaultDir, "clean-skill", "---\nname: Clean\ndescription: d\n---\nNothing risky.");
     writeSkill(vaultDir, "broken-skill", "---\nname: [unclosed\n");
 
@@ -190,7 +190,7 @@ describe("scanPath", () => {
   });
 
   test("flags (not silently drops) a non-UTF-8 SKILL.md in single-skill-dir mode", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "skr-scan-unparseable-single-"));
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-scan-unparseable-single-"));
     const skillDir = join(vaultDir, "broken-skill");
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, "SKILL.md"), Buffer.from([0xff, 0xfe, 0xff]));
