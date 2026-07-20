@@ -71,7 +71,7 @@ export interface ConfirmedTarget {
 }
 
 /**
- * Writes skr.toml with the conservative-default core/project and the
+ * Writes skillmux.toml with the conservative-default core/project and the
  * confirmed targets, then adopts each confirmed dir in place (creating it
  * first if it doesn't exist yet). Unconfirmed candidates are simply never
  * passed in — this function never discovers paths on its own.

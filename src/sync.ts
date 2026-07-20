@@ -84,9 +84,9 @@ export interface AdoptTargetResult {
 }
 
 /**
- * Marks an existing directory as skr-owned without touching its content —
- * the consented, one-time adoption skr init performs (see SkrMarker in
- * schema.json: "the only path allowed to create a .skr marker on a
+ * Marks an existing directory as skillmux-owned without touching its content —
+ * the consented, one-time adoption skillmux init performs (see SkillmuxMarker in
+ * schema.json: "the only path allowed to create a .skillmux marker on a
  * previously-unmarked directory"). syncTarget's fresh-dir case handles the
  * "doesn't exist yet" side of that rule; this handles "already exists".
  */

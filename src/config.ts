@@ -74,7 +74,7 @@ const configSchema = z.object({
   }).strict().optional(),
 }).strict();
 
-// Fallback values only; a config.toml (SKILL_ROUTER_CONFIG or default path)
+// Fallback values only; a config.toml (SKILLMUX_CONFIG or default path)
 // overrides them. The local bundle is the zero-config OSS path.
 export const LOCAL_BUNDLE_ID = "gte-small-v1";
 
@@ -101,7 +101,7 @@ const DEFAULTS: Config = {
     // MCP clients, server-to-server) pass; browser-issued cross-origin
     // requests are rejected until an origin is explicitly allow-listed.
     allowed_origins: [],
-    // Loopback-only by default so a zero-config `skr serve --transport http`
+    // Loopback-only by default so a zero-config `skillmux serve --transport http`
     // isn't reachable from the network. Docker overrides this to 0.0.0.0
     // below since the container's own loopback isn't reachable through
     // port-mapping.
