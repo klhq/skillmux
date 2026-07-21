@@ -60,10 +60,11 @@ Download the latest release for your architecture:
 ```sh
 # AMD64
 gh release download --repo klhq/skillmux \
-  --pattern 'skillmux-linux-*' \
-  --pattern 'SHA256SUMS'
+  --pattern 'skillmux-linux-*'
 
-sha256sum --check SHA256SUMS
+# Optional: verify build provenance
+gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
+
 # Install the binary matching your machine (amd64 or arm64)
 chmod +x skillmux-linux-amd64
 sudo install skillmux-linux-amd64 /usr/local/bin/skillmux

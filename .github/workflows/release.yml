@@ -31,7 +31,6 @@ jobs:
           mkdir -p dist
           bun build --compile --target=bun-linux-x64 src/cli.ts --outfile dist/skillmux-linux-amd64
           bun build --compile --target=bun-linux-arm64 src/cli.ts --outfile dist/skillmux-linux-arm64
-          sha256sum dist/skillmux-linux-* > dist/SHA256SUMS
       - uses: actions/attest-build-provenance@v4
         if: github.event.repository.visibility == 'public'
         with:
@@ -42,7 +41,6 @@ jobs:
           path: |
             dist/skillmux-linux-amd64
             dist/skillmux-linux-arm64
-            dist/SHA256SUMS
 
   npm:
     runs-on: ubuntu-latest
@@ -165,4 +163,3 @@ jobs:
           files: |
             dist/skillmux-linux-amd64
             dist/skillmux-linux-arm64
-            dist/SHA256SUMS
