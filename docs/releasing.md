@@ -25,7 +25,6 @@ The release workflow publishes:
 
 - `skillmux-linux-amd64`
 - `skillmux-linux-arm64`
-- `SHA256SUMS`
 - GitHub build provenance attestations when the repository is public
 - Full image: `:<version>`, `:<major>.<minor>`, `:<major>`, and `:latest`
 - Slim image: `:<version>-slim`, `:<major>.<minor>-slim`, `:<major>-slim`, and `:latest-slim`
@@ -36,18 +35,12 @@ Each Docker tag is a multi-architecture manifest. Users run the same tag on AMD6
 Container images are published to GitHub Container Registry only; the release workflow does not require external registry credentials.
 Private repositories still publish BuildKit SBOM/provenance with container images, but GitHub artifact attestations are skipped because GitHub does not support them for user-owned private repositories.
 
-Verify downloaded binaries with:
+Verify downloaded binaries with build provenance attestation:
 
 ```bash
-sha256sum --check SHA256SUMS
+gh release download v0.1.1 --repo klhq/skillmux --pattern 'skillmux-linux-*'
+gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
 ./skillmux-linux-amd64 config show
-```
-
-Verify release assets from GitHub without cloning the repository:
-
-```bash
-gh release download v0.1.1 --repo klhq/skillmux
-sha256sum --check SHA256SUMS
 ```
 
 Verify the container with a read-only vault mount:
