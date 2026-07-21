@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { createClients } from "./clients";
 import { embeddingDimension, expandHome } from "./config";
 import type { Config } from "./types";
@@ -17,8 +17,7 @@ export interface DoctorReport {
 
 export async function diagnose(config: Config): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
-  const vault = Bun.file(expandHome(`${config.vault_path}/.`));
-  checks.push({ name: "vault", ok: await vault.exists(), detail: expandHome(config.vault_path) });
+  checks.push({ name: "vault", ok: existsSync(expandHome(config.vault_path)), detail: expandHome(config.vault_path) });
 
   try {
     mkdirSync(expandHome(config.state_dir), { recursive: true });
