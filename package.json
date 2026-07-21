@@ -17,6 +17,20 @@
   "bin": {
     "skillmux": "./src/cli.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "docs/schema.json",
+    "docs/configuration.md",
+    "docs/releasing.md",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "config.example.toml",
+    "config.remote.example.toml"
+  ],
   "scripts": {
     "test": "bun test",
     "serve": "bun run src/cli.ts serve",
