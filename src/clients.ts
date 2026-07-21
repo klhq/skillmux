@@ -72,7 +72,9 @@ export function createClients(config: Config): Clients {
 
       const embedding = config.inference.embedding;
       const apiKey = embedding.api_key_env ? process.env[embedding.api_key_env] : undefined;
-      const response = await fetch(`${embedding.base_url.replace(/\/$/, "")}/v1/embeddings`, {
+      const cleanBase = embedding.base_url.replace(/\/$/, "");
+      const embedPath = cleanBase.endsWith("/v1") ? "/embeddings" : "/v1/embeddings";
+      const response = await fetch(`${cleanBase}${embedPath}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
