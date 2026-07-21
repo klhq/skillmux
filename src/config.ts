@@ -72,6 +72,10 @@ const configSchema = z.object({
       requests_per_minute: z.number().int().positive(),
       trust_proxy: z.boolean().optional(),
     }).strict().optional(),
+    admin: z.object({
+      enabled: z.boolean(),
+      token_env: z.string().min(1),
+    }).strict().optional(),
   }).strict().optional(),
 }).strict();
 

@@ -13,6 +13,15 @@ import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
 import { initializeRuntime } from "./lifecycle";
 import type { Clients, Config } from "./types";
+import {
+  computeHash,
+  getEffectiveConfig,
+  getLocalConfigStatus,
+  setDottedKey,
+  RELOADABLE_KEYS,
+  RESTART_REQUIRED_KEYS,
+} from "./config-service";
+import { applyCalibrationRun, getCalibrationRun, listCalibrationRuns } from "./calibrate";
 
 export const metricsRegistry = new MetricsRegistry();
 export const readinessState = new ReadinessState();
@@ -252,6 +261,113 @@ export async function startServer(opts?: {
           if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
           for (const [key, value] of Object.entries(rateLimitResult.headers)) headers.set(key, value);
           return new Response(JSON.stringify(getStats(db, since)), { status: 200, headers });
+        }
+
+        // Admin HTTP API (/admin/v1/*)
+        if (url.pathname.startsWith("/admin/v1/")) {
+          if (!serverConfig.admin?.enabled) {
+            return new Response("Admin endpoints disabled", { status: 403 });
+          }
+
+          const adminTokenEnv = serverConfig.admin.token_env || "SKILLMUX_ADMIN_TOKEN";
+          const expectedAdminToken = process.env[adminTokenEnv] || "";
+          const authHeader = req.headers.get("authorization") || "";
+          const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+
+          if (!expectedAdminToken || !token || !safeTokenEquals(token, expectedAdminToken)) {
+            return new Response("Unauthorized", { status: 401 });
+          }
+
+          const headers = new Headers({ "Content-Type": "application/json" });
+          if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+
+          if (req.method === "GET" && url.pathname === "/admin/v1/capabilities") {
+            const isExternallyManaged = process.env.SKILLMUX_CONFIG_READONLY === "true";
+            return new Response(
+              JSON.stringify({
+                config_read: true,
+                config_write: !isExternallyManaged,
+                calibration: true,
+                persistence: isExternallyManaged ? "externally_managed" : "writable",
+                reloadable_keys: RELOADABLE_KEYS,
+                restart_required_keys: RESTART_REQUIRED_KEYS,
+              }),
+              { status: 200, headers }
+            );
+          }
+
+          if (req.method === "GET" && url.pathname === "/admin/v1/config") {
+            const { effective, sources } = await getEffectiveConfig();
+            const hash = computeHash(effective);
+            const status = await getLocalConfigStatus();
+            headers.set("ETag", `"${hash}"`);
+            return new Response(
+              JSON.stringify({
+                desired: effective,
+                effective,
+                sources,
+                active_revision: hash,
+                runtime: status,
+              }),
+              { status: 200, headers }
+            );
+          }
+
+          if (req.method === "PATCH" && url.pathname === "/admin/v1/config") {
+            if (process.env.SKILLMUX_CONFIG_READONLY === "true") {
+              return new Response(
+                JSON.stringify({ error: "CONFIG_EXTERNALLY_MANAGED", message: "Configuration is externally managed" }),
+                { status: 409, headers }
+              );
+            }
+
+            const ifMatch = req.headers.get("if-match") || "";
+            const cleanIfMatch = ifMatch.replace(/^"|"$/g, "");
+            const { effective } = await getEffectiveConfig();
+            const currentHash = computeHash(effective);
+
+            if (!ifMatch || cleanIfMatch !== currentHash) {
+              return new Response(
+                JSON.stringify({ error: "CONFIG_REVISION_CONFLICT", message: "Revision conflict" }),
+                { status: 409, headers }
+              );
+            }
+
+            const body = (await req.json()) as { changes: Record<string, string | number | boolean> };
+            let lastResult: any = null;
+            for (const [k, v] of Object.entries(body.changes ?? {})) {
+              lastResult = await setDottedKey(k, String(v), { targetName: "remote" });
+            }
+
+            return new Response(JSON.stringify(lastResult ?? { ok: true }), { status: 200, headers });
+          }
+
+          if (url.pathname.startsWith("/admin/v1/calibrations")) {
+            const { db } = await getRuntime();
+            if (req.method === "GET" && url.pathname === "/admin/v1/calibrations") {
+              const runs = listCalibrationRuns(db);
+              return new Response(JSON.stringify(runs), { status: 200, headers });
+            }
+            const runIdMatch = url.pathname.match(/^\/admin\/v1\/calibrations\/([^\/]+)$/);
+            if (req.method === "GET" && runIdMatch) {
+              const run = getCalibrationRun(db, runIdMatch[1]);
+              if (!run) return new Response(JSON.stringify({ error: "Calibration run not found" }), { status: 404, headers });
+              return new Response(JSON.stringify(run), { status: 200, headers });
+            }
+            if (req.method === "POST" && url.pathname === "/admin/v1/calibrations") {
+              const runId = "run_" + Math.random().toString(36).slice(2, 10);
+              return new Response(JSON.stringify({ run_id: runId, status: "running" }), { status: 202, headers });
+            }
+            const applyMatch = url.pathname.match(/^\/admin\/v1\/calibrations\/([^\/]+)\/apply$/);
+            if (req.method === "POST" && applyMatch) {
+              const run = getCalibrationRun(db, applyMatch[1]);
+              if (!run) return new Response(JSON.stringify({ error: "Calibration run not found" }), { status: 404, headers });
+              await applyCalibrationRun(db, applyMatch[1]);
+              return new Response(JSON.stringify({ ok: true, run_id: applyMatch[1] }), { status: 200, headers });
+            }
+          }
+
+          return new Response("Not Found", { status: 404, headers });
         }
 
         // Record request metrics
