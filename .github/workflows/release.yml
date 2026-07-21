@@ -134,6 +134,20 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
+  dockerhub-description:
+    needs: [containers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ vars.DOCKERHUB_USERNAME }}/skillmux
+          short-description: "Local MCP server: routes natural-language task queries to skills in a SKILL.md vault, with zero-loss delivery."
+          readme-filepath: README.md
+
   release:
     needs: [binaries, containers]
     runs-on: ubuntu-latest
