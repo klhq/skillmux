@@ -67,7 +67,7 @@ beforeAll(async () => {
     ].join("\n"),
   );
 
-  process.env.SKILLMUX_CONFIG = configPath;
+  process.env.SKILL_ROUTER_CONFIG = configPath;
 
   const origServe = Bun.serve;
   let capturedPort = 0;
@@ -88,7 +88,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
-  delete process.env.SKILLMUX_CONFIG;
+  delete process.env.SKILL_ROUTER_CONFIG;
   configure({});
 });
 

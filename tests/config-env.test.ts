@@ -12,7 +12,7 @@ mock.module("node:os", () => {
   };
 });
 
-import { loadConfig, migrateLegacyPaths } from "../src/config";
+import { loadConfig, migrateLegacyPaths, warnedEnv } from "../src/config";
 
 const originalEnv = { ...process.env };
 const files: string[] = [];
@@ -274,12 +274,61 @@ describe("Shim 1: legacy XDG directory migration", () => {
   });
 });
 
-describe("SKILLMUX_CONFIG environment override", () => {
+describe("Shim 2: legacy environment variable fallbacks", () => {
+  let consoleErrorSpy: any;
+  const originalConsoleError = console.error;
+
+  beforeEach(() => {
+    warnedEnv.clear();
+    consoleErrorSpy = [];
+    console.error = (...args: any[]) => {
+      consoleErrorSpy.push(args.join(" "));
+    };
+  });
+
+  afterEach(() => {
+    console.error = originalConsoleError;
+  });
+
   test("SKILLMUX_CONFIG primary var works without warning", async () => {
     const configPath = await configFile("[recall]\nk_lexical = 10\n");
     process.env.SKILLMUX_CONFIG = configPath;
     
     const config = await loadConfig();
     expect(config.recall.k_lexical).toBe(10);
+    expect(consoleErrorSpy.length).toBe(0);
+  });
+
+  test("SKILL_ROUTER_CONFIG fallback works with deprecation warning", async () => {
+    const configPath = await configFile("[recall]\nk_lexical = 12\n");
+    process.env.SKILL_ROUTER_CONFIG = configPath;
+    
+    const config = await loadConfig();
+    expect(config.recall.k_lexical).toBe(12);
+    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_CONFIG is deprecated"))).toBe(true);
+  });
+
+  test("SKILL_ROUTER_MODELS_DIR fallback works with deprecation warning", async () => {
+    process.env.SKILL_ROUTER_MODELS_DIR = "/legacy-models-path";
+    const config = await loadConfig();
+    expect(config.inference.mode === "local" ? config.inference.models_dir : "").toBe("/legacy-models-path");
+    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_MODELS_DIR is deprecated"))).toBe(true);
+  });
+
+  test("SKILL_ROUTER_EMBED_BASE_URL via 3-tier getEnv works with deprecation warning", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://default.example.com"
+model = "embed"
+dimension = 384
+`);
+    process.env.SKILL_ROUTER_EMBED_BASE_URL = "https://legacy-embed.example.com";
+    const config = await loadConfig(path);
+    expect(config.inference.mode === "remote" ? config.inference.embedding.base_url : "").toBe("https://legacy-embed.example.com");
+    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_EMBED_BASE_URL is deprecated"))).toBe(true);
   });
 });

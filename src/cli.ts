@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { generateDataset } from "./dataset-generator";
+
 import { createClients } from "./clients";
 import { loadConfig } from "./config";
 import { expandHome } from "./config";
@@ -421,6 +423,41 @@ async function runInstall(args: string[]): Promise<void> {
     }
 }
 
+function parseCalibrateGenerateDatasetArgs(args: string[]): { vault?: string; out?: string } {
+    let vault: string | undefined;
+    let out: string | undefined;
+    for (let i = 0; i < args.length; i++) {
+        const option = args[i];
+        if (option === "--vault") {
+            const value = args[++i];
+            if (!value) throw new Error("--vault requires a path value");
+            vault = value;
+        } else if (option === "--out") {
+            const value = args[++i];
+            if (!value) throw new Error("--out requires a file path value");
+            out = value;
+        } else {
+            throw new Error(`unknown calibrate option: ${option}`);
+        }
+    }
+    return { vault, out };
+}
+
+async function runCalibrateGenerateDataset(args: string[]): Promise<void> {
+    const { vault: vaultArg, out: outArg } = parseCalibrateGenerateDatasetArgs(args);
+    const config = await loadConfig();
+    const vaultPath = expandHome(vaultArg ?? config.vault_path);
+    const outPath = expandHome(outArg ?? join(config.state_dir, "queries.json"));
+
+    const skills = await scanVault(vaultPath);
+    const dataset = generateDataset(skills);
+
+    const parentDir = join(outPath, "..");
+    mkdirSync(parentDir, { recursive: true });
+    await Bun.write(outPath, JSON.stringify(dataset, null, 2) + "\n");
+    console.log(`generated synthetic dataset with ${dataset.length} cases at ${outPath}`);
+}
+
 switch (command) {
     case "serve": {
         const { startServer } = await import("./server");
@@ -474,9 +511,19 @@ switch (command) {
             throw new Error("usage: skillmux models download");
         await runModelDownload();
         break;
+    case "calibrate": {
+        const sub = Bun.argv[3];
+        if (sub === "generate-dataset") {
+            await runCalibrateGenerateDataset(Bun.argv.slice(4));
+        } else {
+            throw new Error("usage: skillmux calibrate generate-dataset [--vault <path>] [--out <file>]");
+        }
+        break;
+    }
     default:
         console.error(
-            "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]]",
+            "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]",
         );
         process.exit(2);
 }
+

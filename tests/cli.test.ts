@@ -144,8 +144,9 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download>",
+      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download|calibrate generate-dataset>",
     );
+
   });
 
   test("config subcommand usage error names the skillmux binary", async () => {

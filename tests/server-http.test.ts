@@ -59,7 +59,8 @@ beforeAll(async () => {
     ].join("\n"),
   );
 
-  process.env.SKILLMUX_CONFIG = configPath;
+  // Set config path override
+  process.env.SKILL_ROUTER_CONFIG = configPath;
   // This suite asserts the CORS preflight response shape, not the default
   // allowed_origins posture (which is deny-by-default) — opt in explicitly.
   process.env.HTTP_ALLOWED_ORIGINS = "*";
@@ -87,7 +88,6 @@ beforeAll(async () => {
 afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
   delete process.env.HTTP_ALLOWED_ORIGINS;
-  delete process.env.SKILLMUX_CONFIG;
 });
 
 function parseSSEResponse(text: string): any {

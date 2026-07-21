@@ -1,10 +1,13 @@
 [
-  { "query": "why did my Docker container stop", "expected": ["docker-manager"] },
-  { "query": "check whether my GitHub PR checks failed", "expected": ["gh-diagnose"] },
-  { "query": "find accessibility problems in this page", "expected": ["check-fix-accessibility"] },
-  { "query": "look up the official API for a library", "expected": ["doc-lookup"] },
-  { "query": "write browser automation for this user flow", "expected": ["e2e-test", "agent-browser"] },
-  { "query": "audit this diff for injection and authentication bugs", "expected": ["security-review"] },
-  { "query": "what tasks are overdue", "expected": ["task-summary"] },
-  { "query": "make this explanation understandable to a beginner", "expected": ["eli5"] }
+  { "query": "how to build and run container images locally", "split": "tune", "expected_outcome": "matched", "relevant_skill_ids": ["mock-container-tool"] },
+  { "query": "diagnose why pull request checks are failing on CI", "split": "tune", "expected_outcome": "matched", "relevant_skill_ids": ["mock-ci-diagnostics"] },
+  { "query": "check web page accessibility and contrast compliance", "split": "tune", "expected_outcome": "matched", "relevant_skill_ids": ["mock-a11y-auditor"] },
+  { "query": "automate browser testing and user interaction flows", "split": "tune", "expected_outcome": "ambiguous", "relevant_skill_ids": ["mock-e2e-runner", "mock-browser-driver"] },
+  { "query": "what is the speed of light in vacuum", "split": "tune", "expected_outcome": "no_match", "relevant_skill_ids": [] },
+  { "query": "search API documentation for third party library", "split": "test", "expected_outcome": "matched", "relevant_skill_ids": ["mock-doc-search"] },
+  { "query": "audit source code for security vulnerabilities and injection risks", "split": "test", "expected_outcome": "matched", "relevant_skill_ids": ["mock-security-scanner"] },
+  { "query": "show list of pending tasks and overdue items", "split": "test", "expected_outcome": "matched", "relevant_skill_ids": ["mock-task-manager"] },
+  { "query": "explain complex concepts using simple beginner analogies", "split": "test", "expected_outcome": "matched", "relevant_skill_ids": ["mock-simple-explainer"] },
+  { "query": "extract clean text and markdown content from web page URL", "split": "test", "expected_outcome": "ambiguous", "relevant_skill_ids": ["mock-web-fetcher", "mock-text-extractor"] },
+  { "query": "how do I bake a chocolate cake at home", "split": "test", "expected_outcome": "no_match", "relevant_skill_ids": [] }
 ]
