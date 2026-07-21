@@ -518,7 +518,7 @@ describe("calibration SQLite store", () => {
     expect(entry.created_at).toBe("2026-07-21T12:00:00Z");
     expect(entry.dataset_hash).toBe("dataset@sha256:12345678");
     // Observations are large — not included in list view
-    expect((entry as Record<string, unknown>).observations).toBeUndefined();
+    expect((entry as unknown as Record<string, unknown>).observations).toBeUndefined();
   });
 
   test("should return null for a non-existent run_id", () => {
