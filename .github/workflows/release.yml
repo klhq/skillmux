@@ -111,7 +111,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}},suffix=${{ matrix.suffix }}
             type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.suffix }}
-            type=semver,pattern={{major}},suffix=${{ matrix.suffix }}
             type=raw,value=latest,enable=${{ matrix.target == 'full' }}
             type=raw,value=latest-slim,enable=${{ matrix.target == 'slim' }}
       - id: build
