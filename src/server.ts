@@ -22,18 +22,8 @@ export interface ServerHandle {
   stop(): Promise<void>;
 }
 
-let warnedAuthToken = false;
 function resolveAuthToken(envName: string): string {
-  const value = process.env[envName];
-  if (value) return value;
-  if (envName === "SKILLMUX_AUTH_TOKEN" && process.env.SKILL_ROUTER_AUTH_TOKEN) {
-    if (!warnedAuthToken) {
-      warnedAuthToken = true;
-      console.error("skillmux: SKILL_ROUTER_AUTH_TOKEN is deprecated, set SKILLMUX_AUTH_TOKEN instead");
-    }
-    return process.env.SKILL_ROUTER_AUTH_TOKEN;
-  }
-  return "";
+  return process.env[envName] ?? "";
 }
 
 function safeTokenEquals(a: string, b: string): boolean {
