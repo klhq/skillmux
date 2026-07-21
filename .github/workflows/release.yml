@@ -145,8 +145,10 @@ jobs:
           name: release-binaries
           path: dist
       - uses: softprops/action-gh-release@v3
+        # No generate_release_notes here: release-please already created this
+        # release with a changelog-derived body before this tag was pushed —
+        # this step only attaches binaries, it must not overwrite the notes.
         with:
-          generate_release_notes: true
           files: |
             dist/skillmux-linux-amd64
             dist/skillmux-linux-arm64
