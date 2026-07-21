@@ -5,8 +5,10 @@ A local, read-only [MCP](https://modelcontextprotocol.io) stdio server that give
 Built for agents that lack native skill triggering (Goose recipe workers, opencode, and friends). Agents that already trigger skills natively (e.g. Claude Code) don't need it.
 
 - [How it works](#how-it-works)
+- [Tiers: routed vs. pinned](#tiers-routed-vs-pinned)
 - [Install](#install)
 - [Quick start](#quick-start) — the fastest path to seeing it respond
+- [Pinning skills across surfaces](#pinning-skills-across-surfaces) — optional: statically load a curated set across multiple agents
 - [Docker Usage](#docker-usage)
 - [Configuration](#configuration) — inference modes, security scanning, installing skills, env vars
 - [Guarantees](#guarantees)
@@ -39,6 +41,15 @@ If embeddings are unavailable, the router remains ready with FTS5 lexical retrie
 | `fetch_skill` | `skill_id` | verbatim body, `content_sha256`, supporting-file paths |
 
 The full contract lives in [`docs/schema.json`](docs/schema.json) (JSON Schema 2020-12, language-neutral).
+
+## Tiers: routed vs. pinned
+
+Skills live in one vault, but there are two ways an agent gets one:
+
+- **routed** — the default, described above. Nothing is loaded up front; the agent calls `resolve_skill` on demand and gets back exactly the skill that matches. This scales to hundreds of skills at zero standing cost.
+- **pinned** (`core` / `project`) — a small, hand-picked set of skills symlinked directly into an agent's own skill directory (e.g. `~/.claude/skills`), so they load the same way any other skill on that agent does — no MCP round-trip, no query. `core` pins apply everywhere; `project` pins apply only inside one repo.
+
+Pinning is optional and orthogonal to serving: `skillmux init`/`sync` manage what's pinned; `skillmux serve` is what answers `resolve_skill` for everything else. Most single-agent setups never need pinning — reach for it once you're running the same small set of skills across multiple agent surfaces (Claude Code, opencode, ...) and don't want to maintain that list by hand in each one. See [Pinning skills across surfaces](#pinning-skills-across-surfaces).
 
 ## Install
 
@@ -160,6 +171,77 @@ bun install --frozen-lockfile
 bun run src/cli.ts index
 bun run src/cli.ts serve
 ```
+
+## Pinning skills across surfaces
+
+Optional — skip this if `resolve_skill` alone is enough (most setups). Use it once you want a small set of skills loaded *statically* in every agent that reads from a given directory, instead of routed on demand — see [Tiers](#tiers-routed-vs-pinned).
+
+### 1. Discover surfaces and adopt one
+
+```sh
+skillmux init
+```
+
+Lists candidate surfaces (default: `~/.claude/skills`, `~/.agents/skills`) with their dir/symlink status and skill count. Nothing is written until you pass `--target`:
+
+```sh
+skillmux init --target claude --yes
+```
+
+This writes `skillmux.toml` at the vault root and marks `~/.claude/skills` as skillmux-owned — a `.skillmux` marker file that `sync` requires before it will touch the directory.
+
+### 2. Pick which skills are pinned
+
+`init` always starts `[core]` empty — there's no heuristic yet for which skills belong there. Edit `skillmux.toml` by hand:
+
+```toml
+[core]
+skills = ["csv-formatter"]
+
+[targets.claude]
+dir = "/Users/you/.claude/skills"
+project = false
+```
+
+Cap: 25 skills in `[core]`. Full manifest schema, including `[project.<group>]` pins scoped to one repo, is in [`docs/configuration.md`](docs/configuration.md#tiers-and-the-manifest).
+
+### 3. Materialize
+
+```sh
+skillmux sync
+# claude: +1 -0
+```
+
+Each pinned skill becomes a symlink from the target dir into the vault. Re-running `sync` is idempotent (`+0 -0` once nothing changed); removing a skill from `[core]` removes its symlink on the next sync.
+
+```sh
+skillmux sync --dry-run           # preview +added/-removed without touching disk
+skillmux sync --install-hook      # add a git post-merge hook in the vault that runs `skillmux sync` automatically
+skillmux sync --restore-monolith  # undo: replace a target dir with one symlink straight to the vault
+```
+
+`--restore-monolith` drops the `.skillmux` marker along with the per-skill symlinks — re-adopt with `skillmux init --target <name> --yes` before that target can be `sync`'d again.
+
+### 4. See what's actually getting used
+
+`skillmux report` reads the same audit log `resolve_skill` writes to (see [Guarantees](#guarantees)) — useful for deciding what belongs in `[core]` versus staying routed:
+
+```sh
+skillmux report --since 7d                              # local: reads state_dir's audit db
+skillmux report --server http://host:3000 --since 7d    # remote: hits a running server's /stats
+```
+
+```
+window: 2026-07-14T00:00:00Z .. 2026-07-21T00:00:00Z
+outcomes: matched=0 ambiguous=2 no_match=0 (ambiguous_rate=1.000)
+skills:
+  csv-formatter matched=0 candidate=2
+  pdf-extractor matched=0 candidate=2
+top no_match queries:
+  (none)
+```
+
+`--since` accepts a relative window (`1h`, `7d`, `1m`) or an absolute date/timestamp. A skill matched often but never pinned is a `[core]` candidate; a query that keeps showing up in `top_no_match_queries` means the vault is missing something.
 
 ## Docker Usage
 
