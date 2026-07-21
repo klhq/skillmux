@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2](https://github.com/klhq/skillmux/compare/v0.2.1...v0.2.2) (2026-07-21)
+
+
+### Fixed
+
+* **clients:** handle trailing /v1 in embedding base_url ([26d8158](https://github.com/klhq/skillmux/commit/26d8158138b390ffb3e5c3f54777273673db0a73))
+
+
+### Changed
+
+* **config:** remove deprecated environment variable shims ([#34](https://github.com/klhq/skillmux/issues/34)) ([e046f45](https://github.com/klhq/skillmux/commit/e046f45c3133b2e91b4920513975107b025b19f5))
+
 ## [0.2.1](https://github.com/klhq/skillmux/compare/skillmux-v0.2.0...skillmux-v0.2.1) (2026-07-21)
 
 ## [0.2.0](https://github.com/klhq/skillmux/compare/skillmux-v0.1.1...skillmux-v0.2.0) (2026-07-21)
