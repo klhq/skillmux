@@ -349,8 +349,9 @@ export async function startServer(opts?: {
               return new Response(JSON.stringify(runs), { status: 200, headers });
             }
             const runIdMatch = url.pathname.match(/^\/admin\/v1\/calibrations\/([^\/]+)$/);
-            if (req.method === "GET" && runIdMatch) {
-              const run = getCalibrationRun(db, runIdMatch[1]);
+            if (req.method === "GET" && runIdMatch && runIdMatch[1]) {
+              const runId = runIdMatch[1];
+              const run = getCalibrationRun(db, runId);
               if (!run) return new Response(JSON.stringify({ error: "Calibration run not found" }), { status: 404, headers });
               return new Response(JSON.stringify(run), { status: 200, headers });
             }
@@ -359,11 +360,13 @@ export async function startServer(opts?: {
               return new Response(JSON.stringify({ run_id: runId, status: "running" }), { status: 202, headers });
             }
             const applyMatch = url.pathname.match(/^\/admin\/v1\/calibrations\/([^\/]+)\/apply$/);
-            if (req.method === "POST" && applyMatch) {
-              const run = getCalibrationRun(db, applyMatch[1]);
+            if (req.method === "POST" && applyMatch && applyMatch[1]) {
+              const runId = applyMatch[1];
+              const run = getCalibrationRun(db, runId);
               if (!run) return new Response(JSON.stringify({ error: "Calibration run not found" }), { status: 404, headers });
-              await applyCalibrationRun(db, applyMatch[1]);
-              return new Response(JSON.stringify({ ok: true, run_id: applyMatch[1] }), { status: 200, headers });
+              const { DEFAULT_CONFIG_PATH, expandHome } = await import("./config");
+              await applyCalibrationRun(db, runId, expandHome(DEFAULT_CONFIG_PATH), {});
+              return new Response(JSON.stringify({ ok: true, run_id: runId }), { status: 200, headers });
             }
           }
 

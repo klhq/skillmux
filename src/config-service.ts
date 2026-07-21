@@ -79,23 +79,26 @@ export function setNestedValue(obj: Record<string, any>, path: string, value: un
   const parts = path.split(".");
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i];
+    const part = parts[i]!;
     if (!cur[part] || typeof cur[part] !== "object") {
       cur[part] = {};
     }
     cur = cur[part];
   }
-  cur[parts[parts.length - 1]] = value;
+  const lastPart = parts[parts.length - 1]!;
+  cur[lastPart] = value;
 }
 
 export function deleteNestedValue(obj: Record<string, any>, path: string): void {
   const parts = path.split(".");
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
-    if (!cur[parts[i]]) return;
-    cur = cur[parts[i]];
+    const part = parts[i]!;
+    if (!cur[part]) return;
+    cur = cur[part];
   }
-  delete cur[parts[parts.length - 1]];
+  const lastPart = parts[parts.length - 1]!;
+  delete cur[lastPart];
 }
 
 export function computeHash(data: unknown): string {

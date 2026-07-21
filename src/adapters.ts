@@ -1,5 +1,7 @@
 import { Database } from "bun:sqlite";
-import { applyCalibrationRun, getCalibrationRun, listCalibrationRuns, openCalibrateDb, runCalibration, type CalibrationResult } from "./calibrate";
+import { join } from "node:path";
+import { applyCalibrationRun, getCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, type CalibrationResult } from "./calibrate";
+import { createClients } from "./clients";
 import { DEFAULT_CONFIG_PATH, expandHome, loadConfig } from "./config";
 import {
   computeHash,
@@ -15,6 +17,7 @@ import {
   type SetConfigResult,
 } from "./config-service";
 import type { ResolvedTarget } from "./context";
+import { resolveSkill } from "./router-core";
 import type { Config } from "./types";
 
 export interface Capabilities {
@@ -121,10 +124,22 @@ export class LocalAdapter implements TargetAdapter {
 
   async calibrateRun(opts?: { datasetPath?: string }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     const config = await loadConfig(this.configPath);
+    const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
+    const cases = loadDecisionCasesFromFile(datasetFile);
+    const clients = createClients(config);
     const result = await runCalibration({
-      datasetPath: opts?.datasetPath,
-      stateDir: expandHome(config.state_dir),
-      vaultPath: expandHome(config.vault_path),
+      cases,
+      getCandidates: async (query: string) => {
+        const res = await resolveSkill({ query, forceLexical: false });
+        if (res.outcome === "matched") {
+          return [{ skill_id: res.skill_id, text: `${res.title} ${res.body}` }];
+        }
+        if (res.outcome === "ambiguous") {
+          return res.candidates.map((c) => ({ skill_id: c.skill_id, text: `${c.title} ${c.description}` }));
+        }
+        return [];
+      },
+      reranker: clients.rerank,
     });
     return { result };
   }
@@ -157,7 +172,8 @@ export class LocalAdapter implements TargetAdapter {
     try {
       const run = getCalibrationRun(db, runId);
       if (!run) throw new Error(`Calibration run "${runId}" not found`);
-      return await applyCalibrationRun(db, runId);
+      await applyCalibrationRun(db, runId, expandHome(this.configPath), {});
+      return { ok: true, run_id: runId };
     } finally {
       db.close();
     }

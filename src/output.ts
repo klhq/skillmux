@@ -71,20 +71,28 @@ export function levenshteinDistance(a: string, b: string): number {
   const n = b.length;
   const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
 
-  for (let i = 0; i <= m; i++) dp[i][0] = i;
-  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 0; i <= m; i++) {
+    if (!dp[i]) dp[i] = [];
+    dp[i]![0] = i;
+  }
+  for (let j = 0; j <= n; j++) {
+    if (!dp[0]) dp[0] = [];
+    dp[0]![j] = j;
+  }
 
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1,
-        dp[i][j - 1] + 1,
-        dp[i - 1][j - 1] + cost
+      const prevRow = dp[i - 1]!;
+      const curRow = dp[i]!;
+      curRow[j] = Math.min(
+        prevRow[j]! + 1,
+        curRow[j - 1]! + 1,
+        prevRow[j - 1]! + cost
       );
     }
   }
-  return dp[m][n];
+  return dp[m]![n]!;
 }
 
 export function suggestCorrection(input: string, candidates: string[]): string | null {
@@ -125,18 +133,19 @@ export function renderTable(columns: { key: string; header: string }[], rows: Re
     return;
   }
 
-  const widths: Record<string, number> = {};
+  const widths = new Map<string, number>();
   for (const col of columns) {
-    widths[col.key] = Math.max(col.header.length, ...rows.map((r) => String(r[col.key] ?? "").length));
+    const maxLen = Math.max(col.header.length, ...rows.map((r) => String(r[col.key] ?? "").length));
+    widths.set(col.key, maxLen);
   }
 
-  const headerLine = columns.map((col) => col.header.padEnd(widths[col.key])).join("  ");
-  const sepLine = columns.map((col) => "-".repeat(widths[col.key])).join("  ");
+  const headerLine = columns.map((col) => col.header.padEnd(widths.get(col.key) ?? 0)).join("  ");
+  const sepLine = columns.map((col) => "-".repeat(widths.get(col.key) ?? 0)).join("  ");
 
   console.log(headerLine);
   console.log(sepLine);
   for (const row of rows) {
-    const line = columns.map((col) => String(row[col.key] ?? "").padEnd(widths[col.key])).join("  ");
+    const line = columns.map((col) => String(row[col.key] ?? "").padEnd(widths.get(col.key) ?? 0)).join("  ");
     console.log(line);
   }
 }

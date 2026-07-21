@@ -102,7 +102,7 @@ async function main() {
   }
 
   const adapter = createTargetAdapter(resolvedTarget, { allowInsecure });
-  const subCommand = rawArgv[1];
+  const subCommand = rawArgv[1] ?? "";
   const commandArgs = rawArgv.slice(2);
 
   try {
