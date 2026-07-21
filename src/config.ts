@@ -145,7 +145,6 @@ function deepMerge<T>(base: T, override: unknown): T {
   return out as T;
 }
 
-export const warnedEnv = new Set<string>();
 
 function migrateLegacyDir(legacy: string, next: string): void {
   const legacyPath = expandHome(legacy);
@@ -164,14 +163,7 @@ export function migrateLegacyPaths(): void {
 
 export async function loadConfig(path?: string): Promise<Config> {
   migrateLegacyPaths();
-  let configEnv = process.env.SKILLMUX_CONFIG;
-  if (configEnv === undefined && process.env.SKILL_ROUTER_CONFIG !== undefined) {
-    if (!warnedEnv.has("SKILL_ROUTER_CONFIG")) {
-      warnedEnv.add("SKILL_ROUTER_CONFIG");
-      console.error("skillmux: SKILL_ROUTER_CONFIG is deprecated, use SKILLMUX_CONFIG instead");
-    }
-    configEnv = process.env.SKILL_ROUTER_CONFIG;
-  }
+  const configEnv = process.env.SKILLMUX_CONFIG;
   const configPath = path ?? configEnv ?? DEFAULT_CONFIG_PATH;
   const file = Bun.file(expandHome(configPath));
 
@@ -216,27 +208,11 @@ export async function loadConfig(path?: string): Promise<Config> {
     merged.state_dir = process.env.STATE_DIR;
   }
   const getEnv = (newPrefixed: string, unprefixed: string) => {
-    const legacyPrefixed = newPrefixed.replace(/^SKILLMUX_/, "SKILL_ROUTER_");
-    if (process.env[newPrefixed] !== undefined) return process.env[newPrefixed];
-    if (process.env[legacyPrefixed] !== undefined) {
-      if (!warnedEnv.has(legacyPrefixed)) {
-        warnedEnv.add(legacyPrefixed);
-        console.error(`skillmux: ${legacyPrefixed} is deprecated, use ${newPrefixed} instead`);
-      }
-      return process.env[legacyPrefixed];
-    }
-    return process.env[unprefixed];
+    return process.env[newPrefixed] ?? process.env[unprefixed];
   };
 
   if (merged.inference.mode === "local") {
-    let modelsDirEnv = process.env.SKILLMUX_MODELS_DIR;
-    if (modelsDirEnv === undefined && process.env.SKILL_ROUTER_MODELS_DIR !== undefined) {
-      if (!warnedEnv.has("SKILL_ROUTER_MODELS_DIR")) {
-        warnedEnv.add("SKILL_ROUTER_MODELS_DIR");
-        console.error("skillmux: SKILL_ROUTER_MODELS_DIR is deprecated, use SKILLMUX_MODELS_DIR instead");
-      }
-      modelsDirEnv = process.env.SKILL_ROUTER_MODELS_DIR;
-    }
+    const modelsDirEnv = process.env.SKILLMUX_MODELS_DIR;
     if (modelsDirEnv) merged.inference.models_dir = modelsDirEnv;
     if (process.env.EMBED_DEVICE) merged.inference.embedding.device = process.env.EMBED_DEVICE as ONNXDevice;
     if (process.env.EMBED_DTYPE) merged.inference.embedding.dtype = process.env.EMBED_DTYPE as ONNXDtype;
