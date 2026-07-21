@@ -83,12 +83,18 @@ export interface RateLimitConfig {
   trust_proxy?: boolean;
 }
 
+export interface AdminConfig {
+  enabled: boolean;
+  token_env: string;
+}
+
 export interface ServerConfig {
   auth_enabled: boolean;
   auth_token_env: string;
   allowed_origins: string[];
   hostname?: string;
   rate_limit?: RateLimitConfig;
+  admin?: AdminConfig;
 }
 
 export interface Config {
