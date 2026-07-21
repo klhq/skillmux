@@ -13,6 +13,7 @@ Built for agents that lack native skill triggering (Goose recipe workers, openco
 - [Pinning skills across surfaces](#pinning-skills-across-surfaces) — optional: statically load a curated set across multiple agents
 - [Docker Usage](#docker-usage)
 - [Configuration](#configuration) — inference modes, security scanning, installing skills, env vars
+- [CLI & Automation](docs/cli.md) — context management, remote target resolution, policy calibration, JSON envelopes
 - [Guarantees](#guarantees)
 - [Development](#development)
 

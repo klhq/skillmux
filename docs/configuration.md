@@ -2,6 +2,8 @@
 
 Skillmux defaults to FTS5 plus local GTE-small semantic retrieval. Most users need no config file.
 
+For detailed CLI command reference, target resolution, policy calibration, and automation envelopes, see [`docs/cli.md`](cli.md).
+
 ## Local mode
 
 ```toml
