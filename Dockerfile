@@ -8,7 +8,7 @@ RUN bun install --production --frozen-lockfile
 FROM base AS models
 COPY scripts/download-models.ts scripts/
 COPY src/ src/
-ENV SKILL_ROUTER_MODELS_DIR=/models
+ENV SKILLMUX_MODELS_DIR=/models
 RUN bun run scripts/download-models.ts
 
 # Stage 3: Slim runtime (no models baked in)
@@ -30,4 +30,4 @@ ENTRYPOINT ["bun", "run", "src/cli.ts", "serve", "--transport", "http"]
 # Stage 4: Full runtime (battery-included with models)
 FROM slim AS full
 COPY --from=models /models /models
-ENV SKILL_ROUTER_MODELS_DIR=/models
+ENV SKILLMUX_MODELS_DIR=/models

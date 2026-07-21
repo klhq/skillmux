@@ -4,6 +4,16 @@ A local, read-only [MCP](https://modelcontextprotocol.io) stdio server that give
 
 Built for agents that lack native skill triggering (Goose recipe workers, opencode, and friends). Agents that already trigger skills natively (e.g. Claude Code) don't need it.
 
+- [How it works](#how-it-works)
+- [Tiers: routed vs. pinned](#tiers-routed-vs-pinned)
+- [Install](#install)
+- [Quick start](#quick-start) — the fastest path to seeing it respond
+- [Pinning skills across surfaces](#pinning-skills-across-surfaces) — optional: statically load a curated set across multiple agents
+- [Docker Usage](#docker-usage)
+- [Configuration](#configuration) — inference modes, security scanning, installing skills, env vars
+- [Guarantees](#guarantees)
+- [Development](#development)
+
 ## How it works
 
 ```
@@ -31,6 +41,15 @@ If embeddings are unavailable, the router remains ready with FTS5 lexical retrie
 | `fetch_skill` | `skill_id` | verbatim body, `content_sha256`, supporting-file paths |
 
 The full contract lives in [`docs/schema.json`](docs/schema.json) (JSON Schema 2020-12, language-neutral).
+
+## Tiers: routed vs. pinned
+
+Skills live in one vault, but there are two ways an agent gets one:
+
+- **routed** — the default, described above. Nothing is loaded up front; the agent calls `resolve_skill` on demand and gets back exactly the skill that matches. This scales to hundreds of skills at zero standing cost.
+- **pinned** (`core` / `project`) — a small, hand-picked set of skills symlinked directly into an agent's own skill directory (e.g. `~/.claude/skills`), so they load the same way any other skill on that agent does — no MCP round-trip, no query. `core` pins apply everywhere; `project` pins apply only inside one repo.
+
+Pinning is optional and orthogonal to serving: `skillmux init`/`sync` manage what's pinned; `skillmux serve` is what answers `resolve_skill` for everything else. Most single-agent setups never need pinning — reach for it once you're running the same small set of skills across multiple agent surfaces (Claude Code, opencode, ...) and don't want to maintain that list by hand in each one. See [Pinning skills across surfaces](#pinning-skills-across-surfaces).
 
 ## Install
 
@@ -60,10 +79,41 @@ Requirements at runtime:
 
 ## Quick start
 
-No config is required when the vault is at `~/skills`:
+No config is required — the vault defaults to `~/skills`, and the full binary embeds its own local model, so there's nothing to download or provision first.
+
+### 1. Put a skill in your vault
+
+A skill is just a directory with a `SKILL.md`. Author one by hand to try against:
+
+```sh
+mkdir -p ~/skills/csv-formatter
+cat > ~/skills/csv-formatter/SKILL.md <<'EOF'
+---
+name: CSV Formatter
+description: Converts CSV or spreadsheet data into clean, aligned Markdown tables. Use whenever the user asks to convert, format, or clean up tabular/CSV/spreadsheet data into Markdown.
+---
+
+# CSV Formatter
+
+Given raw CSV input, emit a well-aligned Markdown table: infer column headers
+from the first row, right-align numeric columns, left-align text columns.
+EOF
+```
+
+(Or fetch an existing skill from a git repo instead — see [Installing skills](#installing-skills) below.)
+
+### 2. Index and verify
 
 ```sh
 skillmux index
+skillmux doctor
+```
+
+`doctor` should report `routing capability: hybrid` and every check `ok`. If something's `fail`, the `detail` column names the exact path or setting to fix.
+
+### 3. Serve it
+
+```sh
 skillmux serve
 ```
 
@@ -80,12 +130,118 @@ Register with your MCP client directly, e.g.:
 }
 ```
 
-To run from source instead:
+### Try it without an MCP client
+
+To see `resolve_skill` respond without wiring up a client, run the HTTP transport instead (`skillmux serve --transport http`, default port `3000`) and speak MCP's Streamable HTTP protocol directly:
+
+```sh
+# 1. Initialize a session, capture the session id from the response header
+SESSION=$(curl -sS -D - -o /dev/null http://127.0.0.1:3000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"try-it","version":"1.0.0"}}}' \
+  | grep -i '^mcp-session-id:' | tr -d '\r' | cut -d' ' -f2)
+
+# 2. Complete the handshake
+curl -sS -o /dev/null -X POST http://127.0.0.1:3000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION" \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+
+# 3. Call resolve_skill
+curl -sS -X POST http://127.0.0.1:3000/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "mcp-session-id: $SESSION" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"resolve_skill","arguments":{"query":"convert this spreadsheet to markdown"}}}'
+```
+
+Against the `csv-formatter` skill authored above, that returns a real match — trimmed here for length:
+
+```json
+{"result":{"structuredContent":{"outcome":"ambiguous","retrieval":"hybrid","candidates":[
+  {"skill_id":"csv-formatter","title":"CSV Formatter","description":"Converts CSV or spreadsheet data..."}
+]}}}
+```
+
+`outcome` is `"ambiguous"` here specifically because the vault only has one skill in it — with more skills installed, a clear top match returns `"matched"` with the full `SKILL.md` body inline instead of a candidate list.
+
+### Run from source instead
 
 ```sh
 bun install --frozen-lockfile
+bun run src/cli.ts index
 bun run src/cli.ts serve
 ```
+
+## Pinning skills across surfaces
+
+Optional — skip this if `resolve_skill` alone is enough (most setups). Use it once you want a small set of skills loaded *statically* in every agent that reads from a given directory, instead of routed on demand — see [Tiers](#tiers-routed-vs-pinned).
+
+### 1. Discover surfaces and adopt one
+
+```sh
+skillmux init
+```
+
+Lists candidate surfaces (default: `~/.claude/skills`, `~/.agents/skills`) with their dir/symlink status and skill count. Nothing is written until you pass `--target`:
+
+```sh
+skillmux init --target claude --yes
+```
+
+This writes `skillmux.toml` at the vault root and marks `~/.claude/skills` as skillmux-owned — a `.skillmux` marker file that `sync` requires before it will touch the directory.
+
+### 2. Pick which skills are pinned
+
+`init` always starts `[core]` empty — there's no heuristic yet for which skills belong there. Edit `skillmux.toml` by hand:
+
+```toml
+[core]
+skills = ["csv-formatter"]
+
+[targets.claude]
+dir = "/Users/you/.claude/skills"
+project = false
+```
+
+Cap: 25 skills in `[core]`. Full manifest schema, including `[project.<group>]` pins scoped to one repo, is in [`docs/configuration.md`](docs/configuration.md#tiers-and-the-manifest).
+
+### 3. Materialize
+
+```sh
+skillmux sync
+# claude: +1 -0
+```
+
+Each pinned skill becomes a symlink from the target dir into the vault. Re-running `sync` is idempotent (`+0 -0` once nothing changed); removing a skill from `[core]` removes its symlink on the next sync.
+
+```sh
+skillmux sync --dry-run           # preview +added/-removed without touching disk
+skillmux sync --install-hook      # add a git post-merge hook in the vault that runs `skillmux sync` automatically
+skillmux sync --restore-monolith  # undo: replace a target dir with one symlink straight to the vault
+```
+
+`--restore-monolith` drops the `.skillmux` marker along with the per-skill symlinks — re-adopt with `skillmux init --target <name> --yes` before that target can be `sync`'d again.
+
+### 4. See what's actually getting used
+
+`skillmux report` reads the same audit log `resolve_skill` writes to (see [Guarantees](#guarantees)) — useful for deciding what belongs in `[core]` versus staying routed:
+
+```sh
+skillmux report --since 7d                              # local: reads state_dir's audit db
+skillmux report --server http://host:3000 --since 7d    # remote: hits a running server's /stats
+```
+
+```
+window: 2026-07-14T00:00:00Z .. 2026-07-21T00:00:00Z
+outcomes: matched=0 ambiguous=2 no_match=0 (ambiguous_rate=1.000)
+skills:
+  csv-formatter matched=0 candidate=2
+  pdf-extractor matched=0 candidate=2
+top no_match queries:
+  (none)
+```
+
+`--since` accepts a relative window (`1h`, `7d`, `1m`) or an absolute date/timestamp. A skill matched often but never pinned is a `[core]` candidate; a query that keeps showing up in `top_no_match_queries` means the vault is missing something.
 
 ## Docker Usage
 
@@ -189,8 +345,8 @@ or `file://`) into the configured `vault_path`, so onboarding doesn't require a 
 pull a skill in. It's a convenience fetch, not a distribution system:
 
 ```sh
-skillmux install runkids/skillshare                    # repo root must itself be a skill
-skillmux install runkids/skillshare/skills/csv-tool     # select one skill out of a multi-skill repo
+skillmux install owner/repo                             # repo root must itself be a skill
+skillmux install owner/repo/path/to/skill                # select one skill out of a multi-skill repo
 skillmux install owner/repo --dry-run                   # preview id, target path, and scan findings
 skillmux install owner/repo --force                     # overwrite an existing skill_id
 skillmux install owner/repo --fail-on high               # abort the install if scan findings meet the threshold
@@ -207,8 +363,8 @@ once. Use `skillmux sync` afterward if the installed skill needs to be pinned in
 
 ### Environment Variable Overrides
 All core settings can be overridden via environment variables (handy for Docker):
-- `VAULT_PATH` / `SKILLMUX_VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
-- `STATE_DIR` / `SKILLMUX_STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
+- `VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
+- `STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
 - `EMBED_BASE_URL` / `SKILLMUX_EMBED_BASE_URL` — overrides remote `inference.embedding.base_url`
 - `EMBED_MODEL` / `SKILLMUX_EMBED_MODEL` — overrides `embedding.model`
 - `EMBED_DIMENSION` / `SKILLMUX_EMBED_DIMENSION` — overrides `embedding.dimension`
@@ -216,7 +372,7 @@ All core settings can be overridden via environment variables (handy for Docker)
 - `RERANK_BASE_URL` / `SKILLMUX_RERANK_BASE_URL` — overrides remote `inference.reranker.base_url`
 - `RERANK_MODEL` / `SKILLMUX_RERANK_MODEL` — overrides `rerank.model`
 - `SKILLMUX_CONFIG` — path to custom `config.toml` (default `~/.config/skillmux/config.toml`)
-- `SKILLMUX_MODELS_DIR` — path to directory storing downloaded local models (default `./.models`)
+- `SKILLMUX_MODELS_DIR` — path to directory storing downloaded local models (default `~/.cache/skillmux/models`, `/models` inside Docker)
 - `PORT` — HTTP listen port (default `3000`, HTTP transport only)
 - `HTTP_HOSTNAME` — overrides `server.hostname` (default `127.0.0.1`, `0.0.0.0` inside Docker)
 - `HTTP_AUTH_ENABLED` — overrides `server.auth_enabled` (`"true"` to enable)

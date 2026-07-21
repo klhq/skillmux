@@ -69,3 +69,32 @@ trust_proxy = false
 Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`) — a zero-config `skillmux serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
 
 Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, `auth_enabled = true` with a token, and populate `allowed_origins` with the specific origins that need browser access. `rate_limit.trust_proxy` should stay `false` unless a trusted reverse proxy sets `X-Forwarded-For` — it's otherwise a client-controlled, spoofable header and trusting it defeats per-client rate limiting.
+
+## Tiers and the manifest
+
+`skillmux init`/`sync` manage an optional second delivery path — pinning a subset of skills as real symlinks inside an agent's own skill directory, instead of routing every request through `resolve_skill`. See the README's [Tiers](../README.md#tiers-routed-vs-pinned) section for the concept and a walkthrough; this is the manifest reference.
+
+### `skillmux.toml`
+
+Lives at the vault root (a legacy `skr.toml` is still read if present, never written):
+
+```toml
+[core]
+skills = ["csv-formatter"]           # pinned into every [targets.*] dir; capped at 25
+
+[project.repo1]
+repos = ["/Users/you/code/repo1"]    # only synced for repos paths that exist locally
+skills = ["pdf-extractor"]           # must not overlap [core]
+
+[targets.claude]
+dir = "/Users/you/.claude/skills"
+project = false                      # true = also apply [project.*] groups scoped to this target
+```
+
+- `[core].skills` — symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills; `sync` fails if a listed skill id isn't actually in the vault.
+- `[project.<group>].skills` — symlinked only into `<repo>/<relative path from $HOME to the target dir>`, for each `repos` entry, and only for targets with `project = true`. `repos` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
+- `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these; hand-editing is fine as long as `sync` is still allowed to own the directory (see below).
+
+### Ownership marker
+
+Every directory `sync` manages gets a `.skillmux` marker file (`{"managed_by": "skillmux", "target": "<name>", "created_at": ...}`). `sync` refuses to touch a directory that exists but has no marker — run `skillmux init --target <name> --yes` first, which either creates the directory fresh or adopts an existing one in place (contents untouched). This is also why `sync --restore-monolith` (which deletes the marker and replaces the whole directory with one symlink straight to the vault) requires re-running `init` before that target can be `sync`'d again.

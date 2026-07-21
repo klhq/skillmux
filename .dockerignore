@@ -1,0 +1,25 @@
+# The Dockerfile only ever COPYs package.json, bun.lock, scripts/download-models.ts,
+# and src/ — everything else here is pure build-context transfer waste, not a
+# secrets/leak concern (nothing below would be COPY'd even without this file).
+.git
+.github
+node_modules
+dist
+.models
+tests
+eval
+docs
+*.md
+*.bun-build
+*.sqlite3
+*.sqlite3-*
+.state
+config.example.toml
+config.remote.example.toml
+.dockerignore
+Dockerfile
+docker-compose*.yml
+.vscode
+.idea
+.DS_Store
+*.log
