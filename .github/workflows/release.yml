@@ -29,19 +29,19 @@ jobs:
       - name: Build Linux binaries
         run: |
           mkdir -p dist
-          bun build --compile --target=bun-linux-x64 src/cli.ts --outfile dist/skill-router-linux-amd64
-          bun build --compile --target=bun-linux-arm64 src/cli.ts --outfile dist/skill-router-linux-arm64
-          sha256sum dist/skill-router-linux-* > dist/SHA256SUMS
+          bun build --compile --target=bun-linux-x64 src/cli.ts --outfile dist/skillmux-linux-amd64
+          bun build --compile --target=bun-linux-arm64 src/cli.ts --outfile dist/skillmux-linux-arm64
+          sha256sum dist/skillmux-linux-* > dist/SHA256SUMS
       - uses: actions/attest-build-provenance@v4
         if: github.event.repository.visibility == 'public'
         with:
-          subject-path: dist/skill-router-linux-*
+          subject-path: dist/skillmux-linux-*
       - uses: actions/upload-artifact@v7
         with:
           name: release-binaries
           path: |
-            dist/skill-router-linux-amd64
-            dist/skill-router-linux-arm64
+            dist/skillmux-linux-amd64
+            dist/skillmux-linux-arm64
             dist/SHA256SUMS
 
   containers:
@@ -118,6 +118,6 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/skill-router-linux-amd64
-            dist/skill-router-linux-arm64
+            dist/skillmux-linux-amd64
+            dist/skillmux-linux-arm64
             dist/SHA256SUMS

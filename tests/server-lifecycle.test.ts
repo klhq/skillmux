@@ -15,7 +15,7 @@ afterEach(() => {
 
 describe("server lifecycle", () => {
   test("stop is idempotent and marks readiness as stopping", async () => {
-    const root = mkdtempSync(join(tmpdir(), "skill-router-server-lifecycle-"));
+    const root = mkdtempSync(join(tmpdir(), "skillmux-server-lifecycle-"));
     dirs.push(root);
     const vault = join(root, "vault");
     const skill = join(vault, "example-skill");

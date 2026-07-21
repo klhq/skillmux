@@ -1,5 +1,5 @@
 {
-  "name": "skill-router",
+  "name": "@klhapp/skillmux",
   "version": "0.1.1",
   "description": "Local read-only MCP server routing natural-language task queries to skills in a SKILL.md vault, with zero-loss delivery",
   "type": "module",
@@ -8,14 +8,14 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/klhq/skill-router.git"
+    "url": "git+https://github.com/klhq/skillmux.git"
   },
   "bugs": {
-    "url": "https://github.com/klhq/skill-router/issues"
+    "url": "https://github.com/klhq/skillmux/issues"
   },
-  "homepage": "https://github.com/klhq/skill-router#readme",
+  "homepage": "https://github.com/klhq/skillmux#readme",
   "bin": {
-    "skr": "./src/cli.ts"
+    "skillmux": "./src/cli.ts"
   },
   "scripts": {
     "test": "bun test",
@@ -24,7 +24,7 @@
     "eval": "bun run src/cli.ts eval",
     "doctor": "bun run src/cli.ts doctor",
     "models:download": "bun run src/cli.ts models download",
-    "build": "bun build --compile src/cli.ts --outfile dist/skr"
+    "build": "bun build --compile src/cli.ts --outfile dist/skillmux"
   },
   "devDependencies": {
     "bun-types": "^1.3.14"

@@ -45,8 +45,8 @@ function testConfig(): Config {
     inference: {
       mode: "remote",
       timeout_ms: 2000,
-      embedding: { provider: "openai", base_url: `http://127.0.0.1:${server.port}`, api_key_env: "SKILL_ROUTER_TEST_EMBED_KEY", model: "microsoft/harrier-oss-v1-0.6b", dimension: 3 },
-      reranker: { provider: "infinity", base_url: `http://127.0.0.1:${server.port}/v1`, model: "BAAI/bge-reranker-v2-m3", api_key_env: "SKILL_ROUTER_TEST_RERANK_KEY" },
+      embedding: { provider: "openai", base_url: `http://127.0.0.1:${server.port}`, api_key_env: "SKILLMUX_TEST_EMBED_KEY", model: "microsoft/harrier-oss-v1-0.6b", dimension: 3 },
+      reranker: { provider: "infinity", base_url: `http://127.0.0.1:${server.port}/v1`, model: "BAAI/bge-reranker-v2-m3", api_key_env: "SKILLMUX_TEST_RERANK_KEY" },
       thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
     },
   };
@@ -54,7 +54,7 @@ function testConfig(): Config {
 
 describe("embedding client", () => {
   test("posts texts to /v1/embeddings with bearer key and returns one vector per text", async () => {
-    process.env.SKILL_ROUTER_TEST_EMBED_KEY = "vk-test-key";
+    process.env.SKILLMUX_TEST_EMBED_KEY = "vk-test-key";
     const clients = createClients(testConfig());
     if (!clients.rerank) throw new Error("expected remote reranker");
     const rerank = clients.rerank;
@@ -87,7 +87,7 @@ describe("remote timeout budget (AC7)", () => {
 
 describe("rerank client", () => {
   test("posts query and documents to /rerank and returns scores in document order", async () => {
-    process.env.SKILL_ROUTER_TEST_RERANK_KEY = "rerank-test-key";
+    process.env.SKILLMUX_TEST_RERANK_KEY = "rerank-test-key";
     const clients = createClients(testConfig());
     if (!clients.rerank) throw new Error("expected remote reranker");
     const rerank = clients.rerank;

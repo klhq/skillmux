@@ -5,7 +5,7 @@ import { join } from "node:path";
 import {
   adoptTarget,
   installPostMergeHook,
-  readSkrMarker,
+  readSkillmuxMarker,
   resolveProjectPinDir,
   restoreMonolith,
   syncProjectTargets,
@@ -17,11 +17,11 @@ function tmpDir(prefix: string): string {
 }
 
 describe("syncTarget", () => {
-  test("creates a fresh target directory with one symlink per core skill and a .skr marker", () => {
-    const vaultPath = tmpDir("skill-router-sync-vault-");
+  test("creates a fresh target directory with one symlink per core skill and a .skillmux marker", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
     mkdirSync(join(vaultPath, "writing-clearly"));
     mkdirSync(join(vaultPath, "code-review"));
-    const targetDir = join(tmpDir("skill-router-sync-target-"), "claude");
+    const targetDir = join(tmpDir("skillmux-sync-target-"), "claude");
 
     const result = syncTarget({
       vaultPath,
@@ -35,8 +35,8 @@ describe("syncTarget", () => {
     expect(readlinkSync(join(targetDir, "writing-clearly"))).toBe(join(vaultPath, "writing-clearly"));
     expect(readlinkSync(join(targetDir, "code-review"))).toBe(join(vaultPath, "code-review"));
 
-    const marker = readSkrMarker(targetDir);
-    expect(marker?.managed_by).toBe("skr");
+    const marker = readSkillmuxMarker(targetDir);
+    expect(marker?.managed_by).toBe("skillmux");
     expect(marker?.target).toBe("claude");
     expect(typeof marker?.created_at).toBe("string");
 
@@ -44,27 +44,27 @@ describe("syncTarget", () => {
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  test("refuses to touch an existing target dir that lacks a .skr marker", () => {
-    const vaultPath = tmpDir("skill-router-sync-vault-");
-    const targetDir = tmpDir("skill-router-sync-unmarked-");
+  test("refuses to touch an existing target dir that lacks a .skillmux marker", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const targetDir = tmpDir("skillmux-sync-unmarked-");
 
     expect(() =>
       syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: [] }),
-    ).toThrow("not owned by skr");
-    expect(existsSync(join(targetDir, ".skr"))).toBe(false);
+    ).toThrow("not owned by skillmux");
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(false);
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
 
   test("rebuilds an already-marked target: adds missing and removes stale symlinks", () => {
-    const vaultPath = tmpDir("skill-router-sync-vault-");
+    const vaultPath = tmpDir("skillmux-sync-vault-");
     mkdirSync(join(vaultPath, "writing-clearly"));
     mkdirSync(join(vaultPath, "code-review"));
-    const targetDir = join(tmpDir("skill-router-sync-marked-"), "claude");
+    const targetDir = join(tmpDir("skillmux-sync-marked-"), "claude");
 
     syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
-    const markerBefore = readSkrMarker(targetDir);
+    const markerBefore = readSkillmuxMarker(targetDir);
 
     const result = syncTarget({
       vaultPath,
@@ -78,16 +78,16 @@ describe("syncTarget", () => {
     expect(existsSync(join(targetDir, "writing-clearly"))).toBe(false);
     expect(readlinkSync(join(targetDir, "code-review"))).toBe(join(vaultPath, "code-review"));
     // created_at is not updated by subsequent syncs
-    expect(readSkrMarker(targetDir)?.created_at).toBe(markerBefore?.created_at);
+    expect(readSkillmuxMarker(targetDir)?.created_at).toBe(markerBefore?.created_at);
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
 
   test("dry-run reports the add/remove diff without writing anything", () => {
-    const vaultPath = tmpDir("skill-router-sync-vault-");
+    const vaultPath = tmpDir("skillmux-sync-vault-");
     mkdirSync(join(vaultPath, "writing-clearly"));
-    const targetDir = join(tmpDir("skill-router-sync-dryrun-"), "claude");
+    const targetDir = join(tmpDir("skillmux-sync-dryrun-"), "claude");
 
     const result = syncTarget(
       { vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] },
@@ -102,15 +102,43 @@ describe("syncTarget", () => {
   });
 
   test("dry-run still refuses an existing unmarked target dir", () => {
-    const vaultPath = tmpDir("skill-router-sync-vault-");
-    const targetDir = tmpDir("skill-router-sync-dryrun-unmarked-");
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const targetDir = tmpDir("skillmux-sync-dryrun-unmarked-");
 
     expect(() =>
       syncTarget(
         { vaultPath, targetDir, targetName: "claude", coreSkillIds: [] },
         { dryRun: true },
       ),
-    ).toThrow("not owned by skr");
+    ).toThrow("not owned by skillmux");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("recognizes a legacy adopted target with .skr marker and does not overwrite it", () => {
+    const vaultPath = tmpDir("skillmux-legacy-vault-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    mkdirSync(join(vaultPath, "code-review"));
+    const targetDir = tmpDir("skillmux-legacy-target-");
+    // Write legacy .skr marker
+    writeFileSync(join(targetDir, ".skr"), JSON.stringify({
+      managed_by: "skr",
+      target: "claude",
+      created_at: new Date().toISOString(),
+    }));
+
+    const result = syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "claude",
+      coreSkillIds: ["writing-clearly"],
+    });
+
+    expect(result.added).toEqual(["writing-clearly"]);
+    expect(existsSync(join(targetDir, "writing-clearly"))).toBe(true);
+    expect(existsSync(join(targetDir, ".skr"))).toBe(true);
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(false);
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
@@ -118,10 +146,10 @@ describe("syncTarget", () => {
 });
 
 describe("restoreMonolith", () => {
-  test("replaces a .skr-marked target directory with a symlink to the vault root", () => {
-    const vaultPath = tmpDir("skill-router-sync-vault-");
+  test("replaces a .skillmux-marked target directory with a symlink to the vault root", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
     mkdirSync(join(vaultPath, "writing-clearly"));
-    const targetDir = join(tmpDir("skill-router-sync-restore-"), "claude");
+    const targetDir = join(tmpDir("skillmux-sync-restore-"), "claude");
     syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
 
     const result = restoreMonolith(targetDir, vaultPath);
@@ -134,8 +162,8 @@ describe("restoreMonolith", () => {
   });
 
   test("leaves an unmarked directory untouched", () => {
-    const vaultPath = tmpDir("skill-router-sync-vault-");
-    const targetDir = tmpDir("skill-router-sync-restore-unmarked-");
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const targetDir = tmpDir("skillmux-sync-restore-unmarked-");
 
     const result = restoreMonolith(targetDir, vaultPath);
 
@@ -166,11 +194,11 @@ describe("resolveProjectPinDir", () => {
 
 describe("syncProjectTargets", () => {
   test("materializes a pin dir per repo in each project group, skipping repos that don't exist locally", () => {
-    const vaultPath = tmpDir("skill-router-sync-vault-");
+    const vaultPath = tmpDir("skillmux-sync-vault-");
     mkdirSync(join(vaultPath, "terraform-plans"));
     const targetDir = join(homedir(), ".claude", "skills");
 
-    const existingRepo = tmpDir("skill-router-sync-repo-");
+    const existingRepo = tmpDir("skillmux-sync-repo-");
     const missingRepo = "/does/not/exist/on/this/machine";
 
     const results = syncProjectTargets({
@@ -202,12 +230,12 @@ describe("syncProjectTargets", () => {
 
 describe("installPostMergeHook", () => {
   function gitVault(): string {
-    const vaultPath = tmpDir("skill-router-sync-hook-vault-");
+    const vaultPath = tmpDir("skillmux-sync-hook-vault-");
     mkdirSync(join(vaultPath, ".git", "hooks"), { recursive: true });
     return vaultPath;
   }
 
-  test("installs an executable post-merge hook that runs skr sync", () => {
+  test("installs an executable post-merge hook that runs skillmux sync", () => {
     const vaultPath = gitVault();
 
     const result = installPostMergeHook(vaultPath);
@@ -215,7 +243,7 @@ describe("installPostMergeHook", () => {
     expect(result.installed).toBe(true);
     const hookPath = join(vaultPath, ".git", "hooks", "post-merge");
     const content = readFileSync(hookPath, "utf-8");
-    expect(content).toContain("skr sync");
+    expect(content).toContain("skillmux sync");
     expect(statSync(hookPath).mode & 0o111).toBeGreaterThan(0);
 
     rmSync(vaultPath, { recursive: true, force: true });
@@ -237,9 +265,22 @@ describe("installPostMergeHook", () => {
   test("refuses to clobber a pre-existing post-merge hook it doesn't manage", () => {
     const vaultPath = gitVault();
     const hookPath = join(vaultPath, ".git", "hooks", "post-merge");
-    writeFileSync(hookPath, "#!/bin/sh\necho some other tool's hook\n");
+    writeFileSync(hookPath, "#/bin/sh\necho some other tool's hook\n");
 
     expect(() => installPostMergeHook(vaultPath)).toThrow();
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("treats pre-existing hook with legacy comment as already installed", () => {
+    const vaultPath = gitVault();
+    const hookPath = join(vaultPath, ".git", "hooks", "post-merge");
+    writeFileSync(hookPath, "#!/bin/sh\n# managed-by: skr sync --install-hook\nskr sync\n");
+
+    const result = installPostMergeHook(vaultPath);
+
+    expect(result.installed).toBe(false);
+    expect(readFileSync(hookPath, "utf-8")).toContain("skr sync");
 
     rmSync(vaultPath, { recursive: true, force: true });
   });
@@ -247,29 +288,29 @@ describe("installPostMergeHook", () => {
 
 describe("adoptTarget", () => {
   test("marks an existing directory in place without touching its content", () => {
-    const dir = tmpDir("skill-router-sync-adopt-");
-    writeFileSync(join(dir, "pre-existing-skill"), "a real file, not a symlink skr created");
+    const dir = tmpDir("skillmux-sync-adopt-");
+    writeFileSync(join(dir, "pre-existing-skill"), "a real file, not a symlink skillmux created");
 
     const result = adoptTarget(dir, "claude");
 
     expect(result.adopted).toBe(true);
-    expect(readSkrMarker(dir)?.target).toBe("claude");
+    expect(readSkillmuxMarker(dir)?.target).toBe("claude");
     expect(readFileSync(join(dir, "pre-existing-skill"), "utf-8")).toBe(
-      "a real file, not a symlink skr created",
+      "a real file, not a symlink skillmux created",
     );
 
     rmSync(dir, { recursive: true, force: true });
   });
 
   test("is idempotent: adopting an already-marked directory is a no-op", () => {
-    const dir = tmpDir("skill-router-sync-adopt-marked-");
+    const dir = tmpDir("skillmux-sync-adopt-marked-");
     adoptTarget(dir, "claude");
-    const markerBefore = readSkrMarker(dir);
+    const markerBefore = readSkillmuxMarker(dir);
 
     const result = adoptTarget(dir, "claude");
 
     expect(result.adopted).toBe(false);
-    expect(readSkrMarker(dir)?.created_at).toBe(markerBefore?.created_at);
+    expect(readSkillmuxMarker(dir)?.created_at).toBe(markerBefore?.created_at);
 
     rmSync(dir, { recursive: true, force: true });
   });

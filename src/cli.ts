@@ -17,7 +17,7 @@ import {
   resolveSkillDir,
   validateSkillCandidate,
 } from "./install";
-import { parseManifest, validateManifest } from "./manifest";
+import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
@@ -170,9 +170,9 @@ async function runSync(args: string[]): Promise<void> {
         );
     }
 
-    const manifestPath = join(vaultPath, "skr.toml");
-    if (!existsSync(manifestPath)) {
-        console.log("no skr.toml found at vault root — nothing to sync");
+    const manifestPath = resolveManifestPath(vaultPath);
+    if (!manifestPath) {
+        console.log("no skillmux.toml found at vault root — nothing to sync");
         return;
     }
 
@@ -191,7 +191,7 @@ async function runSync(args: string[]): Promise<void> {
             console.log(
                 result.restored
                     ? `${targetName}: restored to a vault symlink`
-                    : `${targetName}: not owned by skr, left untouched`,
+                    : `${targetName}: not owned by skillmux, left untouched`,
             );
             continue;
         }
@@ -249,7 +249,7 @@ async function runInit(args: string[]): Promise<void> {
             continue;
         }
         const kind = candidate.isSymlink ? "symlink" : "real dir";
-        const marked = candidate.alreadyMarked ? ", already skr-managed" : "";
+        const marked = candidate.alreadyMarked ? ", already skillmux-managed" : "";
         console.log(`${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`);
     }
 
@@ -260,7 +260,7 @@ async function runInit(args: string[]): Promise<void> {
 
     if (!yes) {
         throw new Error(
-            "usage: skr init --target <name> [--target <name>...] --yes (interactive per-target confirm is not available non-interactively)",
+            "usage: skillmux init --target <name> [--target <name>...] --yes (interactive per-target confirm is not available non-interactively)",
         );
     }
 
@@ -274,8 +274,8 @@ async function runInit(args: string[]): Promise<void> {
     const confirmedTargets = requestedTargets.map((name) => ({ name, dir: byName.get(name)!.path }));
     applyInit(vaultPath, confirmedTargets);
 
-    console.log(`\nwrote ${join(vaultPath, "skr.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`);
-    console.log(`run "skr sync" next to materialize [core] skills into these targets.\n`);
+    console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`);
+    console.log(`run "skillmux sync" next to materialize [core] skills into these targets.\n`);
     console.log(printLastMile());
 }
 
@@ -308,12 +308,12 @@ function parseReportArgs(args: string[]): { server?: string; db?: string; since?
 
 async function runReport(args: string[]): Promise<void> {
     const { server, db: dbPath, since } = parseReportArgs(args);
-    if (!since) throw new Error("usage: skr report [--server <url> | --db <path>] --since <window>");
+    if (!since) throw new Error("usage: skillmux report [--server <url> | --db <path>] --since <window>");
 
     if (server) {
         const url = `${server.replace(/\/$/, "")}/stats?since=${encodeURIComponent(since)}`;
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`skr report --server failed: ${res.status} ${await res.text()}`);
+        if (!res.ok) throw new Error(`skillmux report --server failed: ${res.status} ${await res.text()}`);
         console.log(renderStatsText((await res.json()) as StatsResponse));
         return;
     }
@@ -342,7 +342,7 @@ function parseScanArgs(args: string[]): { path?: string; format: "text" | "json"
         } else if (option?.startsWith("--")) {
             throw new Error(`unknown scan option: ${option}`);
         } else if (path !== undefined) {
-            throw new Error("skr scan accepts at most one <path> argument");
+            throw new Error("skillmux scan accepts at most one <path> argument");
         } else {
             path = option;
         }
@@ -381,7 +381,7 @@ function parseInstallArgs(args: string[]): {
         } else if (option?.startsWith("--")) {
             throw new Error(`unknown install option: ${option}`);
         } else if (repo !== undefined) {
-            throw new Error("skr install accepts at most one <repo> argument");
+            throw new Error("skillmux install accepts at most one <repo> argument");
         } else {
             repo = option;
         }
@@ -392,7 +392,7 @@ function parseInstallArgs(args: string[]): {
 async function runInstall(args: string[]): Promise<void> {
     const { repo, force, dryRun, failOn } = parseInstallArgs(args);
     if (!repo) {
-        throw new Error("usage: skr install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run]");
+        throw new Error("usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run]");
     }
 
     const source = resolveRepoSource(repo);
@@ -466,17 +466,17 @@ switch (command) {
         break;
     case "config":
         if (Bun.argv[3] !== "show")
-            throw new Error("usage: skr config show");
+            throw new Error("usage: skillmux config show");
         await showConfig();
         break;
     case "models":
         if (Bun.argv[3] !== "download")
-            throw new Error("usage: skr models download");
+            throw new Error("usage: skillmux models download");
         await runModelDownload();
         break;
     default:
         console.error(
-            "usage: skr <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]]",
+            "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]]",
         );
         process.exit(2);
 }

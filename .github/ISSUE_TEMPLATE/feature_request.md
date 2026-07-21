@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for skill-router
+about: Suggest an idea for skillmux
 title: ""
 labels: enhancement
 assignees: ""

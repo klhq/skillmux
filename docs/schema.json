@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://klh.app/schemas/skill-router/router-core.json",
-  "title": "Skill Router — router-core contract",
-  "description": "Typed contract for the skill-router MCP server: tool inputs/outputs, config.toml, and audit-log rows. The SKILL.md body must appear exactly once on the wire.",
+  "$id": "https://klh.app/schemas/skillmux/router-core.json",
+  "title": "Skillmux — router-core contract",
+  "description": "Typed contract for the skillmux MCP server: tool inputs/outputs, config.toml, and audit-log rows. The SKILL.md body must appear exactly once on the wire.",
   "$defs": {
     "SkillId": {
       "type": "string",
@@ -160,7 +160,7 @@
         "state_dir": {
           "type": "string",
           "description": "All router writes are confined here (AC9): index SQLite (incl. audit log), vector matrix.",
-          "default": "~/.local/state/skill-router"
+          "default": "~/.local/state/skillmux"
         },
         "recall": {
           "type": "object",
@@ -199,7 +199,7 @@
           "properties": {
             "mode": { "const": "local" },
             "bundle": { "const": "gte-small-v1" },
-            "models_dir": { "type": "string", "default": "~/.cache/skill-router/models" },
+            "models_dir": { "type": "string", "default": "~/.cache/skillmux/models" },
             "embedding": {
               "type": "object",
               "properties": {
@@ -264,7 +264,7 @@
       "type": "object",
       "properties": {
         "auth_enabled": { "type": "boolean", "default": false },
-        "auth_token_env": { "type": "string", "default": "SKILL_ROUTER_AUTH_TOKEN" },
+        "auth_token_env": { "type": "string", "default": "SKILLMUX_AUTH_TOKEN" },
         "allowed_origins": { "type": "array", "items": { "type": "string" }, "default": ["*"] },
         "rate_limit": {
           "type": "object",

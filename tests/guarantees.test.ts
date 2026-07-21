@@ -6,7 +6,7 @@ import { configure, fetchSkill, getRuntime, rebuildIndex, resolveSkill } from ".
 import type { AuditRow, Config } from "../src/types";
 import { sha256Hex } from "../src/vault";
 
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-guarantees-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-guarantees-"));
 const vaultDir = join(tmp, "vault");
 
 function writeSkill(id: string, description: string, files: Record<string, string> = {}) {

@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem with skill-router
+about: Report a problem with skillmux
 title: ""
 labels: bug
 assignees: ""
@@ -16,7 +16,7 @@ Steps to reproduce, ideally including your `config.toml` (redact secrets) and th
 What you expected to happen instead.
 
 **Environment**
-- skill-router version/commit:
+- skillmux version/commit:
 - Bun version (`bun --version`):
 - Deployment: local binary / `bun run` / Docker `slim` / Docker `latest`
 - OS:

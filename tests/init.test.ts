@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyInit, deriveTargetName, detectSurfaces, printLastMile, proposeManifest } from "../src/init";
-import { readSkrMarker } from "../src/sync";
+import { readSkillmuxMarker } from "../src/sync";
 
 function tmpDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -25,7 +25,7 @@ describe("detectSurfaces", () => {
   });
 
   test("reports a real directory's skill count and marker status", () => {
-    const root = tmpDir("skill-router-init-detect-");
+    const root = tmpDir("skillmux-init-detect-");
     const surface = join(root, "skills");
     mkdirSync(surface);
     writeSkill(surface, "writing-clearly");
@@ -39,7 +39,7 @@ describe("detectSurfaces", () => {
   });
 
   test("reports a symlinked surface as a symlink (evidence: real dir vs symlink to a monolith)", () => {
-    const root = tmpDir("skill-router-init-detect-");
+    const root = tmpDir("skillmux-init-detect-");
     const vault = join(root, "vault");
     mkdirSync(vault);
     writeSkill(vault, "writing-clearly");
@@ -78,7 +78,7 @@ describe("printLastMile", () => {
   test("includes the MCP registration command and the exact §3.3 discovery paragraph", () => {
     const text = printLastMile();
 
-    expect(text).toContain(`"command": "skr"`);
+    expect(text).toContain(`"command": "skillmux"`);
     expect(text).toContain("resolve_skill");
     expect(text).toContain("no_match");
   });
@@ -86,8 +86,8 @@ describe("printLastMile", () => {
 
 describe("applyInit", () => {
   test("writes skr.toml with an empty core and the confirmed targets, then adopts each dir in place", () => {
-    const vaultPath = tmpDir("skill-router-init-apply-vault-");
-    const claudeDir = tmpDir("skill-router-init-apply-claude-");
+    const vaultPath = tmpDir("skillmux-init-apply-vault-");
+    const claudeDir = tmpDir("skillmux-init-apply-claude-");
     writeFileSync(join(claudeDir, "pre-existing-skill.md"), "not touched by init");
 
     const manifest = applyInit(vaultPath, [{ name: "claude", dir: claudeDir }]);
@@ -97,8 +97,8 @@ describe("applyInit", () => {
       project: {},
       targets: { claude: { dir: claudeDir, project: false } },
     });
-    expect(readFileSync(join(vaultPath, "skr.toml"), "utf-8")).toContain("[targets.claude]");
-    expect(readSkrMarker(claudeDir)?.target).toBe("claude");
+    expect(readFileSync(join(vaultPath, "skillmux.toml"), "utf-8")).toContain("[targets.claude]");
+    expect(readSkillmuxMarker(claudeDir)?.target).toBe("claude");
     expect(readFileSync(join(claudeDir, "pre-existing-skill.md"), "utf-8")).toBe("not touched by init");
 
     rmSync(vaultPath, { recursive: true, force: true });
@@ -106,12 +106,12 @@ describe("applyInit", () => {
   });
 
   test("creates a confirmed target dir that doesn't exist yet before adopting it", () => {
-    const vaultPath = tmpDir("skill-router-init-apply-vault-");
-    const targetDir = join(tmpDir("skill-router-init-apply-fresh-"), "claude");
+    const vaultPath = tmpDir("skillmux-init-apply-vault-");
+    const targetDir = join(tmpDir("skillmux-init-apply-fresh-"), "claude");
 
     applyInit(vaultPath, [{ name: "claude", dir: targetDir }]);
 
-    expect(readSkrMarker(targetDir)?.target).toBe("claude");
+    expect(readSkillmuxMarker(targetDir)?.target).toBe("claude");
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });

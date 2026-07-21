@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { insertAudit, openIndex } from "../src/db";
 import { startServer } from "../src/server";
 
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-cli-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-cli-"));
 const vaultDir = join(tmp, "vault");
 const stateDir = join(tmp, "state");
 const configPath = join(tmp, "config.toml");
@@ -43,7 +43,7 @@ async function runCliEnv(
   extraEnv: Record<string, string>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bun", "run", cliPath, ...args], {
-    env: { ...(process.env as Record<string, string>), SKILL_ROUTER_CONFIG: configPath, ...extraEnv },
+    env: { ...(process.env as Record<string, string>), SKILLMUX_CONFIG: configPath, ...extraEnv },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -104,7 +104,7 @@ afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("skill-router index CLI (AC8)", () => {
+describe("skillmux index CLI (AC8)", () => {
   test("rebuilds the index from scratch, reports the count, and exits 0 with remotes offline", async () => {
     const result = await runCli("index");
 
@@ -125,7 +125,7 @@ describe("skill-router index CLI (AC8)", () => {
   });
 });
 
-describe("skill-router serve CLI", () => {
+describe("skillmux serve CLI", () => {
   test("rejects invalid transport values", async () => {
     const result = await runCli("serve", "--transport", "websocket");
     expect(result.exitCode).not.toBe(0);
@@ -139,40 +139,40 @@ describe("skill-router serve CLI", () => {
   });
 });
 
-describe("skr CLI usage", () => {
-  test("unknown command usage message names the skr binary, not skill-router", async () => {
+describe("skillmux CLI usage", () => {
+  test("unknown command usage message names the skillmux binary", async () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skr <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download>",
+      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download>",
     );
   });
 
-  test("config subcommand usage error names the skr binary", async () => {
+  test("config subcommand usage error names the skillmux binary", async () => {
     const result = await runCli("config", "bogus");
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("usage: skr config show");
+    expect(result.stderr).toContain("usage: skillmux config show");
   });
 
-  test("models subcommand usage error names the skr binary", async () => {
+  test("models subcommand usage error names the skillmux binary", async () => {
     const result = await runCli("models", "bogus");
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("usage: skr models download");
+    expect(result.stderr).toContain("usage: skillmux models download");
   });
 });
 
-describe("skr sync CLI", () => {
-  test("reports nothing to sync when no skr.toml exists at the vault root", async () => {
+describe("skillmux sync CLI", () => {
+  test("reports nothing to sync when no skillmux.toml exists at the vault root", async () => {
     const result = await runCli("sync");
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("no skr.toml");
+    expect(result.stdout).toContain("no skillmux.toml");
   });
 
-  test("materializes [targets.*] from skr.toml into core-skill symlinks with a .skr marker", async () => {
+  test("materializes [targets.*] from skillmux.toml into core-skill symlinks with a .skillmux marker", async () => {
     const targetDir = join(tmp, "sync-target");
     writeFileSync(
-      join(vaultDir, "skr.toml"),
+      join(vaultDir, "skillmux.toml"),
       [`[core]`, `skills = ["first-skill"]`, ``, `[targets.test]`, `dir = "${targetDir}"`].join("\n"),
     );
 
@@ -180,14 +180,14 @@ describe("skr sync CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(existsSync(join(targetDir, "first-skill"))).toBe(true);
-    expect(existsSync(join(targetDir, ".skr"))).toBe(true);
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(true);
 
-    rmSync(join(vaultDir, "skr.toml"), { force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
 });
 
-describe("skr init CLI", () => {
+describe("skillmux init CLI", () => {
   // deriveTargetName reads the *parent* dir's name (e.g. ~/.claude/skills -> "claude"),
   // so fixtures nest a "skills" leaf under a distinctly-named parent.
   function makeSurface(parentPrefix: string): { surface: string; parent: string; targetName: string } {
@@ -199,24 +199,24 @@ describe("skr init CLI", () => {
   }
 
   test("detects surfaces and writes nothing when run without --target", async () => {
-    const { surface, parent } = makeSurface("skill-router-init-cli-detect-");
+    const { surface, parent } = makeSurface("skillmux-init-cli-detect-");
     mkdirSync(join(surface, "existing-skill"));
     writeFileSync(join(surface, "existing-skill", "SKILL.md"), "---\nname: existing-skill\n---\nbody");
 
-    const result = await runCliEnv(["init"], { SKR_INIT_SURFACES: surface });
+    const result = await runCliEnv(["init"], { SKILLMUX_INIT_SURFACES: surface });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(surface);
     expect(result.stdout).toContain("1 skills");
-    expect(existsSync(join(vaultDir, "skr.toml"))).toBe(false);
+    expect(existsSync(join(vaultDir, "skillmux.toml"))).toBe(false);
 
     rmSync(parent, { recursive: true, force: true });
   });
 
   test("requires --yes when --target is given (interactive confirm not supported non-interactively)", async () => {
-    const { surface, parent, targetName } = makeSurface("skill-router-init-cli-noyes-");
+    const { surface, parent, targetName } = makeSurface("skillmux-init-cli-noyes-");
 
-    const result = await runCliEnv(["init", "--target", targetName], { SKR_INIT_SURFACES: surface });
+    const result = await runCliEnv(["init", "--target", targetName], { SKILLMUX_INIT_SURFACES: surface });
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("--yes");
@@ -224,27 +224,27 @@ describe("skr init CLI", () => {
     rmSync(parent, { recursive: true, force: true });
   });
 
-  test("adopts a confirmed target with --target and --yes, writes skr.toml, and prints the last mile", async () => {
-    const { surface, parent, targetName } = makeSurface("skill-router-init-cli-confirm-");
+  test("adopts a confirmed target with --target and --yes, writes skillmux.toml, and prints the last mile", async () => {
+    const { surface, parent, targetName } = makeSurface("skillmux-init-cli-confirm-");
     writeFileSync(join(surface, "not-touched.txt"), "keep me");
 
     const result = await runCliEnv(["init", "--target", targetName, "--yes"], {
-      SKR_INIT_SURFACES: surface,
+      SKILLMUX_INIT_SURFACES: surface,
     });
 
     expect(result.exitCode).toBe(0);
-    expect(existsSync(join(vaultDir, "skr.toml"))).toBe(true);
-    expect(existsSync(join(surface, ".skr"))).toBe(true);
+    expect(existsSync(join(vaultDir, "skillmux.toml"))).toBe(true);
+    expect(existsSync(join(surface, ".skillmux"))).toBe(true);
     expect(existsSync(join(surface, "not-touched.txt"))).toBe(true);
-    expect(result.stdout).toContain(`"command": "skr"`);
+    expect(result.stdout).toContain(`"command": "skillmux"`);
     expect(result.stdout).toContain("resolve_skill");
 
-    rmSync(join(vaultDir, "skr.toml"), { force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
     rmSync(parent, { recursive: true, force: true });
   });
 });
 
-describe("skr report CLI", () => {
+describe("skillmux report CLI", () => {
   test("requires --since", async () => {
     const result = await runCli("report");
 
@@ -253,7 +253,7 @@ describe("skr report CLI", () => {
   });
 
   test("--db <path> renders a report from a local sqlite audit db", async () => {
-    const dbDir = mkdtempSync(join(tmpdir(), "skill-router-report-db-"));
+    const dbDir = mkdtempSync(join(tmpdir(), "skillmux-report-db-"));
     const db = openIndex(dbDir);
     insertAudit(db, {
       ts: new Date().toISOString(),
@@ -275,8 +275,8 @@ describe("skr report CLI", () => {
     rmSync(dbDir, { recursive: true, force: true });
   });
 
-  test("--server <url> renders a report fetched from a running skill-router server", async () => {
-    const root = mkdtempSync(join(tmpdir(), "skill-router-report-server-"));
+  test("--server <url> renders a report fetched from a running skillmux server", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-report-server-"));
     const skill = join(root, "vault", "server-report-skill");
     mkdirSync(skill, { recursive: true });
     writeFileSync(join(skill, "SKILL.md"), "---\nname: Server report skill\ndescription: test\n---\nbody");
@@ -315,7 +315,7 @@ describe("skr report CLI", () => {
   });
 });
 
-describe("skr scan CLI", () => {
+describe("skillmux scan CLI", () => {
   test("scans the configured vault by default and flags the pre-existing unparseable skill, but nothing else", async () => {
     // second-skill's SKILL.md was corrupted by the "index CLI" suite above (unterminated
     // frontmatter) — this test asserts that skip surfaces as a finding, not that the vault
@@ -391,11 +391,11 @@ describe("skr scan CLI", () => {
     const result = await runCli("scan", join(vaultDir, "first-skill"), join(vaultDir, "second-skill"));
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("skr scan accepts at most one <path> argument");
+    expect(result.stderr).toContain("skillmux scan accepts at most one <path> argument");
   });
 });
 
-describe("skr install CLI", () => {
+describe("skillmux install CLI", () => {
   test("installs a skill from a local git repo into the configured vault", async () => {
     const fixtureDir = join(tmp, "fixture-csv-formatter");
     initFixtureRepo(fixtureDir, "---\nname: CSV Formatter\ndescription: d\n---\nbody");
@@ -466,7 +466,7 @@ describe("skr install CLI", () => {
     const result = await runCli("install", "owner/repo-a", "owner/repo-b");
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("skr install accepts at most one <repo> argument");
+    expect(result.stderr).toContain("skillmux install accepts at most one <repo> argument");
   });
 
   test("rejects an invalid --fail-on value", async () => {

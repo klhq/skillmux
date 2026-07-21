@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { serializeManifest, type Manifest } from "./manifest";
-import { adoptTarget, readSkrMarker } from "./sync";
+import { serializeManifest, type Manifest, MANIFEST_FILENAME } from "./manifest";
+import { adoptTarget, readSkillmuxMarker } from "./sync";
 import { SKILL_ID_PATTERN } from "./vault";
 
 export const DEFAULT_SURFACE_CANDIDATES = ["~/.claude/skills", "~/.agents/skills"];
@@ -14,7 +14,7 @@ export const DEFAULT_SURFACE_CANDIDATES = ["~/.claude/skills", "~/.agents/skills
  * probe the real $HOME's ~/.claude/skills or ~/.agents/skills.
  */
 export function surfaceCandidates(): string[] {
-  const override = process.env.SKR_INIT_SURFACES;
+  const override = process.env.SKILLMUX_INIT_SURFACES;
   return override ? override.split(",").filter((p) => p.length > 0) : DEFAULT_SURFACE_CANDIDATES;
 }
 
@@ -46,7 +46,7 @@ export function detectSurfaces(candidatePaths: string[]): SurfaceCandidate[] {
       exists: true,
       isSymlink: lstatSync(path).isSymbolicLink(),
       skillCount: countSkillDirs(path),
-      alreadyMarked: readSkrMarker(path) !== null,
+      alreadyMarked: readSkillmuxMarker(path) !== null,
     };
   });
 }
@@ -71,7 +71,7 @@ export interface ConfirmedTarget {
 }
 
 /**
- * Writes skr.toml with the conservative-default core/project and the
+ * Writes skillmux.toml with the conservative-default core/project and the
  * confirmed targets, then adopts each confirmed dir in place (creating it
  * first if it doesn't exist yet). Unconfirmed candidates are simply never
  * passed in — this function never discovers paths on its own.
@@ -84,7 +84,7 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
     ),
   };
 
-  writeFileSync(join(vaultPath, "skr.toml"), serializeManifest(manifest));
+  writeFileSync(join(vaultPath, MANIFEST_FILENAME), serializeManifest(manifest));
 
   for (const target of confirmedTargets) {
     if (!existsSync(target.dir)) mkdirSync(target.dir, { recursive: true });
@@ -105,7 +105,7 @@ export const DISCOVERY_PARAGRAPH =
   "skill.";
 
 export const MCP_REGISTRATION_SNIPPET = JSON.stringify(
-  { mcpServers: { "skill-router": { command: "skr", args: ["serve"] } } },
+  { mcpServers: { "skillmux": { command: "skillmux", args: ["serve"] } } },
   null,
   2,
 );

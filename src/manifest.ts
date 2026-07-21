@@ -1,7 +1,19 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod";
 import { expandHome } from "./config";
 import { SKILL_ID_PATTERN } from "./vault";
+
+export const MANIFEST_FILENAME = "skillmux.toml";
+export const LEGACY_MANIFEST_FILENAME = "skr.toml";
+
+export function resolveManifestPath(vaultPath: string): string | null {
+  const newPath = join(vaultPath, MANIFEST_FILENAME);
+  if (existsSync(newPath)) return newPath;
+  const legacyPath = join(vaultPath, LEGACY_MANIFEST_FILENAME);
+  if (existsSync(legacyPath)) return legacyPath;
+  return null;
+}
 
 const groupNameSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/).max(64);
 const skillIdSchema = z.string().regex(SKILL_ID_PATTERN);

@@ -30,7 +30,7 @@ describe("embedding fingerprint", () => {
   });
 
   test("marks a same-dimension vector stale after fingerprint changes", async () => {
-    const stateDir = `/tmp/skill-router-fingerprint-${crypto.randomUUID()}`;
+    const stateDir = `/tmp/skillmux-fingerprint-${crypto.randomUUID()}`;
     const db = openIndex(stateDir);
     ingestVault(db, [
       {

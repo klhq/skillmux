@@ -6,7 +6,7 @@ import { startServer } from "../src/server";
 import { configure } from "../src/router-core";
 import { loadConfig } from "../src/config";
 
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-http-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-http-"));
 const vaultDir = join(tmp, "vault");
 const configPath = join(tmp, "config.toml");
 let port: number;
@@ -125,7 +125,7 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     expect(body.jsonrpc).toBe("2.0");
     expect(body.id).toBe(1);
     expect(body.result.protocolVersion).toBe("2024-11-05");
-    expect(body.result.serverInfo.name).toBe("skill-router");
+    expect(body.result.serverInfo.name).toBe("skillmux");
 
     // Capture Session ID from response headers
     const sessionId = response.headers.get("x-session-id") || response.headers.get("x-mcp-session-id") || response.headers.get("mcp-session-id");

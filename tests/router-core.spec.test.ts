@@ -15,7 +15,7 @@ import {
 // The rerank mock keys on query substrings so each contract test lands on the
 // intended outcome without a remote host. Assertions below are unchanged from the
 // generated suite.
-const tmp = mkdtempSync(join(tmpdir(), "skill-router-test-"));
+const tmp = mkdtempSync(join(tmpdir(), "skillmux-test-"));
 const vaultDir = join(tmp, "vault");
 const stateDir = join(tmp, "state");
 const configPath = join(tmp, "config.toml");

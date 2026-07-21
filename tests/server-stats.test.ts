@@ -36,7 +36,7 @@ function makeConfig(root: string, overrides: Partial<Config> = {}): Config {
 
 describe("GET /stats", () => {
   test("returns an aggregated StatsResponse for the requested window", async () => {
-    const root = mkdtempSync(join(tmpdir(), "skill-router-server-stats-"));
+    const root = mkdtempSync(join(tmpdir(), "skillmux-server-stats-"));
     dirs.push(root);
     const config = makeConfig(root);
     const clients = { embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])) };
@@ -64,7 +64,7 @@ describe("GET /stats", () => {
   });
 
   test("rejects a malformed since window with 400", async () => {
-    const root = mkdtempSync(join(tmpdir(), "skill-router-server-stats-"));
+    const root = mkdtempSync(join(tmpdir(), "skillmux-server-stats-"));
     dirs.push(root);
     const config = makeConfig(root);
     const clients = { embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])) };
@@ -78,7 +78,7 @@ describe("GET /stats", () => {
   });
 
   test("requires auth when server.auth_enabled is true, unlike /health and /metrics", async () => {
-    const root = mkdtempSync(join(tmpdir(), "skill-router-server-stats-"));
+    const root = mkdtempSync(join(tmpdir(), "skillmux-server-stats-"));
     dirs.push(root);
     process.env.STATS_TEST_TOKEN = "secret-token";
     const config = makeConfig(root, {

@@ -205,7 +205,7 @@ export async function syncVaultIfNeeded(): Promise<void> {
 
 /**
  * Embed every skill missing a current vector (new or content changed).
- * Called by `skr index` and at server startup; failure is tolerated —
+ * Called by `skillmux index` and at server startup; failure is tolerated —
  * resolve falls back to lexical-only recall until vectors exist.
  */
 export async function backfillEmbeddings(): Promise<number> {

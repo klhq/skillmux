@@ -34,9 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial `router-core`: hybrid recall (SQLite FTS5/BM25 ∪ embedding cosine) with cross-encoder reranking, exposed via two MCP tools — `resolve_skill` and `fetch_skill`.
 - Zero-loss delivery: `sha256(body)` verified against the file on disk at delivery time.
 - Graceful fallback to lexical retrieval when embedding is unavailable.
-- `skill-router eval` CLI command for recall@5 threshold calibration against a vault's holdout queries.
+- `skillmux eval` CLI command for recall@5 threshold calibration against a vault's holdout queries.
 - Read-only vault guarantee and a SQLite-backed audit log of every `resolve_skill` call.
 
-[Unreleased]: https://github.com/klhq/skill-router/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/klhq/skill-router/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/klhq/skill-router/releases/tag/v0.1.0
+[Unreleased]: https://github.com/klhq/skillmux/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/klhq/skillmux/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/klhq/skillmux/releases/tag/v0.1.0

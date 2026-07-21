@@ -39,6 +39,6 @@ jobs:
           context: .
           target: slim
           push: false
-          tags: skill-router:ci
+          tags: skillmux:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

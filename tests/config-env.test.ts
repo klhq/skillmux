@@ -1,12 +1,24 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { rmSync } from "node:fs";
-import { loadConfig } from "../src/config";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { mock } from "bun:test";
+
+let fakeHome = `/tmp/fake-home-migration-${crypto.randomUUID()}`;
+
+mock.module("node:os", () => {
+  return {
+    homedir: () => fakeHome,
+    tmpdir: () => "/tmp",
+  };
+});
+
+import { loadConfig, migrateLegacyPaths, warnedEnv } from "../src/config";
 
 const originalEnv = { ...process.env };
 const files: string[] = [];
 
 async function configFile(content: string): Promise<string> {
-  const path = `/tmp/skill-router-config-${crypto.randomUUID()}.toml`;
+  const path = `/tmp/skillmux-config-${crypto.randomUUID()}.toml`;
   files.push(path);
   await Bun.write(path, content);
   return path;
@@ -32,7 +44,7 @@ describe("inference configuration", () => {
     expect(config.inference).toMatchObject({
       mode: "local",
       bundle: "gte-small-v1",
-      models_dir: "~/.cache/skill-router/models",
+      models_dir: "~/.cache/skillmux/models",
       embedding: { model: "Xenova/gte-small", dimension: 384, device: "cpu", dtype: "q8" },
     });
   });
@@ -110,7 +122,7 @@ candidate_floor = 0.41
 
   test("applies mode-appropriate environment overrides", async () => {
     process.env.EMBED_DEVICE = "cuda";
-    process.env.SKILL_ROUTER_MODELS_DIR = "/models-cache";
+    process.env.SKILLMUX_MODELS_DIR = "/models-cache";
     let config = await loadConfig("/does/not/exist/config.toml");
     expect(config.inference.mode).toBe("local");
     if (config.inference.mode === "local") {
@@ -136,9 +148,9 @@ match_score = 0.9
 match_margin = 0.2
 candidate_floor = 0.4
 `);
-    process.env.SKILL_ROUTER_EMBED_BASE_URL = "https://new.example.com";
-    process.env.SKILL_ROUTER_EMBED_MODEL = "new/embed";
-    process.env.SKILL_ROUTER_EMBED_DIMENSION = "1024";
+    process.env.SKILLMUX_EMBED_BASE_URL = "https://new.example.com";
+    process.env.SKILLMUX_EMBED_MODEL = "new/embed";
+    process.env.SKILLMUX_EMBED_DIMENSION = "1024";
     config = await loadConfig(path);
     expect(config.inference.mode).toBe("remote");
     if (config.inference.mode === "remote") {
@@ -196,29 +208,127 @@ describe("server configuration", () => {
     const path = await configFile(`
 [server]
 auth_enabled = false
-auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"
+auth_token_env = "SKILLMUX_AUTH_TOKEN"
 allowed_origins = ["*"]
 [server.rate_limit]
 enabled = true
 requests_per_minute = 75
 `);
-    process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_RPM = "84";
+    process.env.SKILLMUX_HTTP_RATE_LIMIT_RPM = "84";
     const config = await loadConfig(path);
     expect(config.server?.rate_limit).toEqual({ enabled: true, requests_per_minute: 84 });
   });
 
-  test("SKILL_ROUTER_HTTP_RATE_LIMIT_TRUST_PROXY overrides rate_limit.trust_proxy", async () => {
+  test("SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY overrides rate_limit.trust_proxy", async () => {
     const path = await configFile(`
 [server]
 auth_enabled = false
-auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"
+auth_token_env = "SKILLMUX_AUTH_TOKEN"
 allowed_origins = ["*"]
 [server.rate_limit]
 enabled = true
 requests_per_minute = 60
 `);
-    process.env.SKILL_ROUTER_HTTP_RATE_LIMIT_TRUST_PROXY = "true";
+    process.env.SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY = "true";
     const config = await loadConfig(path);
     expect(config.server?.rate_limit?.trust_proxy).toBe(true);
+  });
+});
+
+describe("Shim 1: legacy XDG directory migration", () => {
+  afterEach(() => {
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  test("migrates directories when only legacy exists", () => {
+    mkdirSync(join(fakeHome, ".config/skill-router"), { recursive: true });
+    mkdirSync(join(fakeHome, ".local/state/skill-router"), { recursive: true });
+    mkdirSync(join(fakeHome, ".cache/skill-router"), { recursive: true });
+    writeFileSync(join(fakeHome, ".config/skill-router/config.toml"), "legacy-config");
+    writeFileSync(join(fakeHome, ".local/state/skill-router/audit.db"), "legacy-db");
+
+    migrateLegacyPaths();
+
+    expect(existsSync(join(fakeHome, ".config/skillmux/config.toml"))).toBe(true);
+    expect(existsSync(join(fakeHome, ".local/state/skillmux/audit.db"))).toBe(true);
+    expect(existsSync(join(fakeHome, ".cache/skillmux"))).toBe(true);
+    expect(existsSync(join(fakeHome, ".config/skill-router"))).toBe(false);
+  });
+
+  test("no-ops when new directories already exist", () => {
+    mkdirSync(join(fakeHome, ".config/skill-router"), { recursive: true });
+    writeFileSync(join(fakeHome, ".config/skill-router/config.toml"), "legacy-config");
+
+    mkdirSync(join(fakeHome, ".config/skillmux"), { recursive: true });
+    writeFileSync(join(fakeHome, ".config/skillmux/config.toml"), "new-config");
+
+    migrateLegacyPaths();
+
+    expect(readFileSync(join(fakeHome, ".config/skillmux/config.toml"), "utf-8")).toBe("new-config");
+    expect(existsSync(join(fakeHome, ".config/skill-router/config.toml"))).toBe(true);
+  });
+
+  test("no-ops when legacy directories do not exist", () => {
+    migrateLegacyPaths();
+    expect(existsSync(join(fakeHome, ".config/skillmux"))).toBe(false);
+  });
+});
+
+describe("Shim 2: legacy environment variable fallbacks", () => {
+  let consoleErrorSpy: any;
+  const originalConsoleError = console.error;
+
+  beforeEach(() => {
+    warnedEnv.clear();
+    consoleErrorSpy = [];
+    console.error = (...args: any[]) => {
+      consoleErrorSpy.push(args.join(" "));
+    };
+  });
+
+  afterEach(() => {
+    console.error = originalConsoleError;
+  });
+
+  test("SKILLMUX_CONFIG primary var works without warning", async () => {
+    const configPath = await configFile("[recall]\nk_lexical = 10\n");
+    process.env.SKILLMUX_CONFIG = configPath;
+    
+    const config = await loadConfig();
+    expect(config.recall.k_lexical).toBe(10);
+    expect(consoleErrorSpy.length).toBe(0);
+  });
+
+  test("SKILL_ROUTER_CONFIG fallback works with deprecation warning", async () => {
+    const configPath = await configFile("[recall]\nk_lexical = 12\n");
+    process.env.SKILL_ROUTER_CONFIG = configPath;
+    
+    const config = await loadConfig();
+    expect(config.recall.k_lexical).toBe(12);
+    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_CONFIG is deprecated"))).toBe(true);
+  });
+
+  test("SKILL_ROUTER_MODELS_DIR fallback works with deprecation warning", async () => {
+    process.env.SKILL_ROUTER_MODELS_DIR = "/legacy-models-path";
+    const config = await loadConfig();
+    expect(config.inference.mode === "local" ? config.inference.models_dir : "").toBe("/legacy-models-path");
+    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_MODELS_DIR is deprecated"))).toBe(true);
+  });
+
+  test("SKILL_ROUTER_EMBED_BASE_URL via 3-tier getEnv works with deprecation warning", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://default.example.com"
+model = "embed"
+dimension = 384
+`);
+    process.env.SKILL_ROUTER_EMBED_BASE_URL = "https://legacy-embed.example.com";
+    const config = await loadConfig(path);
+    expect(config.inference.mode === "remote" ? config.inference.embedding.base_url : "").toBe("https://legacy-embed.example.com");
+    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_EMBED_BASE_URL is deprecated"))).toBe(true);
   });
 });

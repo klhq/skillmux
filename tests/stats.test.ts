@@ -115,7 +115,7 @@ describe("computeStats", () => {
 
 describe("queryAuditRows", () => {
   test("reads rows at or after the since timestamp, parsing the JSON candidates column", () => {
-    const stateDir = mkdtempSync(join(tmpdir(), "skill-router-stats-"));
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
     const db = openIndex(stateDir);
     insertAudit(db, {
       ts: "2026-06-01T00:00:00.000Z",
@@ -153,7 +153,7 @@ describe("queryAuditRows", () => {
 
 describe("getStats", () => {
   test("combines parseSince + queryAuditRows + computeStats against a real db", () => {
-    const stateDir = mkdtempSync(join(tmpdir(), "skill-router-stats-"));
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
     const db = openIndex(stateDir);
     const now = new Date("2026-07-19T00:00:00.000Z");
     insertAudit(db, {

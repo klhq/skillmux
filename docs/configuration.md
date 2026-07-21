@@ -1,6 +1,6 @@
 # Configuration
 
-Skill Router defaults to FTS5 plus local GTE-small semantic retrieval. Most users need no config file.
+Skillmux defaults to FTS5 plus local GTE-small semantic retrieval. Most users need no config file.
 
 ## Local mode
 
@@ -9,14 +9,14 @@ Skill Router defaults to FTS5 plus local GTE-small semantic retrieval. Most user
 mode = "local"
 ```
 
-The versioned `gte-small-v1` bundle uses normalized, mean-pooled `Xenova/gte-small` embeddings (384 dimensions), quantized to q8 on CPU. Models are cached in `~/.cache/skill-router/models`. FTS5 and cosine result lists are combined with reciprocal-rank fusion; without a reranker the calling LLM selects from the ordered shortlist.
+The versioned `gte-small-v1` bundle uses normalized, mean-pooled `Xenova/gte-small` embeddings (384 dimensions), quantized to q8 on CPU. Models are cached in `~/.cache/skillmux/models`. FTS5 and cosine result lists are combined with reciprocal-rank fusion; without a reranker the calling LLM selects from the ordered shortlist.
 
 Advanced local overrides:
 
 ```toml
 [inference]
 mode = "local"
-models_dir = "~/.cache/skill-router/models"
+models_dir = "~/.cache/skillmux/models"
 
 [inference.embedding]
 model = "Xenova/gte-small"
@@ -26,7 +26,7 @@ dtype = "q8"
 
 ```
 
-Use `skr models download` to prefetch models and `skr doctor` to verify readiness.
+Use `skillmux models download` to prefetch models and `skillmux doctor` to verify readiness.
 
 ## Remote mode
 
@@ -57,7 +57,7 @@ Reranker thresholds have no universal default because score distributions are mo
 [server]
 hostname = "127.0.0.1"
 auth_enabled = false
-auth_token_env = "SKILL_ROUTER_AUTH_TOKEN"
+auth_token_env = "SKILLMUX_AUTH_TOKEN"
 allowed_origins = []
 
 [server.rate_limit]
@@ -66,6 +66,6 @@ requests_per_minute = 60
 trust_proxy = false
 ```
 
-Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`) — a zero-config `skr serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
+Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`) — a zero-config `skillmux serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
 
 Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, `auth_enabled = true` with a token, and populate `allowed_origins` with the specific origins that need browser access. `rate_limit.trust_proxy` should stay `false` unless a trusted reverse proxy sets `X-Forwarded-For` — it's otherwise a client-controlled, spoofable header and trusting it defeats per-client rate limiting.

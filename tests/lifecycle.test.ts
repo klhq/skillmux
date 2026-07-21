@@ -32,7 +32,7 @@ function config(root: string): Config {
 
 describe("runtime initialization", () => {
   test("reports hybrid readiness after indexing and embedding", async () => {
-    const root = mkdtempSync(join(tmpdir(), "skill-router-ready-"));
+    const root = mkdtempSync(join(tmpdir(), "skillmux-ready-"));
     dirs.push(root);
     const skillDir = join(root, "vault", "example-skill");
     mkdirSync(skillDir, { recursive: true });
@@ -53,7 +53,7 @@ describe("runtime initialization", () => {
   });
 
   test("reports lexical readiness when embedding is unavailable", async () => {
-    const root = mkdtempSync(join(tmpdir(), "skill-router-lexical-ready-"));
+    const root = mkdtempSync(join(tmpdir(), "skillmux-lexical-ready-"));
     dirs.push(root);
     const skillDir = join(root, "vault", "example-skill");
     mkdirSync(skillDir, { recursive: true });
