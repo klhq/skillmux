@@ -247,10 +247,10 @@ top no_match queries:
 
 The `skillmux` is packaged and distributed as a Docker image in two variants:
 
-1. **`ghcr.io/klhq/skillmux:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
-2. **`ghcr.io/klhq/skillmux:latest-slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
+1. **`skillmux:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
+2. **`skillmux:latest-slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
 
-Both tags are multi-architecture manifests for Linux AMD64 and ARM64; Docker selects the correct image automatically.
+Both tags are multi-architecture manifests for Linux AMD64 and ARM64; Docker selects the correct image automatically. Images are published to both [`ghcr.io/klhq/skillmux`](https://github.com/klhq/skillmux/pkgs/container/skillmux) and [`docker.io/lazyskyline/skillmux`](https://hub.docker.com/r/lazyskyline/skillmux) — either registry works, examples below use GHCR.
 
 ### Running HTTP Server (Docker Default)
 
