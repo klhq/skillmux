@@ -11,10 +11,14 @@ export interface EvalCase {
   expected: string[];
 }
 
-const evalCasesSchema = z.array(z.object({
+const rawEvalItemSchema = z.object({
   query: z.string().min(1),
-  expected: z.array(z.string().min(1)).min(1),
-}).strict());
+  expected: z.array(z.string().min(1)).optional(),
+  relevant_skill_ids: z.array(z.string()).optional(),
+  split: z.string().optional(),
+  expected_outcome: z.string().optional(),
+});
+
 
 export interface EvalMetrics {
   recall_at_3: number;
@@ -48,8 +52,22 @@ function metrics(rankings: string[][], cases: EvalCase[]): EvalMetrics {
 }
 
 export function loadEvalCases(path = join(import.meta.dir, "..", "eval", "queries.json")): EvalCase[] {
-  return evalCasesSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  const raw = JSON.parse(readFileSync(path, "utf8"));
+  if (!Array.isArray(raw)) throw new Error("Eval cases file must contain a JSON array");
+  const parsed = z.array(rawEvalItemSchema).parse(raw);
+  const result: EvalCase[] = [];
+  for (const item of parsed) {
+    const expected = item.expected ?? item.relevant_skill_ids;
+    if (expected && expected.length > 0) {
+      result.push({ query: item.query, expected });
+    }
+  }
+  if (parsed.length > 0 && result.length === 0) {
+    throw new Error("Eval cases file contained no cases with expected targets");
+  }
+  return result;
 }
+
 
 export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
   const { config, db, clients } = await getRuntime();

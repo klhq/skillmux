@@ -87,7 +87,7 @@ beforeAll(() => {
       ``,
     ].join("\n"),
   );
-  process.env.SKILLMUX_CONFIG = configPath;
+  process.env.SKILL_ROUTER_CONFIG = configPath;
 
   configure({
     clients: {
@@ -106,7 +106,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  delete process.env.SKILLMUX_CONFIG;
+  delete process.env.SKILL_ROUTER_CONFIG;
   rmSync(tmp, { recursive: true, force: true });
 });
 
