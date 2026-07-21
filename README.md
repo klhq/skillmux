@@ -14,10 +14,16 @@ Built for agents that lack native skill triggering (Goose recipe workers, openco
 - [Docker Usage](#docker-usage)
 - [Configuration](#configuration) — inference modes, security scanning, installing skills, env vars
 - [CLI & Automation](docs/cli.md) — context management, remote target resolution, policy calibration, JSON envelopes
+- [Benchmarks & Evaluation](#benchmarks--evaluation)
+- [FAQ & Troubleshooting](#faq--troubleshooting)
 - [Guarantees](#guarantees)
 - [Development](#development)
 
 ## How it works
+
+<p align="center">
+  <img src="docs/assets/architecture.svg" alt="skillmux Architecture &amp; Hybrid Routing Flow" width="100%">
+</p>
 
 ```
 resolve_skill("convert this spreadsheet to markdown")
@@ -388,6 +394,10 @@ All core settings can be overridden via environment variables (handy for Docker)
 
 Remote API keys are read from the environment variables named by `inference.embedding.api_key_env` and `inference.reranker.api_key_env`; no secret ever lives in the config file.
 
+## Benchmarks & Evaluation
+
+Skillmux includes a built-in evaluation framework to benchmark retrieval accuracy (lexical vs. hybrid vector search) against labeled intent datasets.
+
 Evaluate lexical and local hybrid retrieval against the checked-in labeled queries:
 
 ```sh
@@ -396,6 +406,56 @@ bun run src/cli.ts eval
 # lexical recall@5: 1.000
 # hybrid recall@5:  1.000
 ```
+
+Custom policy calibration can also be performed against domain-specific query logs using `skillmux calibrate` (see [`docs/cli.md`](docs/cli.md#policy-calibration-skillmux-calibrate)).
+
+## FAQ & Troubleshooting
+
+<details>
+<summary><b>Why did my query return <code>ambiguous</code> instead of <code>matched</code>?</b></summary>
+
+<br>
+
+The router returns `"outcome": "ambiguous"` when multiple candidate skills meet retrieval confidence thresholds, or when no single candidate dominates by a sufficient score margin. In this state, up to 10 candidate skill summaries (`skill_id`, `title`, `description`) are returned so the calling LLM can choose the exact skill and invoke `fetch_skill`.
+
+</details>
+
+<details>
+<summary><b>Does skillmux require an active internet connection?</b></summary>
+
+<br>
+
+No. In default local inference mode (`inference.mode = "local"`), skillmux operates 100% offline. The default GTE-small embedding model is quantized to q8 and bundled within the binary/Docker image.
+
+</details>
+
+<details>
+<summary><b>What happens when remote embedding or reranking endpoints fail?</b></summary>
+
+<br>
+
+Skillmux features automatic fallback degradation. If remote embedding APIs or rerankers become unreachable, the router gracefully falls back to SQLite FTS5 lexical search rather than throwing an error to the calling agent.
+
+</details>
+
+<details>
+<summary><b>When should I use routed skills vs. pinned skills?</b></summary>
+
+<br>
+
+- **Routed (Default)**: Best for expanding vaults with dozens or hundreds of skills. Skills are loaded dynamically on demand via `resolve_skill`, keeping the agent's initial context window clean.
+- **Pinned (`skillmux sync`)**: Best when running multiple agent surfaces (e.g. Claude Code, opencode) that all require the same core set of 2–5 skills loaded statically at agent startup.
+
+</details>
+
+<details>
+<summary><b>How do I verify server readiness and routing health?</b></summary>
+
+<br>
+
+Run `skillmux doctor` locally or hit the HTTP readiness endpoint (`GET /health/ready`). `doctor` checks vault accessibility, state directory permissions, ONNX runtime binding status, and active retrieval lane status.
+
+</details>
 
 ## Guarantees
 
