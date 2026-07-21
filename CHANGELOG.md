@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/klhq/skillmux/compare/v0.2.1...v0.3.0) (2026-07-21)
+
+
+### Added
+
+* **adapters:** add unified local and remote target adapters (AC3, AC7, AC10) ([552b7d8](https://github.com/klhq/skillmux/commit/552b7d8f26ece4ab4a98f14326e508e35aeb57d5))
+* **admin:** add authenticated /admin/v1 HTTP control plane (AC7, AC8, AC9, AC10) ([7b7958f](https://github.com/klhq/skillmux/commit/7b7958fb0e248e2c33a0ca1e566286617a8a0d84))
+* **calibrate:** Automated calibration-tuning pipeline, evidence store, and live reload ([#35](https://github.com/klhq/skillmux/issues/35)) ([7ccd79f](https://github.com/klhq/skillmux/commit/7ccd79f9d25d901aa3d7aec43953b79896ebfa24))
+* **cli:** add output formatting, exit code mapping, and shell completions (AC11, AC12) ([0099395](https://github.com/klhq/skillmux/commit/009939501192f81dc8fbe2e15c33bce22beb1456))
+* **cli:** CLI polish, target resolution, config/calibrate parity, and admin control plane ([a4fb67d](https://github.com/klhq/skillmux/commit/a4fb67d3e8a09ae6ef8151ad4892ec3d94d261e0))
+* **cli:** connect CLI dispatcher with context, config, calibrate, and completions (cli-polish) ([bd3fd14](https://github.com/klhq/skillmux/commit/bd3fd140443e4523fcaf163b2fe5e57d5c51ac9c))
+* **config:** add source-aware config service and status tracking (AC4, AC5, AC6) ([325342a](https://github.com/klhq/skillmux/commit/325342a55b5bac4a7b3aee7d7740e2fc22f7aee7))
+* **context:** add context management and target resolution service (AC1, AC2) ([34435c9](https://github.com/klhq/skillmux/commit/34435c934aaa5ad69af90b7b42e761c674d6ac85))
+
+
+### Fixed
+
+* **clients:** handle trailing /v1 in embedding base_url ([26d8158](https://github.com/klhq/skillmux/commit/26d8158138b390ffb3e5c3f54777273673db0a73))
+* **types:** resolve TypeScript compilation errors in CLI, adapters, and server ([e4ad7d2](https://github.com/klhq/skillmux/commit/e4ad7d2c059157e52a9f584f15eeaed6a8091fec))
+
+
+### Changed
+
+* **config:** remove deprecated environment variable shims ([#34](https://github.com/klhq/skillmux/issues/34)) ([e046f45](https://github.com/klhq/skillmux/commit/e046f45c3133b2e91b4920513975107b025b19f5))
+
 ## [0.2.1](https://github.com/klhq/skillmux/compare/skillmux-v0.2.0...skillmux-v0.2.1) (2026-07-21)
 
 ## [0.2.0](https://github.com/klhq/skillmux/compare/skillmux-v0.1.1...skillmux-v0.2.0) (2026-07-21)
