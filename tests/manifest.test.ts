@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { parseManifest, resolveManifestPath, serializeManifest, validateManifest } from "../src/manifest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+function tmpVault(): string {
+  return mkdtempSync(join(tmpdir(), "skillmux-manifest-vault-"));
+}
+
+function writeSkillAt(root: string, skillId: string) {
+  const dir = join(root, skillId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), `---\nname: ${skillId}\n---\n\nbody\n`);
+}
 
 describe("parseManifest", () => {
   test("parses a valid skillmux.toml into typed core/project/targets", () => {
@@ -60,6 +70,8 @@ dir = "~/.claude/skills"
 
 describe("validateManifest", () => {
   test("throws naming a core skill that does not exist in the vault", () => {
+    const vaultPath = tmpVault();
+    writeSkillAt(vaultPath, "writing-clearly");
     const manifest = parseManifest(`
 [core]
 skills = ["ghost-skill"]
@@ -67,10 +79,14 @@ skills = ["ghost-skill"]
 [targets.claude]
 dir = "~/.claude/skills"
 `);
-    expect(() => validateManifest(manifest, new Set(["writing-clearly"]))).toThrow("ghost-skill");
+    expect(() => validateManifest(manifest, vaultPath)).toThrow("ghost-skill");
+
+    rmSync(vaultPath, { recursive: true, force: true });
   });
 
   test("throws naming a skill listed in both [core] and a [project.*] group", () => {
+    const vaultPath = tmpVault();
+    writeSkillAt(vaultPath, "shared-skill");
     const manifest = parseManifest(`
 [core]
 skills = ["shared-skill"]
@@ -82,10 +98,15 @@ skills = ["shared-skill"]
 [targets.claude]
 dir = "~/.claude/skills"
 `);
-    expect(() => validateManifest(manifest, new Set(["shared-skill"]))).toThrow("shared-skill");
+    expect(() => validateManifest(manifest, vaultPath)).toThrow("shared-skill");
+
+    rmSync(vaultPath, { recursive: true, force: true });
   });
 
   test("passes for a manifest whose skills all exist and don't overlap", () => {
+    const vaultPath = tmpVault();
+    writeSkillAt(vaultPath, "core-skill");
+    writeSkillAt(vaultPath, "infra-skill");
     const manifest = parseManifest(`
 [core]
 skills = ["core-skill"]
@@ -97,12 +118,16 @@ skills = ["infra-skill"]
 [targets.claude]
 dir = "~/.claude/skills"
 `);
-    const result = validateManifest(manifest, new Set(["core-skill", "infra-skill"]));
+    const result = validateManifest(manifest, vaultPath);
     expect(result.notes).toEqual([]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
   });
 
   test("throws naming the count when [core] exceeds 25 skills", () => {
+    const vaultPath = tmpVault();
     const skillIds = Array.from({ length: 26 }, (_, i) => `skill-${i}`);
+    for (const skillId of skillIds) writeSkillAt(vaultPath, skillId);
     const manifest = parseManifest(`
 [core]
 skills = ${JSON.stringify(skillIds)}
@@ -110,10 +135,13 @@ skills = ${JSON.stringify(skillIds)}
 [targets.claude]
 dir = "~/.claude/skills"
 `);
-    expect(() => validateManifest(manifest, new Set(skillIds))).toThrow("26");
+    expect(() => validateManifest(manifest, vaultPath)).toThrow("26");
+
+    rmSync(vaultPath, { recursive: true, force: true });
   });
 
   test("throws when a target's project_groups references an undefined [project.*] group", () => {
+    const vaultPath = tmpVault();
     const manifest = parseManifest(`
 [core]
 skills = []
@@ -126,10 +154,13 @@ skills = []
 dir = "~/.claude/skills"
 project_groups = ["nonexistent"]
 `);
-    expect(() => validateManifest(manifest, new Set())).toThrow("nonexistent");
+    expect(() => validateManifest(manifest, vaultPath)).toThrow("nonexistent");
+
+    rmSync(vaultPath, { recursive: true, force: true });
   });
 
   test("skips a [project.*].repos path that doesn't exist locally with a note, not an error", () => {
+    const vaultPath = tmpVault();
     const manifest = parseManifest(`
 [core]
 skills = []
@@ -141,8 +172,66 @@ skills = []
 [targets.claude]
 dir = "~/.claude/skills"
 `);
-    const result = validateManifest(manifest, new Set());
+    const result = validateManifest(manifest, vaultPath);
     expect(result.notes).toEqual(["[project.infra] repos path not found locally, skipped: /does/not/exist/on/this/machine"]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("throws when a [core] skill only resolves from a local_vault_paths entry, not vault_path (AC6)", () => {
+    const vaultPath = tmpVault();
+    const localVault = tmpVault();
+    writeSkillAt(localVault, "local-only-skill");
+    const manifest = parseManifest(`
+[core]
+skills = ["local-only-skill"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    expect(() => validateManifest(manifest, vaultPath, [localVault])).toThrow("local-only-skill");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(localVault, { recursive: true, force: true });
+  });
+
+  test("throws when a [project.*] skill only resolves from a local_vault_paths entry, not vault_path (AC6)", () => {
+    const vaultPath = tmpVault();
+    const localVault = tmpVault();
+    writeSkillAt(localVault, "local-only-skill");
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = []
+skills = ["local-only-skill"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    expect(() => validateManifest(manifest, vaultPath, [localVault])).toThrow("local-only-skill");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(localVault, { recursive: true, force: true });
+  });
+
+  test("passes when a core skill exists in vault_path even though local_vault_paths is also configured", () => {
+    const vaultPath = tmpVault();
+    const localVault = tmpVault();
+    writeSkillAt(vaultPath, "core-skill");
+    const manifest = parseManifest(`
+[core]
+skills = ["core-skill"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    const result = validateManifest(manifest, vaultPath, [localVault]);
+    expect(result.notes).toEqual([]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(localVault, { recursive: true, force: true });
   });
 });
 

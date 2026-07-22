@@ -573,10 +573,8 @@ async function runSync(args: string[]): Promise<void> {
   }
 
   const manifest = parseManifest(await Bun.file(manifestPath).text());
-  const vaultSkillIds = new Set(
-    (await scanVault(vaultPath)).map((skill) => skill.skill_id),
-  );
-  const { notes } = validateManifest(manifest, vaultSkillIds);
+  const localVaultPaths = config.local_vault_paths.map(expandHome);
+  const { notes } = validateManifest(manifest, vaultPath, localVaultPaths);
   for (const note of notes) console.log(`note: ${note}`);
 
   for (const [targetName, target] of Object.entries(manifest.targets)) {
@@ -594,7 +592,7 @@ async function runSync(args: string[]): Promise<void> {
 
     const suffix = dryRun ? " (dry-run)" : "";
     const result = syncTarget(
-      { vaultPath, targetDir, targetName, coreSkillIds: manifest.core.skills },
+      { vaultPath, targetDir, targetName, coreSkillIds: manifest.core.skills, localVaultPaths },
       { dryRun },
     );
     console.log(`${targetName}: +${result.added.length} -${result.removed.length}${suffix}`);
@@ -602,10 +600,10 @@ async function runSync(args: string[]): Promise<void> {
     if (target.project_groups.length > 0) {
       const allGroups = manifest.project ?? {};
       const projectGroups = Object.fromEntries(
-        target.project_groups.map((name) => [name, allGroups[name]]),
+        target.project_groups.map((name) => [name, allGroups[name]!]),
       );
       const projectResults = syncProjectTargets(
-        { vaultPath, targetDir, targetName, projectGroups },
+        { vaultPath, targetDir, targetName, projectGroups, localVaultPaths },
         { dryRun },
       );
       for (const projectResult of projectResults) {

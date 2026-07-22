@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { expandHome } from "./config";
-import { SKILL_ID_PATTERN } from "./vault";
+import { resolveSkillRoot, SKILL_ID_PATTERN } from "./vault";
 
 export const MANIFEST_FILENAME = "skillmux.toml";
 export const LEGACY_MANIFEST_FILENAME = "skr.toml";
@@ -89,7 +89,24 @@ export interface ManifestValidationResult {
 
 const CORE_SKILL_LIMIT = 25;
 
-export function validateManifest(manifest: Manifest, vaultSkillIds: Set<string>): ManifestValidationResult {
+function requireCoreVaultRoot(skillId: string, vaultPath: string, localVaultPaths: string[], location: string): void {
+  const root = resolveSkillRoot(skillId, vaultPath, localVaultPaths);
+  if (root === null) {
+    throw new Error(`${location} skill "${skillId}" does not exist in the vault`);
+  }
+  if (root !== vaultPath) {
+    throw new Error(
+      `${location} skill "${skillId}" only exists in a local vault path (${root}) — pins in the shared ` +
+        `manifest must be backed by the canonical vault_path (${vaultPath}) to stay portable across machines`,
+    );
+  }
+}
+
+export function validateManifest(
+  manifest: Manifest,
+  vaultPath: string,
+  localVaultPaths: string[] = [],
+): ManifestValidationResult {
   if (manifest.core.skills.length > CORE_SKILL_LIMIT) {
     throw new Error(
       `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${CORE_SKILL_LIMIT}`,
@@ -98,9 +115,7 @@ export function validateManifest(manifest: Manifest, vaultSkillIds: Set<string>)
 
   const coreSet = new Set(manifest.core.skills);
   for (const skillId of manifest.core.skills) {
-    if (!vaultSkillIds.has(skillId)) {
-      throw new Error(`[core] skill "${skillId}" does not exist in the vault`);
-    }
+    requireCoreVaultRoot(skillId, vaultPath, localVaultPaths, "[core]");
   }
 
   const groupNames = new Set(Object.keys(manifest.project ?? {}));
@@ -115,9 +130,7 @@ export function validateManifest(manifest: Manifest, vaultSkillIds: Set<string>)
   const notes: string[] = [];
   for (const [groupName, group] of Object.entries(manifest.project ?? {})) {
     for (const skillId of group.skills) {
-      if (!vaultSkillIds.has(skillId)) {
-        throw new Error(`[project.${groupName}] skill "${skillId}" does not exist in the vault`);
-      }
+      requireCoreVaultRoot(skillId, vaultPath, localVaultPaths, `[project.${groupName}]`);
       if (coreSet.has(skillId)) {
         throw new Error(`skill "${skillId}" appears in both [core] and [project.${groupName}]`);
       }
