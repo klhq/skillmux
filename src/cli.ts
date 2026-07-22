@@ -599,9 +599,13 @@ async function runSync(args: string[]): Promise<void> {
     );
     console.log(`${targetName}: +${result.added.length} -${result.removed.length}${suffix}`);
 
-    if (target.project) {
+    if (target.project_groups.length > 0) {
+      const allGroups = manifest.project ?? {};
+      const projectGroups = Object.fromEntries(
+        target.project_groups.map((name) => [name, allGroups[name]]),
+      );
       const projectResults = syncProjectTargets(
-        { vaultPath, targetDir, targetName, projectGroups: manifest.project ?? {} },
+        { vaultPath, targetDir, targetName, projectGroups },
         { dryRun },
       );
       for (const projectResult of projectResults) {
