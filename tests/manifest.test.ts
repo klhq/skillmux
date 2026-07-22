@@ -227,6 +227,20 @@ dir = "~/.claude/skills"
       /already pinned/,
     );
   });
+
+  test("throws instead of writing an invalid group name that would corrupt the TOML on next parse", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinProject(manifest, "some-skill", "Bad Group!", ["~/workspace/x"])).toThrow(
+      /invalid group name/,
+    );
+  });
 });
 
 describe("unpinProject", () => {

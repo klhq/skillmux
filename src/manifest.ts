@@ -107,6 +107,9 @@ export function unpinCore(manifest: Manifest, skillId: string): Manifest {
 }
 
 export function pinProject(manifest: Manifest, skillId: string, group: string, repos?: string[]): Manifest {
+  if (!groupNameSchema.safeParse(group).success) {
+    throw new Error(`invalid group name "${group}" — must match /^[a-z][a-z0-9_-]*$/ (max 64 chars)`);
+  }
   const existingGroup = manifest.project?.[group];
 
   if (!existingGroup) {
