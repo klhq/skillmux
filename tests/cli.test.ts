@@ -125,6 +125,55 @@ describe("skillmux index CLI (AC8)", () => {
   });
 });
 
+describe("skillmux which CLI", () => {
+  test("reports the resolving root for a skill that only exists in vault_path", async () => {
+    const result = await runCli("which", "first-skill");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`first-skill: serving from ${vaultDir}`);
+  });
+
+  test("exits non-zero and reports not found for an unknown skill_id", async () => {
+    const result = await runCli("which", "ghost-skill");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toContain("ghost-skill: not found");
+  });
+
+  test("requires a skill_id argument", async () => {
+    const result = await runCli("which");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("usage: skillmux which <skill_id>");
+  });
+
+  test("reports the shadowed root when a local_vault_paths entry overrides vault_path", async () => {
+    const localDir = mkdtempSync(join(tmpdir(), "skillmux-cli-which-local-"));
+    mkdirSync(join(localDir, "first-skill"), { recursive: true });
+    writeFileSync(
+      join(localDir, "first-skill", "SKILL.md"),
+      "---\nname: first-skill\ndescription: Local override.\n---\n\nbody\n",
+    );
+    const configPath2 = join(tmp, "config-which.toml");
+    writeFileSync(
+      configPath2,
+      readFileSync(configPath, "utf8").replace(
+        `vault_path = "${vaultDir}"`,
+        `vault_path = "${vaultDir}"\nlocal_vault_paths = ["${localDir}"]`,
+      ),
+    );
+
+    const result = await runCliEnv(["which", "first-skill"], { SKILLMUX_CONFIG: configPath2 });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`first-skill: serving from ${localDir}`);
+    expect(result.stdout).toContain(`shadows: ${vaultDir}`);
+
+    rmSync(localDir, { recursive: true, force: true });
+    rmSync(configPath2, { force: true });
+  });
+});
+
 describe("skillmux serve CLI", () => {
   test("rejects invalid transport values", async () => {
     const result = await runCli("serve", "--transport", "websocket");
@@ -144,7 +193,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|config show|models download|calibrate generate-dataset>",
     );
 
   });

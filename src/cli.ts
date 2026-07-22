@@ -30,7 +30,7 @@ import {
   syncProjectTargets,
   syncTarget,
 } from "./sync";
-import { scanVault } from "./vault";
+import { scanVault, vaultResolutionOrder } from "./vault";
 
 import {
   addContext,
@@ -60,6 +60,7 @@ const KNOWN_COMMANDS = [
   "eval",
   "doctor",
   "models",
+  "which",
 ];
 
 async function main() {
@@ -161,6 +162,9 @@ async function main() {
       case "doctor":
         await runDoctor();
         break;
+      case "which":
+        await runWhich(rawArgv.slice(1));
+        break;
       case "models":
         if (subCommand !== "download") throw new Error("usage: skillmux models download");
         await runModelDownload();
@@ -169,7 +173,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download|calibrate generate-dataset>`;
+          : `usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|config show|models download|calibrate generate-dataset>`;
         throw new Error(msg);
       }
     }
@@ -450,7 +454,7 @@ function handleError(
 }
 
 function printHelp(): void {
-  console.log(`usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]`);
+  console.log(`usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]`);
 }
 
 // ---------------------------------------------------------------------------
@@ -528,6 +532,24 @@ async function runDoctor(): Promise<void> {
   for (const check of report.checks)
     console.log(`${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`);
   if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
+}
+
+async function runWhich(args: string[]): Promise<void> {
+  const skillId = args[0];
+  if (!skillId) throw new Error("usage: skillmux which <skill_id>");
+  const config = await loadConfig();
+  const vaultPath = expandHome(config.vault_path);
+  const localVaultPaths = config.local_vault_paths.map(expandHome);
+  const roots = vaultResolutionOrder(vaultPath, localVaultPaths).filter((root) =>
+    existsSync(join(root, skillId, "SKILL.md")),
+  );
+  if (roots.length === 0) {
+    console.log(`${skillId}: not found in vault_path or local_vault_paths`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`${skillId}: serving from ${roots[0]}`);
+  for (const shadowedRoot of roots.slice(1)) console.log(`  shadows: ${shadowedRoot}`);
 }
 
 async function runModelDownload(): Promise<void> {

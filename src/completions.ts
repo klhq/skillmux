@@ -8,7 +8,7 @@ _skillmux_completions() {
     COMPREPLY=()
     cur="\${COMP_WORDS[COMP_CWORD]}"
     prev="\${COMP_WORDS[COMP_CWORD-1]}"
-    opts="context config calibrate serve index sync init report scan install eval doctor models completions --context --server --json --allow-insecure --verbose --dry-run --help"
+    opts="context config calibrate serve index sync init report scan install eval doctor which models completions --context --server --json --allow-insecure --verbose --dry-run --help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -51,6 +51,7 @@ _skillmux() {
         'install:Install skills into vault'
         'eval:Evaluate search accuracy'
         'doctor:Check runtime health'
+        'which:Show which root resolves a skill_id'
         'models:Manage local models'
         'completions:Generate shell completions'
     )

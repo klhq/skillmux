@@ -3,6 +3,7 @@ import { createClients } from "./clients";
 import { embeddingDimension, expandHome } from "./config";
 import { resolveManifestPath } from "./manifest";
 import type { Config } from "./types";
+import { findShadowedSkills } from "./vault";
 
 export interface DoctorCheck {
   name: string;
@@ -32,6 +33,14 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
         detail: `stray manifest at ${strayManifest} — skillmux.toml only ever lives in vault_path, never in local_vault_paths`,
       });
     }
+  }
+
+  for (const shadow of findShadowedSkills(expandHome(config.vault_path), config.local_vault_paths.map(expandHome))) {
+    checks.push({
+      name: `shadowed:${shadow.skill_id}`,
+      ok: true,
+      detail: `served from ${shadow.winner}; shadows ${shadow.shadowed.join(", ")}`,
+    });
   }
 
   try {

@@ -10,6 +10,7 @@ import {
   vaultResolutionOrder,
   resolveSkillRoot,
   scanVaults,
+  findShadowedSkills,
 } from "../src/vault";
 
 function writeSkillAt(root: string, skillId: string, description: string) {
@@ -155,6 +156,35 @@ describe("scanVaults", () => {
     expect(bySkillId["upstream-only"]?.description).toBe("upstream");
     expect(bySkillId["local-only"]?.description).toBe("local");
     expect(skills.length).toBe(3);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(localA, { recursive: true, force: true });
+  });
+});
+
+describe("findShadowedSkills", () => {
+  test("reports a skill present in more than one root, winner first", () => {
+    const vaultPath = mkdtempSync(join(tmpdir(), "skillmux-shadow-vault-"));
+    const localA = mkdtempSync(join(tmpdir(), "skillmux-shadow-local-"));
+    writeSkillAt(vaultPath, "shared-skill", "upstream");
+    writeSkillAt(vaultPath, "upstream-only", "upstream");
+    writeSkillAt(localA, "shared-skill", "local override");
+
+    const shadowed = findShadowedSkills(vaultPath, [localA]);
+
+    expect(shadowed).toEqual([{ skill_id: "shared-skill", winner: localA, shadowed: [vaultPath] }]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(localA, { recursive: true, force: true });
+  });
+
+  test("returns an empty array when no skill_id collides across roots", () => {
+    const vaultPath = mkdtempSync(join(tmpdir(), "skillmux-shadow-vault-"));
+    const localA = mkdtempSync(join(tmpdir(), "skillmux-shadow-local-"));
+    writeSkillAt(vaultPath, "upstream-only", "upstream");
+    writeSkillAt(localA, "local-only", "local");
+
+    expect(findShadowedSkills(vaultPath, [localA])).toEqual([]);
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(localA, { recursive: true, force: true });

@@ -118,3 +118,14 @@ local_vault_paths = ["~/skills-local"]   # optional, default []: override-only, 
 - **`vault_path` keeps its exact existing meaning.** `skillmux.toml` and the `sync --install-hook` git hook only ever live in `vault_path`; `skillmux doctor` warns if it finds a stray manifest inside a `local_vault_paths` entry instead.
 - **`[core]`/`[project.*]` pins must resolve from `vault_path`.** Since the manifest is meant to be portable, `sync`/`doctor` reject a pin backed only by a `local_vault_paths` entry — see the manifest section above.
 - **Not yet covered**: `startVaultWatcher`'s live filesystem watch still only watches `vault_path`; a change inside a `local_vault_paths` entry is picked up lazily (on the next `resolve_skill`/`fetch_skill`/`sync` call, via the same mtime staleness check `vault_path` already uses), not instantly.
+
+**Visibility.** A `skill_id` present in more than one root is silently resolved via the precedence above with no output during normal use — two commands make that resolution visible on demand:
+
+- `skillmux which <skill_id>` — prints which root actually serves that skill, and names every root it shadows:
+  ```
+  $ skillmux which my-skill
+  my-skill: serving from /home/user/skills-local
+    shadows: /home/user/skills
+  ```
+  Exits non-zero with `<skill_id>: not found in vault_path or local_vault_paths` if no root has it.
+- `skillmux doctor` reports every shadowed skill_id as an informational check (`shadowed:<skill_id>`, always `ok`) alongside its existing vault/manifest/embedding checks — so a scan of `doctor` output surfaces every override in one place, not just the one you thought to ask about.

@@ -98,6 +98,32 @@ export async function scanVaults(
   return merged;
 }
 
+export interface ShadowedSkill {
+  skill_id: string;
+  winner: string;
+  shadowed: string[];
+}
+
+/** skill_ids present in more than one configured root — every root after the winner is silently shadowed. */
+export function findShadowedSkills(vaultPath: string, localVaultPaths: string[]): ShadowedSkill[] {
+  const rootsBySkillId = new Map<string, string[]>();
+  for (const root of vaultResolutionOrder(vaultPath, localVaultPaths)) {
+    if (!existsSync(root)) continue;
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !SKILL_ID_PATTERN.test(entry.name)) continue;
+      if (!existsSync(join(root, entry.name, "SKILL.md"))) continue;
+      const roots = rootsBySkillId.get(entry.name) ?? [];
+      roots.push(root);
+      rootsBySkillId.set(entry.name, roots);
+    }
+  }
+  const shadowed: ShadowedSkill[] = [];
+  for (const [skillId, roots] of rootsBySkillId) {
+    if (roots.length > 1) shadowed.push({ skill_id: skillId, winner: roots[0]!, shadowed: roots.slice(1) });
+  }
+  return shadowed.sort((a, b) => a.skill_id.localeCompare(b.skill_id));
+}
+
 /** Relative paths of everything under the skill dir except SKILL.md itself, sorted. */
 export function listSupportingFiles(vaultPath: string, skillId: string): string[] {
   const root = join(vaultPath, skillId);
