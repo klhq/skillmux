@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { diagnose } from "../src/doctor";
@@ -81,5 +81,30 @@ describe("diagnose", () => {
     });
 
     rmSync(localWithManifest, { recursive: true, force: true });
+  });
+
+  test("reports a shadowed skill when a local_vault_paths entry overrides a vault_path skill", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-"));
+    const localDir = mkdtempSync(join(tmpdir(), "doctor-local-vault-"));
+    for (const [root, description] of [
+      [vaultDir, "upstream"],
+      [localDir, "local override"],
+    ] as const) {
+      mkdirSync(join(root, "shared-skill"), { recursive: true });
+      writeFileSync(
+        join(root, "shared-skill", "SKILL.md"),
+        `---\nname: shared-skill\ndescription: ${description}\n---\n\nbody\n`,
+      );
+    }
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir, local_vault_paths: [localDir] }));
+
+    expect(report.checks.find((check) => check.name === "shadowed:shared-skill")).toMatchObject({
+      ok: true,
+      detail: `served from ${localDir}; shadows ${vaultDir}`,
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(localDir, { recursive: true, force: true });
   });
 });
