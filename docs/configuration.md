@@ -90,13 +90,31 @@ skills = ["pdf-extractor"]           # must not overlap [core]
 
 [targets.claude]
 dir = "/Users/you/.claude/skills"
-project = false                      # true = also apply [project.*] groups scoped to this target
+project_groups = ["repo1"]           # which [project.*] groups materialize into this target — [] means none
 ```
 
 - `[core].skills` — symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills; `sync` fails if a listed skill id isn't actually in the vault.
-- `[project.<group>].skills` — symlinked only into `<repo>/<relative path from $HOME to the target dir>`, for each `repos` entry, and only for targets with `project = true`. `repos` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
-- `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these; hand-editing is fine as long as `sync` is still allowed to own the directory (see below).
+- `[project.<group>].skills` — symlinked only into `<repo>/<relative path from $HOME to the target dir>`, for each `repos` entry, and only for targets whose `project_groups` names that group. `repos` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
+- `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these; hand-editing is fine as long as `sync` is still allowed to own the directory (see below). `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
+
+> **Breaking change:** `[targets.<name>].project` (a boolean) has been replaced by `project_groups` (an array of `[project.*]` names). A manifest still using the old field fails to parse with an error pointing at the new one. To migrate, replace `project = true` with `project_groups = [...]` listing every group that target previously received (previously *all* groups, unconditionally); replace `project = false` with `project_groups = []`.
+
+Every `[core]`/`[project.*]` skill_id must resolve from the canonical `vault_path` — pinning a skill that only exists in a `local_vault_paths` entry (see below) fails `sync`/`doctor` with a distinct error, since the manifest is meant to be portable across machines and a machine-local override wouldn't exist elsewhere.
 
 ### Ownership marker
 
 Every directory `sync` manages gets a `.skillmux` marker file (`{"managed_by": "skillmux", "target": "<name>", "created_at": ...}`). `sync` refuses to touch a directory that exists but has no marker — run `skillmux init --target <name> --yes` first, which either creates the directory fresh or adopts an existing one in place (contents untouched). This is also why `sync --restore-monolith` (which deletes the marker and replaces the whole directory with one symlink straight to the vault) requires re-running `init` before that target can be `sync`'d again.
+
+### Local vault overlays
+
+`local_vault_paths` (in `config.toml`, alongside `vault_path`) lets one machine layer override-only skills on top of the shared vault — a skill being authored locally, a machine-specific script, or a patched copy of an upstream skill — without touching `vault_path` itself:
+
+```toml
+vault_path = "~/skills"                 # unchanged: canonical, owns skillmux.toml and the sync git hook
+local_vault_paths = ["~/skills-local"]   # optional, default []: override-only, checked first
+```
+
+- **Resolution order**: for any given `skill_id`, `local_vault_paths` entries are checked first, in array order; `vault_path` is the fallback. This applies everywhere a skill's on-disk location matters — indexing, `resolve_skill`/`fetch_skill` delivery, and `sync`'s symlink target.
+- **`vault_path` keeps its exact existing meaning.** `skillmux.toml` and the `sync --install-hook` git hook only ever live in `vault_path`; `skillmux doctor` warns if it finds a stray manifest inside a `local_vault_paths` entry instead.
+- **`[core]`/`[project.*]` pins must resolve from `vault_path`.** Since the manifest is meant to be portable, `sync`/`doctor` reject a pin backed only by a `local_vault_paths` entry — see the manifest section above.
+- **Not yet covered**: `startVaultWatcher`'s live filesystem watch still only watches `vault_path`; a change inside a `local_vault_paths` entry is picked up lazily (on the next `resolve_skill`/`fetch_skill`/`sync` call, via the same mtime staleness check `vault_path` already uses), not instantly.

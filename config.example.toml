@@ -3,3 +3,8 @@
 # vault_path is a neutral path, never a harness's static-loading scan
 # surface (e.g. ~/.agents/skills) — see docs/sdd/skr-cli/think.md.
 vault_path = "~/skills"
+
+# Optional, default []: machine-local override-only vaults, checked before
+# vault_path for a given skill_id. Never holds skillmux.toml or the sync git
+# hook — those always stay in vault_path. See docs/configuration.md#local-vault-overlays.
+# local_vault_paths = ["~/skills-local"]
