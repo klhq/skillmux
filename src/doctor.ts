@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { createClients } from "./clients";
 import { embeddingDimension, expandHome } from "./config";
 import { resolveManifestPath } from "./manifest";
+import { readSkillmuxMarker } from "./sync";
 import type { Config } from "./types";
 import { findShadowedSkills } from "./vault";
 
@@ -32,6 +33,24 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
         ok: false,
         detail: `stray manifest at ${strayManifest} — skillmux.toml only ever lives in vault_path, never in local_vault_paths`,
       });
+    }
+
+    const marker = readSkillmuxMarker(expanded);
+    const currentVaultPath = expandHome(config.vault_path);
+    if (!marker || marker.role !== "local_vault") {
+      checks.push({
+        name: `local_vault_marker:${localPath}`,
+        ok: false,
+        detail: `no marker — run: skillmux local-vault init "${expanded}"`,
+      });
+    } else if (marker.vault_path !== currentVaultPath) {
+      checks.push({
+        name: `local_vault_marker:${localPath}`,
+        ok: false,
+        detail: `marker recorded vault_path ${marker.vault_path}, currently configured vault_path is ${currentVaultPath} — drift, re-run skillmux local-vault init`,
+      });
+    } else {
+      checks.push({ name: `local_vault_marker:${localPath}`, ok: true, detail: expanded });
     }
   }
 
