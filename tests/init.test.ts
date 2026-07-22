@@ -95,7 +95,7 @@ describe("applyInit", () => {
     expect(manifest).toEqual({
       core: { skills: [] },
       project: {},
-      targets: { claude: { dir: claudeDir, project: false } },
+      targets: { claude: { dir: claudeDir, project_groups: [] } },
     });
     expect(readFileSync(join(vaultPath, "skillmux.toml"), "utf-8")).toContain("[targets.claude]");
     expect(readSkillmuxMarker(claudeDir)?.target).toBe("claude");

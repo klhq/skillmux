@@ -25,7 +25,7 @@ const projectGroupSchema = z.object({
 
 const targetSchema = z.object({
   dir: z.string().min(1),
-  project: z.boolean().default(false),
+  project_groups: z.array(groupNameSchema).default([]),
 }).strict();
 
 const manifestSchema = z.object({
@@ -40,7 +40,24 @@ export type Manifest = z.infer<typeof manifestSchema>;
 
 export function parseManifest(toml: string): Manifest {
   const parsed = Bun.TOML.parse(toml) as Record<string, unknown>;
-  return manifestSchema.parse(parsed);
+  try {
+    return manifestSchema.parse(parsed);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      for (const issue of error.issues) {
+        if (
+          issue.code === "unrecognized_keys" &&
+          issue.path[0] === "targets" &&
+          issue.keys.includes("project")
+        ) {
+          throw new Error(
+            `[targets.${String(issue.path[1])}] uses the removed field "project" (boolean) — replace it with "project_groups" (an array of [project.<group>] names).`,
+          );
+        }
+      }
+    }
+    throw error;
+  }
 }
 
 function tomlStringArray(values: string[]): string {
@@ -58,7 +75,9 @@ export function serializeManifest(manifest: Manifest): string {
   }
 
   for (const [name, target] of Object.entries(manifest.targets)) {
-    sections.push(`[targets.${name}]\ndir = ${JSON.stringify(target.dir)}\nproject = ${target.project}`);
+    sections.push(
+      `[targets.${name}]\ndir = ${JSON.stringify(target.dir)}\nproject_groups = ${tomlStringArray(target.project_groups)}`,
+    );
   }
 
   return `${sections.join("\n\n")}\n`;
@@ -81,6 +100,15 @@ export function validateManifest(manifest: Manifest, vaultSkillIds: Set<string>)
   for (const skillId of manifest.core.skills) {
     if (!vaultSkillIds.has(skillId)) {
       throw new Error(`[core] skill "${skillId}" does not exist in the vault`);
+    }
+  }
+
+  const groupNames = new Set(Object.keys(manifest.project ?? {}));
+  for (const [targetName, target] of Object.entries(manifest.targets)) {
+    for (const groupName of target.project_groups) {
+      if (!groupNames.has(groupName)) {
+        throw new Error(`[targets.${targetName}] project_groups references undefined group "${groupName}"`);
+      }
     }
   }
 

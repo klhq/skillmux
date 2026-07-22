@@ -16,14 +16,26 @@ skills = ["terraform-plans"]
 
 [targets.claude]
 dir = "~/.claude/skills"
-project = true
+project_groups = ["infra"]
 `;
     const manifest = parseManifest(toml);
     expect(manifest).toEqual({
       core: { skills: ["writing-clearly", "code-review"] },
       project: { infra: { repos: ["~/workspace/infra"], skills: ["terraform-plans"] } },
-      targets: { claude: { dir: "~/.claude/skills", project: true } },
+      targets: { claude: { dir: "~/.claude/skills", project_groups: ["infra"] } },
     });
+  });
+
+  test("rejects the removed [targets.*].project boolean field", () => {
+    const toml = `
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+project = true
+`;
+    expect(() => parseManifest(toml)).toThrow(/project_groups/);
   });
 
   test("rejects a manifest missing the required [core] section", () => {
@@ -101,6 +113,22 @@ dir = "~/.claude/skills"
     expect(() => validateManifest(manifest, new Set(skillIds))).toThrow("26");
   });
 
+  test("throws when a target's project_groups references an undefined [project.*] group", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = []
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+project_groups = ["nonexistent"]
+`);
+    expect(() => validateManifest(manifest, new Set())).toThrow("nonexistent");
+  });
+
   test("skips a [project.*].repos path that doesn't exist locally with a note, not an error", () => {
     const manifest = parseManifest(`
 [core]
@@ -130,7 +158,7 @@ skills = ["terraform-plans"]
 
 [targets.claude]
 dir = "~/.claude/skills"
-project = true
+project_groups = ["infra"]
 `);
 
     const roundTripped = parseManifest(serializeManifest(manifest));
