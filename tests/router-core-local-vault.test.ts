@@ -81,4 +81,20 @@ describe("local_vault_paths integration (AC4, AC7)", () => {
       skill_id: "indexed-local-skill",
     });
   });
+
+  test("rebuildIndex does not crash when a skill_id is invalid in a local_vault_paths entry but valid in vault_path", async () => {
+    const { tmp, vaultDir, localVaultDir, config } = freshFixture();
+    cleanupDirs.push(tmp);
+    // Valid in vault_path...
+    writeSkillAt(vaultDir, "flaky-skill", "Valid upstream copy.");
+    // ...but invalid (unterminated frontmatter) in the local override, which is checked first.
+    mkdirSync(join(localVaultDir, "flaky-skill"), { recursive: true });
+    writeFileSync(join(localVaultDir, "flaky-skill", "SKILL.md"), "---\nname: broken\n");
+    configure({ config, clients: { embed: async (texts) => texts.map(() => new Float32Array(3)) } });
+
+    await expect(rebuildIndex()).resolves.toBeDefined();
+    await expect(fetchSkill({ skill_id: "flaky-skill" })).resolves.toMatchObject({
+      skill_id: "flaky-skill",
+    });
+  });
 });

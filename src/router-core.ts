@@ -40,8 +40,8 @@ import {
   listSupportingFiles,
   parseSkillMd,
   readSkill,
-  resolveSkillRoot,
   scanVaults,
+  vaultResolutionOrder,
   sha256Hex,
   SKILL_ID_PATTERN,
 } from "./vault";
@@ -117,16 +117,44 @@ export function closeRuntime(): void {
 async function deliverSkill(db: Database, config: Config, skillId: string): Promise<FetchSkillResult> {
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
-  const root = resolveSkillRoot(skillId, vaultPath, localVaultPaths);
-  if (root === null) {
+  const candidates = vaultResolutionOrder(vaultPath, localVaultPaths);
+
+  // Existence alone (resolveSkillRoot's check) isn't enough here: an unparseable
+  // local_vault_paths override would otherwise shadow a perfectly valid vault_path
+  // copy of the same skill_id, since it's checked first. Skip a broken override and
+  // fall through to the next root — mirroring scanVault/rebuildIndex's tolerance for
+  // unparseable content. The last candidate (always vault_path) is never skipped on
+  // parse failure, matching the pre-existing single-root behavior where a broken
+  // vault_path copy propagates its parse error rather than being silently swallowed.
+  let root: string | null = null;
+  let bytes: Uint8Array | null = null;
+  let raw = "";
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i]!;
+    const file = Bun.file(join(candidate, skillId, "SKILL.md"));
+    if (!(await file.exists())) continue;
+    const candidateBytes = await file.bytes();
+    const candidateRaw = decodeUtf8Strict(candidateBytes);
+    if (i < candidates.length - 1) {
+      try {
+        parseSkillMd(skillId, candidateRaw);
+      } catch {
+        continue;
+      }
+    }
+    root = candidate;
+    bytes = candidateBytes;
+    raw = candidateRaw;
+    break;
+  }
+
+  if (root === null || bytes === null) {
     // Deleted on disk but the watcher hasn't caught up: drop the stale row and
     // surface the schema's error code rather than a raw ENOENT.
     deleteSkill(db, skillId);
     throw new Error(`SKILL_NOT_FOUND: skill '${skillId}' no longer exists in the vault`);
   }
-  const bytes = await Bun.file(join(root, skillId, "SKILL.md")).bytes();
   const contentSha256 = sha256Hex(bytes);
-  const raw = decodeUtf8Strict(bytes);
   let row = getSkillRow(db, skillId);
   if (row === null || row.content_sha256 !== contentSha256) {
     const fresh = parseSkillMd(skillId, raw);
@@ -168,8 +196,15 @@ export async function rebuildIndex(
     onInvalid?.(skillId, error);
   });
   const rows = skills.map(toSkillRow);
+  // A skill_id invalid in one root (e.g. a local_vault_paths entry being edited) can
+  // still be valid in another (e.g. vault_path) — scanVaults already resolved that
+  // in `skills`. Only retain the previous row for ids that came back invalid
+  // everywhere; otherwise this duplicates the skill_id and violates the
+  // skills.skill_id PRIMARY KEY on replaceSkills's plain INSERT.
+  const validIds = new Set(skills.map((s) => s.skill_id));
   const retained: string[] = [];
   for (const skillId of invalidIds) {
+    if (validIds.has(skillId)) continue;
     const previous = getSkillRow(db, skillId);
     if (previous) {
       rows.push(previous);
@@ -200,7 +235,11 @@ export async function syncVaultIfNeeded(): Promise<void> {
       console.error(`warning: keeping previous index entry for ${skillId}: ${error}`);
     });
     const rows = skills.map(toSkillRow);
+    // See rebuildIndex: a skill_id invalid in one root can still be valid in
+    // another that scanVaults already resolved — don't re-add its previous row.
+    const validIds = new Set(skills.map((s) => s.skill_id));
     for (const skillId of invalidIds) {
+      if (validIds.has(skillId)) continue;
       const previous = getSkillRow(db, skillId);
       if (previous) {
         rows.push(previous);
