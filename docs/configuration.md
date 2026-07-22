@@ -97,13 +97,27 @@ project_groups = ["repo1"]           # which [project.*] groups materialize into
 - `[project.<group>].skills` — symlinked only into `<repo>/<relative path from $HOME to the target dir>`, for each `repos` entry, and only for targets whose `project_groups` names that group. `repos` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
 - `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these; hand-editing is fine as long as `sync` is still allowed to own the directory (see below). `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
 
+**Pin/unpin without hand-editing.** `skillmux manifest pin`/`unpin` mutate `[core]`/`[project.*]` for you, validating with the same rules `sync`/`doctor` enforce (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under the 25-skill cap) before writing anything:
+
+```sh
+skillmux manifest pin csv-formatter --core                                   # add to [core]
+skillmux manifest pin pdf-extractor --project repo1                          # add to an existing group
+skillmux manifest pin pdf-extractor --project repo2 --repo ~/code/repo2      # create a new group
+skillmux manifest unpin csv-formatter --core                                 # remove from [core]
+skillmux manifest unpin pdf-extractor --project repo1                        # remove from a group (group stays, even if empty)
+```
+
+`--repo` is only accepted when `--project <group>` names a group that doesn't exist yet — passing it for an existing group is rejected, since changing an existing group's `repos` isn't this command's job. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
+
 > **Breaking change:** `[targets.<name>].project` (a boolean) has been replaced by `project_groups` (an array of `[project.*]` names). A manifest still using the old field fails to parse with an error pointing at the new one. To migrate, replace `project = true` with `project_groups = [...]` listing every group that target previously received (previously *all* groups, unconditionally); replace `project = false` with `project_groups = []`.
 
 Every `[core]`/`[project.*]` skill_id must resolve from the canonical `vault_path` — pinning a skill that only exists in a `local_vault_paths` entry (see below) fails `sync`/`doctor` with a distinct error, since the manifest is meant to be portable across machines and a machine-local override wouldn't exist elsewhere.
 
 ### Ownership marker
 
-Every directory `sync` manages gets a `.skillmux` marker file (`{"managed_by": "skillmux", "target": "<name>", "created_at": ...}`). `sync` refuses to touch a directory that exists but has no marker — run `skillmux init --target <name> --yes` first, which either creates the directory fresh or adopts an existing one in place (contents untouched). This is also why `sync --restore-monolith` (which deletes the marker and replaces the whole directory with one symlink straight to the vault) requires re-running `init` before that target can be `sync`'d again.
+Every directory `sync` manages gets a `.skillmux` marker file (`{"managed_by": "skillmux", "role": "target", "target": "<name>", "created_at": ...}`). `sync` refuses to touch a directory that exists but has no marker — run `skillmux init --target <name> --yes` first, which either creates the directory fresh or adopts an existing one in place (contents untouched). This is also why `sync --restore-monolith` (which deletes the marker and replaces the whole directory with one symlink straight to the vault) requires re-running `init` before that target can be `sync`'d again.
+
+The same `.skillmux` marker filename and JSON shape is also used for `local_vault_paths` entries (see below), distinguished by `role: "local_vault"` with a `vault_path` field instead of `target`. Markers written before this `role` field existed have no `role` key at all — they're read back as `role: "target"`, so nothing already on disk needs migrating.
 
 ### Local vault overlays
 
@@ -129,3 +143,12 @@ local_vault_paths = ["~/skills-local"]   # optional, default []: override-only, 
   ```
   Exits non-zero with `<skill_id>: not found in vault_path or local_vault_paths` if no root has it.
 - `skillmux doctor` reports every shadowed skill_id as an informational check (`shadowed:<skill_id>`, always `ok`) alongside its existing vault/manifest/embedding checks — so a scan of `doctor` output surfaces every override in one place, not just the one you thought to ask about.
+
+**Discoverability.** A `local_vault_paths` entry is otherwise just a bare directory — nothing on disk says it belongs to skillmux or which `vault_path` it overlays. `skillmux local-vault init <path>` writes a `.skillmux` marker recording that relationship:
+
+```sh
+skillmux local-vault init ~/skills-local
+# wrote /home/user/skills-local/.skillmux (role: local_vault, vault_path: /home/user/skills)
+```
+
+`<path>` must already be one of the configured `local_vault_paths` entries and must exist on disk — the command only ever writes the marker, it never adds the path to `config.toml` for you. `skillmux doctor` reports each entry's marker status (`local_vault_marker:<path>`): `ok: false` if no marker exists yet (with the exact `local-vault init` command to fix it), or if the marker's recorded `vault_path` no longer matches the one currently configured (drift — e.g. after copying the directory to a machine with a different `vault_path`).
