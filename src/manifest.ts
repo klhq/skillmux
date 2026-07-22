@@ -106,6 +106,53 @@ export function unpinCore(manifest: Manifest, skillId: string): Manifest {
   return { ...manifest, core: { skills: manifest.core.skills.filter((id) => id !== skillId) } };
 }
 
+export function pinProject(manifest: Manifest, skillId: string, group: string, repos?: string[]): Manifest {
+  const existingGroup = manifest.project?.[group];
+
+  if (!existingGroup) {
+    if (!repos || repos.length === 0) {
+      throw new Error(`group "${group}" does not exist — pass --repo <path> at least once to create it`);
+    }
+    const existing = findExistingPin(manifest, skillId);
+    if (existing) {
+      throw new Error(`skill "${skillId}" already pinned in ${existing}`);
+    }
+    return {
+      ...manifest,
+      project: { ...manifest.project, [group]: { repos, skills: [skillId] } },
+    };
+  }
+
+  if (repos && repos.length > 0) {
+    throw new Error(`group "${group}" already exists — --repo is only used when creating a new group`);
+  }
+  const existing = findExistingPin(manifest, skillId);
+  if (existing) {
+    throw new Error(`skill "${skillId}" already pinned in ${existing}`);
+  }
+  return {
+    ...manifest,
+    project: { ...manifest.project, [group]: { ...existingGroup, skills: [...existingGroup.skills, skillId] } },
+  };
+}
+
+export function unpinProject(manifest: Manifest, skillId: string, group: string): Manifest {
+  const existingGroup = manifest.project?.[group];
+  if (!existingGroup) {
+    throw new Error(`[project.${group}] does not exist`);
+  }
+  if (!existingGroup.skills.includes(skillId)) {
+    throw new Error(`skill "${skillId}" is not pinned in [project.${group}]`);
+  }
+  return {
+    ...manifest,
+    project: {
+      ...manifest.project,
+      [group]: { ...existingGroup, skills: existingGroup.skills.filter((id) => id !== skillId) },
+    },
+  };
+}
+
 export interface ManifestValidationResult {
   notes: string[];
 }

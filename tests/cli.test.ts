@@ -328,6 +328,53 @@ describe("skillmux manifest CLI", () => {
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
+
+  test("manifest pin <skill_id> --project <group> --repo <path> creates a new group", async () => {
+    writeManifest(["first-skill"]);
+
+    const result = await runCli(
+      "manifest",
+      "pin",
+      "second-skill",
+      "--project",
+      "infra",
+      "--repo",
+      "~/workspace/infra",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+    expect(written).toContain(`[project.infra]`);
+    expect(written).toContain(`skills = ["second-skill"]`);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest unpin <skill_id> --project <group> removes the skill_id, keeping the group", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = []`,
+        ``,
+        `[project.infra]`,
+        `repos = ["~/workspace/infra"]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.test]`,
+        `dir = "~/does-not-matter"`,
+      ].join("\n"),
+    );
+
+    const result = await runCli("manifest", "unpin", "first-skill", "--project", "infra");
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+    expect(written).toContain(`[project.infra]`);
+    expect(written).toContain(`skills = []`);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
 });
 
 describe("skillmux init CLI", () => {
