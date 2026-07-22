@@ -99,6 +99,7 @@ export interface ServerConfig {
 
 export interface Config {
   vault_path: string;
+  local_vault_paths: string[];
   state_dir: string;
   recall: RecallConfig;
   thresholds: Thresholds;

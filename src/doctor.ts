@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { createClients } from "./clients";
 import { embeddingDimension, expandHome } from "./config";
+import { resolveManifestPath } from "./manifest";
 import type { Config } from "./types";
 
 export interface DoctorCheck {
@@ -18,6 +19,20 @@ export interface DoctorReport {
 export async function diagnose(config: Config): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
   checks.push({ name: "vault", ok: existsSync(expandHome(config.vault_path)), detail: expandHome(config.vault_path) });
+
+  for (const localPath of config.local_vault_paths) {
+    const expanded = expandHome(localPath);
+    checks.push({ name: `local_vault:${localPath}`, ok: existsSync(expanded), detail: expanded });
+
+    const strayManifest = resolveManifestPath(expanded);
+    if (strayManifest) {
+      checks.push({
+        name: `local_vault_manifest:${localPath}`,
+        ok: false,
+        detail: `stray manifest at ${strayManifest} — skillmux.toml only ever lives in vault_path, never in local_vault_paths`,
+      });
+    }
+  }
 
   try {
     mkdirSync(expandHome(config.state_dir), { recursive: true });
