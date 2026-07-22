@@ -19,7 +19,7 @@ import {
   resolveSkillDir,
   validateSkillCandidate,
 } from "./install";
-import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
+import { parseManifest, pinCore, resolveManifestPath, serializeManifest, unpinCore, validateManifest } from "./manifest";
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
@@ -61,6 +61,7 @@ const KNOWN_COMMANDS = [
   "doctor",
   "models",
   "which",
+  "manifest",
 ];
 
 async function main() {
@@ -165,6 +166,9 @@ async function main() {
       case "which":
         await runWhich(rawArgv.slice(1));
         break;
+      case "manifest":
+        await runManifest(subCommand, commandArgs);
+        break;
       case "models":
         if (subCommand !== "download") throw new Error("usage: skillmux models download");
         await runModelDownload();
@@ -173,7 +177,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|config show|models download|calibrate generate-dataset>`;
+          : `usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|config show|models download|calibrate generate-dataset>`;
         throw new Error(msg);
       }
     }
@@ -454,7 +458,7 @@ function handleError(
 }
 
 function printHelp(): void {
-  console.log(`usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]`);
+  console.log(`usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]`);
 }
 
 // ---------------------------------------------------------------------------
@@ -550,6 +554,37 @@ async function runWhich(args: string[]): Promise<void> {
   }
   console.log(`${skillId}: serving from ${roots[0]}`);
   for (const shadowedRoot of roots.slice(1)) console.log(`  shadows: ${shadowedRoot}`);
+}
+
+function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean } {
+  const skillId = args[0];
+  if (!skillId) throw new Error("usage: skillmux manifest <pin|unpin> <skill_id> --core");
+  let core = false;
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--core") core = true;
+    else throw new Error(`unknown manifest option: ${arg}`);
+  }
+  if (!core) throw new Error("usage: skillmux manifest <pin|unpin> <skill_id> --core");
+  return { skillId, core };
+}
+
+async function runManifest(subCommand: string, args: string[]): Promise<void> {
+  if (subCommand !== "pin" && subCommand !== "unpin") {
+    throw new Error("usage: skillmux manifest <pin|unpin> <skill_id> --core");
+  }
+  const { skillId } = parseManifestPinArgs(args);
+  const config = await loadConfig();
+  const vaultPath = expandHome(config.vault_path);
+  const localVaultPaths = config.local_vault_paths.map(expandHome);
+  const manifestPath = resolveManifestPath(vaultPath);
+  if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}`);
+  const manifest = parseManifest(await Bun.file(manifestPath).text());
+
+  const updated = subCommand === "pin" ? pinCore(manifest, skillId) : unpinCore(manifest, skillId);
+  validateManifest(updated, vaultPath, localVaultPaths);
+  await Bun.write(manifestPath, serializeManifest(updated));
+  console.log(`${subCommand === "pin" ? "pinned" : "unpinned"} "${skillId}" [core]`);
 }
 
 async function runModelDownload(): Promise<void> {

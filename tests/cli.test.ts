@@ -193,7 +193,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|config show|models download|calibrate generate-dataset>",
     );
 
   });
@@ -281,6 +281,52 @@ describe("skillmux sync CLI", () => {
     rmSync(fakeHome, { recursive: true, force: true });
     rmSync(repoA, { recursive: true, force: true });
     rmSync(repoB, { recursive: true, force: true });
+  });
+});
+
+describe("skillmux manifest CLI", () => {
+  function writeManifest(coreSkills: string[]) {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [`[core]`, `skills = ${JSON.stringify(coreSkills)}`, ``, `[targets.test]`, `dir = "~/does-not-matter"`].join("\n"),
+    );
+  }
+
+  test("manifest pin <skill_id> --core adds the skill_id to [core].skills", async () => {
+    writeManifest(["first-skill"]);
+
+    const result = await runCli("manifest", "pin", "second-skill", "--core");
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(
+      `skills = ["first-skill", "second-skill"]`,
+    );
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest pin <skill_id> --core exits non-zero and does not write when already pinned", async () => {
+    writeManifest(["first-skill"]);
+    const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+
+    const result = await runCli("manifest", "pin", "first-skill", "--core");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("already pinned in [core]");
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest unpin <skill_id> --core removes the skill_id from [core].skills", async () => {
+    writeManifest(["first-skill", "second-skill"]);
+
+    const result = await runCli("manifest", "unpin", "first-skill", "--core");
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(`skills = ["second-skill"]`);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 });
 

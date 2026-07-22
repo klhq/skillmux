@@ -83,6 +83,29 @@ export function serializeManifest(manifest: Manifest): string {
   return `${sections.join("\n\n")}\n`;
 }
 
+function findExistingPin(manifest: Manifest, skillId: string): string | null {
+  if (manifest.core.skills.includes(skillId)) return "[core]";
+  for (const [groupName, group] of Object.entries(manifest.project ?? {})) {
+    if (group.skills.includes(skillId)) return `[project.${groupName}]`;
+  }
+  return null;
+}
+
+export function pinCore(manifest: Manifest, skillId: string): Manifest {
+  const existing = findExistingPin(manifest, skillId);
+  if (existing) {
+    throw new Error(`skill "${skillId}" already pinned in ${existing}`);
+  }
+  return { ...manifest, core: { skills: [...manifest.core.skills, skillId] } };
+}
+
+export function unpinCore(manifest: Manifest, skillId: string): Manifest {
+  if (!manifest.core.skills.includes(skillId)) {
+    throw new Error(`skill "${skillId}" is not pinned in [core]`);
+  }
+  return { ...manifest, core: { skills: manifest.core.skills.filter((id) => id !== skillId) } };
+}
+
 export interface ManifestValidationResult {
   notes: string[];
 }

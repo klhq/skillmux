@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseManifest, resolveManifestPath, serializeManifest, validateManifest } from "../src/manifest";
+import { parseManifest, pinCore, resolveManifestPath, serializeManifest, unpinCore, validateManifest } from "../src/manifest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,6 +65,78 @@ skills = ["Invalid_ID"]
 dir = "~/.claude/skills"
 `;
     expect(() => parseManifest(toml)).toThrow();
+  });
+});
+
+describe("pinCore", () => {
+  test("appends a skill_id to [core].skills", () => {
+    const manifest = parseManifest(`
+[core]
+skills = ["writing-clearly"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const updated = pinCore(manifest, "code-review");
+
+    expect(updated.core.skills).toEqual(["writing-clearly", "code-review"]);
+  });
+
+  test("throws when the skill_id is already pinned in [core]", () => {
+    const manifest = parseManifest(`
+[core]
+skills = ["writing-clearly"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinCore(manifest, "writing-clearly")).toThrow(/already pinned in \[core\]/);
+  });
+
+  test("throws when the skill_id is already pinned in a [project.*] group", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = ["~/workspace/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinCore(manifest, "terraform-plans")).toThrow(/already pinned/);
+  });
+});
+
+describe("unpinCore", () => {
+  test("removes a skill_id from [core].skills", () => {
+    const manifest = parseManifest(`
+[core]
+skills = ["writing-clearly", "code-review"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const updated = unpinCore(manifest, "writing-clearly");
+
+    expect(updated.core.skills).toEqual(["code-review"]);
+  });
+
+  test("throws when the skill_id is not pinned in [core]", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => unpinCore(manifest, "ghost-skill")).toThrow(/not pinned in \[core\]/);
   });
 });
 
