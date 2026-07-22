@@ -202,7 +202,15 @@ This writes `skillmux.toml` at the vault root and marks `~/.claude/skills` as sk
 
 ### 2. Pick which skills are pinned
 
-`init` always starts `[core]` empty — there's no heuristic yet for which skills belong there. Edit `skillmux.toml` by hand:
+`init` always starts `[core]` empty — there's no heuristic yet for which skills belong there. Pin with the CLI instead of hand-editing `skillmux.toml`:
+
+```sh
+skillmux manifest pin csv-formatter --core
+```
+
+Unpin the same way: `skillmux manifest unpin csv-formatter --core`. `--project <group>` pins into a `[project.<group>]` tier instead (add `--repo <path>` the first time, to create the group). Every pin is validated before writing — the skill must actually resolve from the vault, and `[core]` stays under its 25-skill cap.
+
+Hand-editing `skillmux.toml` still works if you prefer it:
 
 ```toml
 [core]
@@ -213,7 +221,7 @@ dir = "/Users/you/.claude/skills"
 project_groups = []
 ```
 
-Cap: 25 skills in `[core]`. Full manifest schema, including `[project.<group>]` pins scoped to one repo and machine-local overlay vaults via `local_vault_paths`, is in [`docs/configuration.md`](docs/configuration.md#tiers-and-the-manifest).
+Full manifest schema, including `[project.<group>]` pins scoped to one repo and machine-local overlay vaults via `local_vault_paths`, is in [`docs/configuration.md`](docs/configuration.md#tiers-and-the-manifest).
 
 ### 3. Materialize
 

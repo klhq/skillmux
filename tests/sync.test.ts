@@ -10,6 +10,7 @@ import {
   restoreMonolith,
   syncProjectTargets,
   syncTarget,
+  writeLocalVaultMarker,
 } from "../src/sync";
 
 function tmpDir(prefix: string): string {
@@ -361,6 +362,35 @@ describe("adoptTarget", () => {
 
     expect(result.adopted).toBe(false);
     expect(readSkillmuxMarker(dir)?.created_at).toBe(markerBefore?.created_at);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("writeLocalVaultMarker", () => {
+  test("writes a .skillmux marker with role: \"local_vault\" and the given vault_path", () => {
+    const dir = tmpDir("skillmux-sync-local-vault-marker-");
+
+    writeLocalVaultMarker(dir, "/home/user/skills");
+
+    const marker = readSkillmuxMarker(dir);
+    expect(marker).toMatchObject({ managed_by: "skillmux", role: "local_vault", vault_path: "/home/user/skills" });
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("readSkillmuxMarker role back-compat", () => {
+  test("reads a marker with no role key as role: \"target\"", () => {
+    const dir = tmpDir("skillmux-sync-role-backcompat-");
+    writeFileSync(
+      join(dir, ".skillmux"),
+      JSON.stringify({ managed_by: "skillmux", target: "claude", created_at: "2026-01-01T00:00:00.000Z" }),
+    );
+
+    const marker = readSkillmuxMarker(dir);
+
+    expect(marker?.role).toBe("target");
 
     rmSync(dir, { recursive: true, force: true });
   });

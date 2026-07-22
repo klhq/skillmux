@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { parseManifest, resolveManifestPath, serializeManifest, validateManifest } from "../src/manifest";
+import {
+  parseManifest,
+  pinCore,
+  pinProject,
+  resolveManifestPath,
+  serializeManifest,
+  unpinCore,
+  unpinProject,
+  validateManifest,
+} from "../src/manifest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,6 +74,220 @@ skills = ["Invalid_ID"]
 dir = "~/.claude/skills"
 `;
     expect(() => parseManifest(toml)).toThrow();
+  });
+});
+
+describe("pinCore", () => {
+  test("appends a skill_id to [core].skills", () => {
+    const manifest = parseManifest(`
+[core]
+skills = ["writing-clearly"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const updated = pinCore(manifest, "code-review");
+
+    expect(updated.core.skills).toEqual(["writing-clearly", "code-review"]);
+  });
+
+  test("throws when the skill_id is already pinned in [core]", () => {
+    const manifest = parseManifest(`
+[core]
+skills = ["writing-clearly"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinCore(manifest, "writing-clearly")).toThrow(/already pinned in \[core\]/);
+  });
+
+  test("throws when the skill_id is already pinned in a [project.*] group", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = ["~/workspace/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinCore(manifest, "terraform-plans")).toThrow(/already pinned/);
+  });
+});
+
+describe("unpinCore", () => {
+  test("removes a skill_id from [core].skills", () => {
+    const manifest = parseManifest(`
+[core]
+skills = ["writing-clearly", "code-review"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const updated = unpinCore(manifest, "writing-clearly");
+
+    expect(updated.core.skills).toEqual(["code-review"]);
+  });
+
+  test("throws when the skill_id is not pinned in [core]", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => unpinCore(manifest, "ghost-skill")).toThrow(/not pinned in \[core\]/);
+  });
+});
+
+describe("pinProject", () => {
+  test("creates a new [project.*] group with the given repos and skill_id", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const updated = pinProject(manifest, "terraform-plans", "infra", ["~/workspace/infra"]);
+
+    expect(updated.project?.infra).toEqual({ repos: ["~/workspace/infra"], skills: ["terraform-plans"] });
+  });
+
+  test("throws when the group does not exist and no --repo was given", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinProject(manifest, "terraform-plans", "infra")).toThrow(
+      /group "infra" does not exist.*--repo/,
+    );
+  });
+
+  test("appends a skill_id to an existing group", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = ["~/workspace/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const updated = pinProject(manifest, "another-skill", "infra");
+
+    expect(updated.project?.infra?.skills).toEqual(["terraform-plans", "another-skill"]);
+  });
+
+  test("throws when --repo is passed for an already-existing group", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = ["~/workspace/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinProject(manifest, "another-skill", "infra", ["~/workspace/other"])).toThrow(
+      /group "infra" already exists/,
+    );
+  });
+
+  test("throws when the skill_id is already pinned elsewhere", () => {
+    const manifest = parseManifest(`
+[core]
+skills = ["writing-clearly"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinProject(manifest, "writing-clearly", "infra", ["~/workspace/infra"])).toThrow(
+      /already pinned/,
+    );
+  });
+
+  test("throws instead of writing an invalid group name that would corrupt the TOML on next parse", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => pinProject(manifest, "some-skill", "Bad Group!", ["~/workspace/x"])).toThrow(
+      /invalid group name/,
+    );
+  });
+});
+
+describe("unpinProject", () => {
+  test("removes a skill_id from an existing group, leaving the group in place", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = ["~/workspace/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const updated = unpinProject(manifest, "terraform-plans", "infra");
+
+    expect(updated.project?.infra).toEqual({ repos: ["~/workspace/infra"], skills: [] });
+  });
+
+  test("throws when the group does not exist", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => unpinProject(manifest, "terraform-plans", "infra")).toThrow(/\[project\.infra\] does not exist/);
+  });
+
+  test("throws when the skill_id is not pinned in the group", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+repos = ["~/workspace/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    expect(() => unpinProject(manifest, "ghost-skill", "infra")).toThrow(/not pinned in \[project\.infra\]/);
   });
 });
 

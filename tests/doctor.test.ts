@@ -83,6 +83,57 @@ describe("diagnose", () => {
     rmSync(localWithManifest, { recursive: true, force: true });
   });
 
+  test("warns when a local_vault_paths entry has no .skillmux marker", async () => {
+    const localDir = mkdtempSync(join(tmpdir(), "doctor-local-vault-no-marker-"));
+
+    const report = await diagnose(testConfig({ local_vault_paths: [localDir] }));
+
+    expect(report.checks.find((check) => check.name === `local_vault_marker:${localDir}`)).toMatchObject({
+      ok: false,
+    });
+
+    rmSync(localDir, { recursive: true, force: true });
+  });
+
+  test("reports ok when a local_vault_paths entry's marker matches the configured vault_path", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-for-marker-"));
+    const localDir = mkdtempSync(join(tmpdir(), "doctor-local-vault-matching-marker-"));
+    writeFileSync(
+      join(localDir, ".skillmux"),
+      JSON.stringify({ managed_by: "skillmux", role: "local_vault", vault_path: vaultDir, created_at: "2026-01-01T00:00:00.000Z" }),
+    );
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir, local_vault_paths: [localDir] }));
+
+    expect(report.checks.find((check) => check.name === `local_vault_marker:${localDir}`)).toMatchObject({
+      ok: true,
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(localDir, { recursive: true, force: true });
+  });
+
+  test("warns when a local_vault_paths entry's marker records a different vault_path (drift)", async () => {
+    const localDir = mkdtempSync(join(tmpdir(), "doctor-local-vault-drift-marker-"));
+    writeFileSync(
+      join(localDir, ".skillmux"),
+      JSON.stringify({
+        managed_by: "skillmux",
+        role: "local_vault",
+        vault_path: "/some/other/vault",
+        created_at: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    const report = await diagnose(testConfig({ vault_path: "/unused", local_vault_paths: [localDir] }));
+
+    expect(report.checks.find((check) => check.name === `local_vault_marker:${localDir}`)).toMatchObject({
+      ok: false,
+    });
+
+    rmSync(localDir, { recursive: true, force: true });
+  });
+
   test("reports a shadowed skill when a local_vault_paths entry overrides a vault_path skill", async () => {
     const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-"));
     const localDir = mkdtempSync(join(tmpdir(), "doctor-local-vault-"));

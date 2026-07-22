@@ -8,18 +8,24 @@ export const LEGACY_MARKER_FILENAME = ".skr";
 
 export interface SkillmuxMarker {
   managed_by: "skillmux" | "skr";
-  target: string;
+  role: "target" | "local_vault";
+  target?: string;
+  vault_path?: string;
   created_at: string;
+}
+
+function normalizeMarker(raw: Omit<SkillmuxMarker, "role"> & { role?: SkillmuxMarker["role"] }): SkillmuxMarker {
+  return { ...raw, role: raw.role ?? "target" };
 }
 
 export function readSkillmuxMarker(dir: string): SkillmuxMarker | null {
   const newPath = join(dir, SKILLMUX_MARKER_FILENAME);
   if (existsSync(newPath)) {
-    return JSON.parse(readFileSync(newPath, "utf-8")) as SkillmuxMarker;
+    return normalizeMarker(JSON.parse(readFileSync(newPath, "utf-8")));
   }
   const legacyPath = join(dir, LEGACY_MARKER_FILENAME);
   if (existsSync(legacyPath)) {
-    return JSON.parse(readFileSync(legacyPath, "utf-8")) as SkillmuxMarker;
+    return normalizeMarker(JSON.parse(readFileSync(legacyPath, "utf-8")));
   }
   return null;
 }
@@ -27,7 +33,18 @@ export function readSkillmuxMarker(dir: string): SkillmuxMarker | null {
 function writeSkillmuxMarker(dir: string, targetName: string): void {
   const marker: SkillmuxMarker = {
     managed_by: "skillmux",
+    role: "target",
     target: targetName,
+    created_at: new Date().toISOString(),
+  };
+  writeFileSync(join(dir, SKILLMUX_MARKER_FILENAME), JSON.stringify(marker, null, 2));
+}
+
+export function writeLocalVaultMarker(dir: string, vaultPath: string): void {
+  const marker: SkillmuxMarker = {
+    managed_by: "skillmux",
+    role: "local_vault",
+    vault_path: vaultPath,
     created_at: new Date().toISOString(),
   };
   writeFileSync(join(dir, SKILLMUX_MARKER_FILENAME), JSON.stringify(marker, null, 2));

@@ -193,7 +193,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
     );
 
   });
@@ -281,6 +281,133 @@ describe("skillmux sync CLI", () => {
     rmSync(fakeHome, { recursive: true, force: true });
     rmSync(repoA, { recursive: true, force: true });
     rmSync(repoB, { recursive: true, force: true });
+  });
+});
+
+describe("skillmux manifest CLI", () => {
+  function writeManifest(coreSkills: string[]) {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [`[core]`, `skills = ${JSON.stringify(coreSkills)}`, ``, `[targets.test]`, `dir = "~/does-not-matter"`].join("\n"),
+    );
+  }
+
+  test("manifest pin <skill_id> --core adds the skill_id to [core].skills", async () => {
+    writeManifest(["first-skill"]);
+
+    const result = await runCli("manifest", "pin", "second-skill", "--core");
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(
+      `skills = ["first-skill", "second-skill"]`,
+    );
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest pin <skill_id> --core exits non-zero and does not write when already pinned", async () => {
+    writeManifest(["first-skill"]);
+    const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+
+    const result = await runCli("manifest", "pin", "first-skill", "--core");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("already pinned in [core]");
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest unpin <skill_id> --core removes the skill_id from [core].skills", async () => {
+    writeManifest(["first-skill", "second-skill"]);
+
+    const result = await runCli("manifest", "unpin", "first-skill", "--core");
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(`skills = ["second-skill"]`);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest pin <skill_id> --project <group> --repo <path> creates a new group", async () => {
+    writeManifest(["first-skill"]);
+
+    const result = await runCli(
+      "manifest",
+      "pin",
+      "second-skill",
+      "--project",
+      "infra",
+      "--repo",
+      "~/workspace/infra",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+    expect(written).toContain(`[project.infra]`);
+    expect(written).toContain(`skills = ["second-skill"]`);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest unpin <skill_id> --project <group> removes the skill_id, keeping the group", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = []`,
+        ``,
+        `[project.infra]`,
+        `repos = ["~/workspace/infra"]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.test]`,
+        `dir = "~/does-not-matter"`,
+      ].join("\n"),
+    );
+
+    const result = await runCli("manifest", "unpin", "first-skill", "--project", "infra");
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+    expect(written).toContain(`[project.infra]`);
+    expect(written).toContain(`skills = []`);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+});
+
+describe("skillmux local-vault CLI", () => {
+  test("local-vault init <path> writes a .skillmux marker with role local_vault", async () => {
+    const localDir = mkdtempSync(join(tmpdir(), "skillmux-cli-local-vault-init-"));
+    const configPath2 = join(tmp, "config-local-vault.toml");
+    writeFileSync(
+      configPath2,
+      readFileSync(configPath, "utf8").replace(
+        `vault_path = "${vaultDir}"`,
+        `vault_path = "${vaultDir}"\nlocal_vault_paths = ["${localDir}"]`,
+      ),
+    );
+
+    const result = await runCliEnv(["local-vault", "init", localDir], { SKILLMUX_CONFIG: configPath2 });
+
+    expect(result.exitCode).toBe(0);
+    const marker = JSON.parse(readFileSync(join(localDir, ".skillmux"), "utf-8"));
+    expect(marker).toMatchObject({ managed_by: "skillmux", role: "local_vault", vault_path: vaultDir });
+
+    rmSync(localDir, { recursive: true, force: true });
+    rmSync(configPath2, { force: true });
+  });
+
+  test("local-vault init <path> errors when path is not a configured local_vault_paths entry", async () => {
+    const notConfigured = mkdtempSync(join(tmpdir(), "skillmux-cli-local-vault-unconfigured-"));
+
+    const result = await runCli("local-vault", "init", notConfigured);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("local_vault_paths");
+
+    rmSync(notConfigured, { recursive: true, force: true });
   });
 });
 
