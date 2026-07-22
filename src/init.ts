@@ -80,7 +80,7 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
   const manifest: Manifest = {
     ...proposeManifest([]),
     targets: Object.fromEntries(
-      confirmedTargets.map((target) => [target.name, { dir: target.dir, project: false }]),
+      confirmedTargets.map((target) => [target.name, { dir: target.dir, project_groups: [] }]),
     ),
   };
 

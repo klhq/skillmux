@@ -35,6 +35,24 @@ describe("filesystem defaults", () => {
 
     expect(config.vault_path).toBe("~/skills");
   });
+
+  test("defaults local_vault_paths to an empty array", async () => {
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.local_vault_paths).toEqual([]);
+  });
+
+  test("loads configured local_vault_paths alongside the unchanged vault_path", async () => {
+    const path = await configFile(`
+vault_path = "~/skills"
+local_vault_paths = ["~/skills-local", "~/skills-experimental"]
+`);
+
+    const config = await loadConfig(path);
+
+    expect(config.vault_path).toBe("~/skills");
+    expect(config.local_vault_paths).toEqual(["~/skills-local", "~/skills-experimental"]);
+  });
 });
 
 describe("inference configuration", () => {

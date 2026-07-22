@@ -27,6 +27,7 @@ const remoteThresholdsSchema = z.object({
 
 const configSchema = z.object({
   vault_path: z.string().min(1),
+  local_vault_paths: z.array(z.string()),
   state_dir: z.string().min(1),
   recall: z.object({ k_lexical: z.number().int().positive(), k_vector: z.number().int().positive() }).strict(),
   thresholds: z.object({
@@ -85,6 +86,7 @@ export const LOCAL_BUNDLE_ID = "gte-small-v1";
 
 const DEFAULTS: Config = {
   vault_path: "~/skills",
+  local_vault_paths: [],
   state_dir: "~/.local/state/skillmux",
   recall: { k_lexical: 20, k_vector: 20 },
   thresholds: { candidate_limit: 5 },

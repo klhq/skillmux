@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { diagnose } from "../src/doctor";
@@ -22,6 +22,7 @@ const server = Bun.serve({
 function testConfig(overrides: Partial<Config> = {}): Config {
   return {
     vault_path: "/unused",
+    local_vault_paths: [],
     state_dir: mkdtempSync(join(tmpdir(), "doctor-state-")),
     recall: { k_lexical: 15, k_vector: 15 },
     thresholds: { candidate_limit: 5 },
@@ -55,5 +56,30 @@ describe("diagnose", () => {
     const report = await diagnose(testConfig({ vault_path: "/definitely/does/not/exist/skillmux-doctor-test" }));
 
     expect(report.capability).toBe("unavailable");
+  });
+
+  test("reports each local_vault_paths entry's existence status", async () => {
+    const existingLocal = mkdtempSync(join(tmpdir(), "doctor-local-vault-"));
+    const missingLocal = "/definitely/does/not/exist/skillmux-doctor-local-vault";
+
+    const report = await diagnose(testConfig({ local_vault_paths: [existingLocal, missingLocal] }));
+
+    expect(report.checks.find((check) => check.name === `local_vault:${existingLocal}`)).toMatchObject({ ok: true });
+    expect(report.checks.find((check) => check.name === `local_vault:${missingLocal}`)).toMatchObject({ ok: false });
+
+    rmSync(existingLocal, { recursive: true, force: true });
+  });
+
+  test("warns when a local_vault_paths entry contains a stray skillmux.toml manifest", async () => {
+    const localWithManifest = mkdtempSync(join(tmpdir(), "doctor-local-vault-stray-"));
+    writeFileSync(join(localWithManifest, "skillmux.toml"), "core = { skills = [] }");
+
+    const report = await diagnose(testConfig({ local_vault_paths: [localWithManifest] }));
+
+    expect(report.checks.find((check) => check.name === `local_vault_manifest:${localWithManifest}`)).toMatchObject({
+      ok: false,
+    });
+
+    rmSync(localWithManifest, { recursive: true, force: true });
   });
 });

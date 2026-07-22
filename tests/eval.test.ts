@@ -10,6 +10,7 @@ const tmp = mkdtempSync(join(tmpdir(), "skillmux-eval-"));
 const vault = join(tmp, "vault");
 const config: Config = {
   vault_path: vault,
+  local_vault_paths: [],
   state_dir: join(tmp, "state"),
   recall: { k_lexical: 5, k_vector: 5 },
   thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },

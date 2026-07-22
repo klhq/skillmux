@@ -186,6 +186,53 @@ describe("skillmux sync CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
+
+  test("only materializes a [project.*] group into a target that lists it in project_groups", async () => {
+    const fakeHome = mkdtempSync(join(tmpdir(), "skillmux-cli-sync-home-"));
+    const repoA = mkdtempSync(join(tmpdir(), "skillmux-cli-sync-repoA-"));
+    const repoB = mkdtempSync(join(tmpdir(), "skillmux-cli-sync-repoB-"));
+    writeSkill("skill-a", "Skill A.");
+    writeSkill("skill-b", "Skill B.");
+
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = []`,
+        ``,
+        `[project.group-a]`,
+        `repos = ["${repoA}"]`,
+        `skills = ["skill-a"]`,
+        ``,
+        `[project.group-b]`,
+        `repos = ["${repoB}"]`,
+        `skills = ["skill-b"]`,
+        ``,
+        `[targets.only-a]`,
+        `dir = "~/only-a/skills"`,
+        `project_groups = ["group-a"]`,
+        ``,
+        `[targets.only-b]`,
+        `dir = "~/only-b/skills"`,
+        `project_groups = ["group-b"]`,
+      ].join("\n"),
+    );
+
+    const result = await runCliEnv(["sync"], { HOME: fakeHome });
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(repoA, "only-a", "skills", "skill-a"))).toBe(true);
+    expect(existsSync(join(repoB, "only-b", "skills", "skill-b"))).toBe(true);
+    expect(existsSync(join(repoB, "only-a", "skills", "skill-b"))).toBe(false);
+    expect(existsSync(join(repoA, "only-b", "skills", "skill-a"))).toBe(false);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+    rmSync(join(vaultDir, "skill-a"), { recursive: true, force: true });
+    rmSync(join(vaultDir, "skill-b"), { recursive: true, force: true });
+    rmSync(fakeHome, { recursive: true, force: true });
+    rmSync(repoA, { recursive: true, force: true });
+    rmSync(repoB, { recursive: true, force: true });
+  });
 });
 
 describe("skillmux init CLI", () => {
@@ -286,6 +333,7 @@ describe("skillmux report CLI", () => {
       port: 0,
       config: {
         vault_path: join(root, "vault"),
+        local_vault_paths: [],
         state_dir: join(root, "state"),
         recall: { k_lexical: 20, k_vector: 20 },
         thresholds: { candidate_limit: 10 },

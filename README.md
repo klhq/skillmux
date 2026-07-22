@@ -210,10 +210,10 @@ skills = ["csv-formatter"]
 
 [targets.claude]
 dir = "/Users/you/.claude/skills"
-project = false
+project_groups = []
 ```
 
-Cap: 25 skills in `[core]`. Full manifest schema, including `[project.<group>]` pins scoped to one repo, is in [`docs/configuration.md`](docs/configuration.md#tiers-and-the-manifest).
+Cap: 25 skills in `[core]`. Full manifest schema, including `[project.<group>]` pins scoped to one repo and machine-local overlay vaults via `local_vault_paths`, is in [`docs/configuration.md`](docs/configuration.md#tiers-and-the-manifest).
 
 ### 3. Materialize
 

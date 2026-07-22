@@ -40,10 +40,15 @@ import {
   listSupportingFiles,
   parseSkillMd,
   readSkill,
-  scanVault,
+  scanVaults,
+  vaultResolutionOrder,
   sha256Hex,
   SKILL_ID_PATTERN,
 } from "./vault";
+
+function maxVaultMtime(vaultPath: string, localVaultPaths: string[]): number {
+  return Math.max(getVaultMaxMtime(vaultPath), ...localVaultPaths.map(getVaultMaxMtime));
+}
 
 export { buildAuditRow } from "./audit";
 export { loadConfig } from "./config";
@@ -82,8 +87,9 @@ async function getEnv(): Promise<{ config: Config; db: Database }> {
   const db = openIndex(expandHome(config.state_dir));
   if (skillCount(db) === 0) {
     const vaultPath = expandHome(config.vault_path);
-    ingestVault(db, await scanVault(vaultPath));
-    setIndexMeta(db, "last_indexed_mtime", String(getVaultMaxMtime(vaultPath)));
+    const localVaultPaths = config.local_vault_paths.map(expandHome);
+    ingestVault(db, await scanVaults(vaultPath, localVaultPaths));
+    setIndexMeta(db, "last_indexed_mtime", String(maxVaultMtime(vaultPath, localVaultPaths)));
   }
   env = { config, db };
   return env;
@@ -110,16 +116,45 @@ export function closeRuntime(): void {
  */
 async function deliverSkill(db: Database, config: Config, skillId: string): Promise<FetchSkillResult> {
   const vaultPath = expandHome(config.vault_path);
-  const file = Bun.file(join(vaultPath, skillId, "SKILL.md"));
-  if (!(await file.exists())) {
+  const localVaultPaths = config.local_vault_paths.map(expandHome);
+  const candidates = vaultResolutionOrder(vaultPath, localVaultPaths);
+
+  // Existence alone (resolveSkillRoot's check) isn't enough here: an unparseable
+  // local_vault_paths override would otherwise shadow a perfectly valid vault_path
+  // copy of the same skill_id, since it's checked first. Skip a broken override and
+  // fall through to the next root — mirroring scanVault/rebuildIndex's tolerance for
+  // unparseable content. The last candidate (always vault_path) is never skipped on
+  // parse failure, matching the pre-existing single-root behavior where a broken
+  // vault_path copy propagates its parse error rather than being silently swallowed.
+  let root: string | null = null;
+  let bytes: Uint8Array | null = null;
+  let raw = "";
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i]!;
+    const file = Bun.file(join(candidate, skillId, "SKILL.md"));
+    if (!(await file.exists())) continue;
+    const candidateBytes = await file.bytes();
+    const candidateRaw = decodeUtf8Strict(candidateBytes);
+    if (i < candidates.length - 1) {
+      try {
+        parseSkillMd(skillId, candidateRaw);
+      } catch {
+        continue;
+      }
+    }
+    root = candidate;
+    bytes = candidateBytes;
+    raw = candidateRaw;
+    break;
+  }
+
+  if (root === null || bytes === null) {
     // Deleted on disk but the watcher hasn't caught up: drop the stale row and
     // surface the schema's error code rather than a raw ENOENT.
     deleteSkill(db, skillId);
     throw new Error(`SKILL_NOT_FOUND: skill '${skillId}' no longer exists in the vault`);
   }
-  const bytes = await file.bytes();
   const contentSha256 = sha256Hex(bytes);
-  const raw = decodeUtf8Strict(bytes);
   let row = getSkillRow(db, skillId);
   if (row === null || row.content_sha256 !== contentSha256) {
     const fresh = parseSkillMd(skillId, raw);
@@ -131,7 +166,7 @@ async function deliverSkill(db: Database, config: Config, skillId: string): Prom
     title: row.title,
     content_sha256: contentSha256,
     body: raw,
-    files: listSupportingFiles(vaultPath, skillId),
+    files: listSupportingFiles(root, skillId),
   };
 }
 
@@ -153,15 +188,23 @@ export async function rebuildIndex(
 ): Promise<RebuildReport> {
   const { config, db } = await getEnv();
   const vaultPath = expandHome(config.vault_path);
-  const currentMtime = getVaultMaxMtime(vaultPath);
+  const localVaultPaths = config.local_vault_paths.map(expandHome);
+  const currentMtime = maxVaultMtime(vaultPath, localVaultPaths);
   const invalidIds: string[] = [];
-  const skills = await scanVault(vaultPath, (skillId, error) => {
+  const skills = await scanVaults(vaultPath, localVaultPaths, (skillId, error) => {
     invalidIds.push(skillId);
     onInvalid?.(skillId, error);
   });
   const rows = skills.map(toSkillRow);
+  // A skill_id invalid in one root (e.g. a local_vault_paths entry being edited) can
+  // still be valid in another (e.g. vault_path) — scanVaults already resolved that
+  // in `skills`. Only retain the previous row for ids that came back invalid
+  // everywhere; otherwise this duplicates the skill_id and violates the
+  // skills.skill_id PRIMARY KEY on replaceSkills's plain INSERT.
+  const validIds = new Set(skills.map((s) => s.skill_id));
   const retained: string[] = [];
   for (const skillId of invalidIds) {
+    if (validIds.has(skillId)) continue;
     const previous = getSkillRow(db, skillId);
     if (previous) {
       rows.push(previous);
@@ -181,17 +224,22 @@ export async function rebuildIndex(
 export async function syncVaultIfNeeded(): Promise<void> {
   const { config, db } = await getEnv();
   const vaultPath = expandHome(config.vault_path);
-  const currentMtime = getVaultMaxMtime(vaultPath);
+  const localVaultPaths = config.local_vault_paths.map(expandHome);
+  const currentMtime = maxVaultMtime(vaultPath, localVaultPaths);
   const lastIndexed = getIndexMeta(db, "last_indexed_mtime");
 
   if (lastIndexed === null || currentMtime > Number(lastIndexed)) {
     const invalidIds: string[] = [];
-    const skills = await scanVault(vaultPath, (skillId, error) => {
+    const skills = await scanVaults(vaultPath, localVaultPaths, (skillId, error) => {
       invalidIds.push(skillId);
       console.error(`warning: keeping previous index entry for ${skillId}: ${error}`);
     });
     const rows = skills.map(toSkillRow);
+    // See rebuildIndex: a skill_id invalid in one root can still be valid in
+    // another that scanVaults already resolved — don't re-add its previous row.
+    const validIds = new Set(skills.map((s) => s.skill_id));
     for (const skillId of invalidIds) {
+      if (validIds.has(skillId)) continue;
       const previous = getSkillRow(db, skillId);
       if (previous) {
         rows.push(previous);
