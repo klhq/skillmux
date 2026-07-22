@@ -193,7 +193,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
     );
 
   });
@@ -374,6 +374,40 @@ describe("skillmux manifest CLI", () => {
     expect(written).toContain(`skills = []`);
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+});
+
+describe("skillmux local-vault CLI", () => {
+  test("local-vault init <path> writes a .skillmux marker with role local_vault", async () => {
+    const localDir = mkdtempSync(join(tmpdir(), "skillmux-cli-local-vault-init-"));
+    const configPath2 = join(tmp, "config-local-vault.toml");
+    writeFileSync(
+      configPath2,
+      readFileSync(configPath, "utf8").replace(
+        `vault_path = "${vaultDir}"`,
+        `vault_path = "${vaultDir}"\nlocal_vault_paths = ["${localDir}"]`,
+      ),
+    );
+
+    const result = await runCliEnv(["local-vault", "init", localDir], { SKILLMUX_CONFIG: configPath2 });
+
+    expect(result.exitCode).toBe(0);
+    const marker = JSON.parse(readFileSync(join(localDir, ".skillmux"), "utf-8"));
+    expect(marker).toMatchObject({ managed_by: "skillmux", role: "local_vault", vault_path: vaultDir });
+
+    rmSync(localDir, { recursive: true, force: true });
+    rmSync(configPath2, { force: true });
+  });
+
+  test("local-vault init <path> errors when path is not a configured local_vault_paths entry", async () => {
+    const notConfigured = mkdtempSync(join(tmpdir(), "skillmux-cli-local-vault-unconfigured-"));
+
+    const result = await runCli("local-vault", "init", notConfigured);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("local_vault_paths");
+
+    rmSync(notConfigured, { recursive: true, force: true });
   });
 });
 

@@ -40,6 +40,16 @@ function writeSkillmuxMarker(dir: string, targetName: string): void {
   writeFileSync(join(dir, SKILLMUX_MARKER_FILENAME), JSON.stringify(marker, null, 2));
 }
 
+export function writeLocalVaultMarker(dir: string, vaultPath: string): void {
+  const marker: SkillmuxMarker = {
+    managed_by: "skillmux",
+    role: "local_vault",
+    vault_path: vaultPath,
+    created_at: new Date().toISOString(),
+  };
+  writeFileSync(join(dir, SKILLMUX_MARKER_FILENAME), JSON.stringify(marker, null, 2));
+}
+
 export interface SyncTargetParams {
   vaultPath: string;
   targetDir: string;

@@ -38,6 +38,7 @@ import {
   restoreMonolith as restoreMonolithTarget,
   syncProjectTargets,
   syncTarget,
+  writeLocalVaultMarker,
 } from "./sync";
 import { scanVault, vaultResolutionOrder } from "./vault";
 
@@ -71,6 +72,7 @@ const KNOWN_COMMANDS = [
   "models",
   "which",
   "manifest",
+  "local-vault",
 ];
 
 async function main() {
@@ -178,6 +180,10 @@ async function main() {
       case "manifest":
         await runManifest(subCommand, commandArgs);
         break;
+      case "local-vault":
+        if (subCommand !== "init") throw new Error("usage: skillmux local-vault init <path>");
+        await runLocalVaultInit(commandArgs);
+        break;
       case "models":
         if (subCommand !== "download") throw new Error("usage: skillmux models download");
         await runModelDownload();
@@ -186,7 +192,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|config show|models download|calibrate generate-dataset>`;
+          : `usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>`;
         throw new Error(msg);
       }
     }
@@ -467,7 +473,7 @@ function handleError(
 }
 
 function printHelp(): void {
-  console.log(`usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]`);
+  console.log(`usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]`);
 }
 
 // ---------------------------------------------------------------------------
@@ -612,6 +618,20 @@ async function runManifest(subCommand: string, args: string[]): Promise<void> {
   validateManifest(updated, vaultPath, localVaultPaths);
   await Bun.write(manifestPath, serializeManifest(updated));
   console.log(`${subCommand === "pin" ? "pinned" : "unpinned"} "${skillId}" ${core ? "[core]" : `[project.${project}]`}`);
+}
+
+async function runLocalVaultInit(args: string[]): Promise<void> {
+  const path = args[0];
+  if (!path) throw new Error("usage: skillmux local-vault init <path>");
+  const expanded = expandHome(path);
+  const config = await loadConfig();
+  const localVaultPaths = config.local_vault_paths.map(expandHome);
+  if (!localVaultPaths.includes(expanded)) {
+    throw new Error(`"${path}" is not one of the configured local_vault_paths — add it to config.toml first`);
+  }
+  if (!existsSync(expanded)) throw new Error(`"${path}" does not exist`);
+  writeLocalVaultMarker(expanded, expandHome(config.vault_path));
+  console.log(`wrote ${join(expanded, ".skillmux")} (role: local_vault, vault_path: ${expandHome(config.vault_path)})`);
 }
 
 async function runModelDownload(): Promise<void> {
