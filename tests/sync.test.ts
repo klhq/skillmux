@@ -365,3 +365,19 @@ describe("adoptTarget", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("readSkillmuxMarker role back-compat", () => {
+  test("reads a marker with no role key as role: \"target\"", () => {
+    const dir = tmpDir("skillmux-sync-role-backcompat-");
+    writeFileSync(
+      join(dir, ".skillmux"),
+      JSON.stringify({ managed_by: "skillmux", target: "claude", created_at: "2026-01-01T00:00:00.000Z" }),
+    );
+
+    const marker = readSkillmuxMarker(dir);
+
+    expect(marker?.role).toBe("target");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
