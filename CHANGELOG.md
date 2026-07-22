@@ -5,6 +5,35 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/klhq/skillmux/compare/v0.3.0...v0.4.0) (2026-07-22)
+
+
+### Added
+
+* **cli:** add 'skillmux local-vault init &lt;path&gt;' to write the local_vault marker ([7648145](https://github.com/klhq/skillmux/commit/76481452994f98d6ef01fb1302344fc76a547492))
+* **cli:** add 'skillmux which &lt;skill_id&gt;' to show which root resolves a skill ([0dfd0ed](https://github.com/klhq/skillmux/commit/0dfd0ed9e067f12dfce6cd9a3bc5fe61eeedf4d8))
+* **cli:** add skill visibility command ([a00d248](https://github.com/klhq/skillmux/commit/a00d24811b3b91e947a529fe87f742acf6cb4ce7))
+* **cli:** filter [project.*] groups by each target's project_groups ([e039920](https://github.com/klhq/skillmux/commit/e039920349769e65d01555a5681a4b1724fddf88))
+* **completions:** list 'which' in bash and zsh command completions ([fc8151f](https://github.com/klhq/skillmux/commit/fc8151fc83a0e57b2eb57decdf78d716cdf7a8fa))
+* **config:** add local_vault_paths alongside the unchanged vault_path ([4d8c95e](https://github.com/klhq/skillmux/commit/4d8c95e600a6607e8e83b9fb5a6344677003d3c3))
+* **doctor:** report local_vault_paths marker presence and vault_path drift ([eb8e8a3](https://github.com/klhq/skillmux/commit/eb8e8a304847c366f2ba057e1d9b9741516e75c2))
+* **doctor:** report shadowed skills across vault_path and local_vault_paths ([eac168d](https://github.com/klhq/skillmux/commit/eac168d3c729d7a610632c73fa573ad4947964d9))
+* **manifest:** add pin/unpin --core to skillmux manifest CLI ([59a4ceb](https://github.com/klhq/skillmux/commit/59a4ceb8a25867c4bc73932294aae6a8a1f9edd8))
+* **manifest:** add pin/unpin --project &lt;group&gt; --repo to skillmux manifest CLI ([3bf98e9](https://github.com/klhq/skillmux/commit/3bf98e983bd05b35d15b25f4effd1fb33cf03b8f))
+* **manifest:** add pin/unpin and local-vault markers ([f1329ae](https://github.com/klhq/skillmux/commit/f1329ae48b1c7603201f039b80ac2b8489101cf8))
+* **manifest:** add the AC6 portability guard to validateManifest ([fb83299](https://github.com/klhq/skillmux/commit/fb8329969228029d7d9561884a1f0f0df3aa7a77))
+* **manifest:** project_groups + local_vault_paths overlay support ([#40](https://github.com/klhq/skillmux/issues/40)) ([411ecfb](https://github.com/klhq/skillmux/commit/411ecfb243695465aea44dc4a9192190ecde6086))
+* **manifest:** replace targets.*.project boolean with project_groups ([ccd246e](https://github.com/klhq/skillmux/commit/ccd246e8238c00eebac6abfde4d4250f87d770db))
+* **sync:** add role field to SkillmuxMarker with read-compat for absent role ([79af610](https://github.com/klhq/skillmux/commit/79af610c4fd598e458a947eb01f7c01358f38402))
+* **vault:** add findShadowedSkills to surface cross-root skill_id collisions ([7d1a328](https://github.com/klhq/skillmux/commit/7d1a3287ea47044e39371d38a360c3acc3d2f2c0))
+* **vault:** resolve skills through local_vault_paths before vault_path ([0c1f603](https://github.com/klhq/skillmux/commit/0c1f60328b30681dd739224a5a53cdb178413a18))
+
+
+### Fixed
+
+* **manifest:** reject invalid [project.*] group names in pinProject before writing ([153d0ac](https://github.com/klhq/skillmux/commit/153d0ac39a548ca47aafb0ddd309cbb4da63fda8))
+* **router-core:** tolerate broken content when a root wins on existence alone ([6cb4d0d](https://github.com/klhq/skillmux/commit/6cb4d0d64bd0dd98d7fd44ac382ea2e9e3f2e125))
+
 ## [0.3.0](https://github.com/klhq/skillmux/compare/v0.2.1...v0.3.0) (2026-07-21)
 
 
