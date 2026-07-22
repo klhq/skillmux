@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
+import { resolveSkillRoot } from "./vault";
 
 export const SKILLMUX_MARKER_FILENAME = ".skillmux";
 export const LEGACY_MARKER_FILENAME = ".skr";
@@ -37,6 +38,7 @@ export interface SyncTargetParams {
   targetDir: string;
   targetName: string;
   coreSkillIds: string[];
+  localVaultPaths?: string[];
 }
 
 export interface SyncTargetResult {
@@ -49,14 +51,15 @@ export interface SyncTargetOptions {
 }
 
 export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions = {}): SyncTargetResult {
-  const { vaultPath, targetDir, targetName, coreSkillIds } = params;
+  const { vaultPath, targetDir, targetName, coreSkillIds, localVaultPaths = [] } = params;
   const { dryRun = false } = options;
+  const skillSource = (skillId: string) => resolveSkillRoot(skillId, vaultPath, localVaultPaths) ?? vaultPath;
 
   if (!existsSync(targetDir)) {
     if (dryRun) return { added: [...coreSkillIds], removed: [] };
     mkdirSync(targetDir, { recursive: true });
     for (const skillId of coreSkillIds) {
-      symlinkSync(join(vaultPath, skillId), join(targetDir, skillId));
+      symlinkSync(join(skillSource(skillId), skillId), join(targetDir, skillId));
     }
     writeSkillmuxMarker(targetDir, targetName);
     return { added: [...coreSkillIds], removed: [] };
@@ -74,7 +77,7 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   if (dryRun) return { added, removed };
 
   for (const name of removed) unlinkSync(join(targetDir, name));
-  for (const skillId of added) symlinkSync(join(vaultPath, skillId), join(targetDir, skillId));
+  for (const skillId of added) symlinkSync(join(skillSource(skillId), skillId), join(targetDir, skillId));
 
   return { added, removed };
 }
@@ -129,6 +132,7 @@ export interface SyncProjectTargetsParams {
   targetDir: string;
   targetName: string;
   projectGroups: Record<string, ProjectGroupInput>;
+  localVaultPaths?: string[];
 }
 
 export interface ProjectPinSyncResult extends SyncTargetResult {
@@ -141,7 +145,7 @@ export function syncProjectTargets(
   params: SyncProjectTargetsParams,
   options: SyncTargetOptions = {},
 ): ProjectPinSyncResult[] {
-  const { vaultPath, targetDir, targetName, projectGroups } = params;
+  const { vaultPath, targetDir, targetName, projectGroups, localVaultPaths = [] } = params;
   const results: ProjectPinSyncResult[] = [];
 
   for (const [group, projectGroup] of Object.entries(projectGroups)) {
@@ -149,7 +153,7 @@ export function syncProjectTargets(
       if (!existsSync(repo)) continue;
       const pinDir = resolveProjectPinDir(targetDir, repo);
       const result = syncTarget(
-        { vaultPath, targetDir: pinDir, targetName, coreSkillIds: projectGroup.skills },
+        { vaultPath, targetDir: pinDir, targetName, coreSkillIds: projectGroup.skills, localVaultPaths },
         options,
       );
       results.push({ group, repo, pinDir, ...result });

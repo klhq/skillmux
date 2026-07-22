@@ -33,6 +33,7 @@ describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
     return {
       ...base,
       vault_path: TEST_VAULT,
+      local_vault_paths: [],
       state_dir: TEST_STATE,
       server: {
         auth_enabled: false,

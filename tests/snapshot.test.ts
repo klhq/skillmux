@@ -16,6 +16,7 @@ import type { Clients } from "../src/types";
 function makeConfig(root: string): Config {
   return {
     vault_path: join(root, "vault"),
+    local_vault_paths: [],
     state_dir: join(root, "state"),
     recall: { k_lexical: 20, k_vector: 20 },
     thresholds: { candidate_limit: 5 },

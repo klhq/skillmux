@@ -16,6 +16,12 @@ function tmpDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
+function writeSkillAt(root: string, skillId: string) {
+  const dir = join(root, skillId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), `---\nname: ${skillId}\n---\n\nbody\n`);
+}
+
 describe("syncTarget", () => {
   test("creates a fresh target directory with one symlink per core skill and a .skillmux marker", () => {
     const vaultPath = tmpDir("skillmux-sync-vault-");
@@ -81,6 +87,50 @@ describe("syncTarget", () => {
     expect(readSkillmuxMarker(targetDir)?.created_at).toBe(markerBefore?.created_at);
 
     rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("symlinks a fresh target to the local_vault_paths override, not vault_path, on skill_id collision", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const localVault = tmpDir("skillmux-sync-local-");
+    writeSkillAt(vaultPath, "shared-skill");
+    writeSkillAt(localVault, "shared-skill");
+    const targetDir = join(tmpDir("skillmux-sync-target-"), "claude");
+
+    syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "claude",
+      coreSkillIds: ["shared-skill"],
+      localVaultPaths: [localVault],
+    });
+
+    expect(readlinkSync(join(targetDir, "shared-skill"))).toBe(join(localVault, "shared-skill"));
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(localVault, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("symlinks a newly-added skill on an already-marked target to the local_vault_paths override", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const localVault = tmpDir("skillmux-sync-local-");
+    writeSkillAt(vaultPath, "shared-skill");
+    writeSkillAt(localVault, "shared-skill");
+    const targetDir = join(tmpDir("skillmux-sync-marked-"), "claude");
+
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: [] });
+    syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "claude",
+      coreSkillIds: ["shared-skill"],
+      localVaultPaths: [localVault],
+    });
+
+    expect(readlinkSync(join(targetDir, "shared-skill"))).toBe(join(localVault, "shared-skill"));
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(localVault, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
 

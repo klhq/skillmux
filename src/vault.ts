@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 export const SKILL_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,127}$/;
@@ -64,6 +64,38 @@ export async function scanVault(
     }
   }
   return skills;
+}
+
+/** Local overlays checked first (in order), canonical vault_path is the fallback. */
+export function vaultResolutionOrder(vaultPath: string, localVaultPaths: string[]): string[] {
+  return [...localVaultPaths, vaultPath];
+}
+
+/** Which configured root actually backs skillId, per local-overrides-first precedence. */
+export function resolveSkillRoot(skillId: string, vaultPath: string, localVaultPaths: string[]): string | null {
+  for (const root of vaultResolutionOrder(vaultPath, localVaultPaths)) {
+    if (existsSync(join(root, skillId, "SKILL.md"))) return root;
+  }
+  return null;
+}
+
+/** Scans every configured root and merges by skill_id — first-seen (per resolution order) wins. */
+export async function scanVaults(
+  vaultPath: string,
+  localVaultPaths: string[],
+  onInvalid?: (skillId: string, error: unknown) => void,
+): Promise<VaultSkill[]> {
+  const seen = new Set<string>();
+  const merged: VaultSkill[] = [];
+  for (const root of vaultResolutionOrder(vaultPath, localVaultPaths)) {
+    if (!existsSync(root)) continue;
+    for (const skill of await scanVault(root, onInvalid)) {
+      if (seen.has(skill.skill_id)) continue;
+      seen.add(skill.skill_id);
+      merged.push(skill);
+    }
+  }
+  return merged;
 }
 
 /** Relative paths of everything under the skill dir except SKILL.md itself, sorted. */

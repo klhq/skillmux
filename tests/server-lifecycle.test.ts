@@ -23,6 +23,7 @@ describe("server lifecycle", () => {
     writeFileSync(join(skill, "SKILL.md"), "---\nname: Example\ndescription: Example routing skill.\n---\nbody");
     const config: Config = {
       vault_path: vault,
+      local_vault_paths: [],
       state_dir: join(root, "state"),
       recall: { k_lexical: 20, k_vector: 20 },
       thresholds: { candidate_limit: 10 },
