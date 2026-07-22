@@ -8,4 +8,5 @@ dist/
 *.dataset.json
 # Local planning and review artifacts are not part of the OSS documentation.
 docs/sdd/
+docs/notes/
 
