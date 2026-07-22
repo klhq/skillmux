@@ -232,8 +232,8 @@
 
     <!-- Outcome: Matched -->
     <rect x="14" y="46" width="202" height="114" rx="8" fill="url(#inner-card-bg)" stroke="#059669" stroke-width="1.5"/>
-    <rect x="22" y="54" width="76" height="20" rx="4" fill="#064e3b"/>
-    <text x="28" y="68" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#34d399">MATCHED</text>
+    <rect x="22" y="54" width="68" height="20" rx="4" fill="#064e3b"/>
+    <text x="56" y="68" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#34d399">MATCHED</text>
     <text x="22" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" fill="#e2e8f0">Single skill winner</text>
     <text x="22" y="104" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Full SKILL.md body delivered</text>
     <text x="22" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">  inline in text content</text>
@@ -241,8 +241,8 @@
 
     <!-- Outcome: Ambiguous -->
     <rect x="14" y="170" width="202" height="110" rx="8" fill="url(#inner-card-bg)" stroke="#d97706" stroke-width="1.5"/>
-    <rect x="22" y="178" width="90" height="20" rx="4" fill="#451a03"/>
-    <text x="28" y="192" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#fbbf24">AMBIGUOUS</text>
+    <rect x="22" y="178" width="80" height="20" rx="4" fill="#451a03"/>
+    <text x="62" y="192" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#fbbf24">AMBIGUOUS</text>
     <text x="22" y="212" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" fill="#e2e8f0">Multiple candidates</text>
     <text x="22" y="228" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Shortlist in structuredContent</text>
     <text x="22" y="242" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• LLM picks and calls tool:</text>
@@ -251,8 +251,8 @@
 
     <!-- Outcome: No Match -->
     <rect x="14" y="290" width="202" height="72" rx="8" fill="url(#inner-card-bg)" stroke="#475569" stroke-width="1"/>
-    <rect x="22" y="298" width="80" height="18" rx="4" fill="#1e293b"/>
-    <text x="28" y="311" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#94a3b8">NO_MATCH</text>
+    <rect x="22" y="298" width="72" height="18" rx="4" fill="#1e293b"/>
+    <text x="58" y="311" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#94a3b8">NO_MATCH</text>
     <text x="22" y="330" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• No skill loaded</text>
     <text x="22" y="344" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Agent uses standard workflow</text>
 
