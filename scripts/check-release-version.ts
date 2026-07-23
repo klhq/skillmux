@@ -1,5 +1,5 @@
-const tag = process.env.RELEASE_TAG || process.env.GITHUB_REF_NAME;
-if (!tag) throw new Error("RELEASE_TAG or GITHUB_REF_NAME is required");
+const tag = process.env.GITHUB_REF_NAME;
+if (!tag) throw new Error("GITHUB_REF_NAME is required");
 
 const semverRegex = /^v\d+\.\d+\.\d+$/;
 if (!semverRegex.test(tag)) {

@@ -1,9 +1,8 @@
 # Releasing
 
-Release Please creates releases after `main` is green. When its release PR is
-merged, it creates the matching version tag and directly calls the reusable
-release workflow. The pipeline does not rely on a second workflow being
-triggered by a tag created with `GITHUB_TOKEN`.
+Releases are initiated by manually pushing a clean SemVer tag whose commit
+belongs to `main`. The tag-triggered workflow validates the version and commit,
+then publishes every release artifact in one run.
 
 ## Prepare
 
@@ -11,29 +10,21 @@ triggered by a tag created with `GITHUB_TOKEN`.
 2. Move relevant entries from `Unreleased` into a dated version section in `CHANGELOG.md`.
 3. Merge those changes through a pull request and confirm CI passes.
 
-## Publish automatically
-
-Merge the Release Please PR. The package version and generated tag must match
-exactly (`v` plus the `package.json` version). A mismatch stops the release.
-
-## Publish or backfill manually
-
-For an existing tag that was not published, run the `Release` workflow from
-GitHub Actions with `release_tag` set to the exact tag, for example `v0.4.0`.
-Backfill missed releases oldest-first so floating tags such as `latest` finish
-on the newest version.
-
-For a new manual release, create and push the matching tag:
+## Publish
 
 ```bash
 git switch main
 git pull --ff-only
-git tag v0.1.1
+git tag -a v0.1.1 -m "Release v0.1.1"
 git push origin v0.1.1
 ```
 
+The tag must match `v` plus the `package.json` version exactly. Tags that do not
+point to a commit reachable from `main` are rejected before anything publishes.
+
 The release workflow publishes:
 
+- The npm package
 - `skillmux-linux-amd64`
 - `skillmux-linux-arm64`
 - GitHub build provenance attestations when the repository is public
