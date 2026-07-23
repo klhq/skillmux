@@ -60,9 +60,10 @@ export async function startServer(opts?: {
 }): Promise<ServerHandle> {
   const config = opts?.config ?? await loadConfig();
   configure({ config, clients: opts?.clients ?? createClients(config) });
-  await initializeRuntime(readinessState);
-  metricsRegistry.setReadiness(readinessState.get());
   const stopWatcher = await startVaultWatcher();
+  const initPromise = initializeRuntime(readinessState)
+    .then(() => metricsRegistry.setReadiness(readinessState.get()))
+    .catch((err) => console.error("skillmux runtime init error:", err));
 
   const server = new McpServer({ name: "skillmux", version: "0.1.0" });
 
@@ -403,6 +404,7 @@ export async function startServer(opts?: {
       },
     });
     let stopped = false;
+    await initPromise;
     console.log(`skillmux serving over HTTP on ${hostname}:${bunServer.port}`);
     return {
       port: bunServer.port,

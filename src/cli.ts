@@ -148,6 +148,10 @@ async function main() {
         };
         process.once("SIGTERM", shutdown);
         process.once("SIGINT", shutdown);
+        if (transport === "stdio") {
+          process.stdin.on("close", shutdown);
+          process.stdin.on("end", shutdown);
+        }
         break;
       }
       case "index":
