@@ -1,9 +1,10 @@
 # Releasing
 
 Release Please creates releases after `main` is green. When its release PR is
-merged, it creates the matching version tag and directly calls the reusable
-release workflow. The pipeline does not rely on a second workflow being
-triggered by a tag created with `GITHUB_TOKEN`.
+merged, the same workflow creates the matching version tag and runs the
+publishing jobs directly. The pipeline does not rely on a second workflow being
+triggered by a tag created with `GITHUB_TOKEN`, and production environment
+secrets do not cross a reusable-workflow boundary.
 
 ## Prepare
 
@@ -14,19 +15,23 @@ triggered by a tag created with `GITHUB_TOKEN`.
 ## Publish automatically
 
 After the Release Please PR merges, the same workflow run creates the tag and
-GitHub Release, then calls the publishing workflow with the exact tag and commit
-SHA returned by Release Please. The package version, tag, and commit must all
-match before publishing begins.
+GitHub Release, then publishes with the exact tag and commit SHA returned by
+Release Please. The package version, tag, and commit must all match before
+publishing begins.
 
-There is intentionally no tag-push or `workflow_dispatch` entry point. GitHub
-does not start a second workflow for a tag created with the default
-`GITHUB_TOKEN`; directly calling the publisher avoids that event-suppression
-edge case without adding a PAT or GitHub App token.
+There is intentionally no tag-push entry point. GitHub does not start a second
+workflow for a tag created with the default `GITHUB_TOKEN`; publishing in the
+Release Please workflow avoids that event-suppression edge case without adding
+a PAT or GitHub App token.
 
 ## Exceptional recovery
 
-Recover missed historical publications manually. Do not feed an old tag into
-the current automated publisher.
+Use the manual `workflow_dispatch` entry point only to backfill an existing
+Release Please tag. The workflow verifies that the tag is clean SemVer,
+resolves to the checked-out commit, is reachable from `main`, and still matches
+`package.json`. It also requires a matching existing GitHub Release. Manual
+backfills never publish npm, so a container or binary recovery cannot
+accidentally republish an existing npm version.
 
 The release workflow publishes:
 
@@ -39,6 +44,11 @@ The release workflow publishes:
   `:<major>.<minor>-slim`, and `:latest-slim`
 - Multi-architecture `linux/amd64` and `linux/arm64` images with SBOM and
   provenance
+
+GHCR is the canonical container build. After both GHCR variants are published,
+Docker Hub copies those exact multi-architecture images under its matching
+tags. A Docker Hub authentication or availability failure therefore cannot
+prevent GHCR from publishing.
 
 Each Docker tag is a multi-architecture manifest. Users run the same tag on
 AMD64 and ARM64; Docker automatically pulls the matching image.
@@ -55,8 +65,9 @@ Container images are published to:
 - `${DOCKERHUB_USERNAME}/skillmux` on Docker Hub
 
 The `production-release` GitHub environment provides the
-`DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret. npm publishes with
-Trusted Publishing through the calling `release-please.yml` workflow, so no
+`DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret. The npm job also
+uses this environment as its Trusted Publisher identity; configure npm with
+workflow `release-please.yml` and environment `production-release`. No
 long-lived npm token is required. GitHub Packages uses the workflow's scoped
 `GITHUB_TOKEN`.
 Private repositories still publish BuildKit SBOM/provenance with container
