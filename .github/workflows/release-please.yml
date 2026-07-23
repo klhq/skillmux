@@ -226,6 +226,10 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
+          # Disable metadata-action's implicit SemVer `latest` tag. Floating
+          # tags are assigned explicitly below so slim can never overwrite
+          # the full image's `latest` tag.
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }},suffix=${{ matrix.suffix }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }},suffix=${{ matrix.suffix }}
@@ -312,12 +316,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.release-metadata.outputs.sha }}
-      - uses: peter-evans/dockerhub-description@v4
+      - uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ vars.DOCKERHUB_USERNAME }}/skillmux
-          short-description: "Local MCP server: routes natural-language task queries to skills in a SKILL.md vault, with zero-loss delivery."
+          short-description: "Local MCP server that routes task queries to skills in a SKILL.md vault."
           readme-filepath: README.md
 
   release-assets:
@@ -333,11 +337,14 @@ jobs:
         with:
           name: release-binaries
           path: dist
-      - uses: softprops/action-gh-release@v3
+      - name: Attach binaries to GitHub Release
         # Release Please already created the release and its changelog body.
-        # This step only attaches binaries and must not overwrite the notes.
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          files: |
-            dist/skillmux-linux-amd64
-            dist/skillmux-linux-arm64
+        # Upload assets directly instead of PATCHing the existing release.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            dist/skillmux-linux-amd64 \
+            dist/skillmux-linux-arm64 \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
