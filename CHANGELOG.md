@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4](https://github.com/klhq/skillmux/compare/v0.4.3...v0.4.4) (2026-07-23)
+
+
+### Fixed
+
+* connect stdio transport before blocking on runtime init ([#54](https://github.com/klhq/skillmux/issues/54)) ([847af1c](https://github.com/klhq/skillmux/commit/847af1c39265937701e432b631710fc0a2aa9ea0))
+
 ## [0.4.3](https://github.com/klhq/skillmux/compare/v0.4.2...v0.4.3) (2026-07-23)
 
 
