@@ -3,34 +3,341 @@ name: release-please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing SemVer tag to backfill (for example, v0.4.2)"
+        required: true
+        type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release-please:
+  release-metadata:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      sha: ${{ steps.release.outputs.sha }}
+      release_created: ${{ steps.metadata.outputs.release_created }}
+      tag_name: ${{ steps.metadata.outputs.tag_name }}
+      sha: ${{ steps.metadata.outputs.sha }}
+      publish_npm: ${{ steps.metadata.outputs.publish_npm }}
     steps:
       - id: release
-        uses: googleapis/release-please-action@v4
+        if: github.event_name == 'push'
+        uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  publish:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+
+      - id: manual
+        if: github.event_name == 'workflow_dispatch'
+        name: Resolve manual backfill target
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::release_tag must be a clean vMAJOR.MINOR.PATCH tag"
+            exit 1
+          fi
+
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          TAG_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
+          if [ "$RELEASE_SHA" != "$TAG_SHA" ]; then
+            echo "::error::Checked-out commit does not match the requested tag"
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$RELEASE_SHA" origin/main; then
+            echo "::error::Release tag is not reachable from main"
+            exit 1
+          fi
+
+          RELEASED_TAG="$(gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName \
+            --jq '.tagName')"
+          if [ "$RELEASED_TAG" != "$RELEASE_TAG" ]; then
+            echo "::error::Requested tag does not have a matching GitHub Release"
+            exit 1
+          fi
+
+          echo "release_created=true" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "publish_npm=false" >> "$GITHUB_OUTPUT"
+
+      - id: metadata
+        name: Normalize release metadata
+        env:
+          ACTION_RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          ACTION_TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          ACTION_SHA: ${{ steps.release.outputs.sha }}
+          MANUAL_RELEASE_CREATED: ${{ steps.manual.outputs.release_created }}
+          MANUAL_TAG_NAME: ${{ steps.manual.outputs.tag_name }}
+          MANUAL_SHA: ${{ steps.manual.outputs.sha }}
+          MANUAL_PUBLISH_NPM: ${{ steps.manual.outputs.publish_npm }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "release_created=${ACTION_RELEASE_CREATED:-false}" >> "$GITHUB_OUTPUT"
+            echo "tag_name=$ACTION_TAG_NAME" >> "$GITHUB_OUTPUT"
+            echo "sha=$ACTION_SHA" >> "$GITHUB_OUTPUT"
+            echo "publish_npm=${ACTION_RELEASE_CREATED:-false}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_created=$MANUAL_RELEASE_CREATED" >> "$GITHUB_OUTPUT"
+            echo "tag_name=$MANUAL_TAG_NAME" >> "$GITHUB_OUTPUT"
+            echo "sha=$MANUAL_SHA" >> "$GITHUB_OUTPUT"
+            echo "publish_npm=$MANUAL_PUBLISH_NPM" >> "$GITHUB_OUTPUT"
+          fi
+
+  validate:
+    needs: release-metadata
+    if: needs.release-metadata.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
+    env:
+      RELEASE_TAG: ${{ needs.release-metadata.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-metadata.outputs.tag_name }}
+      - name: Verify release tag target
+        env:
+          EXPECTED_SHA: ${{ needs.release-metadata.outputs.sha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$EXPECTED_SHA" ]; then
+            echo "::error::Release tag does not point to the expected commit"
+            exit 1
+          fi
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Verify tag matches package version
+        run: bun run scripts/check-release-version.ts
+      - run: bun test
+      - run: bunx tsc --noEmit
+
+  binaries:
+    needs: [release-metadata, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-metadata.outputs.sha }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Build Linux binaries
+        run: |
+          mkdir -p dist
+          bun build --compile --target=bun-linux-x64 src/cli.ts --outfile dist/skillmux-linux-amd64
+          bun build --compile --target=bun-linux-arm64 src/cli.ts --outfile dist/skillmux-linux-arm64
+      - uses: actions/attest-build-provenance@v4
+        if: github.event.repository.visibility == 'public'
+        with:
+          subject-path: dist/skillmux-linux-*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-binaries
+          path: |
+            dist/skillmux-linux-amd64
+            dist/skillmux-linux-arm64
+
+  npm:
+    needs: [release-metadata, validate]
+    if: needs.release-metadata.outputs.publish_npm == 'true'
+    runs-on: ubuntu-latest
+    environment: production-release
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-metadata.outputs.sha }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - run: npm install --global npm@11
+      - run: npm publish --provenance --access public
+
+  ghcr:
+    needs: [release-metadata, validate]
+    runs-on: ubuntu-latest
+    environment: production-release
+    timeout-minutes: 45
+    permissions:
+      contents: read
       packages: write
       id-token: write
       attestations: write
-    uses: ./.github/workflows/release.yml
-    with:
-      release_tag: ${{ needs.release-please.outputs.tag_name }}
-      release_sha: ${{ needs.release-please.outputs.sha }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: slim
+            suffix: -slim
+          - target: full
+            suffix: ""
+    env:
+      RELEASE_TAG: ${{ needs.release-metadata.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-metadata.outputs.sha }}
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }},suffix=${{ matrix.suffix }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }},suffix=${{ matrix.suffix }}
+            type=raw,value=latest,enable=${{ matrix.target == 'full' }}
+            type=raw,value=latest-slim,enable=${{ matrix.target == 'slim' }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+          sbom: true
+          provenance: mode=max
+      - uses: actions/attest-build-provenance@v4
+        if: github.event.repository.visibility == 'public'
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  dockerhub:
+    needs: [release-metadata, ghcr]
+    runs-on: ubuntu-latest
+    environment: production-release
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: slim
+            suffix: -slim
+            floating_tag: latest-slim
+          - target: full
+            suffix: ""
+            floating_tag: latest
+    env:
+      RELEASE_TAG: ${{ needs.release-metadata.outputs.tag_name }}
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Mirror multi-architecture image to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          SUFFIX: ${{ matrix.suffix }}
+          FLOATING_TAG: ${{ matrix.floating_tag }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          MINOR="${VERSION%.*}"
+          SOURCE="ghcr.io/${GITHUB_REPOSITORY}:${VERSION}${SUFFIX}"
+          TARGET="docker.io/${DOCKERHUB_USERNAME}/skillmux"
+
+          docker buildx imagetools create \
+            --tag "${TARGET}:${VERSION}${SUFFIX}" \
+            --tag "${TARGET}:${MINOR}${SUFFIX}" \
+            --tag "${TARGET}:${FLOATING_TAG}" \
+            "$SOURCE"
+
+          docker buildx imagetools inspect "${TARGET}:${VERSION}${SUFFIX}"
+
+  dockerhub-description:
+    needs: [release-metadata, dockerhub]
+    runs-on: ubuntu-latest
+    environment: production-release
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-metadata.outputs.sha }}
+      - uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ vars.DOCKERHUB_USERNAME }}/skillmux
+          short-description: "Local MCP server: routes natural-language task queries to skills in a SKILL.md vault, with zero-loss delivery."
+          readme-filepath: README.md
+
+  release-assets:
+    needs: [release-metadata, binaries]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.release-metadata.outputs.tag_name }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-binaries
+          path: dist
+      - uses: softprops/action-gh-release@v3
+        # Release Please already created the release and its changelog body.
+        # This step only attaches binaries and must not overwrite the notes.
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            dist/skillmux-linux-amd64
+            dist/skillmux-linux-arm64
