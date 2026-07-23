@@ -14,6 +14,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
     steps:
       - id: release
         uses: googleapis/release-please-action@v4
@@ -32,4 +33,5 @@ jobs:
     uses: ./.github/workflows/release.yml
     with:
       release_tag: ${{ needs.release-please.outputs.tag_name }}
+      release_sha: ${{ needs.release-please.outputs.sha }}
     secrets: inherit
