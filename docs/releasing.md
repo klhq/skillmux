@@ -54,8 +54,10 @@ Container images are published to:
 - `ghcr.io/klhq/skillmux`
 - `${DOCKERHUB_USERNAME}/skillmux` on Docker Hub
 
-The workflow requires the repository variable `DOCKERHUB_USERNAME` and secrets
-`DOCKERHUB_TOKEN` and `NPM_TOKEN`. GitHub Packages uses the workflow's scoped
+The `production-release` GitHub environment provides the
+`DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret. npm publishes with
+Trusted Publishing through the calling `release-please.yml` workflow, so no
+long-lived npm token is required. GitHub Packages uses the workflow's scoped
 `GITHUB_TOKEN`.
 Private repositories still publish BuildKit SBOM/provenance with container
 images, but GitHub artifact attestations are skipped because GitHub does not

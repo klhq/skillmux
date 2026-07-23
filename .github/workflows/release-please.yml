@@ -34,4 +34,3 @@ jobs:
     with:
       release_tag: ${{ needs.release-please.outputs.tag_name }}
       release_sha: ${{ needs.release-please.outputs.sha }}
-    secrets: inherit
