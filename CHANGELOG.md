@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3](https://github.com/klhq/skillmux/compare/v0.4.2...v0.4.3) (2026-07-23)
+
+
+### Fixed
+
+* **release:** prevent slim from overwriting latest ([#53](https://github.com/klhq/skillmux/issues/53)) ([8b5da28](https://github.com/klhq/skillmux/commit/8b5da285b5cb2c9b3231e94ed1ec29331cf8cb9a))
+* **release:** safe backfill and isolate publishing ([#51](https://github.com/klhq/skillmux/issues/51)) ([872333a](https://github.com/klhq/skillmux/commit/872333a70f32bf5be68cc3599c43bd4943a91051))
+
 ## [0.4.2](https://github.com/klhq/skillmux/compare/v0.4.1...v0.4.2) (2026-07-23)
 
 
