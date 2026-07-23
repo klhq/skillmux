@@ -1,6 +1,6 @@
 {
   "name": "@klhapp/skillmux",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Local read-only MCP server routing natural-language task queries to skills in a SKILL.md vault, with zero-loss delivery",
   "type": "module",
   "private": false,
