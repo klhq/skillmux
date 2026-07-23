@@ -24,12 +24,18 @@ caller ref `main`, which the SemVer guard rejected.
 - 02:16 — All publish lanes failed at `Verify tag matches package version`
 - 02:28 — Root cause isolated to the reserved `GITHUB_REF_NAME` override
 - 02:35 — Forward-fix branch opened
+- 02:53 — First forward-fix merged with green CI
+- 12:01 — Backfill exposed that checking out `v0.4.1` also restored the old
+  helper script from the tag
+- 12:02 — Follow-up fix moved validation into the current workflow definition
 
 ## Resolution
 
 The forward-fix makes the version guard consume the workflow's explicit
 `RELEASE_TAG` value and retains `GITHUB_REF_NAME` only as a fallback for direct
-tag invocations. The attempted reserved-variable overrides were removed.
+tag invocations. The attempted reserved-variable overrides were removed. A
+follow-up moved the release gate inline so historical-tag backfills cannot
+restore an obsolete validation helper during checkout.
 
 ## Follow-ups
 
