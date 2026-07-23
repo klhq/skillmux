@@ -1,40 +1,42 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_call:
     inputs:
       release_tag:
         description: "Clean SemVer tag to publish (for example, v1.2.3)"
         required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Existing clean SemVer tag to publish (for example, v1.2.3)"
+      release_sha:
+        description: "Commit SHA tagged by Release Please"
         required: true
         type: string
 
 env:
-  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
 
 concurrency:
-  group: release-${{ inputs.release_tag || github.ref_name }}
+  group: release-${{ inputs.release_tag }}
   cancel-in-progress: false
 
 jobs:
-  binaries:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
-      contents: write
-      id-token: write
-      attestations: write
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ inputs.release_tag }}
+      - name: Verify Release Please tag target
+        env:
+          EXPECTED_SHA: ${{ inputs.release_sha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$EXPECTED_SHA" ]; then
+            echo "::error::Release tag does not point to the Release Please commit"
+            exit 1
+          fi
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -43,6 +45,23 @@ jobs:
         run: bun run scripts/check-release-version.ts
       - run: bun test
       - run: bunx tsc --noEmit
+
+  binaries:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_sha }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
       - name: Build Linux binaries
         run: |
           mkdir -p dist
@@ -60,6 +79,7 @@ jobs:
             dist/skillmux-linux-arm64
 
   npm:
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -68,25 +88,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ inputs.release_sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
-      - name: Verify tag matches package version
-        run: bun run scripts/check-release-version.ts
-      - run: bun test
-      - run: bunx tsc --noEmit
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - run: npm install --global npm@11
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   containers:
+    needs: validate
     runs-on: ubuntu-latest
+    environment: production-release
     timeout-minutes: 45
     permissions:
       contents: read
@@ -104,12 +122,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - name: Verify tag matches package version
-        run: bun run scripts/check-release-version.ts
+          ref: ${{ inputs.release_sha }}
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
@@ -155,11 +168,14 @@ jobs:
   dockerhub-description:
     needs: [containers]
     runs-on: ubuntu-latest
+    environment: production-release
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ inputs.release_sha }}
       - uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
@@ -183,6 +199,7 @@ jobs:
         # release with a changelog-derived body before this tag was pushed —
         # this step only attaches binaries, it must not overwrite the notes.
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             dist/skillmux-linux-amd64
             dist/skillmux-linux-arm64

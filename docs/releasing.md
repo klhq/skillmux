@@ -7,30 +7,26 @@ triggered by a tag created with `GITHUB_TOKEN`.
 
 ## Prepare
 
-1. Update `version` in `package.json`.
-2. Move relevant entries from `Unreleased` into a dated version section in `CHANGELOG.md`.
-3. Merge those changes through a pull request and confirm CI passes.
+1. Merge changes to `main` using Conventional Commit titles.
+2. Review the Release Please PR, including its version and changelog.
+3. Confirm CI passes, then merge the Release Please PR.
 
 ## Publish automatically
 
-Merge the Release Please PR. The package version and generated tag must match
-exactly (`v` plus the `package.json` version). A mismatch stops the release.
+After the Release Please PR merges, the same workflow run creates the tag and
+GitHub Release, then calls the publishing workflow with the exact tag and commit
+SHA returned by Release Please. The package version, tag, and commit must all
+match before publishing begins.
 
-## Publish or backfill manually
+There is intentionally no tag-push or `workflow_dispatch` entry point. GitHub
+does not start a second workflow for a tag created with the default
+`GITHUB_TOKEN`; directly calling the publisher avoids that event-suppression
+edge case without adding a PAT or GitHub App token.
 
-For an existing tag that was not published, run the `Release` workflow from
-GitHub Actions with `release_tag` set to the exact tag, for example `v0.4.0`.
-Backfill missed releases oldest-first so floating tags such as `latest` finish
-on the newest version.
+## Exceptional recovery
 
-For a new manual release, create and push the matching tag:
-
-```bash
-git switch main
-git pull --ff-only
-git tag v0.1.1
-git push origin v0.1.1
-```
+Recover missed historical publications manually. Do not feed an old tag into
+the current automated publisher.
 
 The release workflow publishes:
 
@@ -58,8 +54,10 @@ Container images are published to:
 - `ghcr.io/klhq/skillmux`
 - `${DOCKERHUB_USERNAME}/skillmux` on Docker Hub
 
-The workflow requires the repository variable `DOCKERHUB_USERNAME` and secrets
-`DOCKERHUB_TOKEN` and `NPM_TOKEN`. GitHub Packages uses the workflow's scoped
+The `production-release` GitHub environment provides the
+`DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret. npm publishes with
+Trusted Publishing through the calling `release-please.yml` workflow, so no
+long-lived npm token is required. GitHub Packages uses the workflow's scoped
 `GITHUB_TOKEN`.
 Private repositories still publish BuildKit SBOM/provenance with container
 images, but GitHub artifact attestations are skipped because GitHub does not
