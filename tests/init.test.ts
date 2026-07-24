@@ -18,8 +18,10 @@ import { applyInit, deriveTargetName, detectSurfaces, printLastMile, proposeMani
 import { parseManifest } from "../src/manifest";
 import { readSkillmuxMarker } from "../src/sync";
 
+import { realpathSync } from "node:fs";
+
 function tmpDir(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return realpathSync(mkdtempSync(join(tmpdir(), prefix)));
 }
 
 function writeSkill(dir: string, skillId: string) {
