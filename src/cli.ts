@@ -10,6 +10,7 @@ import { expandHome, loadConfig, migrateLegacyPaths, resolveConfigPath } from ".
 import { openIndex } from "./db";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
+import { assessClientReadiness, planClientSurfaces, resolveBuiltInTarget } from "./init-clients";
 import { applyInit, deriveTargetName, detectSurfaces, printLastMile, surfaceCandidates } from "./init";
 import {
   cloneToTemp,
@@ -767,8 +768,16 @@ async function runSync(args: string[]): Promise<void> {
   }
 }
 
-function parseInitArgs(args: string[]): { targets: string[]; vaultPath?: string; yes: boolean } {
+function parseInitArgs(args: string[]): {
+  targets: string[];
+  clients: string[];
+  customPath?: string;
+  vaultPath?: string;
+  yes: boolean;
+} {
   const targets: string[] = [];
+  const clients: string[] = [];
+  let customPath: string | undefined;
   let vaultPath: string | undefined;
   let yes = false;
   for (let i = 0; i < args.length; i++) {
@@ -778,10 +787,20 @@ function parseInitArgs(args: string[]): { targets: string[]; vaultPath?: string;
       if (!value) throw new Error("--target requires a name");
       targets.push(value);
       i++;
+    } else if (option === "--client") {
+      const value = args[i + 1];
+      if (!value) throw new Error("--client requires a name");
+      clients.push(value);
+      i++;
     } else if (option === "--vault") {
       const value = args[i + 1];
       if (!value) throw new Error("--vault requires a path");
       vaultPath = value;
+      i++;
+    } else if (option === "--path") {
+      const value = args[i + 1];
+      if (!value) throw new Error("--path requires a directory");
+      customPath = value;
       i++;
     } else if (option === "--yes") {
       yes = true;
@@ -789,11 +808,17 @@ function parseInitArgs(args: string[]): { targets: string[]; vaultPath?: string;
       throw new Error(`unknown init option: ${option}`);
     }
   }
-  return { targets, vaultPath, yes };
+  return { targets, clients, customPath, vaultPath, yes };
 }
 
 async function runInit(args: string[]): Promise<void> {
-  const { targets: requestedTargets, vaultPath: requestedVaultPath, yes } = parseInitArgs(args);
+  const {
+    targets: explicitTargets,
+    clients: requestedClients,
+    customPath,
+    vaultPath: requestedVaultPath,
+    yes,
+  } = parseInitArgs(args);
   migrateLegacyPaths();
   const configPath = resolveConfigPath();
   if (!existsSync(configPath)) {
@@ -816,9 +841,39 @@ async function runInit(args: string[]): Promise<void> {
     throw new Error(vaultHealth.message);
   }
 
-  const candidates = detectSurfaces(surfaceCandidates().map(expandHome), vaultPath);
+  const clientPlan = planClientSurfaces(requestedClients, {
+    codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+  });
+  const builtInNames = new Set(["agent-skills", "claude-code", "codex", "custom", "agents", "claude"]);
+  const explicitSurfaceTargets = explicitTargets
+    .filter((name) => builtInNames.has(name))
+    .map((name) =>
+      resolveBuiltInTarget(name, {
+        codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+        customPath: customPath ? expandHome(customPath) : undefined,
+      }),
+    );
+  if (customPath && !explicitTargets.includes("custom")) {
+    throw new Error("--path may only be used with --target custom");
+  }
+  for (const target of explicitSurfaceTargets) {
+    if (target.warning) console.error(`warning: ${target.warning}`);
+  }
+  const targetByPath = new Map(
+    explicitSurfaceTargets.map((target) => [target.path, target.targetName] as const),
+  );
+  for (const surface of clientPlan.surfaces) {
+    if (!targetByPath.has(surface.path)) targetByPath.set(surface.path, surface.targetName);
+  }
+  const candidatePaths = [
+    ...new Set([
+      ...surfaceCandidates().map(expandHome),
+      ...targetByPath.keys(),
+    ]),
+  ];
+  const candidates = detectSurfaces(candidatePaths, vaultPath);
   for (const candidate of candidates) {
-    const name = deriveTargetName(candidate.path);
+    const name = targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path);
     if (candidate.state === "missing") {
       console.log(`${name} (${candidate.path}): not found`);
       continue;
@@ -843,9 +898,21 @@ async function runInit(args: string[]): Promise<void> {
     const marked = candidate.alreadyMarked ? ", already skillmux-managed" : "";
     console.log(`${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`);
   }
+  for (const readiness of assessClientReadiness(clientPlan)) {
+    console.log(`\n${readiness.client} readiness:`);
+    console.log(`  skill surface: ${readiness.skillSurface.status} — ${readiness.skillSurface.detail}`);
+    console.log(`  MCP registration: ${readiness.mcpRegistration.status} — ${readiness.mcpRegistration.detail}`);
+    console.log(`  instructions: ${readiness.instructionSetup.status} — ${readiness.instructionSetup.detail}`);
+  }
 
+  const requestedTargets = [
+    ...new Set([
+      ...explicitTargets.filter((name) => !builtInNames.has(name)),
+      ...targetByPath.values(),
+    ]),
+  ];
   if (requestedTargets.length === 0) {
-    console.log("\nno --target specified — nothing written. Re-run with --target <name> --yes to adopt a surface.");
+    console.log("\nno managed-pins surface selected — nothing written.");
     return;
   }
 
@@ -858,7 +925,10 @@ async function runInit(args: string[]): Promise<void> {
   const byName = new Map(
     candidates
       .filter((candidate) => candidate.deliveryMode === "managed-pins")
-      .map((candidate) => [deriveTargetName(candidate.path), candidate] as const),
+      .map((candidate) => [
+        targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path),
+        candidate,
+      ] as const),
   );
   for (const name of requestedTargets) {
     if (!byName.has(name)) throw new Error(`unknown --target "${name}": not among detected surfaces`);

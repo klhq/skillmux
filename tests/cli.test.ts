@@ -536,6 +536,79 @@ describe("skillmux init CLI", () => {
     rmSync(configPath2, { force: true });
   });
 
+  test("deduplicates selected clients onto one shared physical surface", async () => {
+    const clientHome = join(tmp, "client-home");
+    const clientVault = join(tmp, "client-vault");
+    const clientConfig = join(tmp, "client-config.toml");
+    mkdirSync(join(clientVault, "shared-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "shared-skill", "SKILL.md"), "---\nname: shared-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(
+      ["init", "--client", "gemini-cli", "--client", "opencode", "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const manifest = readFileSync(join(clientVault, "skillmux.toml"), "utf8");
+    expect(manifest.match(/\[targets\./g)).toHaveLength(1);
+    expect(manifest).toContain("[targets.agent-skills]");
+    expect(manifest).toContain(`dir = ${JSON.stringify(join(clientHome, ".agents", "skills"))}`);
+    expect(result.stdout).toContain("gemini-cli readiness:");
+    expect(result.stdout).toContain("skill surface:");
+    expect(result.stdout).toContain("MCP registration:");
+    expect(result.stdout).toContain("instructions:");
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("resolves the codex built-in target through CODEX_HOME", async () => {
+    const codexHome = join(tmp, "custom-codex-home");
+    const clientVault = join(tmp, "codex-client-vault");
+    const clientConfig = join(tmp, "codex-client-config.toml");
+    mkdirSync(join(clientVault, "codex-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "codex-skill", "SKILL.md"), "---\nname: codex-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(["init", "--target", "codex", "--yes"], {
+      CODEX_HOME: codexHome,
+      SKILLMUX_CONFIG: clientConfig,
+    });
+
+    expect(result.exitCode).toBe(0);
+    const manifest = readFileSync(join(clientVault, "skillmux.toml"), "utf8");
+    expect(manifest).toContain("[targets.codex]");
+    expect(manifest).toContain(`dir = ${JSON.stringify(join(codexHome, "skills"))}`);
+
+    rmSync(codexHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("accepts the legacy agents target with a deprecation warning", async () => {
+    const clientHome = join(tmp, "legacy-agents-home");
+    const clientVault = join(tmp, "legacy-agents-vault");
+    const clientConfig = join(tmp, "legacy-agents-config.toml");
+    mkdirSync(join(clientVault, "legacy-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "legacy-skill", "SKILL.md"), "---\nname: legacy-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(["init", "--target", "agents", "--yes"], {
+      HOME: clientHome,
+      SKILLMUX_CONFIG: clientConfig,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("--target agents is deprecated");
+    expect(readFileSync(join(clientVault, "skillmux.toml"), "utf8")).toContain("[targets.agents]");
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
   test("detects surfaces and writes nothing when run without --target", async () => {
     const { surface, parent } = makeSurface("skillmux-init-cli-detect-");
     mkdirSync(join(surface, "existing-skill"));
