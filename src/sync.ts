@@ -181,6 +181,22 @@ export interface AdoptTargetResult {
   adopted: boolean;
 }
 
+export function preflightAdoptTarget(dir: string, targetName: string, vaultPath: string): void {
+  const marker = readSkillmuxMarker(dir);
+  if (marker?.role === "local_vault") {
+    throw new Error(`${dir} has a local_vault marker, not target ownership`);
+  }
+  if (!marker) return;
+  if (marker.target !== targetName) {
+    throw new Error(`${dir} is already owned by target "${marker.target}", not "${targetName}"`);
+  }
+  if (marker.schema_version !== undefined && marker.vault_path !== vaultPath) {
+    throw new Error(
+      `${dir} marker recorded vault_path ${marker.vault_path}, currently configured vault_path is ${vaultPath}`,
+    );
+  }
+}
+
 /**
  * Marks an existing directory as skillmux-owned without touching its content —
  * the consented, one-time adoption skillmux init performs (see SkillmuxMarker in
@@ -189,21 +205,8 @@ export interface AdoptTargetResult {
  * "doesn't exist yet" side of that rule; this handles "already exists".
  */
 export function adoptTarget(dir: string, targetName: string, vaultPath: string): AdoptTargetResult {
-  const marker = readSkillmuxMarker(dir);
-  if (marker?.role === "local_vault") {
-    throw new Error(`${dir} has a local_vault marker, not target ownership`);
-  }
-  if (marker) {
-    if (marker.target !== targetName) {
-      throw new Error(`${dir} is already owned by target "${marker.target}", not "${targetName}"`);
-    }
-    if (marker.schema_version !== undefined && marker.vault_path !== vaultPath) {
-      throw new Error(
-        `${dir} marker recorded vault_path ${marker.vault_path}, currently configured vault_path is ${vaultPath}`,
-      );
-    }
-    return { adopted: false };
-  }
+  preflightAdoptTarget(dir, targetName, vaultPath);
+  if (readSkillmuxMarker(dir)) return { adopted: false };
   writeTargetMarker(dir, targetName, vaultPath, []);
   return { adopted: true };
 }

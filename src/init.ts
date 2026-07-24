@@ -1,4 +1,15 @@
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
   parseManifest,
@@ -7,7 +18,12 @@ import {
   type Manifest,
   MANIFEST_FILENAME,
 } from "./manifest";
-import { adoptTarget, readSkillmuxMarker } from "./sync";
+import {
+  adoptTarget,
+  preflightAdoptTarget,
+  readSkillmuxMarker,
+  SKILLMUX_MARKER_FILENAME,
+} from "./sync";
 import { SKILL_ID_PATTERN } from "./vault";
 
 export const DEFAULT_SURFACE_CANDIDATES = ["~/.claude/skills", "~/.agents/skills"];
@@ -180,6 +196,7 @@ function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]):
         `target "${target.name}" (${target.dir}) is the full-vault surface; it cannot be adopted as managed-pins`,
       );
     }
+    preflightAdoptTarget(target.dir, target.name, vaultPath);
   }
 }
 
@@ -208,13 +225,44 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
 
   const manifestPath = join(vaultPath, MANIFEST_FILENAME);
   const serializedManifest = serializeManifest(manifest);
-  if (!existsSync(manifestPath) || readFileSync(manifestPath, "utf-8") !== serializedManifest) {
-    writeFileSync(manifestPath, serializedManifest);
-  }
+  const shouldWriteManifest =
+    !existsSync(manifestPath) || readFileSync(manifestPath, "utf-8") !== serializedManifest;
+  const createdDirs: string[] = [];
+  const adoptedDirs: string[] = [];
 
-  for (const target of confirmedTargets) {
-    if (!existsSync(target.dir)) mkdirSync(target.dir, { recursive: true });
-    adoptTarget(target.dir, target.name, vaultPath);
+  try {
+    for (const target of confirmedTargets) {
+      if (!existsSync(target.dir)) {
+        mkdirSync(target.dir, { recursive: true });
+        createdDirs.push(target.dir);
+      }
+      if (adoptTarget(target.dir, target.name, vaultPath).adopted) {
+        adoptedDirs.push(target.dir);
+      }
+    }
+
+    if (shouldWriteManifest) {
+      const temporaryManifestPath = join(
+        vaultPath,
+        `.${MANIFEST_FILENAME}.${process.pid}-${Date.now()}.tmp`,
+      );
+      try {
+        writeFileSync(temporaryManifestPath, serializedManifest);
+        renameSync(temporaryManifestPath, manifestPath);
+      } catch (error) {
+        if (existsSync(temporaryManifestPath)) unlinkSync(temporaryManifestPath);
+        throw error;
+      }
+    }
+  } catch (error) {
+    for (const dir of adoptedDirs.reverse()) {
+      const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
+      if (existsSync(markerPath)) unlinkSync(markerPath);
+    }
+    for (const dir of createdDirs.reverse()) {
+      if (existsSync(dir)) rmdirSync(dir);
+    }
+    throw error;
   }
 
   return manifest;

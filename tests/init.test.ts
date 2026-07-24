@@ -253,6 +253,29 @@ describe("applyInit", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  test("preflights ownership conflicts across all targets before adopting the first", () => {
+    const root = tmpDir("skillmux-init-ownership-preflight-");
+    const vaultPath = join(root, "vault");
+    const freshTarget = join(root, "fresh-target");
+    const occupiedTarget = join(root, "occupied-target");
+    mkdirSync(vaultPath);
+    mkdirSync(occupiedTarget);
+    applyInit(vaultPath, [{ name: "existing", dir: occupiedTarget }]);
+    rmSync(join(vaultPath, "skillmux.toml"));
+
+    expect(() =>
+      applyInit(vaultPath, [
+        { name: "fresh", dir: freshTarget },
+        { name: "different-name", dir: occupiedTarget },
+      ]),
+    ).toThrow('target "existing"');
+
+    expect(existsSync(join(vaultPath, "skillmux.toml"))).toBe(false);
+    expect(existsSync(freshTarget)).toBe(false);
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
   test("rejects the vault itself as a managed-pins target", () => {
     const vaultPath = tmpDir("skillmux-init-full-vault-");
 
