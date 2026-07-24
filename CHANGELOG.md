@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1](https://github.com/klhq/skillmux/compare/v1.0.0...v1.0.1) (2026-07-24)
+
+
+### Changed
+
+* **cli:** centralize output envelopes ([#77](https://github.com/klhq/skillmux/issues/77)) ([d457b6b](https://github.com/klhq/skillmux/commit/d457b6b24322efe0eda896ebb76cfd8dc9985819))
+* **cli:** split command modules ([#75](https://github.com/klhq/skillmux/issues/75)) ([b1c2e8b](https://github.com/klhq/skillmux/commit/b1c2e8bf69e0a12c95960729eda581468c9c0646))
+* **config:** extract TOML config-mutation module and share watcher test-utils ([#80](https://github.com/klhq/skillmux/issues/80)) ([d084bd6](https://github.com/klhq/skillmux/commit/d084bd6a56a5985dc92b7362171a0e62e9875926))
+
 ## [1.0.0](https://github.com/klhq/skillmux/compare/v0.6.0...v1.0.0) (2026-07-24)
 
 
