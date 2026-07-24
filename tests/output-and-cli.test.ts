@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatJsonEnvelope, isInteractive, mapExitCode, suggestCorrection } from "../src/output";
+import { CliError, formatJsonEnvelope, isInteractive, mapExitCode, suggestCorrection } from "../src/output";
 import { generateCompletions } from "../src/completions";
 
 describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () => {
@@ -38,6 +38,11 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
 
     expect(mapExitCode(new Error("Revision conflict"))).toBe(4);
     expect(mapExitCode(new Error("Configuration is externally managed"))).toBe(4);
+  });
+
+  it("maps a CliError to its own exitCode regardless of message content", () => {
+    expect(mapExitCode(new CliError("some message", 4))).toBe(4);
+    expect(mapExitCode(new CliError("some message", 3))).toBe(3);
   });
 
   it("suggests corrections for mistyped commands (AC12)", () => {

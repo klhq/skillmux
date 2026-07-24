@@ -36,8 +36,19 @@ export function formatJsonEnvelope<T>(opts: {
   };
 }
 
+export class CliError extends Error {
+  exitCode: number;
+
+  constructor(message: string, exitCode: number) {
+    super(message);
+    this.name = "CliError";
+    this.exitCode = exitCode;
+  }
+}
+
 export function mapExitCode(err: unknown): number {
   if (!err) return 0;
+  if (err instanceof CliError) return err.exitCode;
   const msg = err instanceof Error ? err.message : String(err);
   const lower = msg.toLowerCase();
 
