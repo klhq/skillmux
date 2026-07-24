@@ -122,13 +122,15 @@ project_groups = ["repo1"]           # which [project.*] groups materialize into
 
 ```sh
 skillmux manifest pin csv-formatter --core                                   # add to [core]
+skillmux manifest pin csv-formatter pdf-extractor terraform-plans --core     # pin several skills to [core] in one atomic call
 skillmux manifest pin pdf-extractor --project repo1                          # add to an existing group
 skillmux manifest pin pdf-extractor --project repo2 --path ~/code/repo2      # create a new group
 skillmux manifest unpin csv-formatter --core                                 # remove from [core]
+skillmux manifest unpin csv-formatter pdf-extractor --core                   # unpin several skills from [core] in one atomic call
 skillmux manifest unpin pdf-extractor --project repo1                        # remove from a group (group stays, even if empty)
 ```
 
-`--path` is only accepted when `--project <group>` names a group that doesn't exist yet — passing it for an existing group is rejected, since changing an existing group's `paths` isn't this command's job (append another entry by hand-editing `skillmux.toml` instead). Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
+`--core` accepts one or more `skill_id` arguments; all of them are validated and applied against a single in-memory manifest before anything is written, so if any one of them is already pinned elsewhere (or, for unpin, not currently pinned in `[core]`), the whole call fails and the manifest file is left untouched — no partial pins. `--project <group>` still takes exactly one `skill_id` per call. `--path` is only accepted when `--project <group>` names a group that doesn't exist yet — passing it for an existing group is rejected, since changing an existing group's `paths` isn't this command's job (append another entry by hand-editing `skillmux.toml` instead). Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
 
 > **Breaking change:** `[targets.<name>].project` (a boolean) has been replaced by `project_groups` (an array of `[project.*]` names). A manifest still using the old field fails to parse with an error pointing at the new one. To migrate, replace `project = true` with `project_groups = [...]` listing every group that target previously received (previously *all* groups, unconditionally); replace `project = false` with `project_groups = []`.
 >
