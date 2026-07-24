@@ -623,7 +623,7 @@ function printHelp(): void {
 
 Setup:
   skillmux config init --vault <path> --yes
-  skillmux init [--client <name>...] [--target <name>...] [--path <dir>]
+  skillmux init [--client <name>...] [--target <name>...] [--dir <dir>]
                 [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
@@ -1167,9 +1167,9 @@ async function runTarget(
 
   if (subCommand === "add") {
     const name = args[0];
-    const pathIndex = args.indexOf("--path");
-    const rawPath = pathIndex === -1 ? undefined : args[pathIndex + 1];
-    if (!name || !rawPath) throw new Error("usage: skillmux target add <name> --path <dir> --yes");
+    const dirIndex = args.indexOf("--dir");
+    const rawPath = dirIndex === -1 ? undefined : args[dirIndex + 1];
+    if (!name || !rawPath) throw new Error("usage: skillmux target add <name> --dir <dir> --yes");
     const path = expandHome(rawPath);
     if (options.dryRun) {
       const planned = planInitManifest(vaultPath, [{ name, dir: path }], []);
@@ -1379,9 +1379,9 @@ function parseInitArgs(args: string[]): {
       if (!value) throw new Error("--vault requires a path");
       vaultPath = value;
       i++;
-    } else if (option === "--path") {
+    } else if (option === "--dir") {
       const value = args[i + 1];
-      if (!value) throw new Error("--path requires a directory");
+      if (!value) throw new Error("--dir requires a directory");
       customPath = value;
       i++;
     } else if (option === "--core") {
@@ -1517,7 +1517,7 @@ async function runInit(
       }),
     );
   if (customPath && !explicitTargets.includes("custom")) {
-    throw new Error("--path may only be used with --target custom");
+    throw new Error("--dir may only be used with --target custom");
   }
   for (const target of explicitSurfaceTargets) {
     if (target.warning) console.error(`warning: ${target.warning}`);

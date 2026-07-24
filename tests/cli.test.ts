@@ -716,7 +716,7 @@ describe("skillmux target CLI", () => {
       "target",
       "add",
       "custom-agent",
-      "--path",
+      "--dir",
       targetPath,
       "--yes",
     );
@@ -989,6 +989,43 @@ describe("skillmux init CLI", () => {
     rmSync(clientHome, { recursive: true, force: true });
     rmSync(clientVault, { recursive: true, force: true });
     rmSync(clientConfig, { force: true });
+  });
+
+  test("init --target custom --dir <path> adopts a custom directory", async () => {
+    const clientHome = join(tmp, "custom-dir-client-home");
+    const clientVault = join(tmp, "custom-dir-client-vault");
+    const clientConfig = join(tmp, "custom-dir-client-config.toml");
+    const customTargetDir = join(tmp, "custom-dir-target");
+    mkdirSync(join(clientVault, "custom-dir-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "custom-dir-skill", "SKILL.md"), "---\nname: custom-dir-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const result = await runCliEnv(
+      ["init", "--target", "custom", "--dir", customTargetDir, "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(customTargetDir, ".skillmux"))).toBe(true);
+
+    rmSync(customTargetDir, { recursive: true, force: true });
+  });
+
+  test("init --path is removed in favor of --dir", async () => {
+    const clientHome = join(tmp, "old-path-client-home");
+    const clientVault = join(tmp, "old-path-client-vault");
+    const clientConfig = join(tmp, "old-path-client-config.toml");
+    mkdirSync(join(clientVault, "old-path-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "old-path-skill", "SKILL.md"), "---\nname: old-path-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const result = await runCliEnv(
+      ["init", "--target", "custom", "--path", join(tmp, "old-path-target"), "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("unknown init option: --path");
   });
 
   test("client init reuses a legacy-named target with the same physical directory", async () => {
