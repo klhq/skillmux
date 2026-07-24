@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { expandHome } from "./config";
@@ -92,6 +92,16 @@ export function serializeManifest(manifest: Manifest): string {
   }
 
   return `${sections.join("\n\n")}\n`;
+}
+
+export function writeManifestAtomic(path: string, manifest: Manifest): void {
+  const temporaryPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporaryPath, serializeManifest(manifest), "utf8");
+    renameSync(temporaryPath, path);
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
 }
 
 function findExistingPin(manifest: Manifest, skillId: string): string | null {

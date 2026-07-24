@@ -2,7 +2,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { hostname } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { generateDataset } from "./dataset-generator";
 
@@ -51,8 +51,10 @@ import {
   unpinProject,
   upsertProject,
   validateManifest,
+  writeManifestAtomic,
 } from "./manifest";
 import { downloadLocalModels } from "./models";
+import { resolveProjectDirectory } from "./project-setup";
 import { parseCommaList, promptMultiSelect, promptText, shouldUseWizard } from "./prompts";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
@@ -775,7 +777,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
     }
   }
 
-  const path = resolve(expandHome(projectPath ?? process.cwd()));
+  const path = resolveProjectDirectory(projectPath ? expandHome(projectPath) : undefined);
   return { path, name: name ?? basename(path), skills, clients, targets, yes, sync };
 }
 
@@ -810,10 +812,12 @@ async function runProject(
       availableClients.map((client) => ({
         value: client,
         label: client,
-        selected: true,
+        selected: request.clients.length === 0 || request.clients.includes(client),
       })),
     );
-    const skills = parseCommaList(await promptText("Project skill IDs, comma-separated"));
+    const skills = parseCommaList(
+      await promptText("Project skill IDs, comma-separated", request.skills.join(",")),
+    );
     request = { ...request, name, clients, skills };
   }
   const clientTargets = planClientSurfaces(request.clients).surfaces.map((surface) => surface.targetName);
@@ -859,8 +863,18 @@ async function runProject(
     }
   }
 
-  await Bun.write(manifestPath, serializeManifest(updated));
-  if (request.sync) await runSync([]);
+  writeManifestAtomic(manifestPath, updated);
+  if (request.sync) {
+    try {
+      await runSync([]);
+    } catch (error) {
+      throw new Error(
+        `project configuration was saved, but sync failed; fix the reported issue and run "skillmux sync": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
   if (options.isJson) {
     console.log(JSON.stringify({ schema_version: 1, result: plan }));
   } else {
@@ -1157,14 +1171,14 @@ async function runInit(
         value: client,
         label: client,
         detail: evidence.has(client) ? `detected: ${evidence.get(client)}` : undefined,
-        selected: evidence.has(client),
+        selected: evidence.has(client) || requestedClients.includes(client),
       })),
     );
   }
   let selectedCoreSkillIds = coreSkillIds;
   if (guided) {
     selectedCoreSkillIds = parseCommaList(
-      await promptText("Core skill IDs to add, comma-separated"),
+      await promptText("Core skill IDs to add, comma-separated", coreSkillIds.join(",")),
     );
   }
 

@@ -9,8 +9,9 @@ import {
   unpinProject,
   upsertProject,
   validateManifest,
+  writeManifestAtomic,
 } from "../src/manifest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -541,6 +542,23 @@ dir = "~/.claude/skills"
 
     expect(roundTripped).toEqual(manifest);
   });
+});
+
+test("writeManifestAtomic replaces a manifest with parseable content", () => {
+  const root = tmpVault();
+  const path = join(root, "skillmux.toml");
+  const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.test]
+dir = "~/.agents/skills"
+`);
+
+  writeManifestAtomic(path, manifest);
+
+  expect(parseManifest(readFileSync(path, "utf8"))).toEqual(manifest);
+  rmSync(root, { recursive: true, force: true });
 });
 
 describe("resolveManifestPath (Shim 3)", () => {
