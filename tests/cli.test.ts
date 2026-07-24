@@ -183,6 +183,19 @@ describe("skillmux which CLI", () => {
   });
 });
 
+describe("skillmux doctor CLI", () => {
+  test("doctor --json prints a schema-versioned envelope with the full report", async () => {
+    const result = await runCli("doctor", "--json");
+
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(Array.isArray(parsed.data.checks)).toBe(true);
+    expect(typeof parsed.data.mode).toBe("string");
+    expect(typeof parsed.data.capability).toBe("string");
+  });
+});
+
 describe("skillmux serve CLI", () => {
   test("rejects invalid transport values", async () => {
     const result = await runCli("serve", "--transport", "websocket");
@@ -744,11 +757,32 @@ describe("skillmux local-vault CLI", () => {
       ),
     );
 
-    const result = await runCliEnv(["local-vault", "init", localDir], { SKILLMUX_CONFIG: configPath2 });
+    const result = await runCliEnv(["local-vault", "init", localDir, "--yes"], { SKILLMUX_CONFIG: configPath2 });
 
     expect(result.exitCode).toBe(0);
     const marker = JSON.parse(readFileSync(join(localDir, ".skillmux"), "utf-8"));
     expect(marker).toMatchObject({ managed_by: "skillmux", role: "local_vault", vault_path: vaultDir });
+
+    rmSync(localDir, { recursive: true, force: true });
+    rmSync(configPath2, { force: true });
+  });
+
+  test("local-vault init <path> requires --yes when run non-interactively", async () => {
+    const localDir = mkdtempSync(join(tmpdir(), "skillmux-cli-local-vault-yes-"));
+    const configPath2 = join(tmp, "config-local-vault-yes.toml");
+    writeFileSync(
+      configPath2,
+      readFileSync(configPath, "utf8").replace(
+        `vault_path = "${vaultDir}"`,
+        `vault_path = "${vaultDir}"\nlocal_vault_paths = ["${localDir}"]`,
+      ),
+    );
+
+    const result = await runCliEnv(["local-vault", "init", localDir], { SKILLMUX_CONFIG: configPath2 });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("requires --yes");
+    expect(existsSync(join(localDir, ".skillmux"))).toBe(false);
 
     rmSync(localDir, { recursive: true, force: true });
     rmSync(configPath2, { force: true });

@@ -223,7 +223,7 @@ async function main() {
         await runEval();
         break;
       case "doctor":
-        await runDoctor();
+        await runDoctor({ isJson });
         break;
       case "which":
         await runWhich(rawArgv.slice(1));
@@ -234,7 +234,7 @@ async function main() {
         );
       case "local-vault":
         if (subCommand !== "init") throw new Error("usage: skillmux local-vault init <path>");
-        await runLocalVaultInit(commandArgs);
+        await runLocalVaultInit(commandArgs, { isJson, dryRun: isDryRun });
         break;
       case "models":
         if (subCommand !== "download") throw new Error("usage: skillmux models download");
@@ -712,12 +712,16 @@ async function runEval(): Promise<void> {
   console.log(`hybrid MRR:       ${report.hybrid.mrr.toFixed(3)}`);
 }
 
-async function runDoctor(): Promise<void> {
+async function runDoctor(options: { isJson: boolean }): Promise<void> {
   const report = await diagnose(await loadConfig());
-  console.log(`inference mode: ${report.mode}`);
-  console.log(`routing capability: ${report.capability}`);
-  for (const check of report.checks)
-    console.log(`${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`);
+  if (options.isJson) {
+    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: report })));
+  } else {
+    console.log(`inference mode: ${report.mode}`);
+    console.log(`routing capability: ${report.capability}`);
+    for (const check of report.checks)
+      console.log(`${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`);
+  }
   if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
 }
 
@@ -1200,9 +1204,9 @@ async function runTarget(
   throw new Error("usage: skillmux target <list|show|add|remove>");
 }
 
-async function runLocalVaultInit(args: string[]): Promise<void> {
+async function runLocalVaultInit(args: string[], options: { isJson: boolean; dryRun: boolean }): Promise<void> {
   const path = args[0];
-  if (!path) throw new Error("usage: skillmux local-vault init <path>");
+  if (!path) throw new Error("usage: skillmux local-vault init <path> --yes");
   const expanded = expandHome(path);
   const config = await loadConfig();
   const localVaultPaths = config.local_vault_paths.map(expandHome);
@@ -1210,8 +1214,26 @@ async function runLocalVaultInit(args: string[]): Promise<void> {
     throw new Error(`"${path}" is not one of the configured local_vault_paths — add it to config.toml first`);
   }
   if (!existsSync(expanded)) throw new Error(`"${path}" does not exist`);
+  const markerPath = join(expanded, ".skillmux");
+  if (options.dryRun) {
+    console.log(options.isJson
+      ? JSON.stringify({ schema_version: 1, marker_path: markerPath, vault_path: expandHome(config.vault_path) })
+      : `local-vault init: ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)}) (dry-run)`);
+    return;
+  }
+  if (!args.includes("--yes")) {
+    if (!options.isJson && isInteractive()) {
+      if (!(await confirmAction(`Mark ${expanded} as a local_vault (role: local_vault, vault_path: ${expandHome(config.vault_path)})?`))) return;
+    } else {
+      throw new Error("skillmux local-vault init requires --yes when run non-interactively");
+    }
+  }
   writeLocalVaultMarker(expanded, expandHome(config.vault_path));
-  console.log(`wrote ${join(expanded, ".skillmux")} (role: local_vault, vault_path: ${expandHome(config.vault_path)})`);
+  if (options.isJson) {
+    console.log(JSON.stringify({ schema_version: 1, marker_path: markerPath, vault_path: expandHome(config.vault_path) }));
+  } else {
+    console.log(`wrote ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)})`);
+  }
 }
 
 async function runModelDownload(): Promise<void> {
