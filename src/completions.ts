@@ -8,7 +8,7 @@ _skillmux_completions() {
     COMPREPLY=()
     cur="\${COMP_WORDS[COMP_CWORD]}"
     prev="\${COMP_WORDS[COMP_CWORD-1]}"
-    opts="context config calibrate serve index sync init project target report scan install eval doctor which manifest local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
+    opts="context config calibrate serve index sync init project target core report scan install eval doctor which local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -28,7 +28,7 @@ _skillmux_completions() {
         completions)
             COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
             ;;
-        manifest)
+        core)
             COMPREPLY=( $(compgen -W "pin unpin" -- "$cur") )
             ;;
         project)
@@ -78,7 +78,7 @@ _skillmux() {
         'eval:Evaluate search accuracy'
         'doctor:Check runtime health'
         'which:Show which root resolves a skill_id'
-        'manifest:Pin/unpin skills into [core] or [project.*]'
+        'core:Pin/unpin skills into [core]'
         'local-vault:Manage local_vault_paths discoverability markers'
         'models:Manage local models'
         'completions:Generate shell completions'

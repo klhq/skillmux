@@ -109,7 +109,6 @@ const KNOWN_COMMANDS = [
   "doctor",
   "models",
   "which",
-  "manifest",
   "local-vault",
 ];
 
@@ -230,8 +229,9 @@ async function main() {
         await runWhich(rawArgv.slice(1));
         break;
       case "manifest":
-        await runManifest(subCommand, commandArgs);
-        break;
+        throw new Error(
+          `skillmux manifest is removed - use "skillmux core ${subCommand || "pin|unpin"}" for [core] skills, or "skillmux project ${subCommand || "pin|unpin"} <group>" for [project.*] skills`,
+        );
       case "local-vault":
         if (subCommand !== "init") throw new Error("usage: skillmux local-vault init <path>");
         await runLocalVaultInit(commandArgs);
@@ -244,7 +244,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|target|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>`;
+          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|which|local-vault init|config show|models download|calibrate generate-dataset>`;
         throw new Error(msg);
       }
     }
@@ -630,6 +630,7 @@ Setup:
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
   skillmux target <list|show|add|remove>
+  skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
@@ -639,8 +640,8 @@ Init targets:
   agent-skills, claude-code, codex, custom
 
 Commands:
-  serve, index, sync, init, project, target, report, scan, install, eval, doctor, which,
-  manifest, local-vault, config, models, calibrate, context, completions`);
+  serve, index, sync, init, project, target, core, report, scan, install, eval, doctor, which,
+  local-vault, config, models, calibrate, context, completions`);
 }
 
 // ---------------------------------------------------------------------------
@@ -738,7 +739,6 @@ async function runWhich(args: string[]): Promise<void> {
   for (const shadowedRoot of roots.slice(1)) console.log(`  shadows: ${shadowedRoot}`);
 }
 
-const MANIFEST_USAGE = "usage: skillmux manifest <pin|unpin> <skill_id>... (--core | --project <group> [--path <path>...])";
 const PROJECT_INIT_USAGE =
   "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--client <id>...] [--target <name>...] [--yes] [--no-sync]";
 
@@ -1198,64 +1198,6 @@ async function runTarget(
   }
 
   throw new Error("usage: skillmux target <list|show|add|remove>");
-}
-
-function parseManifestPinArgs(args: string[]): { skillIds: string[]; core: boolean; project?: string; paths: string[] } {
-  const skillIds: string[] = [];
-  let i = 0;
-  while (i < args.length && !args[i]!.startsWith("-")) {
-    skillIds.push(args[i]!);
-    i++;
-  }
-  if (skillIds.length === 0) throw new Error(MANIFEST_USAGE);
-  let core = false;
-  let project: string | undefined;
-  const paths: string[] = [];
-  for (; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--core") core = true;
-    else if (arg === "--project") {
-      const value = args[++i];
-      if (!value) throw new Error("--project requires a group name");
-      project = value;
-    } else if (arg === "--path") {
-      const value = args[++i];
-      if (!value) throw new Error("--path requires a path");
-      paths.push(value);
-    } else throw new Error(`unknown manifest option: ${arg}`);
-  }
-  if (core === (project !== undefined)) throw new Error(MANIFEST_USAGE);
-  if (!core && skillIds.length > 1) {
-    throw new Error("skillmux manifest pin/unpin --project only supports a single skill_id; use --core to pin multiple skills atomically");
-  }
-  return { skillIds, core, project, paths };
-}
-
-async function runManifest(subCommand: string, args: string[]): Promise<void> {
-  if (subCommand !== "pin" && subCommand !== "unpin") throw new Error(MANIFEST_USAGE);
-  const { skillIds, core, project, paths } = parseManifestPinArgs(args);
-  const config = await loadConfig();
-  const vaultPath = expandHome(config.vault_path);
-  const localVaultPaths = config.local_vault_paths.map(expandHome);
-  const manifestPath = resolveManifestPath(vaultPath);
-  if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}`);
-  let updated = parseManifest(await Bun.file(manifestPath).text());
-
-  if (core) {
-    for (const skillId of skillIds) {
-      updated = subCommand === "pin" ? pinCore(updated, skillId) : unpinCore(updated, skillId);
-    }
-  } else {
-    const skillId = skillIds[0]!;
-    updated =
-      subCommand === "pin"
-        ? pinProject(updated, skillId, project!, paths)
-        : unpinProject(updated, skillId, project!);
-  }
-  validateManifest(updated, vaultPath, localVaultPaths);
-  await Bun.write(manifestPath, serializeManifest(updated));
-  const idList = skillIds.map((id) => `"${id}"`).join(", ");
-  console.log(`${subCommand === "pin" ? "pinned" : "unpinned"} ${idList} ${core ? "[core]" : `[project.${project}]`}`);
 }
 
 async function runLocalVaultInit(args: string[]): Promise<void> {
@@ -1832,7 +1774,7 @@ async function runInit(
     console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}`);
   }
   if (plannedManifest.core.skills.length === 0 && confirmedTargets.length > 0) {
-    console.log("next: skillmux manifest pin <skill_id> --core");
+    console.log("next: skillmux core pin <skill_id> --yes");
   }
   if (confirmedTargets.length > 0) console.log("next: skillmux sync");
   if (selectedClients.length === 0 || selectedClients.includes("skillmux-mcp")) {

@@ -88,6 +88,8 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(bash).toContain("claude-code");
     expect(bash).toContain("skillmux-mcp");
     expect(bash).toContain("--migrate-full-vault");
+    expect(bash).toContain("core");
+    expect(bash).not.toContain("manifest");
 
     const zsh = generateCompletions("zsh");
     expect(zsh).toContain("#compdef skillmux");
