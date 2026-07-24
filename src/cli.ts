@@ -1065,15 +1065,12 @@ async function runInit(
     (change) => change.status !== "unchanged",
   );
   const hasConfigWrite = configPlan?.action === "create";
-  if (
+  const hasChanges = !(
     requestedTargets.length === 0 &&
     !hasInstructionWrites &&
     coreSkillIds.length === 0 &&
     !hasConfigWrite
-  ) {
-    if (!options.isJson) console.log("\nno managed-pins surface selected — nothing written.");
-    return;
-  }
+  );
 
   const byName = new Map(
     candidates
@@ -1127,6 +1124,22 @@ async function runInit(
     })),
     manual: instructionPlan.manual,
   };
+  if (!hasChanges) {
+    if (options.isJson) {
+      console.log(JSON.stringify({
+        schema_version: 1,
+        ok: true,
+        command: "init",
+        phase: "plan",
+        dry_run: options.dryRun,
+        applied: false,
+        plan: serializedPlan,
+      }));
+    } else {
+      console.log("\nno managed-pins surface selected — nothing written.");
+    }
+    return;
+  }
   if (!options.isJson) {
     for (const target of confirmedTargets.filter((target) => target.migrateFullVault)) {
       console.log(

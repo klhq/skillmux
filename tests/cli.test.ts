@@ -694,6 +694,23 @@ describe("skillmux init CLI", () => {
     rmSync(clientConfig, { force: true });
   });
 
+  test("emits a JSON plan when no changes are selected", async () => {
+    const result = await runCliEnv(["init", "--json"], {
+      SKILLMUX_INIT_SURFACES: join(tmp, "json-no-change-surface"),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      schema_version: 1,
+      ok: true,
+      command: "init",
+      phase: "plan",
+      dry_run: false,
+      applied: false,
+      plan: { targets: [], instructions: [] },
+    });
+  });
+
   test("reports the visibility change for an explicit full-vault migration", async () => {
     const clientHome = join(tmp, "migration-home");
     const clientVault = join(tmp, "migration-vault");

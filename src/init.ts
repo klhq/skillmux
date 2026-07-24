@@ -289,11 +289,24 @@ export function applyInit(
 
   try {
     for (const target of confirmedTargets) {
-      if (target.migrateFullVault && existsSync(target.dir) && lstatSync(target.dir).isSymbolicLink()) {
+      let targetStat;
+      try {
+        targetStat = lstatSync(target.dir);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      if (targetStat?.isSymbolicLink()) {
+        if (!target.migrateFullVault || realpathSync(target.dir) !== realpathSync(vaultPath)) {
+          throw new Error(
+            `target "${target.name}" (${target.dir}) changed to an unsafe symbolic link after preflight`,
+          );
+        }
         const linkTarget = readlinkSync(target.dir);
         unlinkSync(target.dir);
         mkdirSync(target.dir, { recursive: true });
         migratedFullVaultDirs.push({ dir: target.dir, linkTarget });
+      } else if (targetStat && !targetStat.isDirectory()) {
+        throw new Error(`target "${target.name}" (${target.dir}) changed to a non-directory after preflight`);
       }
       if (!existsSync(target.dir)) {
         mkdirSync(target.dir, { recursive: true });
