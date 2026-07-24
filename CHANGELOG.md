@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/klhq/skillmux/compare/v0.5.0...v0.6.0) (2026-07-24)
+
+
+### Added
+
+* **cli:** add line-oriented selection prompts ([b8579a4](https://github.com/klhq/skillmux/commit/b8579a47513a722c76d8826b80ca08155f2229f6))
+* **init:** add guided client and project setup ([c426502](https://github.com/klhq/skillmux/commit/c426502693755185a7d83f3c4b8c2b6b502bbb90))
+* **init:** detect installed clients for setup ([0c529f3](https://github.com/klhq/skillmux/commit/0c529f310de8bc96d18ddb6b25174d375478d9fa))
+* **init:** launch guided client setup in terminals ([9bd15ac](https://github.com/klhq/skillmux/commit/9bd15acfbad088732ad6d92927f0e16a2f57f44d))
+* **project:** add direct project management commands ([132e8af](https://github.com/klhq/skillmux/commit/132e8af0124ee75163161df16af83dc774b773a8))
+* **project:** add direct project management commands ([f36e2b3](https://github.com/klhq/skillmux/commit/f36e2b356f5f170c887734367cebb838acacc2e4))
+* **project:** add project init command ([3cf8ecc](https://github.com/klhq/skillmux/commit/3cf8ecc94fb16f0f8ed807976e36935e09918a4e))
+* **project:** harden project setup planning ([faff0e1](https://github.com/klhq/skillmux/commit/faff0e14a6d0a6268da3e01a33553efd9ede7d58))
+* **project:** upsert project setup state ([7a92e03](https://github.com/klhq/skillmux/commit/7a92e03e281b517dff45d11eef5714d0512fd952))
+* **setup:** guide machine and project choices ([2ef1010](https://github.com/klhq/skillmux/commit/2ef1010e8cb0d42b20a6f60980e7be0e28bf1e5f))
+* **target:** add advanced target management commands ([bde2069](https://github.com/klhq/skillmux/commit/bde206981bcb93c0b1be317ef7f1c8d6f6ece34c))
+* **target:** add advanced target management commands ([9e6a993](https://github.com/klhq/skillmux/commit/9e6a993643865b2134be05ba7306c671023f38ff))
+
+
+### Fixed
+
+* **cli:** keep guided init interactive and legacy-safe ([f6ae405](https://github.com/klhq/skillmux/commit/f6ae40564ed26b19ac464847b455d840d78daa93))
+* **project:** validate guided project inputs ([0bed954](https://github.com/klhq/skillmux/commit/0bed9543897e83860038d83620a7c3638540ca95))
+* **setup:** report client target prerequisites ([62fd8b8](https://github.com/klhq/skillmux/commit/62fd8b80444a37c8bcde403be95d8224b9776b0b))
+
 ## [0.5.0](https://github.com/klhq/skillmux/compare/v0.4.5...v0.5.0) (2026-07-24)
 
 
