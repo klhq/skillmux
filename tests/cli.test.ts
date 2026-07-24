@@ -1,5 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { insertAudit, openIndex } from "../src/db";
@@ -442,6 +451,59 @@ describe("skillmux local-vault CLI", () => {
   });
 });
 
+describe("skillmux config init CLI", () => {
+  test("scaffolds only vault_path for a healthy vault", async () => {
+    const configPath2 = join(tmp, "config-init.toml");
+
+    const result = await runCliEnv(
+      ["config", "init", "--vault", vaultDir, "--yes"],
+      { SKILLMUX_CONFIG: configPath2 },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`created ${configPath2}`);
+    const written = readFileSync(configPath2, "utf8");
+    expect(written).toContain(`vault_path = ${JSON.stringify(vaultDir)}`);
+    expect(written).not.toContain("local_vault_paths");
+
+    rmSync(configPath2, { force: true });
+  });
+
+  test("preserves an existing config byte-for-byte", async () => {
+    const configPath2 = join(tmp, "config-init-existing.toml");
+    const existing = `vault_path = "/already/configured"\n# keep this comment\n`;
+    writeFileSync(configPath2, existing);
+
+    const result = await runCliEnv(
+      ["config", "init", "--vault", vaultDir, "--yes"],
+      { SKILLMUX_CONFIG: configPath2 },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("preserved existing config");
+    expect(readFileSync(configPath2, "utf8")).toBe(existing);
+
+    rmSync(configPath2, { force: true });
+  });
+
+  test("rejects an empty vault without creating config", async () => {
+    const configPath2 = join(tmp, "config-init-empty-vault.toml");
+    const emptyVault = join(tmp, "empty-init-vault");
+    mkdirSync(emptyVault);
+
+    const result = await runCliEnv(
+      ["config", "init", "--vault", emptyVault, "--yes"],
+      { SKILLMUX_CONFIG: configPath2 },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(`vault contains no skill directories: ${emptyVault}`);
+    expect(existsSync(configPath2)).toBe(false);
+
+    rmSync(emptyVault, { recursive: true, force: true });
+  });
+});
+
 describe("skillmux init CLI", () => {
   // deriveTargetName reads the *parent* dir's name (e.g. ~/.claude/skills -> "claude"),
   // so fixtures nest a "skills" leaf under a distinctly-named parent.
@@ -452,6 +514,235 @@ describe("skillmux init CLI", () => {
     const targetName = (parent.split("/").pop() as string).toLowerCase();
     return { surface, parent, targetName };
   }
+
+  test("fails with an actionable vault diagnostic before planning targets", async () => {
+    const missingVault = join(tmp, "missing-init-vault");
+    const configPath2 = join(tmp, "config-init-missing-vault.toml");
+    writeFileSync(configPath2, `vault_path = ${JSON.stringify(missingVault)}\n`);
+
+    const result = await runCliEnv(["init"], { SKILLMUX_CONFIG: configPath2 });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(`vault does not exist: ${missingVault}`);
+    expect(existsSync(missingVault)).toBe(false);
+
+    rmSync(configPath2, { force: true });
+  });
+
+  test("bootstraps an absent machine config from --vault", async () => {
+    const configPath2 = join(tmp, "config-init-via-init.toml");
+    const missingSurface = join(tmp, "missing-init-surface");
+
+    const result = await runCliEnv(["init", "--vault", vaultDir, "--yes"], {
+      SKILLMUX_CONFIG: configPath2,
+      SKILLMUX_INIT_SURFACES: missingSurface,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`created ${configPath2}`);
+    expect(readFileSync(configPath2, "utf8")).toBe(`vault_path = ${JSON.stringify(vaultDir)}\n`);
+
+    rmSync(configPath2, { force: true });
+  });
+
+  test("plans an absent machine config during dry-run without creating it", async () => {
+    const configPath2 = join(tmp, "config-init-via-dry-run.toml");
+
+    const result = await runCliEnv(["init", "--vault", vaultDir, "--dry-run"], {
+      SKILLMUX_CONFIG: configPath2,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`config create: ${configPath2}`);
+    expect(existsSync(configPath2)).toBe(false);
+  });
+
+  test("deduplicates selected clients onto one shared physical surface", async () => {
+    const clientHome = join(tmp, "client-home");
+    const clientVault = join(tmp, "client-vault");
+    const clientConfig = join(tmp, "client-config.toml");
+    mkdirSync(join(clientVault, "shared-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "shared-skill", "SKILL.md"), "---\nname: shared-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(
+      ["init", "--client", "gemini-cli", "--client", "opencode", "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const manifest = readFileSync(join(clientVault, "skillmux.toml"), "utf8");
+    expect(manifest.match(/\[targets\./g)).toHaveLength(1);
+    expect(manifest).toContain("[targets.agent-skills]");
+    expect(manifest).toContain(`dir = ${JSON.stringify(join(clientHome, ".agents", "skills"))}`);
+    expect(result.stdout).toContain("gemini-cli readiness:");
+    expect(result.stdout).toContain("skill surface:");
+    expect(result.stdout).toContain("MCP registration:");
+    expect(result.stdout).toContain("instructions: planned");
+    expect(readFileSync(join(clientHome, ".gemini", "GEMINI.md"), "utf8"))
+      .toContain("<!-- skillmux:discovery:start -->");
+    expect(readFileSync(join(clientHome, ".config", "opencode", "AGENTS.md"), "utf8"))
+      .toContain("<!-- skillmux:discovery:start -->");
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("resolves the codex built-in target through CODEX_HOME", async () => {
+    const codexHome = join(tmp, "custom-codex-home");
+    const clientVault = join(tmp, "codex-client-vault");
+    const clientConfig = join(tmp, "codex-client-config.toml");
+    mkdirSync(join(clientVault, "codex-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "codex-skill", "SKILL.md"), "---\nname: codex-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(["init", "--target", "codex", "--yes"], {
+      CODEX_HOME: codexHome,
+      SKILLMUX_CONFIG: clientConfig,
+    });
+
+    expect(result.exitCode).toBe(0);
+    const manifest = readFileSync(join(clientVault, "skillmux.toml"), "utf8");
+    expect(manifest).toContain("[targets.codex]");
+    expect(manifest).toContain(`dir = ${JSON.stringify(join(codexHome, "skills"))}`);
+
+    rmSync(codexHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("accepts the legacy agents target with a deprecation warning", async () => {
+    const clientHome = join(tmp, "legacy-agents-home");
+    const clientVault = join(tmp, "legacy-agents-vault");
+    const clientConfig = join(tmp, "legacy-agents-config.toml");
+    mkdirSync(join(clientVault, "legacy-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "legacy-skill", "SKILL.md"), "---\nname: legacy-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(["init", "--target", "agents", "--yes"], {
+      HOME: clientHome,
+      SKILLMUX_CONFIG: clientConfig,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("--target agents is deprecated");
+    expect(readFileSync(join(clientVault, "skillmux.toml"), "utf8")).toContain("[targets.agents]");
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("dry-runs the exact target, instruction, and core plan without confirmation or writes", async () => {
+    const clientHome = join(tmp, "dry-run-home");
+    const clientVault = join(tmp, "dry-run-vault");
+    const clientConfig = join(tmp, "dry-run-config.toml");
+    mkdirSync(join(clientVault, "selected-core"), { recursive: true });
+    writeFileSync(join(clientVault, "selected-core", "SKILL.md"), "---\nname: selected-core\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(
+      ["init", "--client", "claude-code", "--core", "selected-core", "--dry-run"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("dry-run");
+    expect(result.stdout).toContain("selected-core");
+    expect(result.stdout).toContain(join(clientHome, ".claude", "CLAUDE.md"));
+    expect(existsSync(join(clientVault, "skillmux.toml"))).toBe(false);
+    expect(existsSync(join(clientHome, ".claude", "CLAUDE.md"))).toBe(false);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("emits one stable JSON plan envelope without prompting", async () => {
+    const clientHome = join(tmp, "json-plan-home");
+    const clientVault = join(tmp, "json-plan-vault");
+    const clientConfig = join(tmp, "json-plan-config.toml");
+    mkdirSync(join(clientVault, "selected-core"), { recursive: true });
+    writeFileSync(join(clientVault, "selected-core", "SKILL.md"), "---\nname: selected-core\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(
+      ["init", "--client", "claude-code", "--core", "selected-core", "--dry-run", "--json"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    expect(envelope).toMatchObject({
+      schema_version: 1,
+      ok: true,
+      command: "init",
+      phase: "plan",
+      dry_run: true,
+      applied: false,
+      plan: {
+        vault_path: clientVault,
+        core: ["selected-core"],
+      },
+    });
+    expect(envelope.plan.targets).toHaveLength(1);
+    expect(envelope.plan.instructions).toHaveLength(1);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("emits a JSON plan when no changes are selected", async () => {
+    const result = await runCliEnv(["init", "--json"], {
+      SKILLMUX_INIT_SURFACES: join(tmp, "json-no-change-surface"),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      schema_version: 1,
+      ok: true,
+      command: "init",
+      phase: "plan",
+      dry_run: false,
+      applied: false,
+      plan: { targets: [], instructions: [] },
+    });
+  });
+
+  test("reports the visibility change for an explicit full-vault migration", async () => {
+    const clientHome = join(tmp, "migration-home");
+    const clientVault = join(tmp, "migration-vault");
+    const clientConfig = join(tmp, "migration-config.toml");
+    mkdirSync(join(clientHome, ".claude"), { recursive: true });
+    mkdirSync(join(clientVault, "kept-core"), { recursive: true });
+    mkdirSync(join(clientVault, "on-demand"), { recursive: true });
+    writeFileSync(join(clientVault, "kept-core", "SKILL.md"), "---\nname: kept-core\n---\n");
+    writeFileSync(join(clientVault, "on-demand", "SKILL.md"), "---\nname: on-demand\n---\n");
+    symlinkSync(clientVault, join(clientHome, ".claude", "skills"));
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(
+      [
+        "init",
+        "--client", "claude-code",
+        "--migrate-full-vault",
+        "--core", "kept-core",
+        "--dry-run",
+      ],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("full-vault migration");
+    expect(result.stdout).toContain("2 visible skills -> 1 core skill after sync");
+    expect(lstatSync(join(clientHome, ".claude", "skills")).isSymbolicLink()).toBe(true);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
 
   test("detects surfaces and writes nothing when run without --target", async () => {
     const { surface, parent } = makeSurface("skillmux-init-cli-detect-");
@@ -491,6 +782,8 @@ describe("skillmux init CLI", () => {
     expect(existsSync(join(vaultDir, "skillmux.toml"))).toBe(true);
     expect(existsSync(join(surface, ".skillmux"))).toBe(true);
     expect(existsSync(join(surface, "not-touched.txt"))).toBe(true);
+    expect(result.stdout).toContain("next: skillmux manifest pin <skill_id> --core");
+    expect(result.stdout).toContain("next: skillmux sync");
     expect(result.stdout).toContain(`"command": "skillmux"`);
     expect(result.stdout).toContain("resolve_skill");
 

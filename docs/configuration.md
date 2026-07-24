@@ -4,6 +4,25 @@ Skillmux defaults to FTS5 plus local GTE-small semantic retrieval. Most users ne
 
 For detailed CLI command reference, target resolution, policy calibration, and automation envelopes, see [`docs/cli.md`](cli.md).
 
+## Machine config bootstrap
+
+Create `~/.config/skillmux/config.toml` from a populated vault:
+
+```sh
+skillmux config init --vault ~/skills --yes
+```
+
+The command writes:
+
+```toml
+vault_path = "/home/you/skills"
+```
+
+It validates that the path resolves to a directory with at least one
+`SKILL.md`, preserves an existing config byte-for-byte, and leaves
+`local_vault_paths` unset. `skillmux init --vault ~/skills --yes` uses the
+same bootstrap when the machine config does not exist.
+
 ## Local mode
 
 ```toml
@@ -88,7 +107,7 @@ skills = ["csv-formatter"]           # pinned into every [targets.*] dir; capped
 paths = ["/Users/you/code/repo1"]    # only synced for paths that exist locally
 skills = ["pdf-extractor"]           # must not overlap [core]
 
-[targets.claude]
+[targets.claude-code]
 dir = "/Users/you/.claude/skills"
 host = "workhorse"                    # optional; init adds the current hostname
 project_groups = ["repo1"]           # which [project.*] groups materialize into this target — [] means none

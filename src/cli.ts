@@ -3,15 +3,34 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { generateDataset } from "./dataset-generator";
 
 import { createClients } from "./clients";
-import { loadConfig } from "./config";
-import { expandHome } from "./config";
+import { expandHome, loadConfig, migrateLegacyPaths, resolveConfigPath } from "./config";
 import { openIndex } from "./db";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
-import { applyInit, deriveTargetName, detectSurfaces, printLastMile, surfaceCandidates } from "./init";
+import {
+  assessClientReadiness,
+  planClientSurfaces,
+  resolveBuiltInTarget,
+  type ClientId,
+  type ReadinessAxis,
+} from "./init-clients";
+import {
+  applyInstructionPlan,
+  planInstructionSetup,
+  rollbackInstructionPlan,
+} from "./init-instructions";
+import {
+  applyInit,
+  deriveTargetName,
+  detectSurfaces,
+  planInitManifest,
+  printLastMile,
+  surfaceCandidates,
+} from "./init";
 import {
   cloneToTemp,
   deriveRepoName,
@@ -33,6 +52,13 @@ import {
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
+import {
+  applyConfigInit,
+  inspectVault,
+  planConfigInit,
+  rollbackConfigInit,
+  type ConfigInitPlan,
+} from "./setup";
 import { getStats, renderStatsText, type StatsResponse } from "./stats";
 import {
   installPostMergeHook,
@@ -106,7 +132,8 @@ async function main() {
   let resolvedTarget: ResolvedTarget = { type: "local", name: "local" };
 
   // Only resolve target if command is target-aware or context/config/calibrate
-  if (["context", "config", "calibrate"].includes(command) || flagContext || flagServer) {
+  const isLocalConfigInit = command === "config" && rawArgv[1] === "init";
+  if ((["context", "config", "calibrate"].includes(command) && !isLocalConfigInit) || flagContext || flagServer) {
     try {
       resolvedTarget = await resolveTarget({ context: flagContext, server: flagServer });
     } catch (err: any) {
@@ -162,7 +189,7 @@ async function main() {
         await runSync(rawArgv.slice(1));
         break;
       case "init":
-        await runInit(rawArgv.slice(1));
+        await runInit(rawArgv.slice(1), { isJson, dryRun: isDryRun });
         break;
       case "report":
         await runReport(rawArgv.slice(1));
@@ -294,6 +321,88 @@ async function handleConfigCommand(
   args: string[],
   ctx: { target: ResolvedTarget; isJson: boolean; dryRun: boolean }
 ) {
+  if (sub === "init") {
+    let vaultPath: string | undefined;
+    let yes = false;
+    for (let i = 0; i < args.length; i++) {
+      const option = args[i];
+      if (option === "--vault") {
+        vaultPath = args[++i];
+        if (!vaultPath) throw new Error("usage: skillmux config init --vault <path> --yes");
+      } else if (option === "--yes") {
+        yes = true;
+      } else if (option === "--dry-run" || option === "--json") {
+        continue;
+      } else {
+        throw new Error(`unknown config init option: ${option}`);
+      }
+    }
+    if (!vaultPath) {
+      if (isInteractive() && !ctx.isJson) {
+        vaultPath = "~/skills";
+      } else {
+        throw new Error("usage: skillmux config init --vault <path> --yes");
+      }
+    }
+
+    migrateLegacyPaths();
+    const plan = planConfigInit(resolveConfigPath(), expandHome(vaultPath));
+    if (plan.action === "preserve") {
+      console.log(ctx.isJson
+        ? JSON.stringify({
+            schema_version: 1,
+            ok: true,
+            command: "config init",
+            phase: "result",
+            dry_run: ctx.dryRun,
+            applied: false,
+            plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: "preserve" },
+          })
+        : `preserved existing config: ${plan.configPath}`);
+      return;
+    }
+    if (ctx.dryRun) {
+      console.log(ctx.isJson
+        ? JSON.stringify({
+            schema_version: 1,
+            ok: true,
+            command: "config init",
+            phase: "plan",
+            dry_run: true,
+            applied: false,
+            plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: "create" },
+          })
+        : `config create: ${plan.configPath} (dry-run)`);
+      return;
+    }
+    if (!yes) {
+      if (!ctx.isJson && isInteractive()) {
+        if (!(await confirmAction(`Create ${plan.configPath} with vault_path ${plan.vaultPath}?`))) {
+          console.log("config init cancelled; nothing written");
+          return;
+        }
+      } else {
+        throw new Error("config initialization requires --yes in noninteractive mode");
+      }
+    }
+
+    const result = applyConfigInit(plan);
+    console.log(ctx.isJson
+      ? JSON.stringify({
+          schema_version: 1,
+          ok: true,
+          command: "config init",
+          phase: "result",
+          dry_run: false,
+          applied: result === "created",
+          plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: plan.action },
+        })
+      : result === "created"
+        ? `created ${plan.configPath}`
+        : `preserved existing config: ${plan.configPath}`);
+    return;
+  }
+
   if (sub === "show") {
     const data = await adapter.getConfigShow();
     if (ctx.isJson) {
@@ -370,6 +479,16 @@ async function handleConfigCommand(
   }
 
   throw new Error("usage: skillmux config show");
+}
+
+async function confirmAction(prompt: string): Promise<boolean> {
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await readline.question(`${prompt} [y/N] `)).trim().toLowerCase();
+    return answer === "y" || answer === "yes";
+  } finally {
+    readline.close();
+  }
 }
 
 async function handleCalibrateCommand(
@@ -478,7 +597,24 @@ function handleError(
 }
 
 function printHelp(): void {
-  console.log(`usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]`);
+  console.log(`usage: skillmux <command> [options]
+
+Setup:
+  skillmux config init --vault <path> --yes
+  skillmux init [--client <name>...] [--target <name>...] [--path <dir>]
+                [--vault <path>] [--core <skill_id>...]
+                [--migrate-full-vault] [--yes|--dry-run] [--json]
+
+Init clients:
+  claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
+  antigravity, goose, hermes, skillmux-mcp
+
+Init targets:
+  agent-skills, claude-code, codex, custom
+
+Commands:
+  serve, index, sync, init, report, scan, install, eval, doctor, which,
+  manifest, local-vault, config, models, calibrate, context, completions`);
 }
 
 // ---------------------------------------------------------------------------
@@ -731,8 +867,21 @@ async function runSync(args: string[]): Promise<void> {
   }
 }
 
-function parseInitArgs(args: string[]): { targets: string[]; yes: boolean } {
+function parseInitArgs(args: string[]): {
+  targets: string[];
+  clients: string[];
+  coreSkillIds: string[];
+  customPath?: string;
+  migrateFullVault: boolean;
+  vaultPath?: string;
+  yes: boolean;
+} {
   const targets: string[] = [];
+  const clients: string[] = [];
+  const coreSkillIds: string[] = [];
+  let customPath: string | undefined;
+  let migrateFullVault = false;
+  let vaultPath: string | undefined;
   let yes = false;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
@@ -741,74 +890,379 @@ function parseInitArgs(args: string[]): { targets: string[]; yes: boolean } {
       if (!value) throw new Error("--target requires a name");
       targets.push(value);
       i++;
+    } else if (option === "--client") {
+      const value = args[i + 1];
+      if (!value) throw new Error("--client requires a name");
+      clients.push(value);
+      i++;
+    } else if (option === "--vault") {
+      const value = args[i + 1];
+      if (!value) throw new Error("--vault requires a path");
+      vaultPath = value;
+      i++;
+    } else if (option === "--path") {
+      const value = args[i + 1];
+      if (!value) throw new Error("--path requires a directory");
+      customPath = value;
+      i++;
+    } else if (option === "--core") {
+      const value = args[i + 1];
+      if (!value) throw new Error("--core requires a skill_id");
+      coreSkillIds.push(value);
+      i++;
+    } else if (option === "--dry-run" || option === "--json") {
+      continue;
+    } else if (option === "--migrate-full-vault") {
+      migrateFullVault = true;
     } else if (option === "--yes") {
       yes = true;
     } else {
       throw new Error(`unknown init option: ${option}`);
     }
   }
-  return { targets, yes };
+  return { targets, clients, coreSkillIds, customPath, migrateFullVault, vaultPath, yes };
 }
 
-async function runInit(args: string[]): Promise<void> {
-  const { targets: requestedTargets, yes } = parseInitArgs(args);
-  const config = await loadConfig();
-  const vaultPath = expandHome(config.vault_path);
-
-  const candidates = detectSurfaces(surfaceCandidates().map(expandHome), vaultPath);
-  for (const candidate of candidates) {
-    const name = deriveTargetName(candidate.path);
-    if (candidate.state === "missing") {
-      console.log(`${name} (${candidate.path}): not found`);
-      continue;
+async function runInit(
+  args: string[],
+  options: { isJson: boolean; dryRun: boolean },
+): Promise<void> {
+  const {
+    targets: explicitTargets,
+    clients: requestedClients,
+    coreSkillIds,
+    customPath,
+    migrateFullVault,
+    vaultPath: requestedVaultPath,
+    yes,
+  } = parseInitArgs(args);
+  migrateLegacyPaths();
+  const configPath = resolveConfigPath();
+  let configPlan: ConfigInitPlan | undefined;
+  let vaultPath: string;
+  if (!existsSync(configPath)) {
+    const bootstrapVaultPath = requestedVaultPath ??
+      (!options.isJson && isInteractive() ? "~/skills" : undefined);
+    if (!bootstrapVaultPath) {
+      throw new Error(`machine config does not exist: ${configPath}; re-run with --vault <path>`);
     }
-    if (candidate.state === "broken-symlink") {
-      console.log(`${name} (${candidate.path}): broken symlink`);
-      continue;
+    configPlan = planConfigInit(configPath, expandHome(bootstrapVaultPath));
+    vaultPath = configPlan.vaultPath;
+    if (!options.isJson) {
+      console.log(`config create: ${configPath}`);
     }
-    if (candidate.state === "full-vault") {
-      console.log(`${name} (${candidate.path}): full-vault -> ${candidate.canonicalPath}`);
-      continue;
+  } else {
+    const config = await loadConfig();
+    vaultPath = expandHome(config.vault_path);
+    if (requestedVaultPath && expandHome(requestedVaultPath) !== vaultPath) {
+      throw new Error(
+        `machine config already uses vault_path ${vaultPath}; --vault does not overwrite existing config`,
+      );
     }
-    if (candidate.state === "external-symlink") {
-      console.log(`${name} (${candidate.path}): external symlink -> ${candidate.canonicalPath}`);
-      continue;
-    }
-    if (candidate.state === "unsupported") {
-      console.log(`${name} (${candidate.path}): unsupported filesystem entry`);
-      continue;
-    }
-    const kind = "real dir";
-    const marked = candidate.alreadyMarked ? ", already skillmux-managed" : "";
-    console.log(`${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`);
   }
 
-  if (requestedTargets.length === 0) {
-    console.log("\nno --target specified — nothing written. Re-run with --target <name> --yes to adopt a surface.");
+  const vaultHealth = inspectVault(vaultPath);
+  if (!vaultHealth.ok) {
+    throw new Error(vaultHealth.message);
+  }
+
+  const clientPlan = planClientSurfaces(requestedClients, {
+    codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+  });
+  const instructionPlan = planInstructionSetup(clientPlan.clients.map((client) => client.id), {
+    codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+  });
+  const instructionReadiness: Partial<Record<ClientId, ReadinessAxis>> = {};
+  for (const change of instructionPlan.changes) {
+    for (const client of change.clients) {
+      instructionReadiness[client] = {
+        status: change.status === "unchanged" ? "ready" : "planned",
+        detail: change.path,
+      };
+    }
+  }
+  for (const manual of instructionPlan.manual) {
+    instructionReadiness[manual.client] = { status: "manual", detail: manual.reason };
+  }
+  const builtInNames = new Set(["agent-skills", "claude-code", "codex", "custom", "agents", "claude"]);
+  const explicitSurfaceTargets = explicitTargets
+    .filter((name) => builtInNames.has(name))
+    .map((name) =>
+      resolveBuiltInTarget(name, {
+        codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+        customPath: customPath ? expandHome(customPath) : undefined,
+      }),
+    );
+  if (customPath && !explicitTargets.includes("custom")) {
+    throw new Error("--path may only be used with --target custom");
+  }
+  for (const target of explicitSurfaceTargets) {
+    if (target.warning) console.error(`warning: ${target.warning}`);
+  }
+  const targetByPath = new Map(
+    explicitSurfaceTargets.map((target) => [target.path, target.targetName] as const),
+  );
+  for (const surface of clientPlan.surfaces) {
+    if (!targetByPath.has(surface.path)) targetByPath.set(surface.path, surface.targetName);
+  }
+  const candidatePaths = [
+    ...new Set([
+      ...surfaceCandidates().map(expandHome),
+      ...targetByPath.keys(),
+    ]),
+  ];
+  const candidates = detectSurfaces(candidatePaths, vaultPath);
+  if (!options.isJson) {
+    for (const candidate of candidates) {
+      const name = targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path);
+      if (candidate.state === "missing") {
+        console.log(`${name} (${candidate.path}): not found`);
+        continue;
+      }
+      if (candidate.state === "broken-symlink") {
+        console.log(`${name} (${candidate.path}): broken symlink`);
+        continue;
+      }
+      if (candidate.state === "full-vault") {
+        console.log(`${name} (${candidate.path}): full-vault -> ${candidate.canonicalPath}`);
+        continue;
+      }
+      if (candidate.state === "external-symlink") {
+        console.log(`${name} (${candidate.path}): external symlink -> ${candidate.canonicalPath}`);
+        continue;
+      }
+      if (candidate.state === "unsupported") {
+        console.log(`${name} (${candidate.path}): unsupported filesystem entry`);
+        continue;
+      }
+      const kind = "real dir";
+      const marked = candidate.alreadyMarked ? ", already skillmux-managed" : "";
+      console.log(`${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`);
+    }
+    for (const readiness of assessClientReadiness(clientPlan, instructionReadiness)) {
+      console.log(`\n${readiness.client} readiness:`);
+      console.log(`  skill surface: ${readiness.skillSurface.status} — ${readiness.skillSurface.detail}`);
+      console.log(`  MCP registration: ${readiness.mcpRegistration.status} — ${readiness.mcpRegistration.detail}`);
+      console.log(`  instructions: ${readiness.instructionSetup.status} — ${readiness.instructionSetup.detail}`);
+    }
+    for (const change of instructionPlan.changes) {
+      console.log(
+        `instructions ${change.status}: ${change.path} (${change.clients.join(", ")})`,
+      );
+    }
+    for (const manual of instructionPlan.manual) {
+      console.log(`instructions manual: ${manual.client} — ${manual.reason}`);
+    }
+  }
+
+  const requestedTargets = [
+    ...new Set([
+      ...explicitTargets.filter((name) => !builtInNames.has(name)),
+      ...targetByPath.values(),
+    ]),
+  ];
+  const hasInstructionWrites = instructionPlan.changes.some(
+    (change) => change.status !== "unchanged",
+  );
+  const hasConfigWrite = configPlan?.action === "create";
+  const hasChanges = !(
+    requestedTargets.length === 0 &&
+    !hasInstructionWrites &&
+    coreSkillIds.length === 0 &&
+    !hasConfigWrite
+  );
+
+  const byName = new Map(
+    candidates
+      .filter((candidate) =>
+        candidate.deliveryMode === "managed-pins" ||
+        (migrateFullVault && candidate.state === "full-vault"),
+      )
+      .map((candidate) => [
+        targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path),
+        candidate,
+      ] as const),
+  );
+  const allCandidatesByName = new Map(
+    candidates.map((candidate) => [
+      targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path),
+      candidate,
+    ] as const),
+  );
+  for (const name of requestedTargets) {
+    if (!byName.has(name)) {
+      if (allCandidatesByName.get(name)?.state === "full-vault") {
+        throw new Error(
+          `target "${name}" is a full-vault surface; re-run with --migrate-full-vault to convert it to managed pins`,
+        );
+      }
+      throw new Error(`unknown --target "${name}": not among detected surfaces`);
+    }
+  }
+
+  const confirmedTargets = requestedTargets.map((name) => {
+    const candidate = byName.get(name)!;
+    return {
+      name,
+      dir: candidate.path,
+      ...(candidate.state === "full-vault" ? { migrateFullVault: true } : {}),
+    };
+  });
+  const plannedManifest = planInitManifest(vaultPath, confirmedTargets, coreSkillIds);
+  const serializedPlan = {
+    vault_path: vaultPath,
+    config: configPlan
+      ? { path: configPlan.configPath, action: configPlan.action }
+      : { path: configPath, action: "preserve" },
+    clients: clientPlan.clients.map((client) => client.id),
+    targets: confirmedTargets,
+    core: plannedManifest.core.skills,
+    instructions: instructionPlan.changes.map(({ path, clients, status }) => ({
+      path,
+      clients,
+      status,
+    })),
+    manual: instructionPlan.manual,
+  };
+  if (!hasChanges) {
+    if (options.isJson) {
+      console.log(JSON.stringify({
+        schema_version: 1,
+        ok: true,
+        command: "init",
+        phase: "plan",
+        dry_run: options.dryRun,
+        applied: false,
+        plan: serializedPlan,
+      }));
+    } else {
+      console.log("\nno managed-pins surface selected — nothing written.");
+    }
+    return;
+  }
+  if (!options.isJson) {
+    for (const target of confirmedTargets.filter((target) => target.migrateFullVault)) {
+      console.log(
+        `full-vault migration ${target.name}: ${vaultHealth.skillCount} visible skills -> ` +
+        `${plannedManifest.core.skills.length} core ${plannedManifest.core.skills.length === 1 ? "skill" : "skills"} after sync`,
+      );
+    }
+  }
+  if (options.dryRun) {
+    if (options.isJson) {
+      console.log(JSON.stringify({
+        schema_version: 1,
+        ok: true,
+        command: "init",
+        phase: "plan",
+        dry_run: true,
+        applied: false,
+        plan: serializedPlan,
+      }));
+    } else {
+      console.log(
+        `\ndry-run: ${confirmedTargets.length} target(s), ` +
+        `${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} instruction file(s), ` +
+        `core: ${plannedManifest.core.skills.join(", ") || "(unchanged)"}`,
+      );
+    }
     return;
   }
 
   if (!yes) {
-    throw new Error(
-      "usage: skillmux init --target <name> [--target <name>...] --yes (interactive per-target confirm is not available non-interactively)",
+    if (!options.isJson && isInteractive()) {
+      const prompts = [
+        ...confirmedTargets.map((target) => `Adopt ${target.name} at ${target.dir}?`),
+        ...instructionPlan.changes
+          .filter((change) => change.status !== "unchanged")
+          .map((change) => `${change.status} instruction file ${change.path}?`),
+        ...(hasConfigWrite ? [`Create machine config ${configPath}?`] : []),
+        ...(coreSkillIds.length > 0 ? [`Pin core skills: ${coreSkillIds.join(", ")}?`] : []),
+      ];
+      for (const prompt of prompts) {
+        if (!(await confirmAction(prompt))) {
+          console.log("init cancelled; nothing written");
+          return;
+        }
+      }
+    } else {
+      throw new Error(
+        "skillmux init requires --yes before applying target, instruction, or core changes non-interactively",
+      );
+    }
+  }
+
+  let configCreated = false;
+  let instructionsApplied = false;
+  const applyAdditional = () => {
+    try {
+      if (configPlan?.action === "create") {
+        configCreated = applyConfigInit(configPlan) === "created";
+      }
+      if (hasInstructionWrites) {
+        applyInstructionPlan(instructionPlan);
+        instructionsApplied = true;
+      }
+    } catch (error) {
+      if (configCreated && configPlan) rollbackConfigInit(configPlan);
+      configCreated = false;
+      throw error;
+    }
+  };
+  const rollbackAdditional = () => {
+    if (instructionsApplied) rollbackInstructionPlan(instructionPlan);
+    if (configCreated && configPlan) rollbackConfigInit(configPlan);
+  };
+
+  if (confirmedTargets.length === 0 && coreSkillIds.length === 0) {
+    applyAdditional();
+  } else {
+    applyInit(
+      vaultPath,
+      confirmedTargets,
+      hasInstructionWrites || hasConfigWrite
+        ? {
+            apply: applyAdditional,
+            rollback: rollbackAdditional,
+          }
+        : undefined,
+      coreSkillIds,
     );
   }
 
-  const byName = new Map(
-    candidates
-      .filter((candidate) => candidate.deliveryMode === "managed-pins")
-      .map((candidate) => [deriveTargetName(candidate.path), candidate] as const),
-  );
-  for (const name of requestedTargets) {
-    if (!byName.has(name)) throw new Error(`unknown --target "${name}": not among detected surfaces`);
+  if (options.isJson) {
+    console.log(JSON.stringify({
+      schema_version: 1,
+      ok: true,
+      command: "init",
+      phase: "result",
+      dry_run: false,
+      applied: true,
+      plan: serializedPlan,
+      result: {
+        config_created: configCreated,
+        targets_adopted: confirmedTargets.map((target) => target.name),
+        instructions_changed: instructionPlan.changes
+          .filter((change) => change.status !== "unchanged")
+          .map((change) => change.path),
+        core: plannedManifest.core.skills,
+      },
+    }));
+    return;
   }
-
-  const confirmedTargets = requestedTargets.map((name) => ({ name, dir: byName.get(name)!.path }));
-  applyInit(vaultPath, confirmedTargets);
-
-  console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`);
-  console.log(`run "skillmux sync" next to materialize [core] skills into these targets.\n`);
-  console.log(printLastMile());
+  if (configCreated) console.log(`created ${configPath}`);
+  if (confirmedTargets.length > 0) {
+    console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`);
+  } else if (coreSkillIds.length > 0) {
+    console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}`);
+  }
+  if (plannedManifest.core.skills.length === 0 && confirmedTargets.length > 0) {
+    console.log("next: skillmux manifest pin <skill_id> --core");
+  }
+  if (confirmedTargets.length > 0) console.log("next: skillmux sync");
+  if (requestedClients.length === 0 || requestedClients.includes("skillmux-mcp")) {
+    console.log(`\n${printLastMile()}`);
+  }
 }
 
 function parseReportArgs(args: string[]): { server?: string; db?: string; since?: string } {

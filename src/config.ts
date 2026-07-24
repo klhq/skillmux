@@ -169,8 +169,7 @@ export function migrateLegacyPaths(): void {
   migrateLegacyDir("~/.cache/skill-router", "~/.cache/skillmux");
 }
 
-export async function loadConfig(path?: string): Promise<Config> {
-  migrateLegacyPaths();
+export function resolveConfigPath(path?: string): string {
   let configEnv = process.env.SKILLMUX_CONFIG;
   if (configEnv === undefined && process.env.SKILL_ROUTER_CONFIG !== undefined) {
     if (!warnedEnv.has("SKILL_ROUTER_CONFIG")) {
@@ -179,7 +178,12 @@ export async function loadConfig(path?: string): Promise<Config> {
     }
     configEnv = process.env.SKILL_ROUTER_CONFIG;
   }
-  const configPath = path ?? configEnv ?? DEFAULT_CONFIG_PATH;
+  return expandHome(path ?? configEnv ?? DEFAULT_CONFIG_PATH);
+}
+
+export async function loadConfig(path?: string): Promise<Config> {
+  migrateLegacyPaths();
+  const configPath = resolveConfigPath(path);
   const file = Bun.file(expandHome(configPath));
 
   const baseConfig = structuredClone(DEFAULTS);

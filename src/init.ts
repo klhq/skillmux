@@ -3,10 +3,12 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   realpathSync,
   renameSync,
   rmdirSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -17,6 +19,7 @@ import {
   resolveManifestPath,
   serializeManifest,
   type Manifest,
+  CORE_SKILL_LIMIT,
   MANIFEST_FILENAME,
 } from "./manifest";
 import {
@@ -170,6 +173,12 @@ export function deriveTargetName(path: string): string {
 export interface ConfirmedTarget {
   name: string;
   dir: string;
+  migrateFullVault?: boolean;
+}
+
+export interface InitTransactionParticipant {
+  apply: () => void;
+  rollback: () => void;
 }
 
 function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]): void {
@@ -185,6 +194,10 @@ function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]):
     }
 
     if (stat.isSymbolicLink()) {
+      const canonicalTargetPath = realpathSync(target.dir);
+      if (target.migrateFullVault && canonicalTargetPath === canonicalVaultPath) {
+        continue;
+      }
       throw new Error(
         `target "${target.name}" (${target.dir}) is a symbolic link; classify or migrate it before managed-pins adoption`,
       );
@@ -207,7 +220,11 @@ function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]):
  * first if it doesn't exist yet). Unconfirmed candidates are simply never
  * passed in — this function never discovers paths on its own.
  */
-export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]): Manifest {
+export function planInitManifest(
+  vaultPath: string,
+  confirmedTargets: ConfirmedTarget[],
+  coreSkillIds: string[] = [],
+): Manifest {
   preflightManagedTargets(vaultPath, confirmedTargets);
 
   const existingManifestPath = resolveManifestPath(vaultPath);
@@ -216,6 +233,10 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
     : { ...proposeManifest([]), targets: {} };
   const manifest: Manifest = {
     ...existingManifest,
+    core: {
+      ...existingManifest.core,
+      skills: [...new Set([...existingManifest.core.skills, ...coreSkillIds])],
+    },
     targets: {
       ...existingManifest.targets,
       ...Object.fromEntries(
@@ -231,6 +252,31 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
       ),
     },
   };
+  if (manifest.core.skills.length > CORE_SKILL_LIMIT) {
+    throw new Error(
+      `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${CORE_SKILL_LIMIT}`,
+    );
+  }
+  for (const skillId of coreSkillIds) {
+    if (!SKILL_ID_PATTERN.test(skillId) || !existsSync(join(vaultPath, skillId, "SKILL.md"))) {
+      throw new Error(`[core] skill "${skillId}" does not exist in the vault`);
+    }
+    for (const [groupName, group] of Object.entries(existingManifest.project ?? {})) {
+      if (group.skills.includes(skillId)) {
+        throw new Error(`skill "${skillId}" appears in both [core] and [project.${groupName}]`);
+      }
+    }
+  }
+  return manifest;
+}
+
+export function applyInit(
+  vaultPath: string,
+  confirmedTargets: ConfirmedTarget[],
+  participant?: InitTransactionParticipant,
+  coreSkillIds: string[] = [],
+): Manifest {
+  const manifest = planInitManifest(vaultPath, confirmedTargets, coreSkillIds);
 
   const manifestPath = join(vaultPath, MANIFEST_FILENAME);
   const serializedManifest = serializeManifest(manifest);
@@ -238,9 +284,30 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
     !existsSync(manifestPath) || readFileSync(manifestPath, "utf-8") !== serializedManifest;
   const createdDirs: string[] = [];
   const adoptedDirs: string[] = [];
+  const migratedFullVaultDirs: Array<{ dir: string; linkTarget: string }> = [];
+  let participantApplied = false;
 
   try {
     for (const target of confirmedTargets) {
+      let targetStat;
+      try {
+        targetStat = lstatSync(target.dir);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      if (targetStat?.isSymbolicLink()) {
+        if (!target.migrateFullVault || realpathSync(target.dir) !== realpathSync(vaultPath)) {
+          throw new Error(
+            `target "${target.name}" (${target.dir}) changed to an unsafe symbolic link after preflight`,
+          );
+        }
+        const linkTarget = readlinkSync(target.dir);
+        unlinkSync(target.dir);
+        mkdirSync(target.dir, { recursive: true });
+        migratedFullVaultDirs.push({ dir: target.dir, linkTarget });
+      } else if (targetStat && !targetStat.isDirectory()) {
+        throw new Error(`target "${target.name}" (${target.dir}) changed to a non-directory after preflight`);
+      }
       if (!existsSync(target.dir)) {
         mkdirSync(target.dir, { recursive: true });
         createdDirs.push(target.dir);
@@ -248,6 +315,11 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
       if (adoptTarget(target.dir, target.name, vaultPath).adopted) {
         adoptedDirs.push(target.dir);
       }
+    }
+
+    if (participant) {
+      participant.apply();
+      participantApplied = true;
     }
 
     if (shouldWriteManifest) {
@@ -264,12 +336,20 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
       }
     }
   } catch (error) {
-    for (const dir of adoptedDirs.reverse()) {
-      const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
-      if (existsSync(markerPath)) unlinkSync(markerPath);
-    }
-    for (const dir of createdDirs.reverse()) {
-      if (existsSync(dir)) rmdirSync(dir);
+    try {
+      if (participantApplied) participant?.rollback();
+    } finally {
+      for (const dir of adoptedDirs.reverse()) {
+        const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
+        if (existsSync(markerPath)) unlinkSync(markerPath);
+      }
+      for (const migration of migratedFullVaultDirs.reverse()) {
+        if (existsSync(migration.dir)) rmdirSync(migration.dir);
+        symlinkSync(migration.linkTarget, migration.dir);
+      }
+      for (const dir of createdDirs.reverse()) {
+        if (existsSync(dir)) rmdirSync(dir);
+      }
     }
     throw error;
   }
