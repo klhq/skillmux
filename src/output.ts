@@ -49,31 +49,6 @@ export class CliError extends Error {
 export function mapExitCode(err: unknown): number {
   if (!err) return 0;
   if (err instanceof CliError) return err.exitCode;
-  const msg = err instanceof Error ? err.message : String(err);
-  const lower = msg.toLowerCase();
-
-  if (
-    lower.includes("conflict") ||
-    lower.includes("revision") ||
-    lower.includes("externally managed") ||
-    lower.includes("config_revision_conflict") ||
-    lower.includes("config_externally_managed")
-  ) {
-    return 4;
-  }
-
-  if (
-    lower.includes("unreachable") ||
-    lower.includes("failed to reach") ||
-    lower.includes("unauthorized") ||
-    lower.includes("unauthenticated") ||
-    lower.includes("401") ||
-    lower.includes("403") ||
-    lower.includes("connection refused")
-  ) {
-    return 3;
-  }
-
   return 2;
 }
 

@@ -33,16 +33,20 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(mapExitCode(new Error("usage error"))).toBe(2);
     expect(mapExitCode(new Error("Validation error"))).toBe(2);
 
-    expect(mapExitCode(new Error("Unauthorized"))).toBe(3);
-    expect(mapExitCode(new Error("Failed to reach remote server"))).toBe(3);
+    expect(mapExitCode(new CliError("Unauthorized", 3))).toBe(3);
+    expect(mapExitCode(new CliError("Failed to reach remote server", 3))).toBe(3);
 
-    expect(mapExitCode(new Error("Revision conflict"))).toBe(4);
-    expect(mapExitCode(new Error("Configuration is externally managed"))).toBe(4);
+    expect(mapExitCode(new CliError("Revision conflict", 4))).toBe(4);
+    expect(mapExitCode(new CliError("Configuration is externally managed", 4))).toBe(4);
   });
 
   it("maps a CliError to its own exitCode regardless of message content", () => {
     expect(mapExitCode(new CliError("some message", 4))).toBe(4);
     expect(mapExitCode(new CliError("some message", 3))).toBe(3);
+  });
+
+  it("does not misclassify an untagged Error as a conflict just because its message contains the word 'conflict'", () => {
+    expect(mapExitCode(new Error('skill "foo" already pinned in [project.conflict-resolution]'))).toBe(2);
   });
 
   it("suggests corrections for mistyped commands (AC12)", () => {

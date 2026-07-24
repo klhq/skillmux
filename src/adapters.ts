@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { applyCalibrationRun, getCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, type CalibrationResult } from "./calibrate";
 import { createClients } from "./clients";
 import { DEFAULT_CONFIG_PATH, expandHome, loadConfig } from "./config";
+import { CliError } from "./output";
 import {
   computeHash,
   getDottedKey,
@@ -109,7 +110,7 @@ export class LocalAdapter implements TargetAdapter {
   async configSet(key: string, rawValStr: string, opts?: { dryRun?: boolean }): Promise<SetConfigResult> {
     const caps = await this.getCapabilities();
     if (caps.persistence === "externally_managed") {
-      throw new Error("Configuration is externally managed and cannot be modified");
+      throw new CliError("Configuration is externally managed and cannot be modified", 4);
     }
     return setDottedKey(key, rawValStr, {
       configPath: this.configPath,
@@ -232,9 +233,14 @@ export class RemoteAdapter implements TargetAdapter {
       } catch {
         // text
       }
+      if (res.status === 401 || res.status === 403) {
+        const message = typeof data === "object" && data ? data.message || data.error || data : data;
+        throw new CliError(`Remote server rejected the request (${res.status}): ${message}`, 3);
+      }
       return { status: res.status, headers: res.headers, data };
     } catch (err: any) {
-      throw new Error(`Failed to reach remote server "${this.serverUrl}": ${err.message}`);
+      if (err instanceof CliError) throw err;
+      throw new CliError(`Failed to reach remote server "${this.serverUrl}": ${err.message}`, 3);
     }
   }
 
@@ -279,7 +285,7 @@ export class RemoteAdapter implements TargetAdapter {
   async configSet(key: string, rawValStr: string, opts?: { dryRun?: boolean }): Promise<SetConfigResult> {
     const caps = await this.getCapabilities();
     if (!caps.config_write || caps.persistence === "externally_managed") {
-      throw new Error("Remote server configuration is externally managed or read-only");
+      throw new CliError("Remote server configuration is externally managed or read-only", 4);
     }
 
     const { status: showStatus, headers: showHeaders, data: showData } = await this.fetchJson("/admin/v1/config");
@@ -317,10 +323,10 @@ export class RemoteAdapter implements TargetAdapter {
 
     if (status === 409) {
       if (data?.error === "CONFIG_REVISION_CONFLICT") {
-        throw new Error(`Revision conflict: ${data.message || "Remote configuration was modified concurrently"}`);
+        throw new CliError(`Revision conflict: ${data.message || "Remote configuration was modified concurrently"}`, 4);
       }
       if (data?.error === "CONFIG_EXTERNALLY_MANAGED") {
-        throw new Error("Configuration is externally managed on the remote server");
+        throw new CliError("Configuration is externally managed on the remote server", 4);
       }
     }
 
