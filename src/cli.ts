@@ -391,6 +391,38 @@ async function handleContextCommand(
   throw new Error("usage: skillmux context <add|list|current|use|remove>");
 }
 
+function emitConfigInitOutcome(
+  ctx: { isJson: boolean },
+  opts: {
+    phase: "plan" | "result";
+    dryRun: boolean;
+    applied: boolean;
+    plan: ConfigInitPlan;
+    action: "create" | "preserve";
+    text: string;
+  },
+): void {
+  if (ctx.isJson) {
+    console.log(
+      JSON.stringify({
+        schema_version: 1,
+        ok: true,
+        command: "config init",
+        phase: opts.phase,
+        dry_run: opts.dryRun,
+        applied: opts.applied,
+        plan: {
+          config_path: opts.plan.configPath,
+          vault_path: opts.plan.vaultPath,
+          action: opts.action,
+        },
+      }),
+    );
+    return;
+  }
+  console.log(opts.text);
+}
+
 async function handleConfigCommand(
   adapter: TargetAdapter,
   sub: string,
@@ -425,43 +457,25 @@ async function handleConfigCommand(
     migrateLegacyPaths();
     const plan = planConfigInit(resolveConfigPath(), expandHome(vaultPath));
     if (plan.action === "preserve") {
-      console.log(
-        ctx.isJson
-          ? JSON.stringify({
-              schema_version: 1,
-              ok: true,
-              command: "config init",
-              phase: "result",
-              dry_run: ctx.dryRun,
-              applied: false,
-              plan: {
-                config_path: plan.configPath,
-                vault_path: plan.vaultPath,
-                action: "preserve",
-              },
-            })
-          : `preserved existing config: ${plan.configPath}`,
-      );
+      emitConfigInitOutcome(ctx, {
+        phase: "result",
+        dryRun: ctx.dryRun,
+        applied: false,
+        plan,
+        action: "preserve",
+        text: `preserved existing config: ${plan.configPath}`,
+      });
       return;
     }
     if (ctx.dryRun) {
-      console.log(
-        ctx.isJson
-          ? JSON.stringify({
-              schema_version: 1,
-              ok: true,
-              command: "config init",
-              phase: "plan",
-              dry_run: true,
-              applied: false,
-              plan: {
-                config_path: plan.configPath,
-                vault_path: plan.vaultPath,
-                action: "create",
-              },
-            })
-          : `config create: ${plan.configPath} (dry-run)`,
-      );
+      emitConfigInitOutcome(ctx, {
+        phase: "plan",
+        dryRun: true,
+        applied: false,
+        plan,
+        action: "create",
+        text: `config create: ${plan.configPath} (dry-run)`,
+      });
       return;
     }
     if (!yes) {
@@ -482,25 +496,17 @@ async function handleConfigCommand(
     }
 
     const result = applyConfigInit(plan);
-    console.log(
-      ctx.isJson
-        ? JSON.stringify({
-            schema_version: 1,
-            ok: true,
-            command: "config init",
-            phase: "result",
-            dry_run: false,
-            applied: result === "created",
-            plan: {
-              config_path: plan.configPath,
-              vault_path: plan.vaultPath,
-              action: plan.action,
-            },
-          })
-        : result === "created"
+    emitConfigInitOutcome(ctx, {
+      phase: "result",
+      dryRun: false,
+      applied: result === "created",
+      plan,
+      action: plan.action,
+      text:
+        result === "created"
           ? `created ${plan.configPath}`
           : `preserved existing config: ${plan.configPath}`,
-    );
+    });
     return;
   }
 
@@ -941,20 +947,39 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
   };
 }
 
+async function loadManifestContext() {
+  const config = await loadConfig();
+  const vaultPath = expandHome(config.vault_path);
+  const manifestPath = resolveManifestPath(vaultPath);
+  if (!manifestPath) {
+    throw new Error(
+      `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
+    );
+  }
+  const manifest = parseManifest(await Bun.file(manifestPath).text());
+  return { config, vaultPath, manifestPath, manifest };
+}
+
+async function confirmIfNeeded(opts: {
+  confirmed: boolean;
+  isJson: boolean;
+  prompt: string;
+  nonInteractiveError: string;
+}): Promise<boolean> {
+  if (opts.confirmed) return true;
+  if (opts.isJson || !isInteractive()) {
+    throw new Error(opts.nonInteractiveError);
+  }
+  return confirmAction(opts.prompt);
+}
+
 async function runProject(
   subCommand: string,
   args: string[],
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
   if (subCommand === "list" || subCommand === "show") {
-    const config = await loadConfig();
-    const vaultPath = expandHome(config.vault_path);
-    const manifestPath = resolveManifestPath(vaultPath);
-    if (!manifestPath)
-      throw new Error(
-        `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
-      );
-    const manifest = parseManifest(await Bun.file(manifestPath).text());
+    const { manifest } = await loadManifestContext();
     const names =
       subCommand === "show"
         ? [args[0] ?? ""]
@@ -998,14 +1023,8 @@ async function runProject(
     if (!existsSync(projectPath) || !lstatSync(projectPath).isDirectory()) {
       throw new Error(`project path is not a directory: ${projectPath}`);
     }
-    const config = await loadConfig();
-    const vaultPath = expandHome(config.vault_path);
-    const manifestPath = resolveManifestPath(vaultPath);
-    if (!manifestPath)
-      throw new Error(
-        `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
-      );
-    const manifest = parseManifest(await Bun.file(manifestPath).text());
+    const { config, vaultPath, manifestPath, manifest } =
+      await loadManifestContext();
     const updated = updateProjectPaths(manifest, group, {
       ...(subCommand === "add-path"
         ? { add: [projectPath] }
@@ -1020,20 +1039,15 @@ async function runProject(
       console.log(`${subCommand}: [project.${group}] ${projectPath} (dry-run)`);
       return;
     }
-    if (!yes) {
-      if (!options.isJson && isInteractive()) {
-        if (
-          !(await confirmAction(
-            `${subCommand} ${projectPath} in [project.${group}]?`,
-          ))
-        )
-          return;
-      } else {
-        throw new Error(
-          `skillmux project ${subCommand} requires --yes when run non-interactively`,
-        );
-      }
-    }
+    if (
+      !(await confirmIfNeeded({
+        confirmed: yes,
+        isJson: options.isJson,
+        prompt: `${subCommand} ${projectPath} in [project.${group}]?`,
+        nonInteractiveError: `skillmux project ${subCommand} requires --yes when run non-interactively`,
+      }))
+    )
+      return;
     writeManifestAtomic(manifestPath, updated);
     console.log(`${subCommand}: [project.${group}] ${projectPath}`);
     return;
@@ -1047,14 +1061,9 @@ async function runProject(
       );
     }
     const yes = args.includes("--yes");
-    const config = await loadConfig();
-    const vaultPath = expandHome(config.vault_path);
-    const manifestPath = resolveManifestPath(vaultPath);
-    if (!manifestPath)
-      throw new Error(
-        `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
-      );
-    let updated = parseManifest(await Bun.file(manifestPath).text());
+    const { config, vaultPath, manifestPath, manifest } =
+      await loadManifestContext();
+    let updated = manifest;
     for (const skill of skills) {
       updated =
         subCommand === "pin"
@@ -1072,20 +1081,15 @@ async function runProject(
       );
       return;
     }
-    if (!yes) {
-      if (!options.isJson && isInteractive()) {
-        if (
-          !(await confirmAction(
-            `${subCommand} ${skills.join(", ")} in [project.${group}]?`,
-          ))
-        )
-          return;
-      } else {
-        throw new Error(
-          `skillmux project ${subCommand} requires --yes when run non-interactively`,
-        );
-      }
-    }
+    if (
+      !(await confirmIfNeeded({
+        confirmed: yes,
+        isJson: options.isJson,
+        prompt: `${subCommand} ${skills.join(", ")} in [project.${group}]?`,
+        nonInteractiveError: `skillmux project ${subCommand} requires --yes when run non-interactively`,
+      }))
+    )
+      return;
     writeManifestAtomic(manifestPath, updated);
     console.log(`${subCommand}: [project.${group}] ${skills.join(", ")}`);
     return;
@@ -1115,14 +1119,8 @@ async function runProject(
         throw new Error(`unknown project ${subCommand} option: ${args[i]}`);
       }
     }
-    const config = await loadConfig();
-    const vaultPath = expandHome(config.vault_path);
-    const manifestPath = resolveManifestPath(vaultPath);
-    if (!manifestPath)
-      throw new Error(
-        `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
-      );
-    const manifest = parseManifest(await Bun.file(manifestPath).text());
+    const { config, vaultPath, manifestPath, manifest } =
+      await loadManifestContext();
     const clientTargets = configuredTargetsForClients(manifest, clients);
     const targets = [...new Set([...requestedTargets, ...clientTargets])];
     if (targets.length === 0) {
@@ -1142,20 +1140,15 @@ async function runProject(
       );
       return;
     }
-    if (!args.includes("--yes")) {
-      if (!options.isJson && isInteractive()) {
-        if (
-          !(await confirmAction(
-            `${subCommand} [project.${group}] to ${targets.join(", ")}?`,
-          ))
-        )
-          return;
-      } else {
-        throw new Error(
-          `skillmux project ${subCommand} requires --yes when run non-interactively`,
-        );
-      }
-    }
+    if (
+      !(await confirmIfNeeded({
+        confirmed: args.includes("--yes"),
+        isJson: options.isJson,
+        prompt: `${subCommand} [project.${group}] to ${targets.join(", ")}?`,
+        nonInteractiveError: `skillmux project ${subCommand} requires --yes when run non-interactively`,
+      }))
+    )
+      return;
     writeManifestAtomic(manifestPath, updated);
     console.log(`${subCommand}: [project.${group}] ${targets.join(", ")}`);
     return;
@@ -1173,15 +1166,9 @@ async function runProject(
     throw new Error(`project path is not a directory: ${request.path}`);
   }
 
-  const config = await loadConfig();
-  const vaultPath = expandHome(config.vault_path);
+  const { config, vaultPath, manifestPath, manifest } =
+    await loadManifestContext();
   const localVaultPaths = config.local_vault_paths.map(expandHome);
-  const manifestPath = resolveManifestPath(vaultPath);
-  if (!manifestPath)
-    throw new Error(
-      `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
-    );
-  const manifest = parseManifest(await Bun.file(manifestPath).text());
   if (guided) {
     const name = await promptText("Project group", request.name);
     const availableClients = SUPPORTED_CLIENT_IDS.filter((client) => {
@@ -1293,14 +1280,9 @@ async function runCore(
     throw new Error(`usage: skillmux core ${subCommand} <skill_id>... --yes`);
   }
   const yes = args.includes("--yes");
-  const config = await loadConfig();
-  const vaultPath = expandHome(config.vault_path);
-  const manifestPath = resolveManifestPath(vaultPath);
-  if (!manifestPath)
-    throw new Error(
-      `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
-    );
-  let updated = parseManifest(await Bun.file(manifestPath).text());
+  const { config, vaultPath, manifestPath, manifest } =
+    await loadManifestContext();
+  let updated = manifest;
   for (const skillId of skillIds) {
     updated =
       subCommand === "pin"
@@ -1321,20 +1303,15 @@ async function runCore(
     );
     return;
   }
-  if (!yes) {
-    if (!options.isJson && isInteractive()) {
-      if (
-        !(await confirmAction(
-          `${subCommand} ${skillIds.join(", ")} in [core]?`,
-        ))
-      )
-        return;
-    } else {
-      throw new Error(
-        `skillmux core ${subCommand} requires --yes when run non-interactively`,
-      );
-    }
-  }
+  if (
+    !(await confirmIfNeeded({
+      confirmed: yes,
+      isJson: options.isJson,
+      prompt: `${subCommand} ${skillIds.join(", ")} in [core]?`,
+      nonInteractiveError: `skillmux core ${subCommand} requires --yes when run non-interactively`,
+    }))
+  )
+    return;
   writeManifestAtomic(manifestPath, updated);
   console.log(`${subCommand}: [core] ${skillIds.join(", ")}`);
 }
@@ -1344,14 +1321,7 @@ async function runTarget(
   args: string[],
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
-  const config = await loadConfig();
-  const vaultPath = expandHome(config.vault_path);
-  const manifestPath = resolveManifestPath(vaultPath);
-  if (!manifestPath)
-    throw new Error(
-      `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
-    );
-  const manifest = parseManifest(await Bun.file(manifestPath).text());
+  const { vaultPath, manifestPath, manifest } = await loadManifestContext();
 
   if (subCommand === "list" || subCommand === "show") {
     const names =
@@ -1401,15 +1371,16 @@ async function runTarget(
       );
       return;
     }
-    if (!args.includes("--yes")) {
-      if (!options.isJson && isInteractive()) {
-        if (!(await confirmAction(`Adopt target ${name} at ${path}?`))) return;
-      } else {
-        throw new Error(
+    if (
+      !(await confirmIfNeeded({
+        confirmed: args.includes("--yes"),
+        isJson: options.isJson,
+        prompt: `Adopt target ${name} at ${path}?`,
+        nonInteractiveError:
           "skillmux target add requires --yes when run non-interactively",
-        );
-      }
-    }
+      }))
+    )
+      return;
     applyInit(vaultPath, [{ name, dir: path }]);
     console.log(`target "${name}" added at ${path}`);
     return;
@@ -1428,20 +1399,16 @@ async function runTarget(
       console.log(`target remove: ${name} (files preserved, dry-run)`);
       return;
     }
-    if (!args.includes("--yes")) {
-      if (!options.isJson && isInteractive()) {
-        if (
-          !(await confirmAction(
-            `Remove target ${name} from the manifest and preserve its files?`,
-          ))
-        )
-          return;
-      } else {
-        throw new Error(
+    if (
+      !(await confirmIfNeeded({
+        confirmed: args.includes("--yes"),
+        isJson: options.isJson,
+        prompt: `Remove target ${name} from the manifest and preserve its files?`,
+        nonInteractiveError:
           "skillmux target remove requires --yes when run non-interactively",
-        );
-      }
-    }
+      }))
+    )
+      return;
     const targets = { ...manifest.targets };
     delete targets[name];
     writeManifestAtomic(manifestPath, { ...manifest, targets });
@@ -1482,20 +1449,16 @@ async function runLocalVaultInit(
     );
     return;
   }
-  if (!args.includes("--yes")) {
-    if (!options.isJson && isInteractive()) {
-      if (
-        !(await confirmAction(
-          `Mark ${expanded} as a local_vault (role: local_vault, vault_path: ${expandHome(config.vault_path)})?`,
-        ))
-      )
-        return;
-    } else {
-      throw new Error(
+  if (
+    !(await confirmIfNeeded({
+      confirmed: args.includes("--yes"),
+      isJson: options.isJson,
+      prompt: `Mark ${expanded} as a local_vault (role: local_vault, vault_path: ${expandHome(config.vault_path)})?`,
+      nonInteractiveError:
         "skillmux local-vault init requires --yes when run non-interactively",
-      );
-    }
-  }
+    }))
+  )
+    return;
   writeLocalVaultMarker(expanded, expandHome(config.vault_path));
   if (options.isJson) {
     console.log(
