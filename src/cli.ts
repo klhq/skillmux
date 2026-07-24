@@ -7,7 +7,12 @@ import { createInterface } from "node:readline/promises";
 import { generateDataset } from "./dataset-generator";
 
 import { createClients } from "./clients";
-import { expandHome, loadConfig, migrateLegacyPaths, resolveConfigPath } from "./config";
+import {
+  expandHome,
+  loadConfig,
+  migrateLegacyPaths,
+  resolveConfigPath,
+} from "./config";
 import { openIndex } from "./db";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
@@ -57,9 +62,20 @@ import {
 } from "./manifest";
 import { downloadLocalModels } from "./models";
 import { resolveProjectDirectory, suggestProjectName } from "./project-setup";
-import { parseCommaList, promptMultiSelect, promptText, shouldUseWizard } from "./prompts";
+import {
+  parseCommaList,
+  promptMultiSelect,
+  promptText,
+  shouldUseWizard,
+} from "./prompts";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
-import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
+import {
+  renderScanJson,
+  renderScanText,
+  scanExitCode,
+  scanPath,
+  type ScanSeverity,
+} from "./scan";
 import {
   applyConfigInit,
   inspectVault,
@@ -87,7 +103,15 @@ import {
   type ResolvedTarget,
 } from "./context";
 import { createTargetAdapter, type TargetAdapter } from "./adapters";
-import { emitSuccess, formatJsonEnvelope, isInteractive, mapExitCode, renderTable, renderTargetBanner, suggestCorrection } from "./output";
+import {
+  emitSuccess,
+  formatJsonEnvelope,
+  isInteractive,
+  mapExitCode,
+  renderTable,
+  renderTargetBanner,
+  suggestCorrection,
+} from "./output";
 import { generateCompletions, type ShellType } from "./completions";
 
 const KNOWN_COMMANDS = [
@@ -143,9 +167,17 @@ async function main() {
 
   // Only resolve target if command is target-aware or context/config/calibrate
   const isLocalConfigInit = command === "config" && rawArgv[1] === "init";
-  if ((["context", "config", "calibrate"].includes(command) && !isLocalConfigInit) || flagContext || flagServer) {
+  if (
+    (["context", "config", "calibrate"].includes(command) &&
+      !isLocalConfigInit) ||
+    flagContext ||
+    flagServer
+  ) {
     try {
-      resolvedTarget = await resolveTarget({ context: flagContext, server: flagServer });
+      resolvedTarget = await resolveTarget({
+        context: flagContext,
+        server: flagServer,
+      });
     } catch (err: any) {
       handleError(err, { target: resolvedTarget, isJson, isVerbose });
       return;
@@ -159,13 +191,23 @@ async function main() {
   try {
     switch (command) {
       case "context":
-        await handleContextCommand(subCommand, commandArgs, { target: resolvedTarget, isJson });
+        await handleContextCommand(subCommand, commandArgs, {
+          target: resolvedTarget,
+          isJson,
+        });
         break;
       case "config":
-        await handleConfigCommand(adapter, subCommand, commandArgs, { target: resolvedTarget, isJson, dryRun: isDryRun });
+        await handleConfigCommand(adapter, subCommand, commandArgs, {
+          target: resolvedTarget,
+          isJson,
+          dryRun: isDryRun,
+        });
         break;
       case "calibrate":
-        await handleCalibrateCommand(adapter, subCommand, rawArgv.slice(1), { target: resolvedTarget, isJson });
+        await handleCalibrateCommand(adapter, subCommand, rawArgv.slice(1), {
+          target: resolvedTarget,
+          isJson,
+        });
         break;
       case "completions":
         await handleCompletionsCommand(subCommand);
@@ -226,7 +268,9 @@ async function main() {
         await runDoctor({ isJson });
         break;
       case "which":
-        throw new Error(`skillmux which is removed - use "skillmux skill which ${subCommand || "<skill_id>"}" instead`);
+        throw new Error(
+          `skillmux which is removed - use "skillmux skill which ${subCommand || "<skill_id>"}" instead`,
+        );
       case "skill":
         await runSkill(subCommand, commandArgs);
         break;
@@ -235,11 +279,13 @@ async function main() {
           `skillmux manifest is removed - use "skillmux core ${subCommand || "pin|unpin"}" for [core] skills, or "skillmux project ${subCommand || "pin|unpin"} <group>" for [project.*] skills`,
         );
       case "local-vault":
-        if (subCommand !== "init") throw new Error("usage: skillmux local-vault init <path>");
+        if (subCommand !== "init")
+          throw new Error("usage: skillmux local-vault init <path>");
         await runLocalVaultInit(commandArgs, { isJson, dryRun: isDryRun });
         break;
       case "models":
-        if (subCommand !== "download") throw new Error("usage: skillmux models download");
+        if (subCommand !== "download")
+          throw new Error("usage: skillmux models download");
         await runModelDownload({ isJson });
         break;
       default: {
@@ -258,13 +304,11 @@ async function main() {
 async function handleContextCommand(
   sub: string,
   args: string[],
-  ctx: { target: ResolvedTarget; isJson: boolean }
+  ctx: { target: ResolvedTarget; isJson: boolean },
 ) {
   if (sub === "list") {
     const contexts = await listContexts();
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: contexts })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, contexts, () => {
       renderTargetBanner(ctx.target);
       renderTable(
         [
@@ -273,20 +317,22 @@ async function handleContextCommand(
           { key: "token_env", header: "TOKEN_ENV" },
           { key: "isDefault", header: "DEFAULT" },
         ],
-        contexts.map((c) => ({ ...c, token_env: c.token_env ?? "-", isDefault: c.isDefault ? "*" : "" }))
+        contexts.map((c) => ({
+          ...c,
+          token_env: c.token_env ?? "-",
+          isDefault: c.isDefault ? "*" : "",
+        })),
       );
-    }
+    });
     return;
   }
 
   if (sub === "current") {
     const current = await getCurrentContext();
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: current })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, current, () => {
       renderTargetBanner(ctx.target);
       console.log(`Current context: ${current.name} (${current.server})`);
-    }
+    });
     return;
   }
 
@@ -299,14 +345,18 @@ async function handleContextCommand(
       else if (args[i] === "--token-env") tokenEnv = args[++i];
     }
     if (!name || !server) {
-      throw new Error("usage: skillmux context add <name> --server <url> [--token-env <env_name>]");
+      throw new Error(
+        "usage: skillmux context add <name> --server <url> [--token-env <env_name>]",
+      );
     }
     await addContext(name, { server, token_env: tokenEnv });
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: { name, server, token_env: tokenEnv } })));
-    } else {
-      console.log(`Added context "${name}" -> ${server}`);
-    }
+    emitSuccess(
+      { isJson: ctx.isJson, target: ctx.target },
+      { name, server, token_env: tokenEnv },
+      () => {
+        console.log(`Added context "${name}" -> ${server}`);
+      },
+    );
     return;
   }
 
@@ -314,11 +364,13 @@ async function handleContextCommand(
     const name = args[0];
     if (!name) throw new Error("usage: skillmux context use <name>");
     await useContext(name);
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: { default_context: name } })));
-    } else {
-      console.log(`Switched default context to "${name}"`);
-    }
+    emitSuccess(
+      { isJson: ctx.isJson, target: ctx.target },
+      { default_context: name },
+      () => {
+        console.log(`Switched default context to "${name}"`);
+      },
+    );
     return;
   }
 
@@ -326,11 +378,13 @@ async function handleContextCommand(
     const name = args[0];
     if (!name) throw new Error("usage: skillmux context remove <name>");
     await removeContext(name);
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: { removed: name } })));
-    } else {
-      console.log(`Removed context "${name}"`);
-    }
+    emitSuccess(
+      { isJson: ctx.isJson, target: ctx.target },
+      { removed: name },
+      () => {
+        console.log(`Removed context "${name}"`);
+      },
+    );
     return;
   }
 
@@ -341,7 +395,7 @@ async function handleConfigCommand(
   adapter: TargetAdapter,
   sub: string,
   args: string[],
-  ctx: { target: ResolvedTarget; isJson: boolean; dryRun: boolean }
+  ctx: { target: ResolvedTarget; isJson: boolean; dryRun: boolean },
 ) {
   if (sub === "init") {
     let vaultPath: string | undefined;
@@ -350,7 +404,8 @@ async function handleConfigCommand(
       const option = args[i];
       if (option === "--vault") {
         vaultPath = args[++i];
-        if (!vaultPath) throw new Error("usage: skillmux config init --vault <path> --yes");
+        if (!vaultPath)
+          throw new Error("usage: skillmux config init --vault <path> --yes");
       } else if (option === "--yes") {
         yes = true;
       } else if (option === "--dry-run" || option === "--json") {
@@ -370,69 +425,91 @@ async function handleConfigCommand(
     migrateLegacyPaths();
     const plan = planConfigInit(resolveConfigPath(), expandHome(vaultPath));
     if (plan.action === "preserve") {
-      console.log(ctx.isJson
+      console.log(
+        ctx.isJson
+          ? JSON.stringify({
+              schema_version: 1,
+              ok: true,
+              command: "config init",
+              phase: "result",
+              dry_run: ctx.dryRun,
+              applied: false,
+              plan: {
+                config_path: plan.configPath,
+                vault_path: plan.vaultPath,
+                action: "preserve",
+              },
+            })
+          : `preserved existing config: ${plan.configPath}`,
+      );
+      return;
+    }
+    if (ctx.dryRun) {
+      console.log(
+        ctx.isJson
+          ? JSON.stringify({
+              schema_version: 1,
+              ok: true,
+              command: "config init",
+              phase: "plan",
+              dry_run: true,
+              applied: false,
+              plan: {
+                config_path: plan.configPath,
+                vault_path: plan.vaultPath,
+                action: "create",
+              },
+            })
+          : `config create: ${plan.configPath} (dry-run)`,
+      );
+      return;
+    }
+    if (!yes) {
+      if (!ctx.isJson && isInteractive()) {
+        if (
+          !(await confirmAction(
+            `Create ${plan.configPath} with vault_path ${plan.vaultPath}?`,
+          ))
+        ) {
+          console.log("config init cancelled; nothing written");
+          return;
+        }
+      } else {
+        throw new Error(
+          "config initialization requires --yes in noninteractive mode",
+        );
+      }
+    }
+
+    const result = applyConfigInit(plan);
+    console.log(
+      ctx.isJson
         ? JSON.stringify({
             schema_version: 1,
             ok: true,
             command: "config init",
             phase: "result",
-            dry_run: ctx.dryRun,
-            applied: false,
-            plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: "preserve" },
+            dry_run: false,
+            applied: result === "created",
+            plan: {
+              config_path: plan.configPath,
+              vault_path: plan.vaultPath,
+              action: plan.action,
+            },
           })
-        : `preserved existing config: ${plan.configPath}`);
-      return;
-    }
-    if (ctx.dryRun) {
-      console.log(ctx.isJson
-        ? JSON.stringify({
-            schema_version: 1,
-            ok: true,
-            command: "config init",
-            phase: "plan",
-            dry_run: true,
-            applied: false,
-            plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: "create" },
-          })
-        : `config create: ${plan.configPath} (dry-run)`);
-      return;
-    }
-    if (!yes) {
-      if (!ctx.isJson && isInteractive()) {
-        if (!(await confirmAction(`Create ${plan.configPath} with vault_path ${plan.vaultPath}?`))) {
-          console.log("config init cancelled; nothing written");
-          return;
-        }
-      } else {
-        throw new Error("config initialization requires --yes in noninteractive mode");
-      }
-    }
-
-    const result = applyConfigInit(plan);
-    console.log(ctx.isJson
-      ? JSON.stringify({
-          schema_version: 1,
-          ok: true,
-          command: "config init",
-          phase: "result",
-          dry_run: false,
-          applied: result === "created",
-          plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: plan.action },
-        })
-      : result === "created"
-        ? `created ${plan.configPath}`
-        : `preserved existing config: ${plan.configPath}`);
+        : result === "created"
+          ? `created ${plan.configPath}`
+          : `preserved existing config: ${plan.configPath}`,
+    );
     return;
   }
 
   if (sub === "show") {
     const data = await adapter.getConfigShow();
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, data, () => {
       renderTargetBanner(ctx.target);
       console.log(JSON.stringify(data.effective, null, 2));
-    }
+    });
     return;
   }
 
@@ -440,32 +517,34 @@ async function handleConfigCommand(
     const key = args[0];
     if (!key) throw new Error("usage: skillmux config get <key>");
     const val = await adapter.getConfigGet(key);
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: { key, value: val } })));
-    } else {
-      console.log(typeof val === "object" ? JSON.stringify(val) : String(val));
-    }
+    emitSuccess(
+      { isJson: ctx.isJson, target: ctx.target },
+      { key, value: val },
+      () => {
+        console.log(
+          typeof val === "object" ? JSON.stringify(val) : String(val),
+        );
+      },
+    );
     return;
   }
 
   if (sub === "validate") {
     const res = await adapter.configValidate();
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: res })));
-    } else {
-      console.log(res.valid ? "Configuration is valid." : "Configuration is invalid.");
-    }
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
+      console.log(
+        res.valid ? "Configuration is valid." : "Configuration is invalid.",
+      );
+    });
     return;
   }
 
   if (sub === "diff") {
     const res = await adapter.configDiff();
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: res })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       console.log(JSON.stringify(res.diff, null, 2));
-    }
+    });
     return;
   }
 
@@ -476,27 +555,27 @@ async function handleConfigCommand(
       throw new Error("usage: skillmux config set <key> <value> [--dry-run]");
     }
     const res = await adapter.configSet(key, value, { dryRun: ctx.dryRun });
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: res })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       const prefix = ctx.dryRun ? "[dry-run] " : "";
-      console.log(`${prefix}${key}: ${JSON.stringify(res.prior_val)} -> ${JSON.stringify(res.resulting_val)}`);
-      console.log(`Persistence: ${res.persistence}, Application: ${res.application}`);
-    }
+      console.log(
+        `${prefix}${key}: ${JSON.stringify(res.prior_val)} -> ${JSON.stringify(res.resulting_val)}`,
+      );
+      console.log(
+        `Persistence: ${res.persistence}, Application: ${res.application}`,
+      );
+    });
     return;
   }
 
   if (sub === "status") {
     const res = await adapter.configStatus();
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: res })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       console.log(`Runtime: ${res.runtime}`);
       console.log(`Active revision: ${res.active_revision}`);
       console.log(`Readiness: ${res.readiness.status}`);
-    }
+    });
     return;
   }
 
@@ -504,9 +583,14 @@ async function handleConfigCommand(
 }
 
 async function confirmAction(prompt: string): Promise<boolean> {
-  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   try {
-    const answer = (await readline.question(`${prompt} [y/N] `)).trim().toLowerCase();
+    const answer = (await readline.question(`${prompt} [y/N] `))
+      .trim()
+      .toLowerCase();
     return answer === "y" || answer === "yes";
   } finally {
     readline.close();
@@ -517,7 +601,7 @@ async function handleCalibrateCommand(
   adapter: TargetAdapter,
   sub: string,
   args: string[],
-  ctx: { target: ResolvedTarget; isJson: boolean }
+  ctx: { target: ResolvedTarget; isJson: boolean },
 ) {
   if (sub === "run") {
     let datasetPath: string | undefined;
@@ -525,21 +609,17 @@ async function handleCalibrateCommand(
       if (args[i] === "--dataset") datasetPath = args[++i];
     }
     const res = await adapter.calibrateRun({ datasetPath });
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: res })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       console.log(`Calibration run complete.`);
       if (res.result) console.log(JSON.stringify(res.result, null, 2));
-    }
+    });
     return;
   }
 
   if (sub === "list") {
     const res = await adapter.calibrateList();
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: res })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       renderTable(
         [
@@ -547,9 +627,9 @@ async function handleCalibrateCommand(
           { key: "created_at", header: "CREATED_AT" },
           { key: "status", header: "STATUS" },
         ],
-        res
+        res,
       );
-    }
+    });
     return;
   }
 
@@ -557,12 +637,10 @@ async function handleCalibrateCommand(
     const runId = args[1];
     if (!runId) throw new Error("usage: skillmux calibrate show <run_id>");
     const res = await adapter.calibrateShow(runId);
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: res })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       console.log(JSON.stringify(res, null, 2));
-    }
+    });
     return;
   }
 
@@ -570,12 +648,10 @@ async function handleCalibrateCommand(
     const runId = args[1];
     if (!runId) throw new Error("usage: skillmux calibrate apply <run_id>");
     const res = await adapter.calibrateApply(runId);
-    if (ctx.isJson) {
-      console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target, data: res })));
-    } else {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       console.log(`Applied calibration run "${runId}"`);
-    }
+    });
     return;
   }
 
@@ -584,7 +660,9 @@ async function handleCalibrateCommand(
     return;
   }
 
-  throw new Error("usage: skillmux calibrate generate-dataset [--vault <path>] [--out <file>]");
+  throw new Error(
+    "usage: skillmux calibrate generate-dataset [--vault <path>] [--out <file>]",
+  );
 }
 
 async function handleCompletionsCommand(shell: string) {
@@ -596,7 +674,7 @@ async function handleCompletionsCommand(shell: string) {
 
 function handleError(
   err: any,
-  opts: { target: ResolvedTarget; isJson: boolean; isVerbose: boolean }
+  opts: { target: ResolvedTarget; isJson: boolean; isVerbose: boolean },
 ) {
   const code = mapExitCode(err);
   process.exitCode = code;
@@ -611,7 +689,13 @@ function handleError(
     });
     console.log(JSON.stringify(env));
   } else {
-    console.error(msg.startsWith("usage:") || msg.startsWith("Unknown") || msg.startsWith("error:") ? msg : `error: ${msg}`);
+    console.error(
+      msg.startsWith("usage:") ||
+        msg.startsWith("Unknown") ||
+        msg.startsWith("error:")
+        ? msg
+        : `error: ${msg}`,
+    );
     if (opts.isVerbose && err instanceof Error && err.stack) {
       console.error(err.stack);
     }
@@ -653,7 +737,10 @@ Commands:
 
 type Transport = "stdio" | "http";
 
-function parseServeArgs(args: string[]): { transport: Transport; port?: number } {
+function parseServeArgs(args: string[]): {
+  transport: Transport;
+  port?: number;
+} {
   let transport: Transport = "stdio";
   let port: number | undefined;
   for (let i = 0; i < args.length; i++) {
@@ -683,7 +770,9 @@ async function runIndex(): Promise<void> {
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
   const report = await rebuildIndex((skillId, error) => {
-    console.error(`warning: keeping previous index entry for ${skillId}: ${error}`);
+    console.error(
+      `warning: keeping previous index entry for ${skillId}: ${error}`,
+    );
   });
   const retainedNote =
     report.retained.length > 0
@@ -695,7 +784,9 @@ async function runIndex(): Promise<void> {
     const backfilled = await backfillEmbeddings();
     console.log(`embeddings: ${backfilled} backfilled`);
   } catch {
-    console.log("embeddings: skipped (endpoint unreachable; lexical-only recall until next index)");
+    console.log(
+      "embeddings: skipped (endpoint unreachable; lexical-only recall until next index)",
+    );
   }
 }
 
@@ -723,7 +814,9 @@ async function runDoctor(options: { isJson: boolean }): Promise<void> {
     console.log(`inference mode: ${report.mode}`);
     console.log(`routing capability: ${report.capability}`);
     for (const check of report.checks)
-      console.log(`${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`);
+      console.log(
+        `${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`,
+      );
   });
   if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
 }
@@ -739,8 +832,8 @@ async function runWhich(args: string[]): Promise<void> {
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
-  const roots = vaultResolutionOrder(vaultPath, localVaultPaths).filter((root) =>
-    existsSync(join(root, skillId, "SKILL.md")),
+  const roots = vaultResolutionOrder(vaultPath, localVaultPaths).filter(
+    (root) => existsSync(join(root, skillId, "SKILL.md")),
   );
   if (roots.length === 0) {
     console.log(`${skillId}: not found in vault_path or local_vault_paths`);
@@ -748,7 +841,8 @@ async function runWhich(args: string[]): Promise<void> {
     return;
   }
   console.log(`${skillId}: serving from ${roots[0]}`);
-  for (const shadowedRoot of roots.slice(1)) console.log(`  shadows: ${shadowedRoot}`);
+  for (const shadowedRoot of roots.slice(1))
+    console.log(`  shadows: ${shadowedRoot}`);
 }
 
 const PROJECT_INIT_USAGE =
@@ -818,7 +912,11 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
       yes = true;
     } else if (arg === "--no-sync") {
       sync = false;
-    } else if (arg === "--dry-run" || arg === "--json" || arg === "--interactive") {
+    } else if (
+      arg === "--dry-run" ||
+      arg === "--json" ||
+      arg === "--interactive"
+    ) {
       continue;
     } else if (arg.startsWith("-")) {
       throw new Error(`unknown project init option: ${arg}`);
@@ -829,8 +927,18 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
     }
   }
 
-  const path = resolveProjectDirectory(projectPath ? expandHome(projectPath) : undefined);
-  return { path, name: name ?? suggestProjectName(basename(path)), skills, clients, targets, yes, sync };
+  const path = resolveProjectDirectory(
+    projectPath ? expandHome(projectPath) : undefined,
+  );
+  return {
+    path,
+    name: name ?? suggestProjectName(basename(path)),
+    skills,
+    clients,
+    targets,
+    yes,
+    sync,
+  };
 }
 
 async function runProject(
@@ -842,11 +950,15 @@ async function runProject(
     const config = await loadConfig();
     const vaultPath = expandHome(config.vault_path);
     const manifestPath = resolveManifestPath(vaultPath);
-    if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+    if (!manifestPath)
+      throw new Error(
+        `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
+      );
     const manifest = parseManifest(await Bun.file(manifestPath).text());
-    const names = subCommand === "show"
-      ? [args[0] ?? ""]
-      : Object.keys(manifest.project ?? {});
+    const names =
+      subCommand === "show"
+        ? [args[0] ?? ""]
+        : Object.keys(manifest.project ?? {});
     if (subCommand === "show" && !manifest.project?.[names[0]!]) {
       throw new Error(`[project.${names[0]}] does not exist`);
     }
@@ -874,9 +986,14 @@ async function runProject(
   }
   if (subCommand === "add-path" || subCommand === "remove-path") {
     const group = args[0];
-    if (!group) throw new Error(`usage: skillmux project ${subCommand} <group> [path] --yes`);
+    if (!group)
+      throw new Error(
+        `usage: skillmux project ${subCommand} <group> [path] --yes`,
+      );
     const rawPath = args[1]?.startsWith("-") ? undefined : args[1];
-    const projectPath = resolveProjectDirectory(rawPath ? expandHome(rawPath) : undefined);
+    const projectPath = resolveProjectDirectory(
+      rawPath ? expandHome(rawPath) : undefined,
+    );
     const yes = args.includes("--yes");
     if (!existsSync(projectPath) || !lstatSync(projectPath).isDirectory()) {
       throw new Error(`project path is not a directory: ${projectPath}`);
@@ -884,21 +1001,37 @@ async function runProject(
     const config = await loadConfig();
     const vaultPath = expandHome(config.vault_path);
     const manifestPath = resolveManifestPath(vaultPath);
-    if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+    if (!manifestPath)
+      throw new Error(
+        `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
+      );
     const manifest = parseManifest(await Bun.file(manifestPath).text());
     const updated = updateProjectPaths(manifest, group, {
-      ...(subCommand === "add-path" ? { add: [projectPath] } : { remove: [projectPath] }),
+      ...(subCommand === "add-path"
+        ? { add: [projectPath] }
+        : { remove: [projectPath] }),
     });
-    validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
+    validateManifest(
+      updated,
+      vaultPath,
+      config.local_vault_paths.map(expandHome),
+    );
     if (options.dryRun) {
       console.log(`${subCommand}: [project.${group}] ${projectPath} (dry-run)`);
       return;
     }
     if (!yes) {
       if (!options.isJson && isInteractive()) {
-        if (!(await confirmAction(`${subCommand} ${projectPath} in [project.${group}]?`))) return;
+        if (
+          !(await confirmAction(
+            `${subCommand} ${projectPath} in [project.${group}]?`,
+          ))
+        )
+          return;
       } else {
-        throw new Error(`skillmux project ${subCommand} requires --yes when run non-interactively`);
+        throw new Error(
+          `skillmux project ${subCommand} requires --yes when run non-interactively`,
+        );
       }
     }
     writeManifestAtomic(manifestPath, updated);
@@ -909,29 +1042,48 @@ async function runProject(
     const group = args[0];
     const skills = args.slice(1).filter((arg) => !arg.startsWith("-"));
     if (!group || skills.length === 0) {
-      throw new Error(`usage: skillmux project ${subCommand} <group> <skill_id>... --yes`);
+      throw new Error(
+        `usage: skillmux project ${subCommand} <group> <skill_id>... --yes`,
+      );
     }
     const yes = args.includes("--yes");
     const config = await loadConfig();
     const vaultPath = expandHome(config.vault_path);
     const manifestPath = resolveManifestPath(vaultPath);
-    if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+    if (!manifestPath)
+      throw new Error(
+        `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
+      );
     let updated = parseManifest(await Bun.file(manifestPath).text());
     for (const skill of skills) {
-      updated = subCommand === "pin"
-        ? pinProject(updated, skill, group)
-        : unpinProject(updated, skill, group);
+      updated =
+        subCommand === "pin"
+          ? pinProject(updated, skill, group)
+          : unpinProject(updated, skill, group);
     }
-    validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
+    validateManifest(
+      updated,
+      vaultPath,
+      config.local_vault_paths.map(expandHome),
+    );
     if (options.dryRun) {
-      console.log(`${subCommand}: [project.${group}] ${skills.join(", ")} (dry-run)`);
+      console.log(
+        `${subCommand}: [project.${group}] ${skills.join(", ")} (dry-run)`,
+      );
       return;
     }
     if (!yes) {
       if (!options.isJson && isInteractive()) {
-        if (!(await confirmAction(`${subCommand} ${skills.join(", ")} in [project.${group}]?`))) return;
+        if (
+          !(await confirmAction(
+            `${subCommand} ${skills.join(", ")} in [project.${group}]?`,
+          ))
+        )
+          return;
       } else {
-        throw new Error(`skillmux project ${subCommand} requires --yes when run non-interactively`);
+        throw new Error(
+          `skillmux project ${subCommand} requires --yes when run non-interactively`,
+        );
       }
     }
     writeManifestAtomic(manifestPath, updated);
@@ -940,7 +1092,10 @@ async function runProject(
   }
   if (subCommand === "attach" || subCommand === "detach") {
     const group = args[0];
-    if (!group) throw new Error(`usage: skillmux project ${subCommand} <group> (--client <id>... | --target <name>...) --yes`);
+    if (!group)
+      throw new Error(
+        `usage: skillmux project ${subCommand} <group> (--client <id>... | --target <name>...) --yes`,
+      );
     const clients: string[] = [];
     const requestedTargets: string[] = [];
     for (let i = 1; i < args.length; i++) {
@@ -952,14 +1107,21 @@ async function runProject(
         const value = args[++i];
         if (!value) throw new Error("--target requires a name");
         requestedTargets.push(value);
-      } else if (args[i] !== "--yes" && args[i] !== "--dry-run" && args[i] !== "--json") {
+      } else if (
+        args[i] !== "--yes" &&
+        args[i] !== "--dry-run" &&
+        args[i] !== "--json"
+      ) {
         throw new Error(`unknown project ${subCommand} option: ${args[i]}`);
       }
     }
     const config = await loadConfig();
     const vaultPath = expandHome(config.vault_path);
     const manifestPath = resolveManifestPath(vaultPath);
-    if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+    if (!manifestPath)
+      throw new Error(
+        `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
+      );
     const manifest = parseManifest(await Bun.file(manifestPath).text());
     const clientTargets = configuredTargetsForClients(manifest, clients);
     const targets = [...new Set([...requestedTargets, ...clientTargets])];
@@ -969,16 +1131,29 @@ async function runProject(
     const updated = updateProjectTargets(manifest, group, {
       ...(subCommand === "attach" ? { attach: targets } : { detach: targets }),
     });
-    validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
+    validateManifest(
+      updated,
+      vaultPath,
+      config.local_vault_paths.map(expandHome),
+    );
     if (options.dryRun) {
-      console.log(`${subCommand}: [project.${group}] ${targets.join(", ")} (dry-run)`);
+      console.log(
+        `${subCommand}: [project.${group}] ${targets.join(", ")} (dry-run)`,
+      );
       return;
     }
     if (!args.includes("--yes")) {
       if (!options.isJson && isInteractive()) {
-        if (!(await confirmAction(`${subCommand} [project.${group}] to ${targets.join(", ")}?`))) return;
+        if (
+          !(await confirmAction(
+            `${subCommand} [project.${group}] to ${targets.join(", ")}?`,
+          ))
+        )
+          return;
       } else {
-        throw new Error(`skillmux project ${subCommand} requires --yes when run non-interactively`);
+        throw new Error(
+          `skillmux project ${subCommand} requires --yes when run non-interactively`,
+        );
       }
     }
     writeManifestAtomic(manifestPath, updated);
@@ -992,7 +1167,8 @@ async function runProject(
     json: options.isJson,
     dryRun: options.dryRun,
   });
-  if (!existsSync(request.path)) throw new Error(`project path does not exist: ${request.path}`);
+  if (!existsSync(request.path))
+    throw new Error(`project path does not exist: ${request.path}`);
   if (!lstatSync(request.path).isDirectory()) {
     throw new Error(`project path is not a directory: ${request.path}`);
   }
@@ -1001,24 +1177,34 @@ async function runProject(
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   const manifestPath = resolveManifestPath(vaultPath);
-  if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+  if (!manifestPath)
+    throw new Error(
+      `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
+    );
   const manifest = parseManifest(await Bun.file(manifestPath).text());
   if (guided) {
     const name = await promptText("Project group", request.name);
     const availableClients = SUPPORTED_CLIENT_IDS.filter((client) => {
       const surface = planClientSurfaces([client]).surfaces[0];
-      return surface !== undefined && configuredTargetForSurface(manifest, surface) !== undefined;
+      return (
+        surface !== undefined &&
+        configuredTargetForSurface(manifest, surface) !== undefined
+      );
     });
     const clients = await promptMultiSelect(
       "Which clients should receive project skills?",
       availableClients.map((client) => ({
         value: client,
         label: client,
-        selected: request.clients.length === 0 || request.clients.includes(client),
+        selected:
+          request.clients.length === 0 || request.clients.includes(client),
       })),
     );
     const skills = parseCommaList(
-      await promptText("Project skill IDs, comma-separated", request.skills.join(",")),
+      await promptText(
+        "Project skill IDs, comma-separated",
+        request.skills.join(","),
+      ),
     );
     request = { ...request, name, clients, skills };
   }
@@ -1043,7 +1229,11 @@ async function runProject(
   };
 
   if (options.dryRun) {
-    console.log(options.isJson ? JSON.stringify({ schema_version: 1, plan }) : `project plan: ${JSON.stringify(plan)}`);
+    console.log(
+      options.isJson
+        ? JSON.stringify({ schema_version: 1, plan })
+        : `project plan: ${JSON.stringify(plan)}`,
+    );
     return;
   }
   if (!request.yes) {
@@ -1056,12 +1246,18 @@ async function runProject(
         console.log(`  skills: ${request.skills.join(", ") || "(none)"}`);
         console.log(`  sync: ${request.sync ? "yes" : "no"}`);
       }
-      if (!(await confirmAction(`Apply project setup for ${request.name} at ${request.path}?`))) {
+      if (
+        !(await confirmAction(
+          `Apply project setup for ${request.name} at ${request.path}?`,
+        ))
+      ) {
         console.log("project setup cancelled");
         return;
       }
     } else {
-      throw new Error("skillmux project init requires --yes when run non-interactively");
+      throw new Error(
+        "skillmux project init requires --yes when run non-interactively",
+      );
     }
   }
 
@@ -1100,25 +1296,43 @@ async function runCore(
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
   const manifestPath = resolveManifestPath(vaultPath);
-  if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+  if (!manifestPath)
+    throw new Error(
+      `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
+    );
   let updated = parseManifest(await Bun.file(manifestPath).text());
   for (const skillId of skillIds) {
-    updated = subCommand === "pin" ? pinCore(updated, skillId) : unpinCore(updated, skillId);
+    updated =
+      subCommand === "pin"
+        ? pinCore(updated, skillId)
+        : unpinCore(updated, skillId);
   }
-  validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
+  validateManifest(
+    updated,
+    vaultPath,
+    config.local_vault_paths.map(expandHome),
+  );
   if (options.dryRun) {
     emitSuccess(
       { isJson: options.isJson },
       { subcommand: subCommand, skill_ids: skillIds },
-      () => console.log(`${subCommand}: [core] ${skillIds.join(", ")} (dry-run)`),
+      () =>
+        console.log(`${subCommand}: [core] ${skillIds.join(", ")} (dry-run)`),
     );
     return;
   }
   if (!yes) {
     if (!options.isJson && isInteractive()) {
-      if (!(await confirmAction(`${subCommand} ${skillIds.join(", ")} in [core]?`))) return;
+      if (
+        !(await confirmAction(
+          `${subCommand} ${skillIds.join(", ")} in [core]?`,
+        ))
+      )
+        return;
     } else {
-      throw new Error(`skillmux core ${subCommand} requires --yes when run non-interactively`);
+      throw new Error(
+        `skillmux core ${subCommand} requires --yes when run non-interactively`,
+      );
     }
   }
   writeManifestAtomic(manifestPath, updated);
@@ -1133,11 +1347,15 @@ async function runTarget(
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
   const manifestPath = resolveManifestPath(vaultPath);
-  if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+  if (!manifestPath)
+    throw new Error(
+      `no skillmux.toml found at ${vaultPath}; run skillmux init first`,
+    );
   const manifest = parseManifest(await Bun.file(manifestPath).text());
 
   if (subCommand === "list" || subCommand === "show") {
-    const names = subCommand === "show" ? [args[0] ?? ""] : Object.keys(manifest.targets);
+    const names =
+      subCommand === "show" ? [args[0] ?? ""] : Object.keys(manifest.targets);
     if (subCommand === "show" && !manifest.targets[names[0]!]) {
       throw new Error(`target "${names[0]}" does not exist`);
     }
@@ -1159,7 +1377,9 @@ async function runTarget(
         console.log(`  dir: ${target.dir}`);
         console.log(`  host: ${target.host ?? "(global)"}`);
         console.log(`  clients: ${target.clients.join(", ") || "(custom)"}`);
-        console.log(`  projects: ${target.project_groups.join(", ") || "(none)"}`);
+        console.log(
+          `  projects: ${target.project_groups.join(", ") || "(none)"}`,
+        );
       }
     }
     return;
@@ -1169,20 +1389,25 @@ async function runTarget(
     const name = args[0];
     const dirIndex = args.indexOf("--dir");
     const rawPath = dirIndex === -1 ? undefined : args[dirIndex + 1];
-    if (!name || !rawPath) throw new Error("usage: skillmux target add <name> --dir <dir> --yes");
+    if (!name || !rawPath)
+      throw new Error("usage: skillmux target add <name> --dir <dir> --yes");
     const path = expandHome(rawPath);
     if (options.dryRun) {
       const planned = planInitManifest(vaultPath, [{ name, dir: path }], []);
-      console.log(options.isJson
-        ? JSON.stringify({ schema_version: 1, target: planned.targets[name] })
-        : `target add: ${name} -> ${path} (dry-run)`);
+      console.log(
+        options.isJson
+          ? JSON.stringify({ schema_version: 1, target: planned.targets[name] })
+          : `target add: ${name} -> ${path} (dry-run)`,
+      );
       return;
     }
     if (!args.includes("--yes")) {
       if (!options.isJson && isInteractive()) {
         if (!(await confirmAction(`Adopt target ${name} at ${path}?`))) return;
       } else {
-        throw new Error("skillmux target add requires --yes when run non-interactively");
+        throw new Error(
+          "skillmux target add requires --yes when run non-interactively",
+        );
       }
     }
     applyInit(vaultPath, [{ name, dir: path }]);
@@ -1193,7 +1418,11 @@ async function runTarget(
   if (subCommand === "remove") {
     const name = args[0];
     if (!name || !manifest.targets[name]) {
-      throw new Error(name ? `target "${name}" does not exist` : "usage: skillmux target remove <name> --yes");
+      throw new Error(
+        name
+          ? `target "${name}" does not exist`
+          : "usage: skillmux target remove <name> --yes",
+      );
     }
     if (options.dryRun) {
       console.log(`target remove: ${name} (files preserved, dry-run)`);
@@ -1201,56 +1430,93 @@ async function runTarget(
     }
     if (!args.includes("--yes")) {
       if (!options.isJson && isInteractive()) {
-        if (!(await confirmAction(`Remove target ${name} from the manifest and preserve its files?`))) return;
+        if (
+          !(await confirmAction(
+            `Remove target ${name} from the manifest and preserve its files?`,
+          ))
+        )
+          return;
       } else {
-        throw new Error("skillmux target remove requires --yes when run non-interactively");
+        throw new Error(
+          "skillmux target remove requires --yes when run non-interactively",
+        );
       }
     }
     const targets = { ...manifest.targets };
     delete targets[name];
     writeManifestAtomic(manifestPath, { ...manifest, targets });
-    console.log(`target "${name}" removed from the manifest; files preserved at ${manifest.targets[name]!.dir}`);
+    console.log(
+      `target "${name}" removed from the manifest; files preserved at ${manifest.targets[name]!.dir}`,
+    );
     return;
   }
 
   throw new Error("usage: skillmux target <list|show|add|remove>");
 }
 
-async function runLocalVaultInit(args: string[], options: { isJson: boolean; dryRun: boolean }): Promise<void> {
+async function runLocalVaultInit(
+  args: string[],
+  options: { isJson: boolean; dryRun: boolean },
+): Promise<void> {
   const path = args[0];
   if (!path) throw new Error("usage: skillmux local-vault init <path> --yes");
   const expanded = expandHome(path);
   const config = await loadConfig();
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   if (!localVaultPaths.includes(expanded)) {
-    throw new Error(`"${path}" is not one of the configured local_vault_paths — add it to config.toml first`);
+    throw new Error(
+      `"${path}" is not one of the configured local_vault_paths — add it to config.toml first`,
+    );
   }
   if (!existsSync(expanded)) throw new Error(`"${path}" does not exist`);
   const markerPath = join(expanded, ".skillmux");
   if (options.dryRun) {
-    console.log(options.isJson
-      ? JSON.stringify({ schema_version: 1, marker_path: markerPath, vault_path: expandHome(config.vault_path) })
-      : `local-vault init: ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)}) (dry-run)`);
+    console.log(
+      options.isJson
+        ? JSON.stringify({
+            schema_version: 1,
+            marker_path: markerPath,
+            vault_path: expandHome(config.vault_path),
+          })
+        : `local-vault init: ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)}) (dry-run)`,
+    );
     return;
   }
   if (!args.includes("--yes")) {
     if (!options.isJson && isInteractive()) {
-      if (!(await confirmAction(`Mark ${expanded} as a local_vault (role: local_vault, vault_path: ${expandHome(config.vault_path)})?`))) return;
+      if (
+        !(await confirmAction(
+          `Mark ${expanded} as a local_vault (role: local_vault, vault_path: ${expandHome(config.vault_path)})?`,
+        ))
+      )
+        return;
     } else {
-      throw new Error("skillmux local-vault init requires --yes when run non-interactively");
+      throw new Error(
+        "skillmux local-vault init requires --yes when run non-interactively",
+      );
     }
   }
   writeLocalVaultMarker(expanded, expandHome(config.vault_path));
   if (options.isJson) {
-    console.log(JSON.stringify({ schema_version: 1, marker_path: markerPath, vault_path: expandHome(config.vault_path) }));
+    console.log(
+      JSON.stringify({
+        schema_version: 1,
+        marker_path: markerPath,
+        vault_path: expandHome(config.vault_path),
+      }),
+    );
   } else {
-    console.log(`wrote ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)})`);
+    console.log(
+      `wrote ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)})`,
+    );
   }
 }
 
 async function runModelDownload(options: { isJson: boolean }): Promise<void> {
   const cacheDir = await downloadLocalModels(await loadConfig());
-  emitSuccess({ isJson: options.isJson }, { cache_dir: cacheDir }, () => console.log(`models ready in ${cacheDir}`));
+  emitSuccess({ isJson: options.isJson }, { cache_dir: cacheDir }, () =>
+    console.log(`models ready in ${cacheDir}`),
+  );
 }
 
 function parseSyncArgs(args: string[]): {
@@ -1317,10 +1583,18 @@ async function runSync(args: string[]): Promise<void> {
 
     const suffix = dryRun ? " (dry-run)" : "";
     const result = syncTarget(
-      { vaultPath, targetDir, targetName, coreSkillIds: manifest.core.skills, localVaultPaths },
+      {
+        vaultPath,
+        targetDir,
+        targetName,
+        coreSkillIds: manifest.core.skills,
+        localVaultPaths,
+      },
       { dryRun },
     );
-    console.log(`${targetName}: +${result.added.length} -${result.removed.length}${suffix}`);
+    console.log(
+      `${targetName}: +${result.added.length} -${result.removed.length}${suffix}`,
+    );
 
     if (target.project_groups.length > 0) {
       const allGroups = manifest.project ?? {};
@@ -1387,7 +1661,11 @@ function parseInitArgs(args: string[]): {
       if (!value) throw new Error("--core requires a skill_id");
       coreSkillIds.push(value);
       i++;
-    } else if (option === "--dry-run" || option === "--json" || option === "--interactive") {
+    } else if (
+      option === "--dry-run" ||
+      option === "--json" ||
+      option === "--interactive"
+    ) {
       continue;
     } else if (option === "--migrate-full-vault") {
       migrateFullVault = true;
@@ -1439,10 +1717,13 @@ async function runInit(
   let configPlan: ConfigInitPlan | undefined;
   let vaultPath: string;
   if (!existsSync(configPath)) {
-    const bootstrapVaultPath = requestedVaultPath ??
+    const bootstrapVaultPath =
+      requestedVaultPath ??
       (!options.isJson && isInteractive() ? "~/skills" : undefined);
     if (!bootstrapVaultPath) {
-      throw new Error(`machine config does not exist: ${configPath}; re-run with --vault <path>`);
+      throw new Error(
+        `machine config does not exist: ${configPath}; re-run with --vault <path>`,
+      );
     }
     configPlan = planConfigInit(configPath, expandHome(bootstrapVaultPath));
     vaultPath = configPlan.vaultPath;
@@ -1467,15 +1748,21 @@ async function runInit(
   let selectedClients = requestedClients;
   if (guided) {
     const detected = detectInstalledClients({
-      codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+      codexHome: process.env.CODEX_HOME
+        ? expandHome(process.env.CODEX_HOME)
+        : undefined,
     });
-    const evidence = new Map(detected.map((item) => [item.client, item.evidence]));
+    const evidence = new Map(
+      detected.map((item) => [item.client, item.evidence]),
+    );
     selectedClients = await promptMultiSelect(
       "Which clients do you use?",
       SUPPORTED_CLIENT_IDS.map((client) => ({
         value: client,
         label: client,
-        detail: evidence.has(client) ? `detected: ${evidence.get(client)}` : undefined,
+        detail: evidence.has(client)
+          ? `detected: ${evidence.get(client)}`
+          : undefined,
         selected: evidence.has(client) || requestedClients.includes(client),
       })),
     );
@@ -1483,16 +1770,26 @@ async function runInit(
   let selectedCoreSkillIds = coreSkillIds;
   if (guided) {
     selectedCoreSkillIds = parseCommaList(
-      await promptText("Core skill IDs to add, comma-separated", coreSkillIds.join(",")),
+      await promptText(
+        "Core skill IDs to add, comma-separated",
+        coreSkillIds.join(","),
+      ),
     );
   }
 
   const clientPlan = planClientSurfaces(selectedClients, {
-    codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+    codexHome: process.env.CODEX_HOME
+      ? expandHome(process.env.CODEX_HOME)
+      : undefined,
   });
-  const instructionPlan = planInstructionSetup(skipInstructions ? [] : clientPlan.clients.map((client) => client.id), {
-    codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
-  });
+  const instructionPlan = planInstructionSetup(
+    skipInstructions ? [] : clientPlan.clients.map((client) => client.id),
+    {
+      codexHome: process.env.CODEX_HOME
+        ? expandHome(process.env.CODEX_HOME)
+        : undefined,
+    },
+  );
   const instructionReadiness: Partial<Record<ClientId, ReadinessAxis>> = {};
   for (const change of instructionPlan.changes) {
     for (const client of change.clients) {
@@ -1503,14 +1800,26 @@ async function runInit(
     }
   }
   for (const manual of instructionPlan.manual) {
-    instructionReadiness[manual.client] = { status: "manual", detail: manual.reason };
+    instructionReadiness[manual.client] = {
+      status: "manual",
+      detail: manual.reason,
+    };
   }
-  const builtInNames = new Set(["agent-skills", "claude-code", "codex", "custom", "agents", "claude"]);
+  const builtInNames = new Set([
+    "agent-skills",
+    "claude-code",
+    "codex",
+    "custom",
+    "agents",
+    "claude",
+  ]);
   const explicitSurfaceTargets = explicitTargets
     .filter((name) => builtInNames.has(name))
     .map((name) =>
       resolveBuiltInTarget(name, {
-        codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+        codexHome: process.env.CODEX_HOME
+          ? expandHome(process.env.CODEX_HOME)
+          : undefined,
         customPath: customPath ? expandHome(customPath) : undefined,
       }),
     );
@@ -1521,7 +1830,9 @@ async function runInit(
     if (target.warning) console.error(`warning: ${target.warning}`);
   }
   const targetByPath = new Map(
-    explicitSurfaceTargets.map((target) => [target.path, target.targetName] as const),
+    explicitSurfaceTargets.map(
+      (target) => [target.path, target.targetName] as const,
+    ),
   );
   const existingManifestPath = resolveManifestPath(vaultPath);
   const existingManifest = existingManifestPath
@@ -1532,7 +1843,8 @@ async function runInit(
       targetByPath.set(
         surface.path,
         existingManifest
-          ? configuredTargetForSurface(existingManifest, surface) ?? surface.targetName
+          ? (configuredTargetForSurface(existingManifest, surface) ??
+              surface.targetName)
           : surface.targetName,
       );
     }
@@ -1546,7 +1858,8 @@ async function runInit(
   const candidates = detectSurfaces(candidatePaths, vaultPath);
   if (!options.isJson) {
     for (const candidate of candidates) {
-      const name = targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path);
+      const name =
+        targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path);
       if (candidate.state === "missing") {
         console.log(`${name} (${candidate.path}): not found`);
         continue;
@@ -1556,26 +1869,45 @@ async function runInit(
         continue;
       }
       if (candidate.state === "full-vault") {
-        console.log(`${name} (${candidate.path}): full-vault -> ${candidate.canonicalPath}`);
+        console.log(
+          `${name} (${candidate.path}): full-vault -> ${candidate.canonicalPath}`,
+        );
         continue;
       }
       if (candidate.state === "external-symlink") {
-        console.log(`${name} (${candidate.path}): external symlink -> ${candidate.canonicalPath}`);
+        console.log(
+          `${name} (${candidate.path}): external symlink -> ${candidate.canonicalPath}`,
+        );
         continue;
       }
       if (candidate.state === "unsupported") {
-        console.log(`${name} (${candidate.path}): unsupported filesystem entry`);
+        console.log(
+          `${name} (${candidate.path}): unsupported filesystem entry`,
+        );
         continue;
       }
       const kind = "real dir";
-      const marked = candidate.alreadyMarked ? ", already skillmux-managed" : "";
-      console.log(`${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`);
+      const marked = candidate.alreadyMarked
+        ? ", already skillmux-managed"
+        : "";
+      console.log(
+        `${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`,
+      );
     }
-    for (const readiness of assessClientReadiness(clientPlan, instructionReadiness)) {
+    for (const readiness of assessClientReadiness(
+      clientPlan,
+      instructionReadiness,
+    )) {
       console.log(`\n${readiness.client} readiness:`);
-      console.log(`  skill surface: ${readiness.skillSurface.status} — ${readiness.skillSurface.detail}`);
-      console.log(`  MCP registration: ${readiness.mcpRegistration.status} — ${readiness.mcpRegistration.detail}`);
-      console.log(`  instructions: ${readiness.instructionSetup.status} — ${readiness.instructionSetup.detail}`);
+      console.log(
+        `  skill surface: ${readiness.skillSurface.status} — ${readiness.skillSurface.detail}`,
+      );
+      console.log(
+        `  MCP registration: ${readiness.mcpRegistration.status} — ${readiness.mcpRegistration.detail}`,
+      );
+      console.log(
+        `  instructions: ${readiness.instructionSetup.status} — ${readiness.instructionSetup.detail}`,
+      );
     }
     for (const change of instructionPlan.changes) {
       console.log(
@@ -1606,20 +1938,28 @@ async function runInit(
 
   const byName = new Map(
     candidates
-      .filter((candidate) =>
-        candidate.deliveryMode === "managed-pins" ||
-        (migrateFullVault && candidate.state === "full-vault"),
+      .filter(
+        (candidate) =>
+          candidate.deliveryMode === "managed-pins" ||
+          (migrateFullVault && candidate.state === "full-vault"),
       )
-      .map((candidate) => [
-        targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path),
-        candidate,
-      ] as const),
+      .map(
+        (candidate) =>
+          [
+            targetByPath.get(candidate.path) ??
+              deriveTargetName(candidate.path),
+            candidate,
+          ] as const,
+      ),
   );
   const allCandidatesByName = new Map(
-    candidates.map((candidate) => [
-      targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path),
-      candidate,
-    ] as const),
+    candidates.map(
+      (candidate) =>
+        [
+          targetByPath.get(candidate.path) ?? deriveTargetName(candidate.path),
+          candidate,
+        ] as const,
+    ),
   );
   for (const name of requestedTargets) {
     if (!byName.has(name)) {
@@ -1628,7 +1968,9 @@ async function runInit(
           `target "${name}" is a full-vault surface; re-run with --migrate-full-vault to convert it to managed pins`,
         );
       }
-      throw new Error(`unknown --target "${name}": not among detected surfaces`);
+      throw new Error(
+        `unknown --target "${name}": not among detected surfaces`,
+      );
     }
   }
 
@@ -1640,7 +1982,11 @@ async function runInit(
       ...(candidate.state === "full-vault" ? { migrateFullVault: true } : {}),
     };
   });
-  const plannedManifest = planInitManifest(vaultPath, confirmedTargets, selectedCoreSkillIds);
+  const plannedManifest = planInitManifest(
+    vaultPath,
+    confirmedTargets,
+    selectedCoreSkillIds,
+  );
   const serializedPlan = {
     vault_path: vaultPath,
     config: configPlan
@@ -1658,44 +2004,50 @@ async function runInit(
   };
   if (!hasChanges) {
     if (options.isJson) {
-      console.log(JSON.stringify({
-        schema_version: 1,
-        ok: true,
-        command: "init",
-        phase: "plan",
-        dry_run: options.dryRun,
-        applied: false,
-        plan: serializedPlan,
-      }));
+      console.log(
+        JSON.stringify({
+          schema_version: 1,
+          ok: true,
+          command: "init",
+          phase: "plan",
+          dry_run: options.dryRun,
+          applied: false,
+          plan: serializedPlan,
+        }),
+      );
     } else {
       console.log("\nno managed-pins surface selected — nothing written.");
     }
     return;
   }
   if (!options.isJson) {
-    for (const target of confirmedTargets.filter((target) => target.migrateFullVault)) {
+    for (const target of confirmedTargets.filter(
+      (target) => target.migrateFullVault,
+    )) {
       console.log(
         `full-vault migration ${target.name}: ${vaultHealth.skillCount} visible skills -> ` +
-        `${plannedManifest.core.skills.length} core ${plannedManifest.core.skills.length === 1 ? "skill" : "skills"} after sync`,
+          `${plannedManifest.core.skills.length} core ${plannedManifest.core.skills.length === 1 ? "skill" : "skills"} after sync`,
       );
     }
   }
   if (options.dryRun) {
     if (options.isJson) {
-      console.log(JSON.stringify({
-        schema_version: 1,
-        ok: true,
-        command: "init",
-        phase: "plan",
-        dry_run: true,
-        applied: false,
-        plan: serializedPlan,
-      }));
+      console.log(
+        JSON.stringify({
+          schema_version: 1,
+          ok: true,
+          command: "init",
+          phase: "plan",
+          dry_run: true,
+          applied: false,
+          plan: serializedPlan,
+        }),
+      );
     } else {
       console.log(
         `\ndry-run: ${confirmedTargets.length} target(s), ` +
-        `${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} instruction file(s), ` +
-        `core: ${plannedManifest.core.skills.join(", ") || "(unchanged)"}`,
+          `${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} instruction file(s), ` +
+          `core: ${plannedManifest.core.skills.join(", ") || "(unchanged)"}`,
       );
     }
     return;
@@ -1712,7 +2064,9 @@ async function runInit(
         console.log(
           `  instructions: ${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} file(s)`,
         );
-        console.log(`  core: ${plannedManifest.core.skills.join(", ") || "(none)"}`);
+        console.log(
+          `  core: ${plannedManifest.core.skills.join(", ") || "(none)"}`,
+        );
         console.log(`  sync: ${sync ? "yes" : "no"}`);
         if (!(await confirmAction("Apply this setup plan?"))) {
           console.log("init cancelled");
@@ -1720,10 +2074,14 @@ async function runInit(
         }
       } else {
         const prompts = [
-          ...confirmedTargets.map((target) => `Adopt ${target.name} at ${target.dir}?`),
+          ...confirmedTargets.map(
+            (target) => `Adopt ${target.name} at ${target.dir}?`,
+          ),
           ...instructionPlan.changes
             .filter((change) => change.status !== "unchanged")
-            .map((change) => `${change.status} instruction file ${change.path}?`),
+            .map(
+              (change) => `${change.status} instruction file ${change.path}?`,
+            ),
           ...(hasConfigWrite ? [`Create machine config ${configPath}?`] : []),
           ...(selectedCoreSkillIds.length > 0
             ? [`Pin core skills: ${selectedCoreSkillIds.join(", ")}?`]
@@ -1782,28 +2140,32 @@ async function runInit(
   }
 
   if (options.isJson) {
-    console.log(JSON.stringify({
-      schema_version: 1,
-      ok: true,
-      command: "init",
-      phase: "result",
-      dry_run: false,
-      applied: true,
-      plan: serializedPlan,
-      result: {
-        config_created: configCreated,
-        targets_adopted: confirmedTargets.map((target) => target.name),
-        instructions_changed: instructionPlan.changes
-          .filter((change) => change.status !== "unchanged")
-          .map((change) => change.path),
-        core: plannedManifest.core.skills,
-      },
-    }));
+    console.log(
+      JSON.stringify({
+        schema_version: 1,
+        ok: true,
+        command: "init",
+        phase: "result",
+        dry_run: false,
+        applied: true,
+        plan: serializedPlan,
+        result: {
+          config_created: configCreated,
+          targets_adopted: confirmedTargets.map((target) => target.name),
+          instructions_changed: instructionPlan.changes
+            .filter((change) => change.status !== "unchanged")
+            .map((change) => change.path),
+          core: plannedManifest.core.skills,
+        },
+      }),
+    );
     return;
   }
   if (configCreated) console.log(`created ${configPath}`);
   if (confirmedTargets.length > 0) {
-    console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`);
+    console.log(
+      `\nwrote ${join(vaultPath, "skillmux.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`,
+    );
   } else if (selectedCoreSkillIds.length > 0) {
     console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}`);
   }
@@ -1811,13 +2173,20 @@ async function runInit(
     console.log("next: skillmux core pin <skill_id> --yes");
   }
   if (confirmedTargets.length > 0) console.log("next: skillmux sync");
-  if (selectedClients.length === 0 || selectedClients.includes("skillmux-mcp")) {
+  if (
+    selectedClients.length === 0 ||
+    selectedClients.includes("skillmux-mcp")
+  ) {
     console.log(`\n${printLastMile()}`);
   }
   if (guided && sync && confirmedTargets.length > 0) await runSync([]);
 }
 
-function parseReportArgs(args: string[]): { server?: string; db?: string; since?: string } {
+function parseReportArgs(args: string[]): {
+  server?: string;
+  db?: string;
+  since?: string;
+} {
   let server: string | undefined;
   let db: string | undefined;
   let since: string | undefined;
@@ -1846,26 +2215,45 @@ function parseReportArgs(args: string[]): { server?: string; db?: string; since?
   return { server, db, since };
 }
 
-async function runReport(args: string[], options: { isJson: boolean }): Promise<void> {
+async function runReport(
+  args: string[],
+  options: { isJson: boolean },
+): Promise<void> {
   const { server, db: dbPath, since } = parseReportArgs(args);
-  if (!since) throw new Error("usage: skillmux report [--server <url> | --db <path>] --since <window> [--json]");
+  if (!since)
+    throw new Error(
+      "usage: skillmux report [--server <url> | --db <path>] --since <window> [--json]",
+    );
 
   if (server) {
     const url = `${server.replace(/\/$/, "")}/stats?since=${encodeURIComponent(since)}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`skillmux report --server failed: ${res.status} ${await res.text()}`);
+    if (!res.ok)
+      throw new Error(
+        `skillmux report --server failed: ${res.status} ${await res.text()}`,
+      );
     const stats = (await res.json()) as StatsResponse;
-    emitSuccess({ isJson: options.isJson }, stats, () => console.log(renderStatsText(stats)));
+    emitSuccess({ isJson: options.isJson }, stats, () =>
+      console.log(renderStatsText(stats)),
+    );
     return;
   }
 
-  const db = dbPath ? new Database(dbPath, { readonly: true }) : openIndex(expandHome((await loadConfig()).state_dir));
+  const db = dbPath
+    ? new Database(dbPath, { readonly: true })
+    : openIndex(expandHome((await loadConfig()).state_dir));
   const stats = getStats(db, since);
-  emitSuccess({ isJson: options.isJson }, stats, () => console.log(renderStatsText(stats)));
+  emitSuccess({ isJson: options.isJson }, stats, () =>
+    console.log(renderStatsText(stats)),
+  );
   db.close();
 }
 
-function parseScanArgs(args: string[]): { path?: string; format: "text" | "json"; failOn?: ScanSeverity } {
+function parseScanArgs(args: string[]): {
+  path?: string;
+  format: "text" | "json";
+  failOn?: ScanSeverity;
+} {
   let path: string | undefined;
   let format: "text" | "json" = "text";
   let failOn: ScanSeverity | undefined;
@@ -1873,7 +2261,8 @@ function parseScanArgs(args: string[]): { path?: string; format: "text" | "json"
     const option = args[i];
     if (option === "--format") {
       const value = args[++i];
-      if (value !== "text" && value !== "json") throw new Error("--format must be text or json");
+      if (value !== "text" && value !== "json")
+        throw new Error("--format must be text or json");
       format = value;
     } else if (option === "--fail-on") {
       const value = args[++i];
@@ -1894,12 +2283,19 @@ function parseScanArgs(args: string[]): { path?: string; format: "text" | "json"
   return { path, format, failOn };
 }
 
-async function runScan(args: string[], options: { isJson: boolean }): Promise<void> {
+async function runScan(
+  args: string[],
+  options: { isJson: boolean },
+): Promise<void> {
   const { path, format, failOn } = parseScanArgs(args);
-  const rootPath = path ? expandHome(path) : expandHome((await loadConfig()).vault_path);
+  const rootPath = path
+    ? expandHome(path)
+    : expandHome((await loadConfig()).vault_path);
   const result = await scanPath(rootPath);
   emitSuccess({ isJson: options.isJson }, result, () => {
-    console.log(format === "json" ? renderScanJson(result) : renderScanText(result));
+    console.log(
+      format === "json" ? renderScanJson(result) : renderScanText(result),
+    );
   });
   process.exitCode = scanExitCode(result.findings, failOn);
 }
@@ -1937,22 +2333,36 @@ function parseInstallArgs(args: string[]): {
   return { repo, force, dryRun, failOn };
 }
 
-async function runInstall(args: string[], options: { isJson: boolean }): Promise<void> {
+async function runInstall(
+  args: string[],
+  options: { isJson: boolean },
+): Promise<void> {
   const { repo, force, dryRun, failOn } = parseInstallArgs(args);
   if (!repo) {
-    throw new Error("usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--json]");
+    throw new Error(
+      "usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--json]",
+    );
   }
 
   const source = resolveRepoSource(repo);
   const cloneDir = await cloneToTemp(source.url);
   try {
-    const resolved = resolveSkillDir(cloneDir, deriveRepoName(source.url), source.skillPath);
-    const { findings } = await validateSkillCandidate(resolved.skillId, resolved.dir);
+    const resolved = resolveSkillDir(
+      cloneDir,
+      deriveRepoName(source.url),
+      source.skillPath,
+    );
+    const { findings } = await validateSkillCandidate(
+      resolved.skillId,
+      resolved.dir,
+    );
     if (!options.isJson) console.log(renderScanText({ scanned: 1, findings }));
 
     if (scanExitCode(findings, failOn) !== 0) {
       process.exitCode = 1;
-      console.error(`aborting install: a finding met the --fail-on ${failOn} threshold`);
+      console.error(
+        `aborting install: a finding met the --fail-on ${failOn} threshold`,
+      );
       return;
     }
 
@@ -1962,12 +2372,20 @@ async function runInstall(args: string[], options: { isJson: boolean }): Promise
       emitSuccess(
         { isJson: options.isJson },
         { skill_id: resolved.skillId, would_install_at: plannedPath },
-        () => console.log(`dry-run: would install "${resolved.skillId}" into ${plannedPath}`),
+        () =>
+          console.log(
+            `dry-run: would install "${resolved.skillId}" into ${plannedPath}`,
+          ),
       );
       return;
     }
 
-    const targetDir = installIntoVault(vaultPath, resolved.skillId, resolved.dir, force);
+    const targetDir = installIntoVault(
+      vaultPath,
+      resolved.skillId,
+      resolved.dir,
+      force,
+    );
     emitSuccess(
       { isJson: options.isJson },
       { skill_id: resolved.skillId, installed_at: targetDir },
@@ -1978,7 +2396,10 @@ async function runInstall(args: string[], options: { isJson: boolean }): Promise
   }
 }
 
-function parseCalibrateGenerateDatasetArgs(args: string[]): { vault?: string; out?: string } {
+function parseCalibrateGenerateDatasetArgs(args: string[]): {
+  vault?: string;
+  out?: string;
+} {
   let vault: string | undefined;
   let out: string | undefined;
   for (let i = 0; i < args.length; i++) {
@@ -1999,7 +2420,8 @@ function parseCalibrateGenerateDatasetArgs(args: string[]): { vault?: string; ou
 }
 
 async function runCalibrateGenerateDataset(args: string[]): Promise<void> {
-  const { vault: vaultArg, out: outArg } = parseCalibrateGenerateDatasetArgs(args);
+  const { vault: vaultArg, out: outArg } =
+    parseCalibrateGenerateDatasetArgs(args);
   const config = await loadConfig();
   const vaultPath = expandHome(vaultArg ?? config.vault_path);
   const outPath = expandHome(outArg ?? join(config.state_dir, "queries.json"));
@@ -2010,7 +2432,9 @@ async function runCalibrateGenerateDataset(args: string[]): Promise<void> {
   const parentDir = join(outPath, "..");
   mkdirSync(parentDir, { recursive: true });
   await Bun.write(outPath, JSON.stringify(dataset, null, 2) + "\n");
-  console.log(`generated synthetic dataset with ${dataset.length} cases at ${outPath}`);
+  console.log(
+    `generated synthetic dataset with ${dataset.length} cases at ${outPath}`,
+  );
 }
 
 if (import.meta.main) {
