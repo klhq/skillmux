@@ -213,8 +213,9 @@ skillmux init --client claude-code --client codex --core csv-formatter --yes
 ```
 
 Skillmux writes `skillmux.toml`, adds host-scoped targets, adopts each selected
-directory, and installs one managed discovery block in each client's durable
-instruction file. Existing manifest entries and instruction text stay intact.
+directory, and installs one managed discovery block for each client with a
+known safe durable instruction file. Other clients report manual setup.
+Existing manifest entries and instruction text stay intact.
 Without `--yes`, an interactive terminal asks about each change; a pipe or CI
 job must pass `--yes`.
 
