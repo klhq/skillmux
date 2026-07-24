@@ -1,14 +1,37 @@
 export type ShellType = "bash" | "zsh" | "fish";
 
+const TOP_LEVEL_COMMANDS: { name: string; description: string }[] = [
+  { name: "context", description: "Manage connection contexts" },
+  { name: "config", description: "Manage configuration" },
+  { name: "calibrate", description: "Manage policy calibration" },
+  { name: "serve", description: "Start MCP server" },
+  { name: "index", description: "Rebuild local search index" },
+  { name: "sync", description: "Synchronize vault skills" },
+  { name: "init", description: "Configure this machine and its clients" },
+  { name: "project", description: "Configure project-scoped skills" },
+  { name: "target", description: "Manage advanced skill-delivery targets" },
+  { name: "core", description: "Pin/unpin skills into [core]" },
+  { name: "report", description: "Generate usage stats" },
+  { name: "scan", description: "Audit skills for issues" },
+  { name: "install", description: "Install skills into vault" },
+  { name: "eval", description: "Evaluate search accuracy" },
+  { name: "doctor", description: "Check runtime health" },
+  { name: "skill", description: "Show which root resolves a skill_id" },
+  { name: "local-vault", description: "Manage local_vault_paths discoverability markers" },
+  { name: "models", description: "Manage local models" },
+  { name: "completions", description: "Generate shell completions" },
+];
+
 export function generateCompletions(shell: ShellType): string {
   if (shell === "bash") {
+    const opts = [...TOP_LEVEL_COMMANDS.map((c) => c.name), "--context", "--server", "--json", "--allow-insecure", "--verbose", "--dry-run", "--help"].join(" ");
     return `# bash completion for skillmux
 _skillmux_completions() {
     local cur prev opts
     COMPREPLY=()
     cur="\${COMP_WORDS[COMP_CWORD]}"
     prev="\${COMP_WORDS[COMP_CWORD-1]}"
-    opts="context config calibrate serve index sync init project target core report scan install eval doctor skill local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
+    opts="${opts}"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -62,57 +85,40 @@ complete -F _skillmux_completions skillmux
   }
 
   if (shell === "zsh") {
+    const commands = TOP_LEVEL_COMMANDS.map((c) => `        '${c.name}:${c.description}'`).join("\n");
     return `#compdef skillmux
 _skillmux() {
     local -a commands
     commands=(
-        'context:Manage connection contexts'
-        'config:Manage configuration'
-        'calibrate:Manage policy calibration'
-        'serve:Start MCP server'
-        'index:Rebuild local search index'
-        'sync:Synchronize vault skills'
-        'init:Initialize project targets'
-        'project:Configure project-scoped skills'
-        'target:Manage advanced skill-delivery targets'
-        'report:Generate usage stats'
-        'scan:Audit skills for issues'
-        'install:Install skills into vault'
-        'eval:Evaluate search accuracy'
-        'doctor:Check runtime health'
-        'skill:Show which root resolves a skill_id'
-        'core:Pin/unpin skills into [core]'
-        'local-vault:Manage local_vault_paths discoverability markers'
-        'models:Manage local models'
-        'completions:Generate shell completions'
+${commands}
     )
     if (( CURRENT == 2 )); then
         _describe -t commands 'skillmux command' commands
     elif [[ "$words[2]" == "init" ]]; then
-        _arguments \
-          '*--client[select a client]:client:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp)' \
-          '*--target[select a delivery target]:target:(agent-skills claude-code codex custom)' \
-          '--dir[custom target directory]:directory:_directories' \
-          '--vault[vault directory]:directory:_directories' \
-          '*--core[seed a core skill]:skill id:' \
-          '--migrate-full-vault[convert a full-vault symlink to managed pins]' \
-          '--no-instructions[skip managed instruction files]' \
-          '--no-sync[save setup without synchronizing targets]' \
-          '--interactive[force guided setup]' \
-          '--yes[apply without prompts]' \
-          '--dry-run[print the plan without writing]' \
+        _arguments \\
+          '*--client[select a client]:client:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp)' \\
+          '*--target[select a delivery target]:target:(agent-skills claude-code codex custom)' \\
+          '--dir[custom target directory]:directory:_directories' \\
+          '--vault[vault directory]:directory:_directories' \\
+          '*--core[seed a core skill]:skill id:' \\
+          '--migrate-full-vault[convert a full-vault symlink to managed pins]' \\
+          '--no-instructions[skip managed instruction files]' \\
+          '--no-sync[save setup without synchronizing targets]' \\
+          '--interactive[force guided setup]' \\
+          '--yes[apply without prompts]' \\
+          '--dry-run[print the plan without writing]' \\
           '--json[emit a JSON envelope]'
     elif [[ "$words[2]" == "project" && "$words[3]" == "init" ]]; then
-        _arguments \
-          '1:project directory:_directories' \
-          '--name[project group name]:group:' \
-          '*--skill[project skill]:skill id:' \
-          '*--client[select a client]:client:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity)' \
-          '*--target[select an advanced target]:target:' \
-          '--no-sync[save setup without synchronizing targets]' \
-          '--interactive[force guided setup]' \
-          '--yes[apply without prompts]' \
-          '--dry-run[print the plan without writing]' \
+        _arguments \\
+          '1:project directory:_directories' \\
+          '--name[project group name]:group:' \\
+          '*--skill[project skill]:skill id:' \\
+          '*--client[select a client]:client:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity)' \\
+          '*--target[select an advanced target]:target:' \\
+          '--no-sync[save setup without synchronizing targets]' \\
+          '--interactive[force guided setup]' \\
+          '--yes[apply without prompts]' \\
+          '--dry-run[print the plan without writing]' \\
           '--json[emit a JSON envelope]'
     elif [[ "$words[2]" == "project" && CURRENT == 3 ]]; then
         _values 'project command' init list show add-path remove-path pin unpin attach detach
@@ -120,6 +126,10 @@ _skillmux() {
         _values 'target command' list show add remove
     elif [[ "$words[2]" == "skill" && CURRENT == 3 ]]; then
         _values 'skill command' which
+    elif [[ "$words[2]" == "core" && CURRENT == 3 ]]; then
+        _values 'core command' pin unpin
+    elif [[ "$words[2]" == "local-vault" && CURRENT == 3 ]]; then
+        _values 'local-vault command' init
     fi
 }
 _skillmux "$@"
@@ -127,16 +137,12 @@ _skillmux "$@"
   }
 
   if (shell === "fish") {
+    const topLevel = TOP_LEVEL_COMMANDS.map(
+      (c) => `complete -c skillmux -n "__fish_use_subcommand" -a ${c.name} -d "${c.description}"`,
+    ).join("\n");
     return `# fish completion for skillmux
 complete -c skillmux -f
-complete -c skillmux -n "__fish_use_subcommand" -a context -d "Manage connection contexts"
-complete -c skillmux -n "__fish_use_subcommand" -a config -d "Manage configuration"
-complete -c skillmux -n "__fish_use_subcommand" -a calibrate -d "Manage policy calibration"
-complete -c skillmux -n "__fish_use_subcommand" -a serve -d "Start MCP server"
-complete -c skillmux -n "__fish_use_subcommand" -a init -d "Configure this machine and its clients"
-complete -c skillmux -n "__fish_use_subcommand" -a project -d "Configure project-scoped skills"
-complete -c skillmux -n "__fish_use_subcommand" -a target -d "Manage advanced skill-delivery targets"
-complete -c skillmux -n "__fish_use_subcommand" -a completions -d "Generate shell completions"
+${topLevel}
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l client -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp" -d "Select a client"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l target -x -a "agent-skills claude-code codex custom" -d "Select a delivery target"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l dir -r -d "Custom target directory"
@@ -158,6 +164,9 @@ complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Sav
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l interactive -d "Force guided setup"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l yes -d "Apply without prompts"
 complete -c skillmux -n "__fish_seen_subcommand_from target" -a "list show add remove" -d "Manage targets"
+complete -c skillmux -n "__fish_seen_subcommand_from core" -a "pin unpin" -d "Manage [core] pins"
+complete -c skillmux -n "__fish_seen_subcommand_from skill" -a "which" -d "Show which root resolves a skill_id"
+complete -c skillmux -n "__fish_seen_subcommand_from local-vault" -a "init" -d "Initialize a local_vault_paths marker"
 `;
   }
 

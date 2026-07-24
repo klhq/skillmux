@@ -99,4 +99,24 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(fish).toContain("complete -c skillmux");
     expect(fish).toContain("-l client");
   });
+
+  it("gives bash, zsh, and fish the identical, full top-level command set (AC12)", () => {
+    const bash = generateCompletions("bash");
+    const zsh = generateCompletions("zsh");
+    const fish = generateCompletions("fish");
+
+    const bashCommands = new Set(
+      bash.match(/opts="([^"]+)"/)![1]!.split(" ").filter((tok) => !tok.startsWith("--")),
+    );
+    const zshCommands = new Set(
+      [...zsh.matchAll(/'([a-z-]+):[^']+'/g)].map((m) => m[1]!),
+    );
+    const fishCommands = new Set(
+      [...fish.matchAll(/__fish_use_subcommand" -a (\S+)/g)].map((m) => m[1]!),
+    );
+
+    expect(bashCommands.size).toBeGreaterThanOrEqual(19);
+    expect(zshCommands).toEqual(bashCommands);
+    expect(fishCommands).toEqual(bashCommands);
+  });
 });
