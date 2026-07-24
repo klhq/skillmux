@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { generateDataset } from "./dataset-generator";
 
@@ -685,7 +686,14 @@ async function runSync(args: string[]): Promise<void> {
   const { notes } = validateManifest(manifest, vaultPath, localVaultPaths);
   for (const note of notes) console.log(`note: ${note}`);
 
+  const currentHost = hostname();
   for (const [targetName, target] of Object.entries(manifest.targets)) {
+    if (target.host !== undefined && target.host !== currentHost) {
+      console.log(
+        `${targetName}: skipped (host ${target.host} does not match current host ${currentHost})`,
+      );
+      continue;
+    }
     const targetDir = expandHome(target.dir);
 
     if (restoreMonolith) {
@@ -747,14 +755,30 @@ async function runInit(args: string[]): Promise<void> {
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
 
-  const candidates = detectSurfaces(surfaceCandidates().map(expandHome));
+  const candidates = detectSurfaces(surfaceCandidates().map(expandHome), vaultPath);
   for (const candidate of candidates) {
     const name = deriveTargetName(candidate.path);
-    if (!candidate.exists) {
+    if (candidate.state === "missing") {
       console.log(`${name} (${candidate.path}): not found`);
       continue;
     }
-    const kind = candidate.isSymlink ? "symlink" : "real dir";
+    if (candidate.state === "broken-symlink") {
+      console.log(`${name} (${candidate.path}): broken symlink`);
+      continue;
+    }
+    if (candidate.state === "full-vault") {
+      console.log(`${name} (${candidate.path}): full-vault -> ${candidate.canonicalPath}`);
+      continue;
+    }
+    if (candidate.state === "external-symlink") {
+      console.log(`${name} (${candidate.path}): external symlink -> ${candidate.canonicalPath}`);
+      continue;
+    }
+    if (candidate.state === "unsupported") {
+      console.log(`${name} (${candidate.path}): unsupported filesystem entry`);
+      continue;
+    }
+    const kind = "real dir";
     const marked = candidate.alreadyMarked ? ", already skillmux-managed" : "";
     console.log(`${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`);
   }
@@ -771,7 +795,9 @@ async function runInit(args: string[]): Promise<void> {
   }
 
   const byName = new Map(
-    candidates.filter((c) => c.exists).map((c) => [deriveTargetName(c.path), c] as const),
+    candidates
+      .filter((candidate) => candidate.deliveryMode === "managed-pins")
+      .map((candidate) => [deriveTargetName(candidate.path), candidate] as const),
   );
   for (const name of requestedTargets) {
     if (!byName.has(name)) throw new Error(`unknown --target "${name}": not among detected surfaces`);

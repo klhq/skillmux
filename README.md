@@ -218,6 +218,7 @@ skills = ["csv-formatter"]
 
 [targets.claude]
 dir = "/Users/you/.claude/skills"
+host = "workhorse" # optional; sync skips this target on every other hostname
 project_groups = []
 ```
 

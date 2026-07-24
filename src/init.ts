@@ -1,7 +1,30 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { serializeManifest, type Manifest, MANIFEST_FILENAME } from "./manifest";
-import { adoptTarget, readSkillmuxMarker } from "./sync";
+import {
+  parseManifest,
+  resolveManifestPath,
+  serializeManifest,
+  type Manifest,
+  MANIFEST_FILENAME,
+} from "./manifest";
+import {
+  adoptTarget,
+  preflightAdoptTarget,
+  readSkillmuxMarker,
+  SKILLMUX_MARKER_FILENAME,
+} from "./sync";
 import { SKILL_ID_PATTERN } from "./vault";
 
 export const DEFAULT_SURFACE_CANDIDATES = ["~/.claude/skills", "~/.agents/skills"];
@@ -20,10 +43,13 @@ export function surfaceCandidates(): string[] {
 
 export interface SurfaceCandidate {
   path: string;
+  canonicalPath?: string;
   exists: boolean;
   isSymlink: boolean;
   skillCount: number;
   alreadyMarked: boolean;
+  state: "missing" | "directory" | "broken-symlink" | "external-symlink" | "full-vault" | "unsupported";
+  deliveryMode: "managed-pins" | "full-vault" | "external";
 }
 
 function countSkillDirs(dir: string): number {
@@ -36,17 +62,93 @@ function countSkillDirs(dir: string): number {
   return count;
 }
 
-export function detectSurfaces(candidatePaths: string[]): SurfaceCandidate[] {
-  return candidatePaths.map((path) => {
-    if (!existsSync(path)) {
-      return { path, exists: false, isSymlink: false, skillCount: 0, alreadyMarked: false };
+export function detectSurfaces(candidatePaths: string[], vaultPath?: string): SurfaceCandidate[] {
+  const canonicalVaultPath = vaultPath ? realpathSync(vaultPath) : undefined;
+
+  return candidatePaths.map((path): SurfaceCandidate => {
+    let stat;
+    try {
+      stat = lstatSync(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return {
+        path,
+        exists: false,
+        isSymlink: false,
+        skillCount: 0,
+        alreadyMarked: false,
+        state: "missing",
+        deliveryMode: "managed-pins",
+      };
     }
+
+    if (stat.isSymbolicLink()) {
+      let canonicalPath: string;
+      try {
+        canonicalPath = realpathSync(path);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        return {
+          path,
+          exists: false,
+          isSymlink: true,
+          skillCount: 0,
+          alreadyMarked: false,
+          state: "broken-symlink",
+          deliveryMode: "external",
+        };
+      }
+
+      const isFullVault = canonicalVaultPath !== undefined && canonicalPath === canonicalVaultPath;
+      return {
+        path,
+        canonicalPath,
+        exists: true,
+        isSymlink: true,
+        skillCount: 0,
+        alreadyMarked: false,
+        state: isFullVault ? "full-vault" : "external-symlink",
+        deliveryMode: isFullVault ? "full-vault" : "external",
+      };
+    }
+
+    const canonicalPath = realpathSync(path);
+    const isFullVault = canonicalVaultPath !== undefined && canonicalPath === canonicalVaultPath;
+    if (isFullVault) {
+      return {
+        path,
+        canonicalPath,
+        exists: true,
+        isSymlink: false,
+        skillCount: 0,
+        alreadyMarked: false,
+        state: "full-vault",
+        deliveryMode: "full-vault",
+      };
+    }
+
+    if (!stat.isDirectory()) {
+      return {
+        path,
+        canonicalPath,
+        exists: true,
+        isSymlink: false,
+        skillCount: 0,
+        alreadyMarked: false,
+        state: "unsupported",
+        deliveryMode: "external",
+      };
+    }
+
     return {
       path,
+      canonicalPath,
       exists: true,
-      isSymlink: lstatSync(path).isSymbolicLink(),
+      isSymlink: false,
       skillCount: countSkillDirs(path),
       alreadyMarked: readSkillmuxMarker(path) !== null,
+      state: "directory",
+      deliveryMode: "managed-pins",
     };
   });
 }
@@ -70,6 +172,35 @@ export interface ConfirmedTarget {
   dir: string;
 }
 
+function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]): void {
+  const canonicalVaultPath = realpathSync(vaultPath);
+
+  for (const target of targets) {
+    let stat;
+    try {
+      stat = lstatSync(target.dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+
+    if (stat.isSymbolicLink()) {
+      throw new Error(
+        `target "${target.name}" (${target.dir}) is a symbolic link; classify or migrate it before managed-pins adoption`,
+      );
+    }
+    if (!stat.isDirectory()) {
+      throw new Error(`target "${target.name}" (${target.dir}) is not a directory`);
+    }
+    if (realpathSync(target.dir) === canonicalVaultPath) {
+      throw new Error(
+        `target "${target.name}" (${target.dir}) is the full-vault surface; it cannot be adopted as managed-pins`,
+      );
+    }
+    preflightAdoptTarget(target.dir, target.name, vaultPath);
+  }
+}
+
 /**
  * Writes skillmux.toml with the conservative-default core/project and the
  * confirmed targets, then adopts each confirmed dir in place (creating it
@@ -77,18 +208,70 @@ export interface ConfirmedTarget {
  * passed in — this function never discovers paths on its own.
  */
 export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]): Manifest {
+  preflightManagedTargets(vaultPath, confirmedTargets);
+
+  const existingManifestPath = resolveManifestPath(vaultPath);
+  const existingManifest = existingManifestPath
+    ? parseManifest(readFileSync(existingManifestPath, "utf-8"))
+    : { ...proposeManifest([]), targets: {} };
   const manifest: Manifest = {
-    ...proposeManifest([]),
-    targets: Object.fromEntries(
-      confirmedTargets.map((target) => [target.name, { dir: target.dir, project_groups: [] }]),
-    ),
+    ...existingManifest,
+    targets: {
+      ...existingManifest.targets,
+      ...Object.fromEntries(
+        confirmedTargets.map((target) => {
+          const existingTarget = existingManifest.targets[target.name];
+          return [
+            target.name,
+            existingTarget
+              ? { ...existingTarget, dir: target.dir }
+              : { dir: target.dir, host: hostname(), project_groups: [] },
+          ];
+        }),
+      ),
+    },
   };
 
-  writeFileSync(join(vaultPath, MANIFEST_FILENAME), serializeManifest(manifest));
+  const manifestPath = join(vaultPath, MANIFEST_FILENAME);
+  const serializedManifest = serializeManifest(manifest);
+  const shouldWriteManifest =
+    !existsSync(manifestPath) || readFileSync(manifestPath, "utf-8") !== serializedManifest;
+  const createdDirs: string[] = [];
+  const adoptedDirs: string[] = [];
 
-  for (const target of confirmedTargets) {
-    if (!existsSync(target.dir)) mkdirSync(target.dir, { recursive: true });
-    adoptTarget(target.dir, target.name);
+  try {
+    for (const target of confirmedTargets) {
+      if (!existsSync(target.dir)) {
+        mkdirSync(target.dir, { recursive: true });
+        createdDirs.push(target.dir);
+      }
+      if (adoptTarget(target.dir, target.name, vaultPath).adopted) {
+        adoptedDirs.push(target.dir);
+      }
+    }
+
+    if (shouldWriteManifest) {
+      const temporaryManifestPath = join(
+        vaultPath,
+        `.${MANIFEST_FILENAME}.${process.pid}-${Date.now()}.tmp`,
+      );
+      try {
+        writeFileSync(temporaryManifestPath, serializedManifest);
+        renameSync(temporaryManifestPath, manifestPath);
+      } catch (error) {
+        if (existsSync(temporaryManifestPath)) unlinkSync(temporaryManifestPath);
+        throw error;
+      }
+    }
+  } catch (error) {
+    for (const dir of adoptedDirs.reverse()) {
+      const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
+      if (existsSync(markerPath)) unlinkSync(markerPath);
+    }
+    for (const dir of createdDirs.reverse()) {
+      if (existsSync(dir)) rmdirSync(dir);
+    }
+    throw error;
   }
 
   return manifest;

@@ -35,13 +35,16 @@ skills = ["terraform-plans"]
 
 [targets.claude]
 dir = "~/.claude/skills"
+host = "workhorse"
 project_groups = ["infra"]
 `;
     const manifest = parseManifest(toml);
     expect(manifest).toEqual({
       core: { skills: ["writing-clearly", "code-review"] },
       project: { infra: { paths: ["~/workspace/infra"], skills: ["terraform-plans"] } },
-      targets: { claude: { dir: "~/.claude/skills", project_groups: ["infra"] } },
+      targets: {
+        claude: { dir: "~/.claude/skills", host: "workhorse", project_groups: ["infra"] },
+      },
     });
   });
 
@@ -485,6 +488,7 @@ skills = ["terraform-plans"]
 
 [targets.claude]
 dir = "~/.claude/skills"
+host = "workhorse"
 project_groups = ["infra"]
 `);
 

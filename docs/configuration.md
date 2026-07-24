@@ -90,13 +90,14 @@ skills = ["pdf-extractor"]           # must not overlap [core]
 
 [targets.claude]
 dir = "/Users/you/.claude/skills"
+host = "workhorse"                    # optional; init adds the current hostname
 project_groups = ["repo1"]           # which [project.*] groups materialize into this target — [] means none
 ```
 
 - `[core].skills` — symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills; `sync` fails if a listed skill id isn't actually in the vault.
 - `[project.<group>].skills` — symlinked only into `<path>/<relative path from $HOME to the target dir>`, for each `paths` entry, and only for targets whose `project_groups` names that group. `paths` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
 - `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`) — `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
-- `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these; hand-editing is fine as long as `sync` is still allowed to own the directory (see below). `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
+- `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these and scopes newly added targets to the current hostname. Hand-editing is fine as long as `sync` is still allowed to own the directory (see below). An optional `host` limits the target to an exact machine-hostname match; omit it for a global, backward-compatible target. A host mismatch is reported and skipped before any target filesystem operation. `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
 
 **Pin/unpin without hand-editing.** `skillmux manifest pin`/`unpin` mutate `[core]`/`[project.*]` for you, validating with the same rules `sync`/`doctor` enforce (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under the 25-skill cap) before writing anything:
 
@@ -118,9 +119,27 @@ Every `[core]`/`[project.*]` skill_id must resolve from the canonical `vault_pat
 
 ### Ownership marker
 
-Every directory `sync` manages gets a `.skillmux` marker file (`{"managed_by": "skillmux", "role": "target", "target": "<name>", "created_at": ...}`). `sync` refuses to touch a directory that exists but has no marker — run `skillmux init --target <name> --yes` first, which either creates the directory fresh or adopts an existing one in place (contents untouched). This is also why `sync --restore-monolith` (which deletes the marker and replaces the whole directory with one symlink straight to the vault) requires re-running `init` before that target can be `sync`'d again.
+Every directory `sync` manages gets a versioned `.skillmux` marker. A target
+marker records `schema_version: 1`, `managed_by: "skillmux"`, `role:
+"target"`, its target name, `vault_path`, `created_at`, and
+`managed_entries`. The last field is the exact list of directory entries
+Skillmux created. Sync removes only those tracked entries, preserves unrelated
+content, and rejects a desired skill that collides with an unmanaged entry
+before changing anything.
 
-The same `.skillmux` marker filename and JSON shape is also used for `local_vault_paths` entries (see below), distinguished by `role: "local_vault"` with a `vault_path` field instead of `target`. Markers written before this `role` field existed have no `role` key at all — they're read back as `role: "target"`, so nothing already on disk needs migrating.
+`sync` refuses to touch a directory that exists but has no marker — run
+`skillmux init --target <name> --yes` first, which either creates the
+directory fresh or adopts an existing one in place (contents untouched).
+`sync --restore-monolith` likewise refuses a `local_vault` marker or any
+unmanaged target content before replacing a target directory with a symlink
+to the vault.
+
+The same `.skillmux` filename is used for `local_vault_paths` entries (see
+below), distinguished by `role: "local_vault"` and never accepted as target
+ownership. Legacy unversioned markers are read for compatibility. An empty
+legacy target is upgraded safely on its next sync; one containing untracked
+entries is rejected with a migration diagnostic because their ownership
+cannot be inferred.
 
 ### Local vault overlays
 
