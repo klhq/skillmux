@@ -1,12 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import {
   assessClientReadiness,
+  detectInstalledClients,
   resolveBuiltInTarget,
   SUPPORTED_CLIENT_IDS,
   planClientSurfaces,
 } from "../src/init-clients";
 
 describe("init client registry", () => {
+  test("detects installed clients with concrete filesystem evidence", () => {
+    const detected = detectInstalledClients({
+      home: "/home/tester",
+      exists: (path) => path === "/home/tester/.claude" || path === "/home/tester/.config/goose",
+    });
+
+    expect(detected).toEqual([
+      { client: "claude-code", evidence: "/home/tester/.claude" },
+      { client: "goose", evidence: "/home/tester/.config/goose" },
+    ]);
+  });
+
   test("supports the documented client names", () => {
     expect(SUPPORTED_CLIENT_IDS).toEqual([
       "claude-code",
