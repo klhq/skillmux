@@ -202,7 +202,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|project|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|project|target|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
     );
 
   });
@@ -625,6 +625,55 @@ describe("skillmux project CLI", () => {
     expect(result.stdout).toContain("first-skill");
     expect(result.stdout).toContain("test");
 
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+});
+
+describe("skillmux target CLI", () => {
+  test("target add adopts a custom directory with current-host scoping", async () => {
+    const targetPath = join(tmp, "custom-target");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n`,
+    );
+
+    const result = await runCli(
+      "target",
+      "add",
+      "custom-agent",
+      "--path",
+      targetPath,
+      "--yes",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf8");
+    expect(written).toContain("[targets.custom-agent]");
+    expect(written).toContain(`host = "${hostname()}"`);
+    expect(existsSync(join(targetPath, ".skillmux"))).toBe(true);
+
+    rmSync(targetPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target remove deletes only manifest configuration and preserves files", async () => {
+    const targetPath = join(tmp, "preserved-target");
+    mkdirSync(targetPath, { recursive: true });
+    writeFileSync(join(targetPath, "keep.txt"), "keep");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.custom-agent]\ndir = "${targetPath}"\nproject_groups = []\n`,
+    );
+
+    const result = await runCli("target", "remove", "custom-agent", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf8")).not.toContain(
+      "[targets.custom-agent]",
+    );
+    expect(readFileSync(join(targetPath, "keep.txt"), "utf8")).toBe("keep");
+
+    rmSync(targetPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 });

@@ -183,6 +183,25 @@ clients that share `~/.agents/skills`. Mutating commands validate the complete
 manifest and replace it atomically. Run `skillmux sync` after direct
 maintenance commands to materialize the new state.
 
+---
+
+## Advanced Targets (`skillmux target`)
+
+Most users should select products with `init --client`. Use `target` commands
+for custom delivery directories and manifest inspection:
+
+```sh
+skillmux target list
+skillmux target show claude-code
+skillmux target add custom-agent --path /srv/custom-agent/skills --yes
+skillmux target remove custom-agent --yes
+```
+
+`target add` uses the same ownership, symlink, full-vault, rollback, and
+current-host scoping checks as `skillmux init`. `target remove` removes the
+manifest entry and preserves the directory, marker, and skill files. The
+command prints the preserved path so cleanup remains an explicit user action.
+
 ### Reloadable vs. Restart-Required Keys
 
 Config changes are categorized into live-reloadable and restart-required settings:
