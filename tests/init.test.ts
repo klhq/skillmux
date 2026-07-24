@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -30,7 +31,15 @@ describe("detectSurfaces", () => {
     const candidates = detectSurfaces(["/does/not/exist/on/this/machine"]);
 
     expect(candidates).toEqual([
-      { path: "/does/not/exist/on/this/machine", exists: false, isSymlink: false, skillCount: 0, alreadyMarked: false },
+      {
+        path: "/does/not/exist/on/this/machine",
+        exists: false,
+        isSymlink: false,
+        skillCount: 0,
+        alreadyMarked: false,
+        state: "missing",
+        deliveryMode: "managed-pins",
+      },
     ]);
   });
 
@@ -43,12 +52,21 @@ describe("detectSurfaces", () => {
 
     const [candidate] = detectSurfaces([surface]);
 
-    expect(candidate).toEqual({ path: surface, exists: true, isSymlink: false, skillCount: 2, alreadyMarked: false });
+    expect(candidate).toEqual({
+      path: surface,
+      canonicalPath: surface,
+      exists: true,
+      isSymlink: false,
+      skillCount: 2,
+      alreadyMarked: false,
+      state: "directory",
+      deliveryMode: "managed-pins",
+    });
 
     rmSync(root, { recursive: true, force: true });
   });
 
-  test("reports a symlinked surface as a symlink (evidence: real dir vs symlink to a monolith)", () => {
+  test("classifies a symlink resolving to the vault as full-vault without reading through it", () => {
     const root = tmpDir("skillmux-init-detect-");
     const vault = join(root, "vault");
     mkdirSync(vault);
@@ -56,11 +74,55 @@ describe("detectSurfaces", () => {
     const surface = join(root, "skills");
     symlinkSync(vault, surface);
 
-    const candidate = detectSurfaces([surface])[0]!;
+    const candidate = detectSurfaces([surface], vault)[0]!;
 
-    expect(candidate.exists).toBe(true);
-    expect(candidate.isSymlink).toBe(true);
-    expect(candidate.skillCount).toBe(1);
+    expect(candidate).toEqual({
+      path: surface,
+      canonicalPath: vault,
+      exists: true,
+      isSymlink: true,
+      skillCount: 0,
+      alreadyMarked: false,
+      state: "full-vault",
+      deliveryMode: "full-vault",
+    });
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("distinguishes external and broken symlinks without reading through either", () => {
+    const root = tmpDir("skillmux-init-detect-links-");
+    const vault = join(root, "vault");
+    const external = join(root, "external");
+    const externalSurface = join(root, "external-skills");
+    const brokenSurface = join(root, "broken-skills");
+    mkdirSync(vault);
+    mkdirSync(external);
+    writeSkill(external, "writing-clearly");
+    symlinkSync(external, externalSurface);
+    symlinkSync(join(root, "absent"), brokenSurface);
+
+    expect(detectSurfaces([externalSurface, brokenSurface], vault)).toEqual([
+      {
+        path: externalSurface,
+        canonicalPath: external,
+        exists: true,
+        isSymlink: true,
+        skillCount: 0,
+        alreadyMarked: false,
+        state: "external-symlink",
+        deliveryMode: "external",
+      },
+      {
+        path: brokenSurface,
+        exists: false,
+        isSymlink: true,
+        skillCount: 0,
+        alreadyMarked: false,
+        state: "broken-symlink",
+        deliveryMode: "external",
+      },
+    ]);
 
     rmSync(root, { recursive: true, force: true });
   });
@@ -165,6 +227,40 @@ describe("applyInit", () => {
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(claudeDir, { recursive: true, force: true });
+  });
+
+  test("preflights every target and rejects symlinks before writing or adopting any target", () => {
+    const root = tmpDir("skillmux-init-preflight-");
+    const vaultPath = join(root, "vault");
+    const freshTarget = join(root, "fresh-target");
+    const external = join(root, "external");
+    const linkedTarget = join(root, "linked-target");
+    mkdirSync(vaultPath);
+    mkdirSync(external);
+    symlinkSync(external, linkedTarget);
+
+    expect(() =>
+      applyInit(vaultPath, [
+        { name: "fresh", dir: freshTarget },
+        { name: "linked", dir: linkedTarget },
+      ]),
+    ).toThrow("symbolic link");
+
+    expect(existsSync(join(vaultPath, "skillmux.toml"))).toBe(false);
+    expect(existsSync(freshTarget)).toBe(false);
+    expect(existsSync(join(external, ".skillmux"))).toBe(false);
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("rejects the vault itself as a managed-pins target", () => {
+    const vaultPath = tmpDir("skillmux-init-full-vault-");
+
+    expect(() => applyInit(vaultPath, [{ name: "agents", dir: vaultPath }])).toThrow("full-vault");
+    expect(existsSync(join(vaultPath, "skillmux.toml"))).toBe(false);
+    expect(existsSync(join(vaultPath, ".skillmux"))).toBe(false);
+
+    rmSync(vaultPath, { recursive: true, force: true });
   });
 
   test("writes skr.toml with an empty core and the confirmed targets, then adopts each dir in place", () => {
