@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigWatcher } from "../src/config-watcher";
@@ -18,9 +24,22 @@ import type { Clients } from "../src/types";
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SETTLE_MS = 700; // debounce + stable-stat settle
+const SETTLE_TIMEOUT_MS = 2_000;
+const POLL_INTERVAL_MS = 25;
 
-function baseToml(matchScore = 0.80): string {
+async function waitFor(
+  condition: () => boolean,
+  timeoutMs = SETTLE_TIMEOUT_MS,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) return;
+    await Bun.sleep(POLL_INTERVAL_MS);
+  }
+  throw new Error(`condition was not met within ${timeoutMs}ms`);
+}
+
+function baseToml(matchScore = 0.8): string {
   return `vault_path = "~/skills"
 state_dir = "~/.local/state/skillmux"
 
@@ -132,7 +151,11 @@ candidate_floor = 0.40
       dataset_hash: "dataset@sha256:abcdef",
       min_auto_match_precision: 0.99,
       min_shortlist_recall_at_5: 0.95,
-      selected_thresholds: { match_score: 0.92, match_margin: 0.18, candidate_floor: 0.45 },
+      selected_thresholds: {
+        match_score: 0.92,
+        match_margin: 0.18,
+        candidate_floor: 0.45,
+      },
       tune_metrics: {
         auto_match_precision: 1.0,
         auto_match_coverage: 0.85,
@@ -141,7 +164,7 @@ candidate_floor = 0.40
       },
       test_metrics: {
         auto_match_precision: 0.97,
-        auto_match_coverage: 0.80,
+        auto_match_coverage: 0.8,
         shortlist_recall_at_5: 0.99,
         false_no_match_rate: 0.03,
         confusion_matrix: {
@@ -166,7 +189,7 @@ candidate_floor = 0.40
     await applyCalibrationRun(calDb, "run-e2e-001", tomlPath, {});
 
     // Wait for the watcher to detect the change and reload
-    await Bun.sleep(SETTLE_MS);
+    await waitFor(() => reloadedConfigs.length > 0 || errors.length > 0);
     expect(errors).toHaveLength(0);
     expect(reloadedConfigs.length).toBeGreaterThanOrEqual(1);
     const reloaded = reloadedConfigs.at(-1)!;
@@ -185,7 +208,10 @@ candidate_floor = 0.40
     mkdirSync(join(root, "state"), { recursive: true });
 
     const config1 = makeConfig(root);
-    const config2 = { ...makeConfig(root), recall: { k_lexical: 50, k_vector: 50 } };
+    const config2 = {
+      ...makeConfig(root),
+      recall: { k_lexical: 50, k_vector: 50 },
+    };
 
     const manager = RuntimeSnapshotManager.create(config1, fakeClients);
 
@@ -219,7 +245,9 @@ candidate_floor = 0.40
 
     const tomlPath = join(root, "config.toml");
     // Write initial local-mode config
-    await Bun.write(tomlPath, `vault_path = "${join(root, "vault")}"
+    await Bun.write(
+      tomlPath,
+      `vault_path = "${join(root, "vault")}"
 state_dir = "${join(root, "state")}"
 
 [recall]
@@ -237,14 +265,19 @@ models_dir = "${join(root, "models")}"
 [inference.embedding]
 model = "Xenova/gte-small"
 dimension = 3
-`);
+`,
+    );
 
     const initialConfig = await loadConfig(tomlPath);
     const manager = RuntimeSnapshotManager.create(initialConfig, fakeClients);
 
     // Wire watcher to call manager.replace on each successful reload
+    let reloadCount = 0;
     const watcher = await ConfigWatcher.start(tomlPath, {
-      onReload: (cfg) => manager.replace(cfg, fakeClients),
+      onReload: (cfg) => {
+        reloadCount++;
+        manager.replace(cfg, fakeClients);
+      },
       onError: () => {},
     });
 
@@ -253,8 +286,11 @@ dimension = 3
     expect(snap1.config.recall.k_lexical).toBe(20);
     r1();
 
-    // Write updated config
-    await Bun.write(tomlPath, `vault_path = "${join(root, "vault")}"
+    // Write updated config atomically, matching calibration apply behavior.
+    const updatedTomlPath = `${tomlPath}.tmp`;
+    writeFileSync(
+      updatedTomlPath,
+      `vault_path = "${join(root, "vault")}"
 state_dir = "${join(root, "state")}"
 
 [recall]
@@ -272,8 +308,10 @@ models_dir = "${join(root, "models")}"
 [inference.embedding]
 model = "Xenova/gte-small"
 dimension = 3
-`);
-    await Bun.sleep(SETTLE_MS);
+`,
+    );
+    renameSync(updatedTomlPath, tomlPath);
+    await waitFor(() => reloadCount > 0);
 
     // New snapshot should reflect the updated config
     const { snapshot: snap2, release: r2 } = manager.acquire();
