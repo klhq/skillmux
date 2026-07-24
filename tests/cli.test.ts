@@ -1,5 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { insertAudit, openIndex } from "../src/db";
@@ -536,6 +545,18 @@ describe("skillmux init CLI", () => {
     rmSync(configPath2, { force: true });
   });
 
+  test("plans an absent machine config during dry-run without creating it", async () => {
+    const configPath2 = join(tmp, "config-init-via-dry-run.toml");
+
+    const result = await runCliEnv(["init", "--vault", vaultDir, "--dry-run"], {
+      SKILLMUX_CONFIG: configPath2,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`config create: ${configPath2}`);
+    expect(existsSync(configPath2)).toBe(false);
+  });
+
   test("deduplicates selected clients onto one shared physical surface", async () => {
     const clientHome = join(tmp, "client-home");
     const clientVault = join(tmp, "client-vault");
@@ -613,6 +634,99 @@ describe("skillmux init CLI", () => {
     rmSync(clientConfig, { force: true });
   });
 
+  test("dry-runs the exact target, instruction, and core plan without confirmation or writes", async () => {
+    const clientHome = join(tmp, "dry-run-home");
+    const clientVault = join(tmp, "dry-run-vault");
+    const clientConfig = join(tmp, "dry-run-config.toml");
+    mkdirSync(join(clientVault, "selected-core"), { recursive: true });
+    writeFileSync(join(clientVault, "selected-core", "SKILL.md"), "---\nname: selected-core\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(
+      ["init", "--client", "claude-code", "--core", "selected-core", "--dry-run"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("dry-run");
+    expect(result.stdout).toContain("selected-core");
+    expect(result.stdout).toContain(join(clientHome, ".claude", "CLAUDE.md"));
+    expect(existsSync(join(clientVault, "skillmux.toml"))).toBe(false);
+    expect(existsSync(join(clientHome, ".claude", "CLAUDE.md"))).toBe(false);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("emits one stable JSON plan envelope without prompting", async () => {
+    const clientHome = join(tmp, "json-plan-home");
+    const clientVault = join(tmp, "json-plan-vault");
+    const clientConfig = join(tmp, "json-plan-config.toml");
+    mkdirSync(join(clientVault, "selected-core"), { recursive: true });
+    writeFileSync(join(clientVault, "selected-core", "SKILL.md"), "---\nname: selected-core\n---\n");
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(
+      ["init", "--client", "claude-code", "--core", "selected-core", "--dry-run", "--json"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    expect(envelope).toMatchObject({
+      schema_version: 1,
+      ok: true,
+      command: "init",
+      phase: "plan",
+      dry_run: true,
+      applied: false,
+      plan: {
+        vault_path: clientVault,
+        core: ["selected-core"],
+      },
+    });
+    expect(envelope.plan.targets).toHaveLength(1);
+    expect(envelope.plan.instructions).toHaveLength(1);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("reports the visibility change for an explicit full-vault migration", async () => {
+    const clientHome = join(tmp, "migration-home");
+    const clientVault = join(tmp, "migration-vault");
+    const clientConfig = join(tmp, "migration-config.toml");
+    mkdirSync(join(clientHome, ".claude"), { recursive: true });
+    mkdirSync(join(clientVault, "kept-core"), { recursive: true });
+    mkdirSync(join(clientVault, "on-demand"), { recursive: true });
+    writeFileSync(join(clientVault, "kept-core", "SKILL.md"), "---\nname: kept-core\n---\n");
+    writeFileSync(join(clientVault, "on-demand", "SKILL.md"), "---\nname: on-demand\n---\n");
+    symlinkSync(clientVault, join(clientHome, ".claude", "skills"));
+    writeFileSync(clientConfig, `vault_path = ${JSON.stringify(clientVault)}\n`);
+
+    const result = await runCliEnv(
+      [
+        "init",
+        "--client", "claude-code",
+        "--migrate-full-vault",
+        "--core", "kept-core",
+        "--dry-run",
+      ],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("full-vault migration");
+    expect(result.stdout).toContain("2 visible skills -> 1 core skill after sync");
+    expect(lstatSync(join(clientHome, ".claude", "skills")).isSymbolicLink()).toBe(true);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
   test("detects surfaces and writes nothing when run without --target", async () => {
     const { surface, parent } = makeSurface("skillmux-init-cli-detect-");
     mkdirSync(join(surface, "existing-skill"));
@@ -651,6 +765,8 @@ describe("skillmux init CLI", () => {
     expect(existsSync(join(vaultDir, "skillmux.toml"))).toBe(true);
     expect(existsSync(join(surface, ".skillmux"))).toBe(true);
     expect(existsSync(join(surface, "not-touched.txt"))).toBe(true);
+    expect(result.stdout).toContain("next: skillmux manifest pin <skill_id> --core");
+    expect(result.stdout).toContain("next: skillmux sync");
     expect(result.stdout).toContain(`"command": "skillmux"`);
     expect(result.stdout).toContain("resolve_skill");
 

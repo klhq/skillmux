@@ -7,6 +7,7 @@ import {
   realpathSync,
   statSync,
   unlinkSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -137,4 +138,8 @@ export function applyConfigInit(plan: ConfigInitPlan): "created" | "preserved" {
   } finally {
     unlinkSync(temporaryPath);
   }
+}
+
+export function rollbackConfigInit(plan: ConfigInitPlan): void {
+  if (plan.action === "create") rmSync(plan.configPath, { force: true });
 }

@@ -171,7 +171,7 @@ export interface ManifestValidationResult {
   notes: string[];
 }
 
-const CORE_SKILL_LIMIT = 25;
+export const CORE_SKILL_LIMIT = 25;
 
 function requireCoreVaultRoot(skillId: string, vaultPath: string, localVaultPaths: string[], location: string): void {
   const root = resolveSkillRoot(skillId, vaultPath, localVaultPaths);

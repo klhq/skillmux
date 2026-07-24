@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { applyInit, deriveTargetName, detectSurfaces, printLastMile, proposeManifest } from "../src/init";
 import { parseManifest } from "../src/manifest";
 import { readSkillmuxMarker } from "../src/sync";
@@ -335,6 +336,30 @@ describe("applyInit", () => {
     rmSync(vaultPath, { recursive: true, force: true });
   });
 
+  test("migrates a full-vault symlink only when explicitly requested", () => {
+    const root = tmpDir("skillmux-init-full-vault-migration-");
+    const vaultPath = join(root, "vault");
+    const targetDir = join(root, "client-skills");
+    mkdirSync(vaultPath);
+    writeSkill(vaultPath, "kept-core");
+    writeSkill(vaultPath, "becomes-on-demand");
+    symlinkSync(vaultPath, targetDir);
+
+    const manifest = applyInit(
+      vaultPath,
+      [{ name: "client", dir: targetDir, migrateFullVault: true }],
+      undefined,
+      ["kept-core"],
+    );
+
+    expect(lstatSync(targetDir).isDirectory()).toBe(true);
+    expect(lstatSync(targetDir).isSymbolicLink()).toBe(false);
+    expect(readSkillmuxMarker(targetDir)?.target).toBe("client");
+    expect(manifest.core.skills).toEqual(["kept-core"]);
+
+    rmSync(root, { recursive: true, force: true });
+  });
+
   test("writes skr.toml with an empty core and the confirmed targets, then adopts each dir in place", () => {
     const vaultPath = tmpDir("skillmux-init-apply-vault-");
     const claudeDir = tmpDir("skillmux-init-apply-claude-");
@@ -396,5 +421,39 @@ describe("applyInit", () => {
     expect(existsSync(targetDir)).toBe(false);
 
     rmSync(root, { recursive: true, force: true });
+  });
+
+  test("seeds only explicitly requested validated core skills", () => {
+    const vaultPath = tmpDir("skillmux-init-core-vault-");
+    const targetDir = tmpDir("skillmux-init-core-target-");
+    writeSkill(vaultPath, "explicit-core");
+    writeSkill(vaultPath, "not-selected");
+
+    const manifest = applyInit(
+      vaultPath,
+      [{ name: "target", dir: targetDir }],
+      undefined,
+      ["explicit-core"],
+    );
+
+    expect(manifest.core.skills).toEqual(["explicit-core"]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("rejects an invalid explicit core skill before writing", () => {
+    const vaultPath = tmpDir("skillmux-init-core-invalid-vault-");
+    const targetDir = join(tmpDir("skillmux-init-core-invalid-target-"), "target");
+    writeSkill(vaultPath, "available");
+
+    expect(() =>
+      applyInit(vaultPath, [{ name: "target", dir: targetDir }], undefined, ["missing"]),
+    ).toThrow('[core] skill "missing"');
+    expect(existsSync(join(vaultPath, "skillmux.toml"))).toBe(false);
+    expect(existsSync(targetDir)).toBe(false);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(dirname(targetDir), { recursive: true, force: true });
   });
 });
