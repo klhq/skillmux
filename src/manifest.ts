@@ -193,6 +193,9 @@ export function upsertProject(manifest: Manifest, options: UpsertProjectOptions)
 
   const existingGroup = manifest.project?.[options.name] ?? { paths: [], skills: [] };
   for (const skillId of options.skills) {
+    if (!skillIdSchema.safeParse(skillId).success) {
+      throw new Error(`invalid skill ID "${skillId}"`);
+    }
     if (existingGroup.skills.includes(skillId)) continue;
     const existing = findExistingPin(manifest, skillId);
     if (existing) throw new Error(`skill "${skillId}" already pinned in ${existing}`);

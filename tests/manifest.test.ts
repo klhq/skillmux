@@ -291,6 +291,23 @@ project_groups = []
     });
     expect(updated.targets.claude?.project_groups).toEqual(["infra"]);
   });
+
+  test("rejects an invalid project skill ID before manifest validation", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.test]
+dir = "~/.agents/skills"
+`);
+
+    expect(() => upsertProject(manifest, {
+      name: "demo",
+      paths: ["/work/demo"],
+      skills: ["../../outside"],
+      targets: [],
+    })).toThrow(/invalid skill ID/);
+  });
 });
 
 describe("unpinProject", () => {

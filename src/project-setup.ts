@@ -25,3 +25,12 @@ export function resolveProjectDirectory(
   const gitRoot = (options.findGitRoot ?? findGitRoot)(cwd);
   return resolve(gitRoot ?? cwd);
 }
+
+export function suggestProjectName(directoryName: string): string {
+  const slug = directoryName
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const prefixed = /^[a-z]/.test(slug) ? slug : `project-${slug || "workspace"}`;
+  return prefixed.slice(0, 64).replace(/-+$/g, "");
+}

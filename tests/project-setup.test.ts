@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveProjectDirectory } from "../src/project-setup";
+import { resolveProjectDirectory, suggestProjectName } from "../src/project-setup";
 
 describe("resolveProjectDirectory", () => {
   test("uses the current Git root before the current directory", () => {
@@ -8,4 +8,8 @@ describe("resolveProjectDirectory", () => {
       findGitRoot: () => "/work/repo",
     })).toBe("/work/repo");
   });
+});
+
+test("suggestProjectName produces a valid manifest group name", () => {
+  expect(suggestProjectName("123 My Cool.App")).toBe("project-123-my-cool-app");
 });

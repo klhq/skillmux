@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { hostname } from "node:os";
 import { basename, join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -54,7 +54,7 @@ import {
   writeManifestAtomic,
 } from "./manifest";
 import { downloadLocalModels } from "./models";
-import { resolveProjectDirectory } from "./project-setup";
+import { resolveProjectDirectory, suggestProjectName } from "./project-setup";
 import { parseCommaList, promptMultiSelect, promptText, shouldUseWizard } from "./prompts";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
@@ -740,6 +740,16 @@ interface ProjectInitArgs {
   sync: boolean;
 }
 
+function configuredTargetForSurface(
+  manifest: ReturnType<typeof parseManifest>,
+  surface: { targetName: string; path: string },
+): string | undefined {
+  if (manifest.targets[surface.targetName]) return surface.targetName;
+  return Object.entries(manifest.targets).find(
+    ([, target]) => expandHome(target.dir) === surface.path,
+  )?.[0];
+}
+
 function parseProjectInitArgs(args: string[]): ProjectInitArgs {
   let projectPath: string | undefined;
   let name: string | undefined;
@@ -782,7 +792,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
   }
 
   const path = resolveProjectDirectory(projectPath ? expandHome(projectPath) : undefined);
-  return { path, name: name ?? basename(path), skills, clients, targets, yes, sync };
+  return { path, name: name ?? suggestProjectName(basename(path)), skills, clients, targets, yes, sync };
 }
 
 async function runProject(
@@ -798,6 +808,9 @@ async function runProject(
     dryRun: options.dryRun,
   });
   if (!existsSync(request.path)) throw new Error(`project path does not exist: ${request.path}`);
+  if (!lstatSync(request.path).isDirectory()) {
+    throw new Error(`project path is not a directory: ${request.path}`);
+  }
 
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
@@ -809,7 +822,7 @@ async function runProject(
     const name = await promptText("Project group", request.name);
     const availableClients = SUPPORTED_CLIENT_IDS.filter((client) => {
       const surface = planClientSurfaces([client]).surfaces[0];
-      return surface !== undefined && manifest.targets[surface.targetName] !== undefined;
+      return surface !== undefined && configuredTargetForSurface(manifest, surface) !== undefined;
     });
     const clients = await promptMultiSelect(
       "Which clients should receive project skills?",
@@ -824,7 +837,9 @@ async function runProject(
     );
     request = { ...request, name, clients, skills };
   }
-  const clientTargets = planClientSurfaces(request.clients).surfaces.map((surface) => surface.targetName);
+  const clientTargets = planClientSurfaces(request.clients).surfaces.map(
+    (surface) => configuredTargetForSurface(manifest, surface) ?? surface.targetName,
+  );
   const targets = [...new Set([...request.targets, ...clientTargets])];
   const updated = upsertProject(manifest, {
     name: request.name,
