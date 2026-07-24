@@ -5,6 +5,47 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0](https://github.com/klhq/skillmux/compare/v0.6.0...v1.0.0) (2026-07-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** init's and target add's custom-directory flag is now --dir instead of --path (matches the manifest schema's own "dir" field on [targets.*] entries) - old --path is removed, no alias.
+* **cli:** bare "skillmux which <skill_id>" is removed. Every other command follows a noun-verb shape (target list, project pin); "which" was the one bare-verb holdout. It's now "skillmux skill which <skill_id>", giving it a noun to sit under (room for future skill-level introspection subcommands). Running the bare form fails with a specific error naming the replacement, echoing back the argument the user typed so the suggested command is directly copy-pasteable.
+* **cli:** skillmux manifest pin/unpin no longer exists. [core] pinning is now skillmux core pin/unpin (added in the prior commit); [project.*] pinning was already fully covered by skillmux project pin/unpin. Running skillmux manifest now fails with a specific error naming both replacements instead of falling through to a generic "unknown command" message.
+
+### Added
+
+* **cli:** add --json to scan, report, install, eval, models download ([456ab33](https://github.com/klhq/skillmux/commit/456ab330ed8b11d08a74bddf08a1827da4b18c19))
+* **cli:** add core pin/unpin command ([c8b2387](https://github.com/klhq/skillmux/commit/c8b2387e01ac99a9e349cdf4ef2b57bb6f241820))
+* **cli:** bring doctor and local-vault init onto the shared options contract ([2517571](https://github.com/klhq/skillmux/commit/25175719ae175bc8aa22d667a27a462b6286b33b))
+* **cli:** remove manifest command in favor of core/project ([1a38b22](https://github.com/klhq/skillmux/commit/1a38b22e51c54e764c11ad5c8400a03537f01929))
+* **cli:** rename --path to --dir on init/target add; disambiguate target vs context ([0aa704b](https://github.com/klhq/skillmux/commit/0aa704b584c377dbb4c67d87690aae6af9a78320))
+* **cli:** rename which to skill which for noun-verb consistency ([dc5b75e](https://github.com/klhq/skillmux/commit/dc5b75ea3dddf9623e7b1a11bc3650fcf4804162))
+* **completions:** generate bash/zsh/fish from one shared command list ([1431c36](https://github.com/klhq/skillmux/commit/1431c365a3e10071405f4c7d3e072da435018cf7))
+* **doctor:** validate the manifest as part of skillmux doctor ([#67](https://github.com/klhq/skillmux/issues/67)) ([8749245](https://github.com/klhq/skillmux/commit/87492450b9af595c10e0f77c21f2371189b5b09f))
+* **manifest:** bulk pin/unpin for manifest --core ([#66](https://github.com/klhq/skillmux/issues/66)) ([0ded6ea](https://github.com/klhq/skillmux/commit/0ded6ea7e58dfccd236582d433a32606f8ec9d36))
+* **output:** add emitSuccess helper for consistent JSON-envelope output ([7e06551](https://github.com/klhq/skillmux/commit/7e06551a154fdb41452d047f470a89e74e81c570))
+* **output:** add typed CliError for exit-code classification ([a88e4f9](https://github.com/klhq/skillmux/commit/a88e4f9e67b64717ab28a82bc829a84a615459d8))
+
+
+### Fixed
+
+* **cli:** core pin --dry-run --json and which-removal message edge cases ([082ca53](https://github.com/klhq/skillmux/commit/082ca53a811df680287b142da97de702a8a1d764))
+* **config:** enforce live reload policy ([#73](https://github.com/klhq/skillmux/issues/73)) ([4382356](https://github.com/klhq/skillmux/commit/43823564ce24c19460be5f7e9bd4bb3535594d65))
+* **output:** stop misclassifying exit codes by message-substring matching ([acd958f](https://github.com/klhq/skillmux/commit/acd958f127a307c3af1bc20964fce5d906f92485))
+
+
+### Changed
+
+* **cli:** consolidate command plumbing ([#72](https://github.com/klhq/skillmux/issues/72)) ([9fb3e5d](https://github.com/klhq/skillmux/commit/9fb3e5de1aa45790fbb3e1fb3f760e82fd28b027))
+* **cli:** use emitSuccess instead of hand-rolled envelope printing ([ea4c3a5](https://github.com/klhq/skillmux/commit/ea4c3a5ebcf85fa041b7a279ae8ee27d9da8a1fa))
+
+
+### Docs
+
+* rewrite manifest pin, which, and --path references for the CLI consolidation ([0a81070](https://github.com/klhq/skillmux/commit/0a810705ba04e4bfef96a8098fb0b6c8def86230))
+
 ## [0.6.0](https://github.com/klhq/skillmux/compare/v0.5.0...v0.6.0) (2026-07-24)
 
 
