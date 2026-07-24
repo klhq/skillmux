@@ -4,8 +4,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { createClients } from "./clients";
-import { loadConfig } from "./config";
-import { backfillEmbeddings, configure, fetchSkill, resolveSkill } from "./router-core";
+import { loadConfig, resolveConfigPath } from "./config";
+import { ConfigWatcher, type ReloadStatus } from "./config-watcher";
+import { RuntimeSnapshotManager } from "./snapshot";
+import {
+  backfillEmbeddings,
+  configure,
+  fetchSkill,
+  resolveSkill,
+} from "./router-core";
 import { closeRuntime, getRuntime, startVaultWatcher } from "./router-core";
 import { getStats, SINCE_PATTERN } from "./stats";
 import { SKILL_ID_PATTERN } from "./vault";
@@ -21,13 +28,18 @@ import {
   RELOADABLE_KEYS,
   RESTART_REQUIRED_KEYS,
 } from "./config-service";
-import { applyCalibrationRun, getCalibrationRun, listCalibrationRuns } from "./calibrate";
+import {
+  applyCalibrationRun,
+  getCalibrationRun,
+  listCalibrationRuns,
+} from "./calibrate";
 
 export const metricsRegistry = new MetricsRegistry();
 export const readinessState = new ReadinessState();
 
 export interface ServerHandle {
   port?: number;
+  reloadStatus(): ReloadStatus;
   stop(): Promise<void>;
 }
 
@@ -35,10 +47,15 @@ let warnedAuthToken = false;
 function resolveAuthToken(envName: string): string {
   const value = process.env[envName];
   if (value) return value;
-  if (envName === "SKILLMUX_AUTH_TOKEN" && process.env.SKILL_ROUTER_AUTH_TOKEN) {
+  if (
+    envName === "SKILLMUX_AUTH_TOKEN" &&
+    process.env.SKILL_ROUTER_AUTH_TOKEN
+  ) {
     if (!warnedAuthToken) {
       warnedAuthToken = true;
-      console.error("skillmux: SKILL_ROUTER_AUTH_TOKEN is deprecated, set SKILLMUX_AUTH_TOKEN instead");
+      console.error(
+        "skillmux: SKILL_ROUTER_AUTH_TOKEN is deprecated, set SKILLMUX_AUTH_TOKEN instead",
+      );
     }
     return process.env.SKILL_ROUTER_AUTH_TOKEN;
   }
@@ -57,9 +74,36 @@ export async function startServer(opts?: {
   port?: number;
   config?: Config;
   clients?: Partial<Clients>;
+  configPath?: string;
 }): Promise<ServerHandle> {
-  const config = opts?.config ?? await loadConfig();
-  configure({ config, clients: opts?.clients ?? createClients(config) });
+  const configPath = resolveConfigPath(opts?.configPath);
+  const config = opts?.config ?? (await loadConfig(configPath));
+  const initialClients = { ...createClients(config), ...opts?.clients };
+  const snapshots = RuntimeSnapshotManager.create(config, initialClients);
+  const inactiveReloadStatus: ReloadStatus = {
+    last_successful_reload_at: null,
+    last_reload_error: null,
+    restart_required_keys: [],
+  };
+  configure({ config, clients: initialClients });
+  // An injected config has no guaranteed file source. Watch it only when the
+  // caller explicitly supplies that source; normal server startup always watches.
+  const watcherPath =
+    opts?.configPath ?? (opts?.config ? undefined : configPath);
+  const configWatcher = watcherPath
+    ? await ConfigWatcher.start(watcherPath, {
+        onReload: (nextConfig) => {
+          const nextClients = {
+            ...createClients(nextConfig),
+            ...opts?.clients,
+          };
+          snapshots.replace(nextConfig, nextClients);
+          configure({ config: nextConfig, clients: nextClients });
+        },
+        onError: (error) =>
+          console.error("skillmux config reload error:", error),
+      })
+    : undefined;
   const stopWatcher = await startVaultWatcher();
   const initPromise = initializeRuntime(readinessState)
     .then(() => metricsRegistry.setReadiness(readinessState.get()))
@@ -88,7 +132,10 @@ export async function startServer(opts?: {
 
         if (result.outcome === "matched") {
           const { body, ...meta } = result;
-          return { content: [{ type: "text" as const, text: body }], structuredContent: { ...meta } };
+          return {
+            content: [{ type: "text" as const, text: body }],
+            structuredContent: { ...meta },
+          };
         }
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
@@ -113,7 +160,10 @@ export async function startServer(opts?: {
       try {
         const result = await fetchSkill({ skill_id });
         const { body, ...meta } = result;
-        return { content: [{ type: "text" as const, text: body }], structuredContent: { ...meta } };
+        return {
+          content: [{ type: "text" as const, text: body }],
+          structuredContent: { ...meta },
+        };
       } catch (err) {
         metricsRegistry.recordError();
         throw err;
@@ -123,9 +173,8 @@ export async function startServer(opts?: {
 
   const transportType = opts?.transport ?? "stdio";
   if (transportType === "http") {
-    const { WebStandardStreamableHTTPServerTransport } = await import(
-      "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-    );
+    const { WebStandardStreamableHTTPServerTransport } =
+      await import("@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js");
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
     });
@@ -133,7 +182,7 @@ export async function startServer(opts?: {
 
     const { RateLimiter } = await import("./rate-limiter");
     const rateLimiter = new RateLimiter(
-      config.server?.rate_limit || { enabled: false, requests_per_minute: 60 }
+      config.server?.rate_limit || { enabled: false, requests_per_minute: 60 },
     );
 
     const port = opts?.port ?? Number(process.env.PORT || 3000);
@@ -149,8 +198,13 @@ export async function startServer(opts?: {
         };
         const origin = req.headers.get("origin") || "";
         const allowedOrigins = serverConfig.allowed_origins;
-        const isAllowed = allowedOrigins.includes("*") || allowedOrigins.includes(origin);
-        const allowOriginHeader = isAllowed ? (allowedOrigins.includes("*") ? "*" : origin) : "";
+        const isAllowed =
+          allowedOrigins.includes("*") || allowedOrigins.includes(origin);
+        const allowOriginHeader = isAllowed
+          ? allowedOrigins.includes("*")
+            ? "*"
+            : origin
+          : "";
 
         if (origin && !isAllowed) {
           return new Response("CORS origin not allowed", { status: 403 });
@@ -161,7 +215,8 @@ export async function startServer(opts?: {
             headers: {
               "Access-Control-Allow-Origin": allowOriginHeader,
               "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version",
+              "Access-Control-Allow-Headers":
+                "Content-Type, Authorization, MCP-Protocol-Version",
             },
           });
         }
@@ -208,29 +263,42 @@ export async function startServer(opts?: {
             if (allowOriginHeader) {
               headers.set("Access-Control-Allow-Origin", allowOriginHeader);
             }
-            for (const [key, value] of Object.entries(rateLimitResult.headers)) {
+            for (const [key, value] of Object.entries(
+              rateLimitResult.headers,
+            )) {
               headers.set(key, value);
             }
-            return new Response(JSON.stringify({ status: "ok" }), { status: 200, headers });
+            return new Response(JSON.stringify({ status: "ok" }), {
+              status: 200,
+              headers,
+            });
           }
           if (url.pathname === "/health/ready") {
             const readiness = readinessState.get();
             const headers = new Headers({ "Content-Type": "application/json" });
-            if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            if (allowOriginHeader)
+              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
             return new Response(JSON.stringify(readiness), {
               status: readiness.status === "ready" ? 200 : 503,
               headers,
             });
           }
           if (url.pathname === "/metrics") {
-            const headers = new Headers({ "Content-Type": "text/plain; version=0.0.4" });
+            const headers = new Headers({
+              "Content-Type": "text/plain; version=0.0.4",
+            });
             if (allowOriginHeader) {
               headers.set("Access-Control-Allow-Origin", allowOriginHeader);
             }
-            for (const [key, value] of Object.entries(rateLimitResult.headers)) {
+            for (const [key, value] of Object.entries(
+              rateLimitResult.headers,
+            )) {
               headers.set(key, value);
             }
-            return new Response(metricsRegistry.render(), { status: 200, headers });
+            return new Response(metricsRegistry.render(), {
+              status: 200,
+              headers,
+            });
           }
         }
 
@@ -238,10 +306,15 @@ export async function startServer(opts?: {
         if (serverConfig.auth_enabled) {
           const expectedToken = resolveAuthToken(serverConfig.auth_token_env);
           if (!expectedToken) {
-            return new Response("Server authentication configured but token environment variable is empty", { status: 500 });
+            return new Response(
+              "Server authentication configured but token environment variable is empty",
+              { status: 500 },
+            );
           }
           const authHeader = req.headers.get("authorization") || "";
-          const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+          const token = authHeader.startsWith("Bearer ")
+            ? authHeader.slice(7)
+            : authHeader;
           if (!token || !safeTokenEquals(token, expectedToken)) {
             return new Response("Unauthorized", { status: 401 });
           }
@@ -253,15 +326,23 @@ export async function startServer(opts?: {
           const since = url.searchParams.get("since") ?? "";
           if (!SINCE_PATTERN.test(since)) {
             return new Response(
-              JSON.stringify({ error: "since must be a relative window (e.g. 30d) or an absolute ISO-8601 date" }),
+              JSON.stringify({
+                error:
+                  "since must be a relative window (e.g. 30d) or an absolute ISO-8601 date",
+              }),
               { status: 400, headers: { "Content-Type": "application/json" } },
             );
           }
           const { db } = await getRuntime();
           const headers = new Headers({ "Content-Type": "application/json" });
-          if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-          for (const [key, value] of Object.entries(rateLimitResult.headers)) headers.set(key, value);
-          return new Response(JSON.stringify(getStats(db, since)), { status: 200, headers });
+          if (allowOriginHeader)
+            headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+          for (const [key, value] of Object.entries(rateLimitResult.headers))
+            headers.set(key, value);
+          return new Response(JSON.stringify(getStats(db, since)), {
+            status: 200,
+            headers,
+          });
         }
 
         // Admin HTTP API (/admin/v1/*)
@@ -270,55 +351,85 @@ export async function startServer(opts?: {
             return new Response("Admin endpoints disabled", { status: 403 });
           }
 
-          const adminTokenEnv = serverConfig.admin.token_env || "SKILLMUX_ADMIN_TOKEN";
+          const adminTokenEnv =
+            serverConfig.admin.token_env || "SKILLMUX_ADMIN_TOKEN";
           const expectedAdminToken = process.env[adminTokenEnv] || "";
           const authHeader = req.headers.get("authorization") || "";
-          const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+          const token = authHeader.startsWith("Bearer ")
+            ? authHeader.slice(7)
+            : authHeader;
 
-          if (!expectedAdminToken || !token || !safeTokenEquals(token, expectedAdminToken)) {
+          if (
+            !expectedAdminToken ||
+            !token ||
+            !safeTokenEquals(token, expectedAdminToken)
+          ) {
             return new Response("Unauthorized", { status: 401 });
           }
 
           const headers = new Headers({ "Content-Type": "application/json" });
-          if (allowOriginHeader) headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+          if (allowOriginHeader)
+            headers.set("Access-Control-Allow-Origin", allowOriginHeader);
 
-          if (req.method === "GET" && url.pathname === "/admin/v1/capabilities") {
-            const isExternallyManaged = process.env.SKILLMUX_CONFIG_READONLY === "true";
+          if (
+            req.method === "GET" &&
+            url.pathname === "/admin/v1/capabilities"
+          ) {
+            const isExternallyManaged =
+              process.env.SKILLMUX_CONFIG_READONLY === "true";
             return new Response(
               JSON.stringify({
                 config_read: true,
                 config_write: !isExternallyManaged,
                 calibration: true,
-                persistence: isExternallyManaged ? "externally_managed" : "writable",
+                persistence: isExternallyManaged
+                  ? "externally_managed"
+                  : "writable",
                 reloadable_keys: RELOADABLE_KEYS,
                 restart_required_keys: RESTART_REQUIRED_KEYS,
               }),
-              { status: 200, headers }
+              { status: 200, headers },
             );
           }
 
           if (req.method === "GET" && url.pathname === "/admin/v1/config") {
-            const { effective, sources } = await getEffectiveConfig();
-            const hash = computeHash(effective);
-            const status = await getLocalConfigStatus();
-            headers.set("ETag", `"${hash}"`);
+            const { effective, sources } = await getEffectiveConfig(configPath);
+            const desiredHash = computeHash(effective);
+            const snapshot = snapshots.acquire();
+            const activeRevision = computeHash(snapshot.snapshot.config);
+            snapshot.release();
+            const status =
+              configWatcher?.reloadStatus() ?? inactiveReloadStatus;
+            headers.set("ETag", `"${desiredHash}"`);
             return new Response(
               JSON.stringify({
                 desired: effective,
                 effective,
                 sources,
-                active_revision: hash,
-                runtime: status,
+                active_revision: activeRevision,
+                runtime: {
+                  target: "local",
+                  desired_source: configPath,
+                  desired_source_hash: desiredHash,
+                  active_revision: activeRevision,
+                  active_source_hash: activeRevision,
+                  ...status,
+                  readiness: readinessState.get(),
+                  runtime: "running",
+                },
               }),
-              { status: 200, headers }
+              { status: 200, headers },
             );
           }
 
           if (req.method === "PATCH" && url.pathname === "/admin/v1/config") {
             if (process.env.SKILLMUX_CONFIG_READONLY === "true") {
               return new Response(
-                JSON.stringify({ error: "CONFIG_EXTERNALLY_MANAGED", message: "Configuration is externally managed" }),
-                { status: 409, headers }
+                JSON.stringify({
+                  error: "CONFIG_EXTERNALLY_MANAGED",
+                  message: "Configuration is externally managed",
+                }),
+                { status: 409, headers },
               );
             }
 
@@ -329,45 +440,91 @@ export async function startServer(opts?: {
 
             if (!ifMatch || cleanIfMatch !== currentHash) {
               return new Response(
-                JSON.stringify({ error: "CONFIG_REVISION_CONFLICT", message: "Revision conflict" }),
-                { status: 409, headers }
+                JSON.stringify({
+                  error: "CONFIG_REVISION_CONFLICT",
+                  message: "Revision conflict",
+                }),
+                { status: 409, headers },
               );
             }
 
-            const body = (await req.json()) as { changes: Record<string, string | number | boolean> };
+            const body = (await req.json()) as {
+              changes: Record<string, string | number | boolean>;
+            };
             let lastResult: any = null;
             for (const [k, v] of Object.entries(body.changes ?? {})) {
-              lastResult = await setDottedKey(k, String(v), { targetName: "remote" });
+              lastResult = await setDottedKey(k, String(v), {
+                targetName: "remote",
+              });
             }
 
-            return new Response(JSON.stringify(lastResult ?? { ok: true }), { status: 200, headers });
+            return new Response(JSON.stringify(lastResult ?? { ok: true }), {
+              status: 200,
+              headers,
+            });
           }
 
           if (url.pathname.startsWith("/admin/v1/calibrations")) {
             const { db } = await getRuntime();
-            if (req.method === "GET" && url.pathname === "/admin/v1/calibrations") {
+            if (
+              req.method === "GET" &&
+              url.pathname === "/admin/v1/calibrations"
+            ) {
               const runs = listCalibrationRuns(db);
-              return new Response(JSON.stringify(runs), { status: 200, headers });
+              return new Response(JSON.stringify(runs), {
+                status: 200,
+                headers,
+              });
             }
-            const runIdMatch = url.pathname.match(/^\/admin\/v1\/calibrations\/([^\/]+)$/);
+            const runIdMatch = url.pathname.match(
+              /^\/admin\/v1\/calibrations\/([^\/]+)$/,
+            );
             if (req.method === "GET" && runIdMatch && runIdMatch[1]) {
               const runId = runIdMatch[1];
               const run = getCalibrationRun(db, runId);
-              if (!run) return new Response(JSON.stringify({ error: "Calibration run not found" }), { status: 404, headers });
-              return new Response(JSON.stringify(run), { status: 200, headers });
+              if (!run)
+                return new Response(
+                  JSON.stringify({ error: "Calibration run not found" }),
+                  { status: 404, headers },
+                );
+              return new Response(JSON.stringify(run), {
+                status: 200,
+                headers,
+              });
             }
-            if (req.method === "POST" && url.pathname === "/admin/v1/calibrations") {
+            if (
+              req.method === "POST" &&
+              url.pathname === "/admin/v1/calibrations"
+            ) {
               const runId = "run_" + Math.random().toString(36).slice(2, 10);
-              return new Response(JSON.stringify({ run_id: runId, status: "running" }), { status: 202, headers });
+              return new Response(
+                JSON.stringify({ run_id: runId, status: "running" }),
+                { status: 202, headers },
+              );
             }
-            const applyMatch = url.pathname.match(/^\/admin\/v1\/calibrations\/([^\/]+)\/apply$/);
+            const applyMatch = url.pathname.match(
+              /^\/admin\/v1\/calibrations\/([^\/]+)\/apply$/,
+            );
             if (req.method === "POST" && applyMatch && applyMatch[1]) {
               const runId = applyMatch[1];
               const run = getCalibrationRun(db, runId);
-              if (!run) return new Response(JSON.stringify({ error: "Calibration run not found" }), { status: 404, headers });
-              const { DEFAULT_CONFIG_PATH, expandHome } = await import("./config");
-              await applyCalibrationRun(db, runId, expandHome(DEFAULT_CONFIG_PATH), {});
-              return new Response(JSON.stringify({ ok: true, run_id: runId }), { status: 200, headers });
+              if (!run)
+                return new Response(
+                  JSON.stringify({ error: "Calibration run not found" }),
+                  { status: 404, headers },
+                );
+              const { DEFAULT_CONFIG_PATH, expandHome } =
+                await import("./config");
+              await applyCalibrationRun(
+                db,
+                runId,
+                expandHome(DEFAULT_CONFIG_PATH),
+                {},
+              );
+              return new Response(JSON.stringify({ ok: true, run_id: runId }), {
+                status: 200,
+                headers,
+              });
             }
           }
 
@@ -408,13 +565,17 @@ export async function startServer(opts?: {
     console.log(`skillmux serving over HTTP on ${hostname}:${bunServer.port}`);
     return {
       port: bunServer.port,
+      reloadStatus: () =>
+        configWatcher?.reloadStatus() ?? { ...inactiveReloadStatus },
       async stop() {
         if (stopped) return;
         stopped = true;
         readinessState.set({ ...readinessState.get(), status: "stopping" });
         metricsRegistry.setReadiness(readinessState.get());
         bunServer.stop(true);
+        configWatcher?.stop();
         stopWatcher();
+        snapshots.dispose();
         await server.close();
         closeRuntime();
       },
@@ -423,12 +584,16 @@ export async function startServer(opts?: {
     await server.connect(new StdioServerTransport());
     let stopped = false;
     return {
+      reloadStatus: () =>
+        configWatcher?.reloadStatus() ?? { ...inactiveReloadStatus },
       async stop() {
         if (stopped) return;
         stopped = true;
         readinessState.set({ ...readinessState.get(), status: "stopping" });
         metricsRegistry.setReadiness(readinessState.get());
+        configWatcher?.stop();
         stopWatcher();
+        snapshots.dispose();
         await server.close();
         closeRuntime();
       },
