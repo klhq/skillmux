@@ -101,6 +101,7 @@ const KNOWN_COMMANDS = [
   "init",
   "project",
   "target",
+  "core",
   "report",
   "scan",
   "install",
@@ -206,6 +207,9 @@ async function main() {
         break;
       case "target":
         await runTarget(subCommand, commandArgs, { isJson, dryRun: isDryRun });
+        break;
+      case "core":
+        await runCore(subCommand, commandArgs, { isJson, dryRun: isDryRun });
         break;
       case "report":
         await runReport(rawArgv.slice(1));
@@ -1066,6 +1070,43 @@ async function runProject(
   } else {
     console.log(`project "${request.name}" ready at ${request.path}`);
   }
+}
+
+async function runCore(
+  subCommand: string,
+  args: string[],
+  options: { isJson: boolean; dryRun: boolean },
+): Promise<void> {
+  if (subCommand !== "pin" && subCommand !== "unpin") {
+    throw new Error("usage: skillmux core <pin|unpin>");
+  }
+  const skillIds = args.filter((arg) => !arg.startsWith("-"));
+  if (skillIds.length === 0) {
+    throw new Error(`usage: skillmux core ${subCommand} <skill_id>... --yes`);
+  }
+  const yes = args.includes("--yes");
+  const config = await loadConfig();
+  const vaultPath = expandHome(config.vault_path);
+  const manifestPath = resolveManifestPath(vaultPath);
+  if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+  let updated = parseManifest(await Bun.file(manifestPath).text());
+  for (const skillId of skillIds) {
+    updated = subCommand === "pin" ? pinCore(updated, skillId) : unpinCore(updated, skillId);
+  }
+  validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
+  if (options.dryRun) {
+    console.log(`${subCommand}: [core] ${skillIds.join(", ")} (dry-run)`);
+    return;
+  }
+  if (!yes) {
+    if (!options.isJson && isInteractive()) {
+      if (!(await confirmAction(`${subCommand} ${skillIds.join(", ")} in [core]?`))) return;
+    } else {
+      throw new Error(`skillmux core ${subCommand} requires --yes when run non-interactively`);
+    }
+  }
+  writeManifestAtomic(manifestPath, updated);
+  console.log(`${subCommand}: [core] ${skillIds.join(", ")}`);
 }
 
 async function runTarget(
