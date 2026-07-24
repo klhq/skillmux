@@ -43,8 +43,12 @@ describe("syncTarget", () => {
     expect(readlinkSync(join(targetDir, "code-review"))).toBe(join(vaultPath, "code-review"));
 
     const marker = readSkillmuxMarker(targetDir);
+    expect(marker?.schema_version).toBe(1);
     expect(marker?.managed_by).toBe("skillmux");
+    expect(marker?.role).toBe("target");
     expect(marker?.target).toBe("claude");
+    expect(marker?.vault_path).toBe(vaultPath);
+    expect(marker?.managed_entries?.sort()).toEqual(["code-review", "writing-clearly"]);
     expect(typeof marker?.created_at).toBe("string");
 
     rmSync(vaultPath, { recursive: true, force: true });
@@ -88,6 +92,58 @@ describe("syncTarget", () => {
     expect(readSkillmuxMarker(targetDir)?.created_at).toBe(markerBefore?.created_at);
 
     rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("preserves unmanaged entries and removes only stale entries recorded in the marker", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    const targetDir = join(tmpDir("skillmux-sync-owned-"), "claude");
+
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
+    writeFileSync(join(targetDir, "notes.txt"), "user-owned");
+
+    const result = syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: [] });
+
+    expect(result.removed).toEqual(["writing-clearly"]);
+    expect(existsSync(join(targetDir, "writing-clearly"))).toBe(false);
+    expect(readFileSync(join(targetDir, "notes.txt"), "utf-8")).toBe("user-owned");
+    expect(readSkillmuxMarker(targetDir)?.managed_entries).toEqual([]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("rejects a desired skill that collides with an unmanaged entry before removing anything", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    mkdirSync(join(vaultPath, "old-skill"));
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    const targetDir = join(tmpDir("skillmux-sync-collision-"), "claude");
+
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["old-skill"] });
+    writeFileSync(join(targetDir, "writing-clearly"), "user-owned");
+
+    expect(() =>
+      syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] }),
+    ).toThrow("unmanaged entry");
+
+    expect(existsSync(join(targetDir, "old-skill"))).toBe(true);
+    expect(readFileSync(join(targetDir, "writing-clearly"), "utf-8")).toBe("user-owned");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("does not accept a local_vault marker as target ownership", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const targetDir = tmpDir("skillmux-sync-local-marker-");
+    writeLocalVaultMarker(targetDir, vaultPath);
+
+    expect(() => syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: [] })).toThrow(
+      "local_vault",
+    );
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
   });
 
   test("symlinks a fresh target to the local_vault_paths override, not vault_path, on skill_id collision", () => {
@@ -167,7 +223,7 @@ describe("syncTarget", () => {
     rmSync(targetDir, { recursive: true, force: true });
   });
 
-  test("recognizes a legacy adopted target with .skr marker and does not overwrite it", () => {
+  test("upgrades an empty legacy adopted target to a versioned ownership marker", () => {
     const vaultPath = tmpDir("skillmux-legacy-vault-");
     mkdirSync(join(vaultPath, "writing-clearly"));
     mkdirSync(join(vaultPath, "code-review"));
@@ -189,7 +245,9 @@ describe("syncTarget", () => {
     expect(result.added).toEqual(["writing-clearly"]);
     expect(existsSync(join(targetDir, "writing-clearly"))).toBe(true);
     expect(existsSync(join(targetDir, ".skr"))).toBe(true);
-    expect(existsSync(join(targetDir, ".skillmux"))).toBe(false);
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(true);
+    expect(readSkillmuxMarker(targetDir)?.schema_version).toBe(1);
+    expect(readSkillmuxMarker(targetDir)?.managed_entries).toEqual(["writing-clearly"]);
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
@@ -220,6 +278,32 @@ describe("restoreMonolith", () => {
 
     expect(result.restored).toBe(false);
     expect(existsSync(targetDir)).toBe(true);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("refuses a local_vault marker without deleting the directory", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const targetDir = tmpDir("skillmux-sync-restore-local-");
+    writeLocalVaultMarker(targetDir, vaultPath);
+    writeFileSync(join(targetDir, "keep.txt"), "keep");
+
+    expect(() => restoreMonolith(targetDir, vaultPath)).toThrow("local_vault");
+    expect(readFileSync(join(targetDir, "keep.txt"), "utf-8")).toBe("keep");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("refuses to restore over unmanaged target content", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const targetDir = join(tmpDir("skillmux-sync-restore-unmanaged-"), "claude");
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: [] });
+    writeFileSync(join(targetDir, "keep.txt"), "keep");
+
+    expect(() => restoreMonolith(targetDir, vaultPath)).toThrow("unmanaged");
+    expect(readFileSync(join(targetDir, "keep.txt"), "utf-8")).toBe("keep");
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
@@ -340,30 +424,50 @@ describe("installPostMergeHook", () => {
 describe("adoptTarget", () => {
   test("marks an existing directory in place without touching its content", () => {
     const dir = tmpDir("skillmux-sync-adopt-");
+    const vaultPath = tmpDir("skillmux-sync-adopt-vault-");
     writeFileSync(join(dir, "pre-existing-skill"), "a real file, not a symlink skillmux created");
 
-    const result = adoptTarget(dir, "claude");
+    const result = adoptTarget(dir, "claude", vaultPath);
 
     expect(result.adopted).toBe(true);
     expect(readSkillmuxMarker(dir)?.target).toBe("claude");
+    expect(readSkillmuxMarker(dir)?.vault_path).toBe(vaultPath);
+    expect(readSkillmuxMarker(dir)?.managed_entries).toEqual([]);
     expect(readFileSync(join(dir, "pre-existing-skill"), "utf-8")).toBe(
       "a real file, not a symlink skillmux created",
     );
 
     rmSync(dir, { recursive: true, force: true });
+    rmSync(vaultPath, { recursive: true, force: true });
   });
 
   test("is idempotent: adopting an already-marked directory is a no-op", () => {
     const dir = tmpDir("skillmux-sync-adopt-marked-");
-    adoptTarget(dir, "claude");
+    const vaultPath = tmpDir("skillmux-sync-adopt-vault-");
+    adoptTarget(dir, "claude", vaultPath);
     const markerBefore = readSkillmuxMarker(dir);
 
-    const result = adoptTarget(dir, "claude");
+    const result = adoptTarget(dir, "claude", vaultPath);
 
     expect(result.adopted).toBe(false);
     expect(readSkillmuxMarker(dir)?.created_at).toBe(markerBefore?.created_at);
 
     rmSync(dir, { recursive: true, force: true });
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("rejects adoption when existing target ownership names another target or vault", () => {
+    const dir = tmpDir("skillmux-sync-adopt-conflict-");
+    const firstVault = tmpDir("skillmux-sync-adopt-vault-");
+    const secondVault = tmpDir("skillmux-sync-adopt-vault-");
+    adoptTarget(dir, "claude", firstVault);
+
+    expect(() => adoptTarget(dir, "codex", firstVault)).toThrow('target "claude"');
+    expect(() => adoptTarget(dir, "claude", secondVault)).toThrow("vault_path");
+
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(firstVault, { recursive: true, force: true });
+    rmSync(secondVault, { recursive: true, force: true });
   });
 });
 
@@ -391,6 +495,24 @@ describe("readSkillmuxMarker role back-compat", () => {
     const marker = readSkillmuxMarker(dir);
 
     expect(marker?.role).toBe("target");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("rejects a versioned target marker missing required ownership fields", () => {
+    const dir = tmpDir("skillmux-sync-invalid-marker-");
+    writeFileSync(
+      join(dir, ".skillmux"),
+      JSON.stringify({
+        schema_version: 1,
+        managed_by: "skillmux",
+        role: "target",
+        target: "claude",
+        created_at: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    expect(() => readSkillmuxMarker(dir)).toThrow("vault_path");
 
     rmSync(dir, { recursive: true, force: true });
   });

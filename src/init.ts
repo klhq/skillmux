@@ -214,7 +214,7 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
 
   for (const target of confirmedTargets) {
     if (!existsSync(target.dir)) mkdirSync(target.dir, { recursive: true });
-    adoptTarget(target.dir, target.name);
+    adoptTarget(target.dir, target.name, vaultPath);
   }
 
   return manifest;
