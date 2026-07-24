@@ -226,7 +226,7 @@ async function main() {
         await runDoctor({ isJson });
         break;
       case "which":
-        throw new Error(`skillmux which is removed - use "skillmux skill which ${subCommand}" instead`);
+        throw new Error(`skillmux which is removed - use "skillmux skill which ${subCommand || "<skill_id>"}" instead`);
       case "skill":
         await runSkill(subCommand, commandArgs);
         break;
@@ -1107,7 +1107,11 @@ async function runCore(
   }
   validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
   if (options.dryRun) {
-    console.log(`${subCommand}: [core] ${skillIds.join(", ")} (dry-run)`);
+    emitSuccess(
+      { isJson: options.isJson },
+      { subcommand: subCommand, skill_ids: skillIds },
+      () => console.log(`${subCommand}: [core] ${skillIds.join(", ")} (dry-run)`),
+    );
     return;
   }
   if (!yes) {

@@ -189,6 +189,13 @@ describe("skillmux skill which CLI", () => {
     expect(result.stderr).not.toContain("Unknown command");
     expect(result.stderr).toContain(`skillmux skill which first-skill`);
   });
+
+  test("bare which with no skill_id suggests a usable replacement command, not a blank argument", async () => {
+    const result = await runCli("which");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(`skillmux skill which <skill_id>`);
+  });
 });
 
 describe("skillmux doctor CLI", () => {
@@ -425,6 +432,21 @@ describe("skillmux core CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("dry-run");
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("core pin --dry-run --json prints a schema_version:1 envelope, not plain text", async () => {
+    writeManifest(["first-skill"]);
+    const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+
+    const result = await runCli("core", "pin", "second-skill", "--dry-run", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
     expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
