@@ -13,8 +13,10 @@ import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
 import {
   assessClientReadiness,
+  detectInstalledClients,
   planClientSurfaces,
   resolveBuiltInTarget,
+  SUPPORTED_CLIENT_IDS,
   type ClientId,
   type ReadinessAxis,
 } from "./init-clients";
@@ -51,6 +53,7 @@ import {
   validateManifest,
 } from "./manifest";
 import { downloadLocalModels } from "./models";
+import { promptMultiSelect, shouldUseWizard } from "./prompts";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
 import {
@@ -1022,7 +1025,7 @@ function parseInitArgs(args: string[]): {
       if (!value) throw new Error("--core requires a skill_id");
       coreSkillIds.push(value);
       i++;
-    } else if (option === "--dry-run" || option === "--json") {
+    } else if (option === "--dry-run" || option === "--json" || option === "--interactive") {
       continue;
     } else if (option === "--migrate-full-vault") {
       migrateFullVault = true;
@@ -1048,6 +1051,11 @@ async function runInit(
     vaultPath: requestedVaultPath,
     yes,
   } = parseInitArgs(args);
+  const guided = shouldUseWizard(args, {
+    interactive: isInteractive(),
+    json: options.isJson,
+    dryRun: options.dryRun,
+  });
   migrateLegacyPaths();
   const configPath = resolveConfigPath();
   let configPlan: ConfigInitPlan | undefined;
@@ -1078,7 +1086,24 @@ async function runInit(
     throw new Error(vaultHealth.message);
   }
 
-  const clientPlan = planClientSurfaces(requestedClients, {
+  let selectedClients = requestedClients;
+  if (guided) {
+    const detected = detectInstalledClients({
+      codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+    });
+    const evidence = new Map(detected.map((item) => [item.client, item.evidence]));
+    selectedClients = await promptMultiSelect(
+      "Which clients do you use?",
+      SUPPORTED_CLIENT_IDS.map((client) => ({
+        value: client,
+        label: client,
+        detail: evidence.has(client) ? `detected: ${evidence.get(client)}` : undefined,
+        selected: evidence.has(client),
+      })),
+    );
+  }
+
+  const clientPlan = planClientSurfaces(selectedClients, {
     codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
   });
   const instructionPlan = planInstructionSetup(clientPlan.clients.map((client) => client.id), {
@@ -1283,6 +1308,12 @@ async function runInit(
 
   if (!yes) {
     if (!options.isJson && isInteractive()) {
+      if (guided) {
+        if (!(await confirmAction("Apply this setup plan?"))) {
+          console.log("init cancelled");
+          return;
+        }
+      } else {
       const prompts = [
         ...confirmedTargets.map((target) => `Adopt ${target.name} at ${target.dir}?`),
         ...instructionPlan.changes
@@ -1296,6 +1327,7 @@ async function runInit(
           console.log("init cancelled; nothing written");
           return;
         }
+      }
       }
     } else {
       throw new Error(
@@ -1372,9 +1404,10 @@ async function runInit(
     console.log("next: skillmux manifest pin <skill_id> --core");
   }
   if (confirmedTargets.length > 0) console.log("next: skillmux sync");
-  if (requestedClients.length === 0 || requestedClients.includes("skillmux-mcp")) {
+  if (selectedClients.length === 0 || selectedClients.includes("skillmux-mcp")) {
     console.log(`\n${printLastMile()}`);
   }
+  if (guided && confirmedTargets.length > 0) await runSync([]);
 }
 
 function parseReportArgs(args: string[]): { server?: string; db?: string; since?: string } {

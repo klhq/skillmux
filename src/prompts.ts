@@ -19,6 +19,15 @@ export function parseNumberSelection(input: string, optionCount: number): number
   return [...new Set(indexes)].sort((a, b) => a - b);
 }
 
+export function shouldUseWizard(
+  args: readonly string[],
+  mode: { interactive: boolean; json: boolean; dryRun: boolean },
+): boolean {
+  if (!mode.interactive || mode.json || mode.dryRun || args.includes("--yes")) return false;
+  if (args.includes("--interactive")) return true;
+  return args.length === 0;
+}
+
 export async function promptMultiSelect<T extends string>(
   question: string,
   options: readonly SelectOption<T>[],
