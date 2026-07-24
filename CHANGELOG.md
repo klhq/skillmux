@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/klhq/skillmux/compare/v0.4.5...v0.5.0) (2026-07-24)
+
+
+### Added
+
+* **init:** add named client registry ([e14dc26](https://github.com/klhq/skillmux/commit/e14dc261c51f7235cd7ee2223f49a0ec87668922))
+* **init:** add safe client-aware setup planner ([4a199b7](https://github.com/klhq/skillmux/commit/4a199b76c52819601a5935a7e6ac478aeddce5ca))
+* **init:** add shared setup bootstrap planner ([83ef8de](https://github.com/klhq/skillmux/commit/83ef8de67a1ff8a13de992e26ad5eedb4487509c))
+* **init:** add transactional setup planning ([6fc6f5e](https://github.com/klhq/skillmux/commit/6fc6f5e8d991a6b411c78016f5d0659486daf4d0))
+* **init:** classify and preflight skill surfaces ([b760e93](https://github.com/klhq/skillmux/commit/b760e939a66b49372642109daff6e753d9b99b8b))
+* **init:** harden target setup and host scoping ([8941f59](https://github.com/klhq/skillmux/commit/8941f598b52f73fe204c0705efb2b857b2f3c658))
+* **init:** manage client instruction blocks ([256c7a7](https://github.com/klhq/skillmux/commit/256c7a7f690e14a0e4ea5340536d762dab853bcc))
+* **init:** preflight and commit setup atomically ([9307780](https://github.com/klhq/skillmux/commit/93077809fca4949b1384213a7d8d444cd0da88eb))
+* **sync:** scope manifest targets by host ([1441dea](https://github.com/klhq/skillmux/commit/1441deac95e70df9d97b798cb514f6e7722e24eb))
+* **sync:** track ownership with versioned markers ([ad415b1](https://github.com/klhq/skillmux/commit/ad415b1a5cd8cf5351e6497c42640b624048d001))
+
+
+### Fixed
+
+* **init:** harden no-op plans and symlink checks ([137e050](https://github.com/klhq/skillmux/commit/137e05086e4f6b2d01cfdf6d5e8843f21bc1ae54))
+* **init:** preserve existing setup on reinitialization ([0c1bea9](https://github.com/klhq/skillmux/commit/0c1bea92c1d600679663c853f15bcc5a246109ff))
+
 ## [0.4.5](https://github.com/klhq/skillmux/compare/v0.4.4...v0.4.5) (2026-07-24)
 
 
