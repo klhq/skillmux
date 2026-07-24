@@ -269,7 +269,7 @@ project_groups = []
 
 Full manifest schema, including `[project.<group>]` pins scoped to one or more local paths and machine-local overlay vaults via `local_vault_paths`, is in [`docs/configuration.md`](docs/configuration.md#tiers-and-the-manifest).
 
-### 3. Materialize
+### 4. Materialize
 
 ```sh
 skillmux sync
@@ -286,7 +286,7 @@ skillmux sync --restore-monolith  # undo: replace a target dir with one symlink 
 
 `--restore-monolith` drops the `.skillmux` marker along with the per-skill symlinks — re-adopt with `skillmux init --target <name> --yes` before that target can be `sync`'d again.
 
-### 4. See what's actually getting used
+### 5. See what's actually getting used
 
 `skillmux report` reads the same audit log `resolve_skill` writes to (see [Guarantees](#guarantees)) — useful for deciding what belongs in `[core]` versus staying routed:
 
