@@ -118,25 +118,26 @@ project_groups = ["repo1"]           # which [project.*] groups materialize into
 - `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`) — `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
 - `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these and scopes newly added targets to the current hostname. Hand-editing is fine as long as `sync` is still allowed to own the directory (see below). An optional `host` limits the target to an exact machine-hostname match; omit it for a global, backward-compatible target. A host mismatch is reported and skipped before any target filesystem operation. `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
 
-**Pin/unpin without hand-editing.** `skillmux manifest pin`/`unpin` mutate `[core]`/`[project.*]` for you, validating with the same rules `sync` enforces (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under the 25-skill cap) before writing anything:
+**Pin/unpin without hand-editing.** `skillmux core pin`/`unpin` mutate `[core]` for you, and `skillmux project pin`/`unpin` mutate `[project.*]`, validating with the same rules `sync` enforces (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under the 25-skill cap) before writing anything:
 
 ```sh
-skillmux manifest pin csv-formatter --core                                   # add to [core]
-skillmux manifest pin csv-formatter pdf-extractor terraform-plans --core     # pin several skills to [core] in one atomic call
-skillmux manifest pin pdf-extractor --project repo1                          # add to an existing group
-skillmux manifest pin pdf-extractor --project repo2 --path ~/code/repo2      # create a new group
-skillmux manifest unpin csv-formatter --core                                 # remove from [core]
-skillmux manifest unpin csv-formatter pdf-extractor --core                   # unpin several skills from [core] in one atomic call
-skillmux manifest unpin pdf-extractor --project repo1                        # remove from a group (group stays, even if empty)
+skillmux core pin csv-formatter --yes                                    # add to [core]
+skillmux core pin csv-formatter pdf-extractor terraform-plans --yes      # pin several skills to [core] in one atomic call
+skillmux project pin repo1 pdf-extractor --yes                           # add to an existing group
+skillmux core unpin csv-formatter --yes                                  # remove from [core]
+skillmux core unpin csv-formatter pdf-extractor --yes                    # unpin several skills from [core] in one atomic call
+skillmux project unpin repo1 pdf-extractor --yes                         # remove from a group (group stays, even if empty)
 ```
 
-`--core` accepts one or more `skill_id` arguments; all of them are validated and applied against a single in-memory manifest before anything is written, so if any one of them is already pinned elsewhere (or, for unpin, not currently pinned in `[core]`), the whole call fails and the manifest file is left untouched — no partial pins. `--project <group>` still takes exactly one `skill_id` per call. `--path` is only accepted when `--project <group>` names a group that doesn't exist yet — passing it for an existing group is rejected, since changing an existing group's `paths` isn't this command's job (append another entry by hand-editing `skillmux.toml` instead). Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
+Both commands accept one or more `skill_id` arguments per call; all of them are validated and applied against a single in-memory manifest before anything is written, so if any one of them is already pinned elsewhere (or, for unpin, not currently pinned), the whole call fails and the manifest file is left untouched — no partial pins. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
 
+> **Breaking change:** `skillmux manifest pin`/`unpin` is removed. `[core]` pinning is now `skillmux core pin`/`unpin`; `[project.*]` pinning was already available as `skillmux project pin`/`unpin` and is now the only way to do it — there's no more `--path`-based inline group creation from a pin call, use `project add-path` to create the group first.
+>
 > **Breaking change:** `[targets.<name>].project` (a boolean) has been replaced by `project_groups` (an array of `[project.*]` names). A manifest still using the old field fails to parse with an error pointing at the new one. To migrate, replace `project = true` with `project_groups = [...]` listing every group that target previously received (previously *all* groups, unconditionally); replace `project = false` with `project_groups = []`.
 >
 > **Breaking change:** `[project.<group>].repos` has been renamed to `paths` — it was never required to be a git repository, just a local directory, and the old name collided in meaning with `skillmux install <repo>`'s unrelated git-source `repo` concept. A manifest still using `repos` fails to parse with an error pointing at `paths`; migrate by renaming the key (values are unchanged).
 
-Every `[core]`/`[project.*]` skill_id must resolve from the canonical `vault_path` — pinning a skill that only exists in a `local_vault_paths` entry (see below) fails `sync` with a distinct error, since the manifest is meant to be portable across machines and a machine-local override wouldn't exist elsewhere. `doctor` does not validate the manifest yet.
+Every `[core]`/`[project.*]` skill_id must resolve from the canonical `vault_path` — pinning a skill that only exists in a `local_vault_paths` entry (see below) fails `sync` with a distinct error, since the manifest is meant to be portable across machines and a machine-local override wouldn't exist elsewhere. `doctor` validates the manifest as part of its checks, surfacing any violation without writing anything back.
 
 ### Ownership marker
 
@@ -178,9 +179,9 @@ local_vault_paths = ["~/skills-local"]   # optional, default []: override-only, 
 
 **Visibility.** A `skill_id` present in more than one root is silently resolved via the precedence above with no output during normal use — two commands make that resolution visible on demand:
 
-- `skillmux which <skill_id>` — prints which root actually serves that skill, and names every root it shadows:
+- `skillmux skill which <skill_id>` — prints which root actually serves that skill, and names every root it shadows:
   ```
-  $ skillmux which my-skill
+  $ skillmux skill which my-skill
   my-skill: serving from /home/user/skills-local
     shadows: /home/user/skills
   ```
