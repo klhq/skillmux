@@ -575,14 +575,14 @@ async function runWhich(args: string[]): Promise<void> {
   for (const shadowedRoot of roots.slice(1)) console.log(`  shadows: ${shadowedRoot}`);
 }
 
-const MANIFEST_USAGE = "usage: skillmux manifest <pin|unpin> <skill_id> (--core | --project <group> [--repo <path>...])";
+const MANIFEST_USAGE = "usage: skillmux manifest <pin|unpin> <skill_id> (--core | --project <group> [--path <path>...])";
 
-function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean; project?: string; repos: string[] } {
+function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean; project?: string; paths: string[] } {
   const skillId = args[0];
   if (!skillId) throw new Error(MANIFEST_USAGE);
   let core = false;
   let project: string | undefined;
-  const repos: string[] = [];
+  const paths: string[] = [];
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--core") core = true;
@@ -590,19 +590,19 @@ function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean;
       const value = args[++i];
       if (!value) throw new Error("--project requires a group name");
       project = value;
-    } else if (arg === "--repo") {
+    } else if (arg === "--path") {
       const value = args[++i];
-      if (!value) throw new Error("--repo requires a path");
-      repos.push(value);
+      if (!value) throw new Error("--path requires a path");
+      paths.push(value);
     } else throw new Error(`unknown manifest option: ${arg}`);
   }
   if (core === (project !== undefined)) throw new Error(MANIFEST_USAGE);
-  return { skillId, core, project, repos };
+  return { skillId, core, project, paths };
 }
 
 async function runManifest(subCommand: string, args: string[]): Promise<void> {
   if (subCommand !== "pin" && subCommand !== "unpin") throw new Error(MANIFEST_USAGE);
-  const { skillId, core, project, repos } = parseManifestPinArgs(args);
+  const { skillId, core, project, paths } = parseManifestPinArgs(args);
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
@@ -616,7 +616,7 @@ async function runManifest(subCommand: string, args: string[]): Promise<void> {
   } else {
     updated =
       subCommand === "pin"
-        ? pinProject(manifest, skillId, project!, repos)
+        ? pinProject(manifest, skillId, project!, paths)
         : unpinProject(manifest, skillId, project!);
   }
   validateManifest(updated, vaultPath, localVaultPaths);

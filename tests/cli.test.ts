@@ -250,11 +250,11 @@ describe("skillmux sync CLI", () => {
         `skills = []`,
         ``,
         `[project.group-a]`,
-        `repos = ["${repoA}"]`,
+        `paths = ["${repoA}"]`,
         `skills = ["skill-a"]`,
         ``,
         `[project.group-b]`,
-        `repos = ["${repoB}"]`,
+        `paths = ["${repoB}"]`,
         `skills = ["skill-b"]`,
         ``,
         `[targets.only-a]`,
@@ -329,7 +329,7 @@ describe("skillmux manifest CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
-  test("manifest pin <skill_id> --project <group> --repo <path> creates a new group", async () => {
+  test("manifest pin <skill_id> --project <group> --path <path> creates a new group", async () => {
     writeManifest(["first-skill"]);
 
     const result = await runCli(
@@ -338,7 +338,7 @@ describe("skillmux manifest CLI", () => {
       "second-skill",
       "--project",
       "infra",
-      "--repo",
+      "--path",
       "~/workspace/infra",
     );
 
@@ -358,7 +358,7 @@ describe("skillmux manifest CLI", () => {
         `skills = []`,
         ``,
         `[project.infra]`,
-        `repos = ["~/workspace/infra"]`,
+        `paths = ["~/workspace/infra"]`,
         `skills = ["first-skill"]`,
         ``,
         `[targets.test]`,

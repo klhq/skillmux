@@ -85,7 +85,7 @@ Lives at the vault root (a legacy `skr.toml` is still read if present, never wri
 skills = ["csv-formatter"]           # pinned into every [targets.*] dir; capped at 25
 
 [project.repo1]
-repos = ["/Users/you/code/repo1"]    # only synced for repos paths that exist locally
+paths = ["/Users/you/code/repo1"]    # only synced for paths that exist locally
 skills = ["pdf-extractor"]           # must not overlap [core]
 
 [targets.claude]
@@ -94,7 +94,8 @@ project_groups = ["repo1"]           # which [project.*] groups materialize into
 ```
 
 - `[core].skills` — symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills; `sync` fails if a listed skill id isn't actually in the vault.
-- `[project.<group>].skills` — symlinked only into `<repo>/<relative path from $HOME to the target dir>`, for each `repos` entry, and only for targets whose `project_groups` names that group. `repos` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
+- `[project.<group>].skills` — symlinked only into `<path>/<relative path from $HOME to the target dir>`, for each `paths` entry, and only for targets whose `project_groups` names that group. `paths` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
+- `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`) — `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
 - `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these; hand-editing is fine as long as `sync` is still allowed to own the directory (see below). `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
 
 **Pin/unpin without hand-editing.** `skillmux manifest pin`/`unpin` mutate `[core]`/`[project.*]` for you, validating with the same rules `sync`/`doctor` enforce (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under the 25-skill cap) before writing anything:
@@ -102,14 +103,16 @@ project_groups = ["repo1"]           # which [project.*] groups materialize into
 ```sh
 skillmux manifest pin csv-formatter --core                                   # add to [core]
 skillmux manifest pin pdf-extractor --project repo1                          # add to an existing group
-skillmux manifest pin pdf-extractor --project repo2 --repo ~/code/repo2      # create a new group
+skillmux manifest pin pdf-extractor --project repo2 --path ~/code/repo2      # create a new group
 skillmux manifest unpin csv-formatter --core                                 # remove from [core]
 skillmux manifest unpin pdf-extractor --project repo1                        # remove from a group (group stays, even if empty)
 ```
 
-`--repo` is only accepted when `--project <group>` names a group that doesn't exist yet — passing it for an existing group is rejected, since changing an existing group's `repos` isn't this command's job. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
+`--path` is only accepted when `--project <group>` names a group that doesn't exist yet — passing it for an existing group is rejected, since changing an existing group's `paths` isn't this command's job (append another entry by hand-editing `skillmux.toml` instead). Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
 
 > **Breaking change:** `[targets.<name>].project` (a boolean) has been replaced by `project_groups` (an array of `[project.*]` names). A manifest still using the old field fails to parse with an error pointing at the new one. To migrate, replace `project = true` with `project_groups = [...]` listing every group that target previously received (previously *all* groups, unconditionally); replace `project = false` with `project_groups = []`.
+>
+> **Breaking change:** `[project.<group>].repos` has been renamed to `paths` — it was never required to be a git repository, just a local directory, and the old name collided in meaning with `skillmux install <repo>`'s unrelated git-source `repo` concept. A manifest still using `repos` fails to parse with an error pointing at `paths`; migrate by renaming the key (values are unchanged).
 
 Every `[core]`/`[project.*]` skill_id must resolve from the canonical `vault_path` — pinning a skill that only exists in a `local_vault_paths` entry (see below) fails `sync`/`doctor` with a distinct error, since the manifest is meant to be portable across machines and a machine-local override wouldn't exist elsewhere.
 

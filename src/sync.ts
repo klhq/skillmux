@@ -129,18 +129,18 @@ export function restoreMonolith(targetDir: string, vaultPath: string): RestoreMo
   return { restored: true };
 }
 
-export function resolveProjectPinDir(targetDir: string, repo: string): string {
+export function resolveProjectPinDir(targetDir: string, path: string): string {
   const rel = relative(homedir(), targetDir);
   if (rel === "" || rel.startsWith("..")) {
     throw new Error(
       `target dir "${targetDir}" must be inside $HOME to compute a project pin dir (got relative path "${rel}")`,
     );
   }
-  return join(repo, rel);
+  return join(path, rel);
 }
 
 export interface ProjectGroupInput {
-  repos: string[];
+  paths: string[];
   skills: string[];
 }
 
@@ -154,7 +154,7 @@ export interface SyncProjectTargetsParams {
 
 export interface ProjectPinSyncResult extends SyncTargetResult {
   group: string;
-  repo: string;
+  path: string;
   pinDir: string;
 }
 
@@ -166,14 +166,14 @@ export function syncProjectTargets(
   const results: ProjectPinSyncResult[] = [];
 
   for (const [group, projectGroup] of Object.entries(projectGroups)) {
-    for (const repo of projectGroup.repos) {
-      if (!existsSync(repo)) continue;
-      const pinDir = resolveProjectPinDir(targetDir, repo);
+    for (const path of projectGroup.paths) {
+      if (!existsSync(path)) continue;
+      const pinDir = resolveProjectPinDir(targetDir, path);
       const result = syncTarget(
         { vaultPath, targetDir: pinDir, targetName, coreSkillIds: projectGroup.skills, localVaultPaths },
         options,
       );
-      results.push({ group, repo, pinDir, ...result });
+      results.push({ group, path, pinDir, ...result });
     }
   }
 

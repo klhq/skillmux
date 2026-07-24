@@ -30,7 +30,7 @@ describe("parseManifest", () => {
 skills = ["writing-clearly", "code-review"]
 
 [project.infra]
-repos = ["~/workspace/infra"]
+paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
 [targets.claude]
@@ -40,7 +40,7 @@ project_groups = ["infra"]
     const manifest = parseManifest(toml);
     expect(manifest).toEqual({
       core: { skills: ["writing-clearly", "code-review"] },
-      project: { infra: { repos: ["~/workspace/infra"], skills: ["terraform-plans"] } },
+      project: { infra: { paths: ["~/workspace/infra"], skills: ["terraform-plans"] } },
       targets: { claude: { dir: "~/.claude/skills", project_groups: ["infra"] } },
     });
   });
@@ -55,6 +55,21 @@ dir = "~/.claude/skills"
 project = true
 `;
     expect(() => parseManifest(toml)).toThrow(/project_groups/);
+  });
+
+  test("rejects the renamed [project.*].repos field", () => {
+    const toml = `
+[core]
+skills = []
+
+[project.infra]
+repos = ["~/workspace/infra"]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+`;
+    expect(() => parseManifest(toml)).toThrow(/paths/);
   });
 
   test("rejects a manifest missing the required [core] section", () => {
@@ -110,7 +125,7 @@ dir = "~/.claude/skills"
 skills = []
 
 [project.infra]
-repos = ["~/workspace/infra"]
+paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
 [targets.claude]
@@ -150,7 +165,7 @@ dir = "~/.claude/skills"
 });
 
 describe("pinProject", () => {
-  test("creates a new [project.*] group with the given repos and skill_id", () => {
+  test("creates a new [project.*] group with the given paths and skill_id", () => {
     const manifest = parseManifest(`
 [core]
 skills = []
@@ -161,10 +176,10 @@ dir = "~/.claude/skills"
 
     const updated = pinProject(manifest, "terraform-plans", "infra", ["~/workspace/infra"]);
 
-    expect(updated.project?.infra).toEqual({ repos: ["~/workspace/infra"], skills: ["terraform-plans"] });
+    expect(updated.project?.infra).toEqual({ paths: ["~/workspace/infra"], skills: ["terraform-plans"] });
   });
 
-  test("throws when the group does not exist and no --repo was given", () => {
+  test("throws when the group does not exist and no --path was given", () => {
     const manifest = parseManifest(`
 [core]
 skills = []
@@ -174,7 +189,7 @@ dir = "~/.claude/skills"
 `);
 
     expect(() => pinProject(manifest, "terraform-plans", "infra")).toThrow(
-      /group "infra" does not exist.*--repo/,
+      /group "infra" does not exist.*--path/,
     );
   });
 
@@ -184,7 +199,7 @@ dir = "~/.claude/skills"
 skills = []
 
 [project.infra]
-repos = ["~/workspace/infra"]
+paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
 [targets.claude]
@@ -196,13 +211,13 @@ dir = "~/.claude/skills"
     expect(updated.project?.infra?.skills).toEqual(["terraform-plans", "another-skill"]);
   });
 
-  test("throws when --repo is passed for an already-existing group", () => {
+  test("throws when --path is passed for an already-existing group", () => {
     const manifest = parseManifest(`
 [core]
 skills = []
 
 [project.infra]
-repos = ["~/workspace/infra"]
+paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
 [targets.claude]
@@ -250,7 +265,7 @@ describe("unpinProject", () => {
 skills = []
 
 [project.infra]
-repos = ["~/workspace/infra"]
+paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
 [targets.claude]
@@ -259,7 +274,7 @@ dir = "~/.claude/skills"
 
     const updated = unpinProject(manifest, "terraform-plans", "infra");
 
-    expect(updated.project?.infra).toEqual({ repos: ["~/workspace/infra"], skills: [] });
+    expect(updated.project?.infra).toEqual({ paths: ["~/workspace/infra"], skills: [] });
   });
 
   test("throws when the group does not exist", () => {
@@ -280,7 +295,7 @@ dir = "~/.claude/skills"
 skills = []
 
 [project.infra]
-repos = ["~/workspace/infra"]
+paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
 [targets.claude]
@@ -315,7 +330,7 @@ dir = "~/.claude/skills"
 skills = ["shared-skill"]
 
 [project.infra]
-repos = []
+paths = []
 skills = ["shared-skill"]
 
 [targets.claude]
@@ -335,7 +350,7 @@ dir = "~/.claude/skills"
 skills = ["core-skill"]
 
 [project.infra]
-repos = []
+paths = []
 skills = ["infra-skill"]
 
 [targets.claude]
@@ -370,7 +385,7 @@ dir = "~/.claude/skills"
 skills = []
 
 [project.infra]
-repos = []
+paths = []
 skills = []
 
 [targets.claude]
@@ -382,21 +397,21 @@ project_groups = ["nonexistent"]
     rmSync(vaultPath, { recursive: true, force: true });
   });
 
-  test("skips a [project.*].repos path that doesn't exist locally with a note, not an error", () => {
+  test("skips a [project.*].paths entry that doesn't exist locally with a note, not an error", () => {
     const vaultPath = tmpVault();
     const manifest = parseManifest(`
 [core]
 skills = []
 
 [project.infra]
-repos = ["/does/not/exist/on/this/machine"]
+paths = ["/does/not/exist/on/this/machine"]
 skills = []
 
 [targets.claude]
 dir = "~/.claude/skills"
 `);
     const result = validateManifest(manifest, vaultPath);
-    expect(result.notes).toEqual(["[project.infra] repos path not found locally, skipped: /does/not/exist/on/this/machine"]);
+    expect(result.notes).toEqual(["[project.infra] paths entry not found locally, skipped: /does/not/exist/on/this/machine"]);
 
     rmSync(vaultPath, { recursive: true, force: true });
   });
@@ -427,7 +442,7 @@ dir = "~/.claude/skills"
 skills = []
 
 [project.infra]
-repos = []
+paths = []
 skills = ["local-only-skill"]
 
 [targets.claude]
@@ -465,7 +480,7 @@ describe("serializeManifest", () => {
 skills = ["writing-clearly", "code-review"]
 
 [project.infra]
-repos = ["~/workspace/infra"]
+paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
 [targets.claude]

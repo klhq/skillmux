@@ -227,55 +227,55 @@ describe("restoreMonolith", () => {
 });
 
 describe("resolveProjectPinDir", () => {
-  test("joins the repo path with the target dir's path relative to $HOME", () => {
+  test("joins the path with the target dir's path relative to $HOME", () => {
     const targetDir = join(homedir(), ".claude", "skills");
-    const repo = "/workspace/projects/infra";
+    const path = "/workspace/projects/infra";
 
-    expect(resolveProjectPinDir(targetDir, repo)).toBe(join(repo, ".claude", "skills"));
+    expect(resolveProjectPinDir(targetDir, path)).toBe(join(path, ".claude", "skills"));
   });
 
-  test("throws instead of escaping the repo when targetDir isn't under $HOME", () => {
+  test("throws instead of escaping the path when targetDir isn't under $HOME", () => {
     expect(() => resolveProjectPinDir("/vault", "/workspace/projects/infra")).toThrow("$HOME");
   });
 
-  test("throws instead of pinning at the repo root when targetDir equals $HOME exactly", () => {
+  test("throws instead of pinning at the path root when targetDir equals $HOME exactly", () => {
     expect(() => resolveProjectPinDir(homedir(), "/workspace/projects/infra")).toThrow("$HOME");
   });
 });
 
 describe("syncProjectTargets", () => {
-  test("materializes a pin dir per repo in each project group, skipping repos that don't exist locally", () => {
+  test("materializes a pin dir per path in each project group, skipping paths that don't exist locally", () => {
     const vaultPath = tmpDir("skillmux-sync-vault-");
     mkdirSync(join(vaultPath, "terraform-plans"));
     const targetDir = join(homedir(), ".claude", "skills");
 
-    const existingRepo = tmpDir("skillmux-sync-repo-");
-    const missingRepo = "/does/not/exist/on/this/machine";
+    const existingPath = tmpDir("skillmux-sync-path-");
+    const missingPath = "/does/not/exist/on/this/machine";
 
     const results = syncProjectTargets({
       vaultPath,
       targetDir,
       targetName: "claude",
       projectGroups: {
-        infra: { repos: [existingRepo, missingRepo], skills: ["terraform-plans"] },
+        infra: { paths: [existingPath, missingPath], skills: ["terraform-plans"] },
       },
     });
 
     expect(results).toEqual([
       {
         group: "infra",
-        repo: existingRepo,
-        pinDir: resolveProjectPinDir(targetDir, existingRepo),
+        path: existingPath,
+        pinDir: resolveProjectPinDir(targetDir, existingPath),
         added: ["terraform-plans"],
         removed: [],
       },
     ]);
-    expect(readlinkSync(join(existingRepo, ".claude", "skills", "terraform-plans"))).toBe(
+    expect(readlinkSync(join(existingPath, ".claude", "skills", "terraform-plans"))).toBe(
       join(vaultPath, "terraform-plans"),
     );
 
     rmSync(vaultPath, { recursive: true, force: true });
-    rmSync(existingRepo, { recursive: true, force: true });
+    rmSync(existingPath, { recursive: true, force: true });
   });
 });
 

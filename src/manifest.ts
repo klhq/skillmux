@@ -19,7 +19,7 @@ const groupNameSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/).max(64);
 const skillIdSchema = z.string().regex(SKILL_ID_PATTERN);
 
 const projectGroupSchema = z.object({
-  repos: z.array(z.string().min(1)),
+  paths: z.array(z.string().min(1)),
   skills: z.array(skillIdSchema),
 }).strict();
 
@@ -54,6 +54,15 @@ export function parseManifest(toml: string): Manifest {
             `[targets.${String(issue.path[1])}] uses the removed field "project" (boolean) — replace it with "project_groups" (an array of [project.<group>] names).`,
           );
         }
+        if (
+          issue.code === "unrecognized_keys" &&
+          issue.path[0] === "project" &&
+          issue.keys.includes("repos")
+        ) {
+          throw new Error(
+            `[project.${String(issue.path[1])}] uses the removed field "repos" — replace it with "paths".`,
+          );
+        }
       }
     }
     throw error;
@@ -70,7 +79,7 @@ export function serializeManifest(manifest: Manifest): string {
 
   for (const [name, group] of Object.entries(manifest.project ?? {})) {
     sections.push(
-      `[project.${name}]\nrepos = ${tomlStringArray(group.repos)}\nskills = ${tomlStringArray(group.skills)}`,
+      `[project.${name}]\npaths = ${tomlStringArray(group.paths)}\nskills = ${tomlStringArray(group.skills)}`,
     );
   }
 
@@ -106,15 +115,15 @@ export function unpinCore(manifest: Manifest, skillId: string): Manifest {
   return { ...manifest, core: { skills: manifest.core.skills.filter((id) => id !== skillId) } };
 }
 
-export function pinProject(manifest: Manifest, skillId: string, group: string, repos?: string[]): Manifest {
+export function pinProject(manifest: Manifest, skillId: string, group: string, paths?: string[]): Manifest {
   if (!groupNameSchema.safeParse(group).success) {
     throw new Error(`invalid group name "${group}" — must match /^[a-z][a-z0-9_-]*$/ (max 64 chars)`);
   }
   const existingGroup = manifest.project?.[group];
 
   if (!existingGroup) {
-    if (!repos || repos.length === 0) {
-      throw new Error(`group "${group}" does not exist — pass --repo <path> at least once to create it`);
+    if (!paths || paths.length === 0) {
+      throw new Error(`group "${group}" does not exist — pass --path <path> at least once to create it`);
     }
     const existing = findExistingPin(manifest, skillId);
     if (existing) {
@@ -122,12 +131,12 @@ export function pinProject(manifest: Manifest, skillId: string, group: string, r
     }
     return {
       ...manifest,
-      project: { ...manifest.project, [group]: { repos, skills: [skillId] } },
+      project: { ...manifest.project, [group]: { paths, skills: [skillId] } },
     };
   }
 
-  if (repos && repos.length > 0) {
-    throw new Error(`group "${group}" already exists — --repo is only used when creating a new group`);
+  if (paths && paths.length > 0) {
+    throw new Error(`group "${group}" already exists — --path is only used when creating a new group`);
   }
   const existing = findExistingPin(manifest, skillId);
   if (existing) {
@@ -208,9 +217,9 @@ export function validateManifest(
         throw new Error(`skill "${skillId}" appears in both [core] and [project.${groupName}]`);
       }
     }
-    for (const repo of group.repos) {
-      if (!existsSync(expandHome(repo))) {
-        notes.push(`[project.${groupName}] repos path not found locally, skipped: ${repo}`);
+    for (const path of group.paths) {
+      if (!existsSync(expandHome(path))) {
+        notes.push(`[project.${groupName}] paths entry not found locally, skipped: ${path}`);
       }
     }
   }
