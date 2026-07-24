@@ -70,6 +70,7 @@ import {
 import { getStats, renderStatsText, type StatsResponse } from "./stats";
 import {
   installPostMergeHook,
+  migrateLegacyMarker,
   restoreMonolith as restoreMonolithTarget,
   syncProjectTargets,
   syncTarget,
@@ -1156,7 +1157,67 @@ async function runTarget(
     return;
   }
 
-  throw new Error("usage: skillmux target <list|show|add|remove>");
+  if (subCommand === "migrate-marker") {
+    const name = args[0];
+    const target = name ? manifest.targets[name] : undefined;
+    if (!name || !target) {
+      throw new Error(name ? `target "${name}" does not exist` : "usage: skillmux target migrate-marker <name> --yes");
+    }
+    const targetDir = expandHome(target.dir);
+    if (!existsSync(targetDir)) {
+      throw new Error(`target directory ${targetDir} does not exist`);
+    }
+    const currentHost = hostname();
+    if (target.host !== undefined && target.host !== currentHost) {
+      throw new Error(`target "${name}" is scoped to host ${target.host}, current host is ${currentHost}`);
+    }
+
+    // Same core-skill set syncTarget uses to populate this target's own directory;
+    // project-group skills land in separate per-project pin dirs, not here.
+    const expectedSkillIds = [...manifest.core.skills];
+    const preview = migrateLegacyMarker(targetDir, name, vaultPath, expectedSkillIds, { dryRun: true });
+
+    if (preview.status === "already-migrated") {
+      console.log(`target "${name}" marker is already schema_version 1 — nothing to migrate`);
+      return;
+    }
+
+    if (preview.status === "mismatch") {
+      const { extra, missing } = preview.diff!;
+      console.log(
+        `target "${name}" (${targetDir}) has a legacy marker whose on-disk contents do not match the expected pinned set:`,
+      );
+      console.log(`  extra (on disk, not expected): ${extra.length > 0 ? extra.join(", ") : "(none)"}`);
+      console.log(`  missing (expected, not on disk): ${missing.length > 0 ? missing.join(", ") : "(none)"}`);
+      throw new Error(
+        `refusing to migrate marker for target "${name}": on-disk contents do not match the expected pinned set; remove or migrate the diff by hand first`,
+      );
+    }
+
+    // preview.status === "would-migrate"
+    if (options.dryRun) {
+      console.log(
+        `target migrate-marker: ${name} -> schema_version 1 with managed_entries [${preview.actual.join(", ")}] (dry-run)`,
+      );
+      return;
+    }
+
+    if (!args.includes("--yes")) {
+      if (!options.isJson && isInteractive()) {
+        if (!(await confirmAction(`Migrate legacy marker for target "${name}" at ${targetDir} to schema_version 1?`))) return;
+      } else {
+        throw new Error("skillmux target migrate-marker requires --yes when run non-interactively");
+      }
+    }
+
+    const result = migrateLegacyMarker(targetDir, name, vaultPath, expectedSkillIds);
+    console.log(
+      `target "${name}" marker migrated to schema_version 1 with managed_entries: ${result.actual.join(", ") || "(none)"}`,
+    );
+    return;
+  }
+
+  throw new Error("usage: skillmux target <list|show|add|remove|migrate-marker>");
 }
 
 function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean; project?: string; paths: string[] } {

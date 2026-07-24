@@ -35,7 +35,7 @@ _skillmux_completions() {
             COMPREPLY=( $(compgen -W "init list show add-path remove-path pin unpin attach detach" -- "$cur") )
             ;;
         target)
-            COMPREPLY=( $(compgen -W "list show add remove" -- "$cur") )
+            COMPREPLY=( $(compgen -W "list show add remove migrate-marker" -- "$cur") )
             ;;
         local-vault)
             COMPREPLY=( $(compgen -W "init" -- "$cur") )
@@ -114,7 +114,7 @@ _skillmux() {
     elif [[ "$words[2]" == "project" && CURRENT == 3 ]]; then
         _values 'project command' init list show add-path remove-path pin unpin attach detach
     elif [[ "$words[2]" == "target" && CURRENT == 3 ]]; then
-        _values 'target command' list show add remove
+        _values 'target command' list show add remove migrate-marker
     fi
 }
 _skillmux "$@"
@@ -152,7 +152,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from project" -l target -x -d "S
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l interactive -d "Force guided setup"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l yes -d "Apply without prompts"
-complete -c skillmux -n "__fish_seen_subcommand_from target" -a "list show add remove" -d "Manage targets"
+complete -c skillmux -n "__fish_seen_subcommand_from target" -a "list show add remove migrate-marker" -d "Manage targets"
 `;
   }
 

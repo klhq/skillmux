@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   adoptTarget,
   installPostMergeHook,
+  migrateLegacyMarker,
   readSkillmuxMarker,
   resolveProjectPinDir,
   restoreMonolith,
@@ -248,6 +249,85 @@ describe("syncTarget", () => {
     expect(existsSync(join(targetDir, ".skillmux"))).toBe(true);
     expect(readSkillmuxMarker(targetDir)?.schema_version).toBe(1);
     expect(readSkillmuxMarker(targetDir)?.managed_entries).toEqual(["writing-clearly"]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+describe("migrateLegacyMarker", () => {
+  test("migrates a legacy marker whose on-disk contents exactly match the expected pinned set", () => {
+    const vaultPath = tmpDir("skillmux-migrate-vault-");
+    const targetDir = tmpDir("skillmux-migrate-match-");
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    writeFileSync(join(targetDir, ".skr"), JSON.stringify({
+      managed_by: "skr",
+      target: "claude",
+      created_at: createdAt,
+    }));
+    // On-disk content matches the expected pinned set exactly.
+    mkdirSync(join(targetDir, "writing-clearly"));
+    mkdirSync(join(targetDir, "code-review"));
+
+    const result = migrateLegacyMarker(targetDir, "claude", vaultPath, ["writing-clearly", "code-review"]);
+
+    expect(result.status).toBe("migrated");
+    expect(result.actual.sort()).toEqual(["code-review", "writing-clearly"]);
+    expect(result.diff).toBeUndefined();
+
+    const marker = readSkillmuxMarker(targetDir);
+    expect(marker?.schema_version).toBe(1);
+    expect(marker?.managed_by).toBe("skillmux");
+    expect(marker?.role).toBe("target");
+    expect(marker?.target).toBe("claude");
+    expect(marker?.vault_path).toBe(vaultPath);
+    expect(marker?.managed_entries?.sort()).toEqual(["code-review", "writing-clearly"]);
+    // created_at from the legacy marker is preserved, not regenerated.
+    expect(marker?.created_at).toBe(createdAt);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("refuses to migrate and makes no changes when on-disk contents don't match the expected pinned set", () => {
+    const vaultPath = tmpDir("skillmux-migrate-vault-");
+    const targetDir = tmpDir("skillmux-migrate-mismatch-");
+    const legacyMarkerRaw = JSON.stringify({
+      managed_by: "skr",
+      target: "claude",
+      created_at: "2026-01-01T00:00:00.000Z",
+    });
+    writeFileSync(join(targetDir, ".skr"), legacyMarkerRaw);
+    // On disk: has an untracked extra file, and is missing an expected skill.
+    mkdirSync(join(targetDir, "writing-clearly"));
+    mkdirSync(join(targetDir, "untracked-notes"));
+
+    const result = migrateLegacyMarker(targetDir, "claude", vaultPath, ["writing-clearly", "code-review"]);
+
+    expect(result.status).toBe("mismatch");
+    expect(result.diff?.extra).toEqual(["untracked-notes"]);
+    expect(result.diff?.missing).toEqual(["code-review"]);
+
+    // No marker mutation: still the legacy file, untouched, and no .skillmux written.
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(false);
+    expect(readFileSync(join(targetDir, ".skr"), "utf-8")).toBe(legacyMarkerRaw);
+    expect(readSkillmuxMarker(targetDir)?.schema_version).toBeUndefined();
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("is a safe no-op when the marker is already versioned", () => {
+    const vaultPath = tmpDir("skillmux-migrate-vault-");
+    const targetDir = join(tmpDir("skillmux-migrate-already-"), "claude");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
+    const before = readFileSync(join(targetDir, ".skillmux"), "utf-8");
+
+    const result = migrateLegacyMarker(targetDir, "claude", vaultPath, ["writing-clearly"]);
+
+    expect(result.status).toBe("already-migrated");
+    expect(readFileSync(join(targetDir, ".skillmux"), "utf-8")).toBe(before);
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });

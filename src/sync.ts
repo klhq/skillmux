@@ -211,6 +211,89 @@ export function adoptTarget(dir: string, targetName: string, vaultPath: string):
   return { adopted: true };
 }
 
+export interface MigrateMarkerDiff {
+  /** On-disk entries not accounted for by the expected pinned set. */
+  extra: string[];
+  /** Expected pinned entries that are missing from disk. */
+  missing: string[];
+}
+
+export type MigrateMarkerStatus = "already-migrated" | "would-migrate" | "migrated" | "mismatch";
+
+export interface MigrateMarkerResult {
+  status: MigrateMarkerStatus;
+  /** On-disk entries (excluding marker files), sorted. Empty for "already-migrated". */
+  actual: string[];
+  /** Expected pinned entries, sorted. Empty for "already-migrated". */
+  expected: string[];
+  /** Present only when status is "mismatch". */
+  diff?: MigrateMarkerDiff;
+  marker?: SkillmuxMarker;
+}
+
+export interface MigrateMarkerOptions {
+  dryRun?: boolean;
+}
+
+/**
+ * Upgrades a legacy (pre-schema_version) target marker to schema_version 1,
+ * automating the verification a human would otherwise do by hand: `ls` the
+ * target dir, eyeball it against the manifest's expected pins, and hand-write
+ * a managed_entries list. Refuses (no writes) unless the on-disk contents of
+ * targetDir exactly match expectedSkillIds — same safety posture as the
+ * legacy-marker-with-untracked-entries throw in syncTarget, just with the
+ * diff surfaced instead of requiring manual inspection.
+ *
+ * expectedSkillIds should be the same core-skill set syncTarget would use to
+ * populate this target's own directory (i.e. manifest.core.skills for a
+ * top-level target) — project-group skills are synced into separate
+ * per-project pin directories (see resolveProjectPinDir) and never land in
+ * the target's own directory, so they are intentionally excluded here.
+ */
+export function migrateLegacyMarker(
+  targetDir: string,
+  targetName: string,
+  vaultPath: string,
+  expectedSkillIds: string[],
+  options: MigrateMarkerOptions = {},
+): MigrateMarkerResult {
+  const { dryRun = false } = options;
+  const marker = readSkillmuxMarker(targetDir);
+  if (!marker) {
+    throw new Error(`${targetDir} is not owned by skillmux — run skillmux init`);
+  }
+  if (marker.role === "local_vault") {
+    throw new Error(`${targetDir} has a local_vault marker, not target ownership`);
+  }
+  if (marker.target !== targetName) {
+    throw new Error(`${targetDir} is owned by target "${marker.target}", not "${targetName}"`);
+  }
+  if (marker.schema_version === 1) {
+    return { status: "already-migrated", actual: [], expected: [], marker };
+  }
+
+  const actual = readdirSync(targetDir)
+    .filter((name) => name !== SKILLMUX_MARKER_FILENAME && name !== LEGACY_MARKER_FILENAME)
+    .sort();
+  const expected = [...new Set(expectedSkillIds)].sort();
+  const actualSet = new Set(actual);
+  const expectedSet = new Set(expected);
+  const extra = actual.filter((name) => !expectedSet.has(name));
+  const missing = expected.filter((name) => !actualSet.has(name));
+
+  if (extra.length > 0 || missing.length > 0) {
+    return { status: "mismatch", actual, expected, diff: { extra, missing } };
+  }
+
+  if (dryRun) {
+    return { status: "would-migrate", actual, expected };
+  }
+
+  const createdAt = marker.created_at ?? new Date().toISOString();
+  writeTargetMarker(targetDir, targetName, vaultPath, actual, createdAt);
+  return { status: "migrated", actual, expected, marker: readSkillmuxMarker(targetDir) ?? undefined };
+}
+
 export interface RestoreMonolithResult {
   restored: boolean;
 }

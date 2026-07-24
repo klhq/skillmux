@@ -713,6 +713,55 @@ describe("skillmux target CLI", () => {
     rmSync(targetPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
+
+  test("target migrate-marker upgrades a matching legacy marker to schema_version 1", async () => {
+    const targetPath = join(tmp, "legacy-migrate-target");
+    mkdirSync(targetPath, { recursive: true });
+    writeFileSync(
+      join(targetPath, ".skr"),
+      JSON.stringify({ managed_by: "skr", target: "legacy-agent", created_at: "2026-01-01T00:00:00.000Z" }),
+    );
+    mkdirSync(join(targetPath, "first-skill"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = ["first-skill"]\n\n[targets.legacy-agent]\ndir = "${targetPath}"\nproject_groups = []\n`,
+    );
+
+    const result = await runCli("target", "migrate-marker", "legacy-agent", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    const marker = JSON.parse(readFileSync(join(targetPath, ".skillmux"), "utf-8"));
+    expect(marker.schema_version).toBe(1);
+    expect(marker.managed_entries).toEqual(["first-skill"]);
+    expect(marker.created_at).toBe("2026-01-01T00:00:00.000Z");
+
+    rmSync(targetPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target migrate-marker refuses and reports a diff when on-disk contents don't match", async () => {
+    const targetPath = join(tmp, "legacy-mismatch-target");
+    mkdirSync(targetPath, { recursive: true });
+    writeFileSync(
+      join(targetPath, ".skr"),
+      JSON.stringify({ managed_by: "skr", target: "legacy-agent", created_at: "2026-01-01T00:00:00.000Z" }),
+    );
+    mkdirSync(join(targetPath, "untracked-notes"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = ["first-skill"]\n\n[targets.legacy-agent]\ndir = "${targetPath}"\nproject_groups = []\n`,
+    );
+
+    const result = await runCli("target", "migrate-marker", "legacy-agent", "--yes");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toContain("untracked-notes");
+    expect(result.stdout).toContain("first-skill");
+    expect(existsSync(join(targetPath, ".skillmux"))).toBe(false);
+
+    rmSync(targetPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
 });
 
 describe("skillmux local-vault CLI", () => {
