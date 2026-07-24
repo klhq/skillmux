@@ -211,16 +211,16 @@ async function main() {
         await runCore(subCommand, commandArgs, { isJson, dryRun: isDryRun });
         break;
       case "report":
-        await runReport(rawArgv.slice(1));
+        await runReport(rawArgv.slice(1), { isJson });
         break;
       case "scan":
-        await runScan(rawArgv.slice(1));
+        await runScan(rawArgv.slice(1), { isJson });
         break;
       case "install":
-        await runInstall(rawArgv.slice(1));
+        await runInstall(rawArgv.slice(1), { isJson });
         break;
       case "eval":
-        await runEval();
+        await runEval({ isJson });
         break;
       case "doctor":
         await runDoctor({ isJson });
@@ -240,7 +240,7 @@ async function main() {
         break;
       case "models":
         if (subCommand !== "download") throw new Error("usage: skillmux models download");
-        await runModelDownload();
+        await runModelDownload({ isJson });
         break;
       default: {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
@@ -699,13 +699,17 @@ async function runIndex(): Promise<void> {
   }
 }
 
-async function runEval(): Promise<void> {
+async function runEval(options: { isJson: boolean }): Promise<void> {
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
 
   const report = await evalVault().catch((error: unknown) => {
     throw new Error(`eval requires local embeddings: ${String(error)}`);
   });
+  if (options.isJson) {
+    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: report })));
+    return;
+  }
   console.log(`holdout queries: ${report.queries}`);
   console.log(`lexical recall@3: ${report.lexical.recall_at_3.toFixed(3)}`);
   console.log(`lexical recall@5: ${report.lexical.recall_at_5.toFixed(3)}`);
@@ -1244,9 +1248,11 @@ async function runLocalVaultInit(args: string[], options: { isJson: boolean; dry
   }
 }
 
-async function runModelDownload(): Promise<void> {
+async function runModelDownload(options: { isJson: boolean }): Promise<void> {
   const cacheDir = await downloadLocalModels(await loadConfig());
-  console.log(`models ready in ${cacheDir}`);
+  console.log(options.isJson
+    ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: { cache_dir: cacheDir } }))
+    : `models ready in ${cacheDir}`);
 }
 
 function parseSyncArgs(args: string[]): {
@@ -1832,6 +1838,8 @@ function parseReportArgs(args: string[]): { server?: string; db?: string; since?
       if (!value) throw new Error("--since requires a window");
       since = value;
       i++;
+    } else if (option === "--json") {
+      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
     } else {
       throw new Error(`unknown report option: ${option}`);
     }
@@ -1840,20 +1848,22 @@ function parseReportArgs(args: string[]): { server?: string; db?: string; since?
   return { server, db, since };
 }
 
-async function runReport(args: string[]): Promise<void> {
+async function runReport(args: string[], options: { isJson: boolean }): Promise<void> {
   const { server, db: dbPath, since } = parseReportArgs(args);
-  if (!since) throw new Error("usage: skillmux report [--server <url> | --db <path>] --since <window>");
+  if (!since) throw new Error("usage: skillmux report [--server <url> | --db <path>] --since <window> [--json]");
 
   if (server) {
     const url = `${server.replace(/\/$/, "")}/stats?since=${encodeURIComponent(since)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`skillmux report --server failed: ${res.status} ${await res.text()}`);
-    console.log(renderStatsText((await res.json()) as StatsResponse));
+    const stats = (await res.json()) as StatsResponse;
+    console.log(options.isJson ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: stats })) : renderStatsText(stats));
     return;
   }
 
   const db = dbPath ? new Database(dbPath, { readonly: true }) : openIndex(expandHome((await loadConfig()).state_dir));
-  console.log(renderStatsText(getStats(db, since)));
+  const stats = getStats(db, since);
+  console.log(options.isJson ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: stats })) : renderStatsText(stats));
   db.close();
 }
 
@@ -1873,6 +1883,8 @@ function parseScanArgs(args: string[]): { path?: string; format: "text" | "json"
         throw new Error("--fail-on must be low, medium, or high");
       }
       failOn = value;
+    } else if (option === "--json") {
+      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
     } else if (option?.startsWith("--")) {
       throw new Error(`unknown scan option: ${option}`);
     } else if (path !== undefined) {
@@ -1884,11 +1896,15 @@ function parseScanArgs(args: string[]): { path?: string; format: "text" | "json"
   return { path, format, failOn };
 }
 
-async function runScan(args: string[]): Promise<void> {
+async function runScan(args: string[], options: { isJson: boolean }): Promise<void> {
   const { path, format, failOn } = parseScanArgs(args);
   const rootPath = path ? expandHome(path) : expandHome((await loadConfig()).vault_path);
   const result = await scanPath(rootPath);
-  console.log(format === "json" ? renderScanJson(result) : renderScanText(result));
+  if (options.isJson) {
+    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: result })));
+  } else {
+    console.log(format === "json" ? renderScanJson(result) : renderScanText(result));
+  }
   process.exitCode = scanExitCode(result.findings, failOn);
 }
 
@@ -1912,6 +1928,8 @@ function parseInstallArgs(args: string[]): {
         throw new Error("--fail-on must be low, medium, or high");
       }
       failOn = value;
+    } else if (option === "--json") {
+      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
     } else if (option?.startsWith("--")) {
       throw new Error(`unknown install option: ${option}`);
     } else if (repo !== undefined) {
@@ -1923,10 +1941,10 @@ function parseInstallArgs(args: string[]): {
   return { repo, force, dryRun, failOn };
 }
 
-async function runInstall(args: string[]): Promise<void> {
+async function runInstall(args: string[], options: { isJson: boolean }): Promise<void> {
   const { repo, force, dryRun, failOn } = parseInstallArgs(args);
   if (!repo) {
-    throw new Error("usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run]");
+    throw new Error("usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--json]");
   }
 
   const source = resolveRepoSource(repo);
@@ -1934,7 +1952,7 @@ async function runInstall(args: string[]): Promise<void> {
   try {
     const resolved = resolveSkillDir(cloneDir, deriveRepoName(source.url), source.skillPath);
     const { findings } = await validateSkillCandidate(resolved.skillId, resolved.dir);
-    console.log(renderScanText({ scanned: 1, findings }));
+    if (!options.isJson) console.log(renderScanText({ scanned: 1, findings }));
 
     if (scanExitCode(findings, failOn) !== 0) {
       process.exitCode = 1;
@@ -1944,12 +1962,17 @@ async function runInstall(args: string[]): Promise<void> {
 
     const vaultPath = expandHome((await loadConfig()).vault_path);
     if (dryRun) {
-      console.log(`dry-run: would install "${resolved.skillId}" into ${join(vaultPath, resolved.skillId)}`);
+      const plannedPath = join(vaultPath, resolved.skillId);
+      console.log(options.isJson
+        ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: { skill_id: resolved.skillId, would_install_at: plannedPath } }))
+        : `dry-run: would install "${resolved.skillId}" into ${plannedPath}`);
       return;
     }
 
     const targetDir = installIntoVault(vaultPath, resolved.skillId, resolved.dir, force);
-    console.log(`installed "${resolved.skillId}" into ${targetDir}`);
+    console.log(options.isJson
+      ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: { skill_id: resolved.skillId, installed_at: targetDir } }))
+      : `installed "${resolved.skillId}" into ${targetDir}`);
   } finally {
     rmSync(cloneDir, { recursive: true, force: true });
   }

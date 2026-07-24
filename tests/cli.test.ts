@@ -1248,6 +1248,17 @@ describe("skillmux report CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("outcomes: matched=0 ambiguous=0 no_match=0");
   });
+
+  test("--json wraps the stats report in a schema_version:1 envelope", async () => {
+    const result = await runCli("report", "--since", "30d", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.outcome_totals).toEqual({ matched: 0, ambiguous: 0, no_match: 0 });
+    expect(Array.isArray(parsed.data.skills)).toBe(true);
+  });
 });
 
 describe("skillmux scan CLI", () => {
@@ -1289,6 +1300,17 @@ describe("skillmux scan CLI", () => {
     const result = await runCli("scan", "--fail-on", "high");
 
     expect(result.exitCode).toBe(0);
+  });
+
+  test("--json wraps the ScanResult in a schema_version:1 envelope", async () => {
+    const result = await runCli("scan", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.scanned).toBeGreaterThan(0);
+    expect(Array.isArray(parsed.data.findings)).toBe(true);
   });
 
   test("--format json prints a machine-readable ScanResult", async () => {
@@ -1342,6 +1364,22 @@ describe("skillmux install CLI", () => {
     expect(existsSync(join(vaultDir, "fixture-csv-formatter", "SKILL.md"))).toBe(true);
 
     rmSync(join(vaultDir, "fixture-csv-formatter"), { recursive: true, force: true });
+  });
+
+  test("--json wraps the install result in a schema_version:1 envelope", async () => {
+    const fixtureDir = join(tmp, "fixture-json-install");
+    initFixtureRepo(fixtureDir, "---\nname: JSON Install\ndescription: d\n---\nbody");
+
+    const result = await runCli("install", `file://${fixtureDir}`, "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.skill_id).toBe("fixture-json-install");
+    expect(parsed.data.installed_at).toContain("fixture-json-install");
+
+    rmSync(join(vaultDir, "fixture-json-install"), { recursive: true, force: true });
   });
 
   test("--dry-run reports what would be installed without writing to the vault", async () => {
