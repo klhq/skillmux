@@ -202,7 +202,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|project|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|project|target|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
     );
 
   });
@@ -493,6 +493,29 @@ describe("skillmux project CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("project init explains how to configure a missing client target", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-missing-client-"));
+    writeFileSync(join(vaultDir, "skillmux.toml"), `[core]\nskills = []\n`);
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--client",
+      "codex",
+      "--yes",
+      "--no-sync",
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("skillmux init --client codex");
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("project init rejects a file path", async () => {
     const projectPath = join(tmp, "not-a-project.txt");
     writeFileSync(projectPath, "file");
@@ -625,6 +648,69 @@ describe("skillmux project CLI", () => {
     expect(result.stdout).toContain("first-skill");
     expect(result.stdout).toContain("test");
 
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+});
+
+describe("skillmux target CLI", () => {
+  test("target list reports clients derivable from the configured directory", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.claude]\ndir = "~/.claude/skills"\n`,
+    );
+
+    const result = await runCli("target", "list");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("clients: claude-code");
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target add adopts a custom directory with current-host scoping", async () => {
+    const targetPath = join(tmp, "custom-target");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n`,
+    );
+
+    const result = await runCli(
+      "target",
+      "add",
+      "custom-agent",
+      "--path",
+      targetPath,
+      "--yes",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf8");
+    expect(written).toContain("[targets.custom-agent]");
+    expect(written).toContain(`host = "${hostname()}"`);
+    expect(existsSync(join(targetPath, ".skillmux"))).toBe(true);
+
+    rmSync(targetPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target remove deletes only manifest configuration and preserves files", async () => {
+    const targetPath = join(tmp, "preserved-target");
+    mkdirSync(targetPath, { recursive: true });
+    writeFileSync(join(targetPath, "keep.txt"), "keep");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.custom-agent]\ndir = "${targetPath}"\nproject_groups = []\n`,
+    );
+
+    const result = await runCli("target", "remove", "custom-agent", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf8")).not.toContain(
+      "[targets.custom-agent]",
+    );
+    expect(readFileSync(join(targetPath, "keep.txt"), "utf8")).toBe("keep");
+
+    rmSync(targetPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 });
@@ -840,6 +926,35 @@ describe("skillmux init CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain("--target agents is deprecated");
     expect(readFileSync(join(clientVault, "skillmux.toml"), "utf8")).toContain("[targets.agents]");
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("client init reuses a legacy-named target with the same physical directory", async () => {
+    const clientHome = join(tmp, "legacy-client-home");
+    const clientVault = join(tmp, "legacy-client-vault");
+    const clientConfig = join(tmp, "legacy-client-config.toml");
+    mkdirSync(join(clientVault, "legacy-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "legacy-skill", "SKILL.md"), "---\nname: legacy-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const first = await runCliEnv(["init", "--target", "claude", "--yes"], {
+      HOME: clientHome,
+      SKILLMUX_CONFIG: clientConfig,
+    });
+    expect(first.exitCode).toBe(0);
+
+    const second = await runCliEnv(
+      ["init", "--client", "claude-code", "--no-instructions", "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(second.exitCode).toBe(0);
+    const manifest = readFileSync(join(clientVault, "skillmux.toml"), "utf8");
+    expect(manifest).toContain("[targets.claude]");
+    expect(manifest).not.toContain("[targets.claude-code]");
 
     rmSync(clientHome, { recursive: true, force: true });
     rmSync(clientVault, { recursive: true, force: true });

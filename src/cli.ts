@@ -100,6 +100,7 @@ const KNOWN_COMMANDS = [
   "sync",
   "init",
   "project",
+  "target",
   "report",
   "scan",
   "install",
@@ -203,6 +204,9 @@ async function main() {
       case "project":
         await runProject(subCommand, commandArgs, { isJson, dryRun: isDryRun });
         break;
+      case "target":
+        await runTarget(subCommand, commandArgs, { isJson, dryRun: isDryRun });
+        break;
       case "report":
         await runReport(rawArgv.slice(1));
         break;
@@ -236,7 +240,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>`;
+          : `usage: skillmux <serve|index|sync|init|project|target|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>`;
         throw new Error(msg);
       }
     }
@@ -621,6 +625,7 @@ Setup:
                 [--client <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
+  skillmux target <list|show|add|remove>
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
@@ -630,7 +635,7 @@ Init targets:
   agent-skills, claude-code, codex, custom
 
 Commands:
-  serve, index, sync, init, project, report, scan, install, eval, doctor, which,
+  serve, index, sync, init, project, target, report, scan, install, eval, doctor, which,
   manifest, local-vault, config, models, calibrate, context, completions`);
 }
 
@@ -751,6 +756,20 @@ function configuredTargetForSurface(
   return Object.entries(manifest.targets).find(
     ([, target]) => expandHome(target.dir) === surface.path,
   )?.[0];
+}
+
+function configuredTargetsForClients(
+  manifest: ReturnType<typeof parseManifest>,
+  clients: readonly string[],
+): string[] {
+  return planClientSurfaces(clients).surfaces.map((surface) => {
+    const target = configuredTargetForSurface(manifest, surface);
+    if (target) return target;
+    const client = surface.clients[0]!;
+    throw new Error(
+      `client target for "${client}" is not configured; run "skillmux init --client ${client} --yes" first`,
+    );
+  });
 }
 
 function parseProjectInitArgs(args: string[]): ProjectInitArgs {
@@ -926,9 +945,7 @@ async function runProject(
     const manifestPath = resolveManifestPath(vaultPath);
     if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
     const manifest = parseManifest(await Bun.file(manifestPath).text());
-    const clientTargets = planClientSurfaces(clients).surfaces.map(
-      (surface) => configuredTargetForSurface(manifest, surface) ?? surface.targetName,
-    );
+    const clientTargets = configuredTargetsForClients(manifest, clients);
     const targets = [...new Set([...requestedTargets, ...clientTargets])];
     if (targets.length === 0) {
       throw new Error(`project ${subCommand} requires --client or --target`);
@@ -989,9 +1006,7 @@ async function runProject(
     );
     request = { ...request, name, clients, skills };
   }
-  const clientTargets = planClientSurfaces(request.clients).surfaces.map(
-    (surface) => configuredTargetForSurface(manifest, surface) ?? surface.targetName,
-  );
+  const clientTargets = configuredTargetsForClients(manifest, request.clients);
   const targets = [...new Set([...request.targets, ...clientTargets])];
   const updated = upsertProject(manifest, {
     name: request.name,
@@ -1051,6 +1066,97 @@ async function runProject(
   } else {
     console.log(`project "${request.name}" ready at ${request.path}`);
   }
+}
+
+async function runTarget(
+  subCommand: string,
+  args: string[],
+  options: { isJson: boolean; dryRun: boolean },
+): Promise<void> {
+  const config = await loadConfig();
+  const vaultPath = expandHome(config.vault_path);
+  const manifestPath = resolveManifestPath(vaultPath);
+  if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+  const manifest = parseManifest(await Bun.file(manifestPath).text());
+
+  if (subCommand === "list" || subCommand === "show") {
+    const names = subCommand === "show" ? [args[0] ?? ""] : Object.keys(manifest.targets);
+    if (subCommand === "show" && !manifest.targets[names[0]!]) {
+      throw new Error(`target "${names[0]}" does not exist`);
+    }
+    const targets = names.map((name) => {
+      const target = manifest.targets[name]!;
+      const clients = SUPPORTED_CLIENT_IDS.filter((client) => {
+        const surface = planClientSurfaces([client]).surfaces[0];
+        return surface !== undefined && surface.path === expandHome(target.dir);
+      });
+      return { name, ...target, clients };
+    });
+    if (options.isJson) {
+      console.log(JSON.stringify({ schema_version: 1, targets }));
+    } else if (targets.length === 0) {
+      console.log("no targets configured");
+    } else {
+      for (const target of targets) {
+        console.log(`${target.name}:`);
+        console.log(`  dir: ${target.dir}`);
+        console.log(`  host: ${target.host ?? "(global)"}`);
+        console.log(`  clients: ${target.clients.join(", ") || "(custom)"}`);
+        console.log(`  projects: ${target.project_groups.join(", ") || "(none)"}`);
+      }
+    }
+    return;
+  }
+
+  if (subCommand === "add") {
+    const name = args[0];
+    const pathIndex = args.indexOf("--path");
+    const rawPath = pathIndex === -1 ? undefined : args[pathIndex + 1];
+    if (!name || !rawPath) throw new Error("usage: skillmux target add <name> --path <dir> --yes");
+    const path = expandHome(rawPath);
+    if (options.dryRun) {
+      const planned = planInitManifest(vaultPath, [{ name, dir: path }], []);
+      console.log(options.isJson
+        ? JSON.stringify({ schema_version: 1, target: planned.targets[name] })
+        : `target add: ${name} -> ${path} (dry-run)`);
+      return;
+    }
+    if (!args.includes("--yes")) {
+      if (!options.isJson && isInteractive()) {
+        if (!(await confirmAction(`Adopt target ${name} at ${path}?`))) return;
+      } else {
+        throw new Error("skillmux target add requires --yes when run non-interactively");
+      }
+    }
+    applyInit(vaultPath, [{ name, dir: path }]);
+    console.log(`target "${name}" added at ${path}`);
+    return;
+  }
+
+  if (subCommand === "remove") {
+    const name = args[0];
+    if (!name || !manifest.targets[name]) {
+      throw new Error(name ? `target "${name}" does not exist` : "usage: skillmux target remove <name> --yes");
+    }
+    if (options.dryRun) {
+      console.log(`target remove: ${name} (files preserved, dry-run)`);
+      return;
+    }
+    if (!args.includes("--yes")) {
+      if (!options.isJson && isInteractive()) {
+        if (!(await confirmAction(`Remove target ${name} from the manifest and preserve its files?`))) return;
+      } else {
+        throw new Error("skillmux target remove requires --yes when run non-interactively");
+      }
+    }
+    const targets = { ...manifest.targets };
+    delete targets[name];
+    writeManifestAtomic(manifestPath, { ...manifest, targets });
+    console.log(`target "${name}" removed from the manifest; files preserved at ${manifest.targets[name]!.dir}`);
+    return;
+  }
+
+  throw new Error("usage: skillmux target <list|show|add|remove>");
 }
 
 function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean; project?: string; paths: string[] } {
@@ -1389,8 +1495,19 @@ async function runInit(
   const targetByPath = new Map(
     explicitSurfaceTargets.map((target) => [target.path, target.targetName] as const),
   );
+  const existingManifestPath = resolveManifestPath(vaultPath);
+  const existingManifest = existingManifestPath
+    ? parseManifest(await Bun.file(existingManifestPath).text())
+    : undefined;
   for (const surface of clientPlan.surfaces) {
-    if (!targetByPath.has(surface.path)) targetByPath.set(surface.path, surface.targetName);
+    if (!targetByPath.has(surface.path)) {
+      targetByPath.set(
+        surface.path,
+        existingManifest
+          ? configuredTargetForSurface(existingManifest, surface) ?? surface.targetName
+          : surface.targetName,
+      );
+    }
   }
   const candidatePaths = [
     ...new Set([

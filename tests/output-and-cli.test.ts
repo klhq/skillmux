@@ -1,8 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { formatJsonEnvelope, mapExitCode, suggestCorrection } from "../src/output";
+import { formatJsonEnvelope, isInteractive, mapExitCode, suggestCorrection } from "../src/output";
 import { generateCompletions } from "../src/completions";
 
 describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () => {
+  it("keeps prompts interactive when NO_COLOR is set", () => {
+    expect(isInteractive({ TERM: "xterm-256color", NO_COLOR: "1" }, true)).toBe(true);
+  });
+
   it("formats standard JSON envelope with schema_version 1 (AC12)", () => {
     const successEnv = formatJsonEnvelope({
       ok: true,

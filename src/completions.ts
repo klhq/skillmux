@@ -8,7 +8,7 @@ _skillmux_completions() {
     COMPREPLY=()
     cur="\${COMP_WORDS[COMP_CWORD]}"
     prev="\${COMP_WORDS[COMP_CWORD-1]}"
-    opts="context config calibrate serve index sync init project report scan install eval doctor which manifest local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
+    opts="context config calibrate serve index sync init project target report scan install eval doctor which manifest local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -33,6 +33,9 @@ _skillmux_completions() {
             ;;
         project)
             COMPREPLY=( $(compgen -W "init list show add-path remove-path pin unpin attach detach" -- "$cur") )
+            ;;
+        target)
+            COMPREPLY=( $(compgen -W "list show add remove" -- "$cur") )
             ;;
         local-vault)
             COMPREPLY=( $(compgen -W "init" -- "$cur") )
@@ -68,6 +71,7 @@ _skillmux() {
         'sync:Synchronize vault skills'
         'init:Initialize project targets'
         'project:Configure project-scoped skills'
+        'target:Manage advanced skill-delivery targets'
         'report:Generate usage stats'
         'scan:Audit skills for issues'
         'install:Install skills into vault'
@@ -109,6 +113,8 @@ _skillmux() {
           '--json[emit a JSON envelope]'
     elif [[ "$words[2]" == "project" && CURRENT == 3 ]]; then
         _values 'project command' init list show add-path remove-path pin unpin attach detach
+    elif [[ "$words[2]" == "target" && CURRENT == 3 ]]; then
+        _values 'target command' list show add remove
     fi
 }
 _skillmux "$@"
@@ -124,6 +130,7 @@ complete -c skillmux -n "__fish_use_subcommand" -a calibrate -d "Manage policy c
 complete -c skillmux -n "__fish_use_subcommand" -a serve -d "Start MCP server"
 complete -c skillmux -n "__fish_use_subcommand" -a init -d "Configure this machine and its clients"
 complete -c skillmux -n "__fish_use_subcommand" -a project -d "Configure project-scoped skills"
+complete -c skillmux -n "__fish_use_subcommand" -a target -d "Manage advanced skill-delivery targets"
 complete -c skillmux -n "__fish_use_subcommand" -a completions -d "Generate shell completions"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l client -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp" -d "Select a client"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l target -x -a "agent-skills claude-code codex custom" -d "Select a target"
@@ -145,6 +152,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from project" -l target -x -d "S
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l interactive -d "Force guided setup"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l yes -d "Apply without prompts"
+complete -c skillmux -n "__fish_seen_subcommand_from target" -a "list show add remove" -d "Manage targets"
 `;
   }
 

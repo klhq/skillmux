@@ -97,6 +97,16 @@ dir = "~/.claude/skills"
 `;
     expect(() => parseManifest(toml)).toThrow();
   });
+
+  test("parses a core-only manifest with no configured targets", () => {
+    expect(parseManifest(`
+[core]
+skills = []
+`)).toEqual({
+      core: { skills: [] },
+      targets: {},
+    });
+  });
 });
 
 describe("pinCore", () => {

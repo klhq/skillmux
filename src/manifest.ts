@@ -32,7 +32,7 @@ const targetSchema = z.object({
 const manifestSchema = z.object({
   core: z.object({ skills: z.array(skillIdSchema) }).strict(),
   project: z.record(groupNameSchema, projectGroupSchema).optional(),
-  targets: z.record(groupNameSchema, targetSchema),
+  targets: z.record(groupNameSchema, targetSchema).default({}),
 }).strict();
 
 export type ProjectGroup = z.infer<typeof projectGroupSchema>;

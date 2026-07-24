@@ -110,12 +110,11 @@ export function suggestCorrection(input: string, candidates: string[]): string |
   return bestMatch;
 }
 
-export function isInteractive(): boolean {
-  return (
-    process.stdout.isTTY === true &&
-    !process.env.NO_COLOR &&
-    process.env.TERM !== "dumb"
-  );
+export function isInteractive(
+  env: NodeJS.ProcessEnv = process.env,
+  stdoutIsTTY = process.stdout.isTTY,
+): boolean {
+  return stdoutIsTTY === true && env.TERM !== "dumb";
 }
 
 export function renderTargetBanner(target: ResolvedTarget): void {
