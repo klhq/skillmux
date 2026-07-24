@@ -1,6 +1,12 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { serializeManifest, type Manifest, MANIFEST_FILENAME } from "./manifest";
+import {
+  parseManifest,
+  resolveManifestPath,
+  serializeManifest,
+  type Manifest,
+  MANIFEST_FILENAME,
+} from "./manifest";
 import { adoptTarget, readSkillmuxMarker } from "./sync";
 import { SKILL_ID_PATTERN } from "./vault";
 
@@ -77,14 +83,25 @@ export interface ConfirmedTarget {
  * passed in — this function never discovers paths on its own.
  */
 export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]): Manifest {
+  const existingManifestPath = resolveManifestPath(vaultPath);
+  const existingManifest = existingManifestPath
+    ? parseManifest(readFileSync(existingManifestPath, "utf-8"))
+    : { ...proposeManifest([]), targets: {} };
   const manifest: Manifest = {
-    ...proposeManifest([]),
-    targets: Object.fromEntries(
-      confirmedTargets.map((target) => [target.name, { dir: target.dir, project_groups: [] }]),
-    ),
+    ...existingManifest,
+    targets: {
+      ...existingManifest.targets,
+      ...Object.fromEntries(
+        confirmedTargets.map((target) => [target.name, { dir: target.dir, project_groups: [] }]),
+      ),
+    },
   };
 
-  writeFileSync(join(vaultPath, MANIFEST_FILENAME), serializeManifest(manifest));
+  const manifestPath = join(vaultPath, MANIFEST_FILENAME);
+  const serializedManifest = serializeManifest(manifest);
+  if (!existsSync(manifestPath) || readFileSync(manifestPath, "utf-8") !== serializedManifest) {
+    writeFileSync(manifestPath, serializedManifest);
+  }
 
   for (const target of confirmedTargets) {
     if (!existsSync(target.dir)) mkdirSync(target.dir, { recursive: true });

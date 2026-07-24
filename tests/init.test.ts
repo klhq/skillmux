@@ -1,8 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyInit, deriveTargetName, detectSurfaces, printLastMile, proposeManifest } from "../src/init";
+import { parseManifest } from "../src/manifest";
 import { readSkillmuxMarker } from "../src/sync";
 
 function tmpDir(prefix: string): string {
@@ -85,6 +95,78 @@ describe("printLastMile", () => {
 });
 
 describe("applyInit", () => {
+  test("preserves existing pins, projects, and targets when adding a target", () => {
+    const vaultPath = tmpDir("skillmux-init-merge-vault-");
+    const agentsDir = tmpDir("skillmux-init-merge-agents-");
+    const claudeDir = tmpDir("skillmux-init-merge-claude-");
+    const projectPath = tmpDir("skillmux-init-merge-project-");
+
+    writeFileSync(
+      join(vaultPath, "skillmux.toml"),
+      [
+        "[core]",
+        'skills = ["code-review"]',
+        "",
+        "[project.skillmux]",
+        `paths = [${JSON.stringify(projectPath)}]`,
+        'skills = ["writing-clearly"]',
+        "",
+        "[targets.agents]",
+        `dir = ${JSON.stringify(agentsDir)}`,
+        'project_groups = ["skillmux"]',
+        "",
+      ].join("\n"),
+    );
+
+    applyInit(vaultPath, [{ name: "claude", dir: claudeDir }]);
+
+    expect(parseManifest(readFileSync(join(vaultPath, "skillmux.toml"), "utf-8"))).toEqual({
+      core: { skills: ["code-review"] },
+      project: {
+        skillmux: {
+          paths: [projectPath],
+          skills: ["writing-clearly"],
+        },
+      },
+      targets: {
+        agents: {
+          dir: agentsDir,
+          project_groups: ["skillmux"],
+        },
+        claude: {
+          dir: claudeDir,
+          project_groups: [],
+        },
+      },
+    });
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(agentsDir, { recursive: true, force: true });
+    rmSync(claudeDir, { recursive: true, force: true });
+    rmSync(projectPath, { recursive: true, force: true });
+  });
+
+  test("does not rewrite the manifest or marker when the same target is initialized again", () => {
+    const vaultPath = tmpDir("skillmux-init-idempotent-vault-");
+    const claudeDir = tmpDir("skillmux-init-idempotent-claude-");
+    const target = { name: "claude", dir: claudeDir };
+    const manifestPath = join(vaultPath, "skillmux.toml");
+    const markerPath = join(claudeDir, ".skillmux");
+    const sentinelTime = new Date("2000-01-01T00:00:00.000Z");
+
+    applyInit(vaultPath, [target]);
+    utimesSync(manifestPath, sentinelTime, sentinelTime);
+    utimesSync(markerPath, sentinelTime, sentinelTime);
+
+    applyInit(vaultPath, [target]);
+
+    expect(statSync(manifestPath).mtimeMs).toBe(sentinelTime.getTime());
+    expect(statSync(markerPath).mtimeMs).toBe(sentinelTime.getTime());
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(claudeDir, { recursive: true, force: true });
+  });
+
   test("writes skr.toml with an empty core and the confirmed targets, then adopts each dir in place", () => {
     const vaultPath = tmpDir("skillmux-init-apply-vault-");
     const claudeDir = tmpDir("skillmux-init-apply-claude-");
