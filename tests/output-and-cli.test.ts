@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { formatJsonEnvelope, isInteractive, mapExitCode, suggestCorrection } from "../src/output";
+import { CliError, emitSuccess, formatJsonEnvelope, isInteractive, mapExitCode, suggestCorrection } from "../src/output";
 import { generateCompletions } from "../src/completions";
 
 describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () => {
@@ -33,11 +33,43 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(mapExitCode(new Error("usage error"))).toBe(2);
     expect(mapExitCode(new Error("Validation error"))).toBe(2);
 
-    expect(mapExitCode(new Error("Unauthorized"))).toBe(3);
-    expect(mapExitCode(new Error("Failed to reach remote server"))).toBe(3);
+    expect(mapExitCode(new CliError("Unauthorized", 3))).toBe(3);
+    expect(mapExitCode(new CliError("Failed to reach remote server", 3))).toBe(3);
 
-    expect(mapExitCode(new Error("Revision conflict"))).toBe(4);
-    expect(mapExitCode(new Error("Configuration is externally managed"))).toBe(4);
+    expect(mapExitCode(new CliError("Revision conflict", 4))).toBe(4);
+    expect(mapExitCode(new CliError("Configuration is externally managed", 4))).toBe(4);
+  });
+
+  it("maps a CliError to its own exitCode regardless of message content", () => {
+    expect(mapExitCode(new CliError("some message", 4))).toBe(4);
+    expect(mapExitCode(new CliError("some message", 3))).toBe(3);
+  });
+
+  it("does not misclassify an untagged Error as a conflict just because its message contains the word 'conflict'", () => {
+    expect(mapExitCode(new Error('skill "foo" already pinned in [project.conflict-resolution]'))).toBe(2);
+  });
+
+  it("emitSuccess prints a schema-versioned JSON envelope when isJson is true, and defers to the text renderer otherwise", () => {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => {
+      logs.push(msg);
+    };
+    try {
+      emitSuccess({ isJson: true }, { foo: "bar" }, () => console.log("plain text"));
+      emitSuccess({ isJson: false }, { foo: "bar" }, () => console.log("plain text"));
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(JSON.parse(logs[0]!)).toEqual({
+      schema_version: 1,
+      ok: true,
+      target: "local",
+      data: { foo: "bar" },
+      error: null,
+    });
+    expect(logs[1]).toBe("plain text");
   });
 
   it("suggests corrections for mistyped commands (AC12)", () => {
@@ -56,6 +88,8 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(bash).toContain("claude-code");
     expect(bash).toContain("skillmux-mcp");
     expect(bash).toContain("--migrate-full-vault");
+    expect(bash).toContain("core");
+    expect(bash).not.toContain("manifest");
 
     const zsh = generateCompletions("zsh");
     expect(zsh).toContain("#compdef skillmux");
@@ -64,5 +98,25 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     const fish = generateCompletions("fish");
     expect(fish).toContain("complete -c skillmux");
     expect(fish).toContain("-l client");
+  });
+
+  it("gives bash, zsh, and fish the identical, full top-level command set (AC12)", () => {
+    const bash = generateCompletions("bash");
+    const zsh = generateCompletions("zsh");
+    const fish = generateCompletions("fish");
+
+    const bashCommands = new Set(
+      bash.match(/opts="([^"]+)"/)![1]!.split(" ").filter((tok) => !tok.startsWith("--")),
+    );
+    const zshCommands = new Set(
+      [...zsh.matchAll(/'([a-z-]+):[^']+'/g)].map((m) => m[1]!),
+    );
+    const fishCommands = new Set(
+      [...fish.matchAll(/__fish_use_subcommand" -a (\S+)/g)].map((m) => m[1]!),
+    );
+
+    expect(bashCommands.size).toBeGreaterThanOrEqual(19);
+    expect(zshCommands).toEqual(bashCommands);
+    expect(fishCommands).toEqual(bashCommands);
   });
 });

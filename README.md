@@ -232,7 +232,7 @@ Use direct targets when you want paths rather than clients:
 skillmux init --target agent-skills --yes
 skillmux init --target claude-code --yes
 skillmux init --target codex --yes
-skillmux init --target custom --path /srv/my-agent/skills --yes
+skillmux init --target custom --dir /srv/my-agent/skills --yes
 ```
 
 The old `agents` and `claude` target names still work and print a deprecation
@@ -280,16 +280,16 @@ without duplicating existing entries. Project setup runs `sync` unless
 existing core pins and makes no guesses. Add another pin with:
 
 ```sh
-skillmux manifest pin csv-formatter --core
+skillmux core pin csv-formatter --yes
 ```
 
 Pin several skills to `[core]` in one atomic call by passing more than one `skill_id`:
 
 ```sh
-skillmux manifest pin csv-formatter pdf-extractor terraform-plans --core
+skillmux core pin csv-formatter pdf-extractor terraform-plans --yes
 ```
 
-Unpin the same way: `skillmux manifest unpin csv-formatter --core` (or `skillmux manifest unpin csv-formatter pdf-extractor --core` for several at once). `--project <group>` pins into a `[project.<group>]` tier instead (add `--path <path>` the first time, to create the group) and takes exactly one `skill_id` per call. Every pin is validated before writing — the skill must actually resolve from the vault, and `[core]` stays under its 25-skill cap. When multiple `skill_id`s are given with `--core`, they're applied to a single in-memory manifest and written once: if any one of them is already pinned elsewhere (or already unpinned, for `unpin`), the whole call fails and nothing is written.
+Unpin the same way: `skillmux core unpin csv-formatter --yes` (or `skillmux core unpin csv-formatter pdf-extractor --yes` for several at once). `skillmux project pin <group> <skill_id>...` pins into an existing `[project.<group>]` tier instead — create the group first with `skillmux project add-path <group> <path> --yes` if it doesn't exist yet. Every pin is validated before writing — the skill must actually resolve from the vault, and `[core]` stays under its 25-skill cap. When multiple `skill_id`s are given, they're applied to a single in-memory manifest and written once: if any one of them is already pinned elsewhere (or already unpinned, for `unpin`), the whole call fails and nothing is written.
 
 Hand-editing `skillmux.toml` still works if you prefer it:
 

@@ -108,7 +108,7 @@ Skillmux supports these client IDs:
 | `skillmux-mcp` | Manual MCP registration |
 
 Direct target IDs are `agent-skills`, `claude-code`, `codex`, and `custom`.
-Custom targets require `--path <dir>`. The legacy `agents` and `claude` IDs
+Custom targets require `--dir <dir>`. The legacy `agents` and `claude` IDs
 print deprecation warnings and retain their manifest names.
 
 `--dry-run` prints the config, target, instruction, and core plan without
@@ -193,7 +193,7 @@ for custom delivery directories and manifest inspection:
 ```sh
 skillmux target list
 skillmux target show claude-code
-skillmux target add custom-agent --path /srv/custom-agent/skills --yes
+skillmux target add custom-agent --dir /srv/custom-agent/skills --yes
 skillmux target remove custom-agent --yes
 ```
 
@@ -202,12 +202,42 @@ current-host scoping checks as `skillmux init`. `target remove` removes the
 manifest entry and preserves the directory, marker, and skill files. The
 command prints the preserved path so cleanup remains an explicit user action.
 
+---
+
+## Core Skills (`skillmux core`)
+
+Pin or unpin skills into `[core]` — the tier every target receives by
+default, capped at 25 skills:
+
+```sh
+skillmux core pin csv-formatter --yes
+skillmux core pin csv-formatter pdf-extractor terraform-plans --yes
+skillmux core unpin csv-formatter --yes
+```
+
+One or more `skill_id` arguments are accepted per call and applied
+atomically against a single in-memory manifest: if any one of them is
+already pinned elsewhere (or, for `unpin`, not currently pinned), the
+whole call fails and the manifest file is left untouched. To pin into a
+`[project.<group>]` tier instead, use `skillmux project pin` (see
+[Project Setup](#project-setup-skillmux-project-init)).
+
 ### Reloadable vs. Restart-Required Keys
 
 Config changes are categorized into live-reloadable and restart-required settings:
 
 - **Reloadable**: `vault_path`, `recall.*`, `thresholds.*`, `inference.embedding.*`, `server.rate_limit.*`
 - **Restart Required**: `server.hostname`, `server.auth_enabled`, `server.auth_token_env`, `server.admin.enabled`, `server.admin.token_env`, `inference.mode`, `state_dir`
+
+---
+
+## Skill Introspection (`skillmux skill which`)
+
+Show which root actually serves a skill_id, and every root it shadows:
+
+```sh
+skillmux skill which csv-formatter
+```
 
 ---
 

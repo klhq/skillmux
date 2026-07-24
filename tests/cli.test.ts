@@ -134,26 +134,26 @@ describe("skillmux index CLI (AC8)", () => {
   });
 });
 
-describe("skillmux which CLI", () => {
+describe("skillmux skill which CLI", () => {
   test("reports the resolving root for a skill that only exists in vault_path", async () => {
-    const result = await runCli("which", "first-skill");
+    const result = await runCli("skill", "which", "first-skill");
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`first-skill: serving from ${vaultDir}`);
   });
 
   test("exits non-zero and reports not found for an unknown skill_id", async () => {
-    const result = await runCli("which", "ghost-skill");
+    const result = await runCli("skill", "which", "ghost-skill");
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stdout).toContain("ghost-skill: not found");
   });
 
   test("requires a skill_id argument", async () => {
-    const result = await runCli("which");
+    const result = await runCli("skill", "which");
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("usage: skillmux which <skill_id>");
+    expect(result.stderr).toContain("usage: skillmux skill which <skill_id>");
   });
 
   test("reports the shadowed root when a local_vault_paths entry overrides vault_path", async () => {
@@ -172,7 +172,7 @@ describe("skillmux which CLI", () => {
       ),
     );
 
-    const result = await runCliEnv(["which", "first-skill"], { SKILLMUX_CONFIG: configPath2 });
+    const result = await runCliEnv(["skill", "which", "first-skill"], { SKILLMUX_CONFIG: configPath2 });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`first-skill: serving from ${localDir}`);
@@ -180,6 +180,34 @@ describe("skillmux which CLI", () => {
 
     rmSync(localDir, { recursive: true, force: true });
     rmSync(configPath2, { force: true });
+  });
+
+  test("bare which is removed and points to skill which as the replacement", async () => {
+    const result = await runCli("which", "first-skill");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).not.toContain("Unknown command");
+    expect(result.stderr).toContain(`skillmux skill which first-skill`);
+  });
+
+  test("bare which with no skill_id suggests a usable replacement command, not a blank argument", async () => {
+    const result = await runCli("which");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(`skillmux skill which <skill_id>`);
+  });
+});
+
+describe("skillmux doctor CLI", () => {
+  test("doctor --json prints a schema-versioned envelope with the full report", async () => {
+    const result = await runCli("doctor", "--json");
+
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(Array.isArray(parsed.data.checks)).toBe(true);
+    expect(typeof parsed.data.mode).toBe("string");
+    expect(typeof parsed.data.capability).toBe("string");
   });
 });
 
@@ -202,7 +230,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|project|target|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|skill which|local-vault init|config show|models download|calibrate generate-dataset>",
     );
 
   });
@@ -324,7 +352,7 @@ describe("skillmux sync CLI", () => {
   });
 });
 
-describe("skillmux manifest CLI", () => {
+describe("skillmux core CLI", () => {
   function writeManifest(coreSkills: string[]) {
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
@@ -332,10 +360,10 @@ describe("skillmux manifest CLI", () => {
     );
   }
 
-  test("manifest pin <skill_id> --core adds the skill_id to [core].skills", async () => {
+  test("core pin <skill_id> --yes adds the skill_id to [core].skills", async () => {
     writeManifest(["first-skill"]);
 
-    const result = await runCli("manifest", "pin", "second-skill", "--core");
+    const result = await runCli("core", "pin", "second-skill", "--yes");
 
     expect(result.exitCode).toBe(0);
     expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(
@@ -345,23 +373,10 @@ describe("skillmux manifest CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
-  test("manifest pin <skill_id> --core exits non-zero and does not write when already pinned", async () => {
-    writeManifest(["first-skill"]);
-    const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
-
-    const result = await runCli("manifest", "pin", "first-skill", "--core");
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("already pinned in [core]");
-    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
-
-    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
-  });
-
-  test("manifest unpin <skill_id> --core removes the skill_id from [core].skills", async () => {
+  test("core unpin <skill_id> --yes removes the skill_id from [core].skills", async () => {
     writeManifest(["first-skill", "second-skill"]);
 
-    const result = await runCli("manifest", "unpin", "first-skill", "--core");
+    const result = await runCli("core", "unpin", "first-skill", "--yes");
 
     expect(result.exitCode).toBe(0);
     expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(`skills = ["second-skill"]`);
@@ -369,60 +384,12 @@ describe("skillmux manifest CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
-  test("manifest pin <skill_id> --project <group> --path <path> creates a new group", async () => {
-    writeManifest(["first-skill"]);
-
-    const result = await runCli(
-      "manifest",
-      "pin",
-      "second-skill",
-      "--project",
-      "infra",
-      "--path",
-      "~/workspace/infra",
-    );
-
-    expect(result.exitCode).toBe(0);
-    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
-    expect(written).toContain(`[project.infra]`);
-    expect(written).toContain(`skills = ["second-skill"]`);
-
-    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
-  });
-
-  test("manifest unpin <skill_id> --project <group> removes the skill_id, keeping the group", async () => {
-    writeFileSync(
-      join(vaultDir, "skillmux.toml"),
-      [
-        `[core]`,
-        `skills = []`,
-        ``,
-        `[project.infra]`,
-        `paths = ["~/workspace/infra"]`,
-        `skills = ["first-skill"]`,
-        ``,
-        `[targets.test]`,
-        `dir = "~/does-not-matter"`,
-      ].join("\n"),
-    );
-
-    const result = await runCli("manifest", "unpin", "first-skill", "--project", "infra");
-
-    expect(result.exitCode).toBe(0);
-    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
-    expect(written).toContain(`[project.infra]`);
-    expect(written).toContain(`skills = []`);
-
-    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
-  });
-
-  test("manifest pin <skill_id>... --core pins multiple skill_ids atomically in one call", async () => {
+  test("core pin <skill_id>... --yes pins multiple skill_ids atomically in one call", async () => {
     writeManifest([]);
 
-    const result = await runCli("manifest", "pin", "first-skill", "second-skill", "--core");
+    const result = await runCli("core", "pin", "first-skill", "second-skill", "--yes");
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`pinned "first-skill", "second-skill" [core]`);
     expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(
       `skills = ["first-skill", "second-skill"]`,
     );
@@ -430,8 +397,8 @@ describe("skillmux manifest CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
-  test("manifest pin <skill_id>... --core fails atomically and writes nothing when one id is already pinned elsewhere", async () => {
-    writeSkill("third-skill", "A third fixture skill for multi-id manifest tests.");
+  test("core pin <skill_id>... --yes fails atomically and writes nothing when one id is already pinned elsewhere", async () => {
+    writeSkill("third-skill", "A third fixture skill for multi-id core tests.");
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
       [
@@ -448,7 +415,7 @@ describe("skillmux manifest CLI", () => {
     );
     const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
 
-    const result = await runCli("manifest", "pin", "third-skill", "first-skill", "--core");
+    const result = await runCli("core", "pin", "third-skill", "first-skill", "--yes");
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain(`already pinned in [project.infra]`);
@@ -457,29 +424,56 @@ describe("skillmux manifest CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
-  test("manifest unpin <skill_id>... --core unpins multiple skill_ids atomically in one call", async () => {
-    writeManifest(["first-skill", "second-skill", "third-skill"]);
+  test("core pin --dry-run prints the plan without writing", async () => {
+    writeManifest(["first-skill"]);
+    const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
 
-    const result = await runCli("manifest", "unpin", "first-skill", "second-skill", "--core");
+    const result = await runCli("core", "pin", "second-skill", "--dry-run");
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`unpinned "first-skill", "second-skill" [core]`);
-    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(`skills = ["third-skill"]`);
+    expect(result.stdout).toContain("dry-run");
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
-  test("manifest unpin <skill_id>... --core fails atomically and writes nothing when one id is not pinned", async () => {
-    writeManifest(["first-skill", "second-skill"]);
+  test("core pin --dry-run --json prints a schema_version:1 envelope, not plain text", async () => {
+    writeManifest(["first-skill"]);
     const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
 
-    const result = await runCli("manifest", "unpin", "first-skill", "third-skill", "--core");
+    const result = await runCli("core", "pin", "second-skill", "--dry-run", "--json");
 
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain(`is not pinned in [core]`);
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
     expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("core pin without --yes requires --yes when run non-interactively", async () => {
+    writeManifest(["first-skill"]);
+    const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+
+    const result = await runCli("core", "pin", "second-skill");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("requires --yes");
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+});
+
+describe("skillmux manifest CLI (removed)", () => {
+  test("manifest pin/unpin is removed and points to core/project as the replacement", async () => {
+    const result = await runCli("manifest", "pin", "some-skill", "--core");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).not.toContain("Unknown command");
+    expect(result.stderr).toMatch(/\bcore\b/);
+    expect(result.stderr).toMatch(/\bproject\b/);
   });
 });
 
@@ -744,7 +738,7 @@ describe("skillmux target CLI", () => {
       "target",
       "add",
       "custom-agent",
-      "--path",
+      "--dir",
       targetPath,
       "--yes",
     );
@@ -793,11 +787,32 @@ describe("skillmux local-vault CLI", () => {
       ),
     );
 
-    const result = await runCliEnv(["local-vault", "init", localDir], { SKILLMUX_CONFIG: configPath2 });
+    const result = await runCliEnv(["local-vault", "init", localDir, "--yes"], { SKILLMUX_CONFIG: configPath2 });
 
     expect(result.exitCode).toBe(0);
     const marker = JSON.parse(readFileSync(join(localDir, ".skillmux"), "utf-8"));
     expect(marker).toMatchObject({ managed_by: "skillmux", role: "local_vault", vault_path: vaultDir });
+
+    rmSync(localDir, { recursive: true, force: true });
+    rmSync(configPath2, { force: true });
+  });
+
+  test("local-vault init <path> requires --yes when run non-interactively", async () => {
+    const localDir = mkdtempSync(join(tmpdir(), "skillmux-cli-local-vault-yes-"));
+    const configPath2 = join(tmp, "config-local-vault-yes.toml");
+    writeFileSync(
+      configPath2,
+      readFileSync(configPath, "utf8").replace(
+        `vault_path = "${vaultDir}"`,
+        `vault_path = "${vaultDir}"\nlocal_vault_paths = ["${localDir}"]`,
+      ),
+    );
+
+    const result = await runCliEnv(["local-vault", "init", localDir], { SKILLMUX_CONFIG: configPath2 });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("requires --yes");
+    expect(existsSync(join(localDir, ".skillmux"))).toBe(false);
 
     rmSync(localDir, { recursive: true, force: true });
     rmSync(configPath2, { force: true });
@@ -998,6 +1013,43 @@ describe("skillmux init CLI", () => {
     rmSync(clientConfig, { force: true });
   });
 
+  test("init --target custom --dir <path> adopts a custom directory", async () => {
+    const clientHome = join(tmp, "custom-dir-client-home");
+    const clientVault = join(tmp, "custom-dir-client-vault");
+    const clientConfig = join(tmp, "custom-dir-client-config.toml");
+    const customTargetDir = join(tmp, "custom-dir-target");
+    mkdirSync(join(clientVault, "custom-dir-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "custom-dir-skill", "SKILL.md"), "---\nname: custom-dir-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const result = await runCliEnv(
+      ["init", "--target", "custom", "--dir", customTargetDir, "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(customTargetDir, ".skillmux"))).toBe(true);
+
+    rmSync(customTargetDir, { recursive: true, force: true });
+  });
+
+  test("init --path is removed in favor of --dir", async () => {
+    const clientHome = join(tmp, "old-path-client-home");
+    const clientVault = join(tmp, "old-path-client-vault");
+    const clientConfig = join(tmp, "old-path-client-config.toml");
+    mkdirSync(join(clientVault, "old-path-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "old-path-skill", "SKILL.md"), "---\nname: old-path-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const result = await runCliEnv(
+      ["init", "--target", "custom", "--path", join(tmp, "old-path-target"), "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("unknown init option: --path");
+  });
+
   test("client init reuses a legacy-named target with the same physical directory", async () => {
     const clientHome = join(tmp, "legacy-client-home");
     const clientVault = join(tmp, "legacy-client-vault");
@@ -1175,7 +1227,7 @@ describe("skillmux init CLI", () => {
     expect(existsSync(join(vaultDir, "skillmux.toml"))).toBe(true);
     expect(existsSync(join(surface, ".skillmux"))).toBe(true);
     expect(existsSync(join(surface, "not-touched.txt"))).toBe(true);
-    expect(result.stdout).toContain("next: skillmux manifest pin <skill_id> --core");
+    expect(result.stdout).toContain("next: skillmux core pin <skill_id> --yes");
     expect(result.stdout).toContain("next: skillmux sync");
     expect(result.stdout).toContain(`"command": "skillmux"`);
     expect(result.stdout).toContain("resolve_skill");
@@ -1255,6 +1307,17 @@ describe("skillmux report CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("outcomes: matched=0 ambiguous=0 no_match=0");
   });
+
+  test("--json wraps the stats report in a schema_version:1 envelope", async () => {
+    const result = await runCli("report", "--since", "30d", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.outcome_totals).toEqual({ matched: 0, ambiguous: 0, no_match: 0 });
+    expect(Array.isArray(parsed.data.skills)).toBe(true);
+  });
 });
 
 describe("skillmux scan CLI", () => {
@@ -1296,6 +1359,17 @@ describe("skillmux scan CLI", () => {
     const result = await runCli("scan", "--fail-on", "high");
 
     expect(result.exitCode).toBe(0);
+  });
+
+  test("--json wraps the ScanResult in a schema_version:1 envelope", async () => {
+    const result = await runCli("scan", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.scanned).toBeGreaterThan(0);
+    expect(Array.isArray(parsed.data.findings)).toBe(true);
   });
 
   test("--format json prints a machine-readable ScanResult", async () => {
@@ -1349,6 +1423,22 @@ describe("skillmux install CLI", () => {
     expect(existsSync(join(vaultDir, "fixture-csv-formatter", "SKILL.md"))).toBe(true);
 
     rmSync(join(vaultDir, "fixture-csv-formatter"), { recursive: true, force: true });
+  });
+
+  test("--json wraps the install result in a schema_version:1 envelope", async () => {
+    const fixtureDir = join(tmp, "fixture-json-install");
+    initFixtureRepo(fixtureDir, "---\nname: JSON Install\ndescription: d\n---\nbody");
+
+    const result = await runCli("install", `file://${fixtureDir}`, "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.skill_id).toBe("fixture-json-install");
+    expect(parsed.data.installed_at).toContain("fixture-json-install");
+
+    rmSync(join(vaultDir, "fixture-json-install"), { recursive: true, force: true });
   });
 
   test("--dry-run reports what would be installed without writing to the vault", async () => {
