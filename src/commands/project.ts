@@ -19,7 +19,7 @@ import {
   promptText,
   shouldUseWizard,
 } from "../prompts";
-import { isInteractive } from "../output";
+import { emitSuccess, isInteractive } from "../output";
 import { confirmAction, confirmIfNeeded, loadManifestContext } from "./shared";
 const PROJECT_INIT_USAGE =
   "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--client <id>...] [--target <name>...] [--yes] [--no-sync]";
@@ -143,18 +143,18 @@ export async function runProject(
         .filter(([, target]) => target.project_groups.includes(name))
         .map(([target]) => target),
     }));
-    if (options.isJson) {
-      console.log(JSON.stringify({ schema_version: 1, projects }));
-    } else if (projects.length === 0) {
-      console.log("no project groups configured");
-    } else {
-      for (const project of projects) {
-        console.log(`${project.name}:`);
-        console.log(`  paths: ${project.paths.join(", ") || "(none)"}`);
-        console.log(`  skills: ${project.skills.join(", ") || "(none)"}`);
-        console.log(`  targets: ${project.targets.join(", ") || "(none)"}`);
+    emitSuccess({ isJson: options.isJson }, { projects }, () => {
+      if (projects.length === 0) {
+        console.log("no project groups configured");
+      } else {
+        for (const project of projects) {
+          console.log(`${project.name}:`);
+          console.log(`  paths: ${project.paths.join(", ") || "(none)"}`);
+          console.log(`  skills: ${project.skills.join(", ") || "(none)"}`);
+          console.log(`  targets: ${project.targets.join(", ") || "(none)"}`);
+        }
       }
-    }
+    });
     return;
   }
   if (subCommand === "add-path" || subCommand === "remove-path") {
@@ -364,10 +364,8 @@ export async function runProject(
   };
 
   if (options.dryRun) {
-    console.log(
-      options.isJson
-        ? JSON.stringify({ schema_version: 1, plan })
-        : `project plan: ${JSON.stringify(plan)}`,
+    emitSuccess({ isJson: options.isJson }, { plan }, () =>
+      console.log(`project plan: ${JSON.stringify(plan)}`),
     );
     return;
   }
@@ -408,9 +406,7 @@ export async function runProject(
       );
     }
   }
-  if (options.isJson) {
-    console.log(JSON.stringify({ schema_version: 1, result: plan }));
-  } else {
-    console.log(`project "${request.name}" ready at ${request.path}`);
-  }
+  emitSuccess({ isJson: options.isJson }, { result: plan }, () =>
+    console.log(`project "${request.name}" ready at ${request.path}`),
+  );
 }
