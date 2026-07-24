@@ -2,7 +2,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { generateDataset } from "./dataset-generator";
 
@@ -47,6 +47,7 @@ import {
   serializeManifest,
   unpinCore,
   unpinProject,
+  upsertProject,
   validateManifest,
 } from "./manifest";
 import { downloadLocalModels } from "./models";
@@ -91,6 +92,7 @@ const KNOWN_COMMANDS = [
   "index",
   "sync",
   "init",
+  "project",
   "report",
   "scan",
   "install",
@@ -191,6 +193,9 @@ async function main() {
       case "init":
         await runInit(rawArgv.slice(1), { isJson, dryRun: isDryRun });
         break;
+      case "project":
+        await runProject(subCommand, commandArgs, { isJson, dryRun: isDryRun });
+        break;
       case "report":
         await runReport(rawArgv.slice(1));
         break;
@@ -224,7 +229,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>`;
+          : `usage: skillmux <serve|index|sync|init|project|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>`;
         throw new Error(msg);
       }
     }
@@ -713,6 +718,113 @@ async function runWhich(args: string[]): Promise<void> {
 }
 
 const MANIFEST_USAGE = "usage: skillmux manifest <pin|unpin> <skill_id> (--core | --project <group> [--path <path>...])";
+const PROJECT_INIT_USAGE =
+  "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--target <name>...] [--yes] [--no-sync]";
+
+interface ProjectInitArgs {
+  path: string;
+  name: string;
+  skills: string[];
+  targets: string[];
+  yes: boolean;
+  sync: boolean;
+}
+
+function parseProjectInitArgs(args: string[]): ProjectInitArgs {
+  let projectPath: string | undefined;
+  let name: string | undefined;
+  const skills: string[] = [];
+  const targets: string[] = [];
+  let yes = false;
+  let sync = true;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--name") {
+      name = args[++i];
+      if (!name) throw new Error("--name requires a group name");
+    } else if (arg === "--skill") {
+      const skill = args[++i];
+      if (!skill) throw new Error("--skill requires a skill_id");
+      skills.push(skill);
+    } else if (arg === "--target") {
+      const target = args[++i];
+      if (!target) throw new Error("--target requires a name");
+      targets.push(target);
+    } else if (arg === "--yes") {
+      yes = true;
+    } else if (arg === "--no-sync") {
+      sync = false;
+    } else if (arg === "--dry-run" || arg === "--json") {
+      continue;
+    } else if (arg.startsWith("-")) {
+      throw new Error(`unknown project init option: ${arg}`);
+    } else if (projectPath) {
+      throw new Error(PROJECT_INIT_USAGE);
+    } else {
+      projectPath = arg;
+    }
+  }
+
+  const path = resolve(expandHome(projectPath ?? process.cwd()));
+  return { path, name: name ?? basename(path), skills, targets, yes, sync };
+}
+
+async function runProject(
+  subCommand: string,
+  args: string[],
+  options: { isJson: boolean; dryRun: boolean },
+): Promise<void> {
+  if (subCommand !== "init") throw new Error(PROJECT_INIT_USAGE);
+  const request = parseProjectInitArgs(args);
+  if (!existsSync(request.path)) throw new Error(`project path does not exist: ${request.path}`);
+
+  const config = await loadConfig();
+  const vaultPath = expandHome(config.vault_path);
+  const localVaultPaths = config.local_vault_paths.map(expandHome);
+  const manifestPath = resolveManifestPath(vaultPath);
+  if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+  const manifest = parseManifest(await Bun.file(manifestPath).text());
+  const updated = upsertProject(manifest, {
+    name: request.name,
+    paths: [request.path],
+    skills: request.skills,
+    targets: request.targets,
+  });
+  const { notes } = validateManifest(updated, vaultPath, localVaultPaths);
+  const plan = {
+    mode: "project",
+    project: request.name,
+    path: request.path,
+    skills: request.skills,
+    targets: request.targets,
+    sync: request.sync,
+    notes,
+  };
+
+  if (options.dryRun) {
+    console.log(options.isJson ? JSON.stringify({ schema_version: 1, plan }) : `project plan: ${JSON.stringify(plan)}`);
+    return;
+  }
+  if (!request.yes) {
+    if (!options.isJson && isInteractive()) {
+      if (!(await confirmAction(`Apply project setup for ${request.name} at ${request.path}?`))) {
+        console.log("project setup cancelled");
+        return;
+      }
+    } else {
+      throw new Error("skillmux project init requires --yes when run non-interactively");
+    }
+  }
+
+  await Bun.write(manifestPath, serializeManifest(updated));
+  if (request.sync) await runSync([]);
+  if (options.isJson) {
+    console.log(JSON.stringify({ schema_version: 1, result: plan }));
+  } else {
+    console.log(`project "${request.name}" ready at ${request.path}`);
+  }
+}
 
 function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean; project?: string; paths: string[] } {
   const skillId = args[0];

@@ -417,6 +417,47 @@ describe("skillmux manifest CLI", () => {
   });
 });
 
+describe("skillmux project CLI", () => {
+  test("project init creates a group and attaches it to a target", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-init-"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.test]`,
+        `dir = "~/does-not-matter"`,
+        `project_groups = []`,
+      ].join("\n"),
+    );
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--skill",
+      "second-skill",
+      "--target",
+      "test",
+      "--yes",
+      "--no-sync",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf8");
+    expect(written).toContain("[project.demo]");
+    expect(written).toContain(`paths = [${JSON.stringify(projectPath)}]`);
+    expect(written).toContain(`skills = ["second-skill"]`);
+    expect(written).toContain(`project_groups = ["demo"]`);
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+});
+
 describe("skillmux local-vault CLI", () => {
   test("local-vault init <path> writes a .skillmux marker with role local_vault", async () => {
     const localDir = mkdtempSync(join(tmpdir(), "skillmux-cli-local-vault-init-"));
