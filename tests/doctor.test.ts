@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { diagnose } from "../src/doctor";
@@ -18,6 +18,12 @@ const server = Bun.serve({
     return new Response("not found", { status: 404 });
   },
 });
+
+function writeSkillAt(root: string, skillId: string) {
+  const dir = join(root, skillId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), `---\nname: ${skillId}\n---\n\nbody\n`);
+}
 
 function testConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -157,5 +163,95 @@ describe("diagnose", () => {
 
     rmSync(vaultDir, { recursive: true, force: true });
     rmSync(localDir, { recursive: true, force: true });
+  });
+
+  test("reports manifest as ok:true 'not yet initialized' when no skillmux.toml exists at vault_path", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-no-manifest-"));
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+
+    expect(report.checks.find((check) => check.name === "manifest")).toMatchObject({
+      ok: true,
+      detail: "not yet initialized",
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("reports a failing manifest check when a skill is pinned in both [core] and a [project.*] group", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-manifest-violation-"));
+    writeSkillAt(vaultDir, "shared-skill");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `
+[core]
+skills = ["shared-skill"]
+
+[project.infra]
+paths = []
+skills = ["shared-skill"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`,
+    );
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+
+    const manifestChecks = report.checks.filter((check) => check.name.startsWith("manifest"));
+    expect(manifestChecks).toHaveLength(1);
+    expect(manifestChecks[0]).toMatchObject({ ok: false });
+    expect(manifestChecks[0]?.detail).toContain("shared-skill");
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("reports manifest as ok:true with the manifest path when it exists and validates cleanly", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-manifest-healthy-"));
+    writeSkillAt(vaultDir, "core-skill");
+    writeSkillAt(vaultDir, "infra-skill");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `
+[core]
+skills = ["core-skill"]
+
+[project.infra]
+paths = []
+skills = ["infra-skill"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`,
+    );
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+
+    expect(report.checks.find((check) => check.name === "manifest")).toMatchObject({
+      ok: true,
+      detail: join(vaultDir, "skillmux.toml"),
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("never writes to the manifest file while diagnosing", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-manifest-readonly-"));
+    writeSkillAt(vaultDir, "core-skill");
+    const manifestPath = join(vaultDir, "skillmux.toml");
+    const original = `
+[core]
+skills = ["core-skill"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`;
+    writeFileSync(manifestPath, original);
+
+    await diagnose(testConfig({ vault_path: vaultDir }));
+
+    expect(readFileSync(manifestPath, "utf8")).toBe(original);
+
+    rmSync(vaultDir, { recursive: true, force: true });
   });
 });
