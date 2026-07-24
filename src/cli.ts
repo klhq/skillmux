@@ -734,7 +734,7 @@ async function runWhich(args: string[]): Promise<void> {
   for (const shadowedRoot of roots.slice(1)) console.log(`  shadows: ${shadowedRoot}`);
 }
 
-const MANIFEST_USAGE = "usage: skillmux manifest <pin|unpin> <skill_id> (--core | --project <group> [--path <path>...])";
+const MANIFEST_USAGE = "usage: skillmux manifest <pin|unpin> <skill_id>... (--core | --project <group> [--path <path>...])";
 const PROJECT_INIT_USAGE =
   "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--client <id>...] [--target <name>...] [--yes] [--no-sync]";
 
@@ -1159,13 +1159,18 @@ async function runTarget(
   throw new Error("usage: skillmux target <list|show|add|remove>");
 }
 
-function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean; project?: string; paths: string[] } {
-  const skillId = args[0];
-  if (!skillId) throw new Error(MANIFEST_USAGE);
+function parseManifestPinArgs(args: string[]): { skillIds: string[]; core: boolean; project?: string; paths: string[] } {
+  const skillIds: string[] = [];
+  let i = 0;
+  while (i < args.length && !args[i]!.startsWith("-")) {
+    skillIds.push(args[i]!);
+    i++;
+  }
+  if (skillIds.length === 0) throw new Error(MANIFEST_USAGE);
   let core = false;
   let project: string | undefined;
   const paths: string[] = [];
-  for (let i = 1; i < args.length; i++) {
+  for (; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--core") core = true;
     else if (arg === "--project") {
@@ -1179,31 +1184,37 @@ function parseManifestPinArgs(args: string[]): { skillId: string; core: boolean;
     } else throw new Error(`unknown manifest option: ${arg}`);
   }
   if (core === (project !== undefined)) throw new Error(MANIFEST_USAGE);
-  return { skillId, core, project, paths };
+  if (!core && skillIds.length > 1) {
+    throw new Error("skillmux manifest pin/unpin --project only supports a single skill_id; use --core to pin multiple skills atomically");
+  }
+  return { skillIds, core, project, paths };
 }
 
 async function runManifest(subCommand: string, args: string[]): Promise<void> {
   if (subCommand !== "pin" && subCommand !== "unpin") throw new Error(MANIFEST_USAGE);
-  const { skillId, core, project, paths } = parseManifestPinArgs(args);
+  const { skillIds, core, project, paths } = parseManifestPinArgs(args);
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   const manifestPath = resolveManifestPath(vaultPath);
   if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}`);
-  const manifest = parseManifest(await Bun.file(manifestPath).text());
+  let updated = parseManifest(await Bun.file(manifestPath).text());
 
-  let updated;
   if (core) {
-    updated = subCommand === "pin" ? pinCore(manifest, skillId) : unpinCore(manifest, skillId);
+    for (const skillId of skillIds) {
+      updated = subCommand === "pin" ? pinCore(updated, skillId) : unpinCore(updated, skillId);
+    }
   } else {
+    const skillId = skillIds[0]!;
     updated =
       subCommand === "pin"
-        ? pinProject(manifest, skillId, project!, paths)
-        : unpinProject(manifest, skillId, project!);
+        ? pinProject(updated, skillId, project!, paths)
+        : unpinProject(updated, skillId, project!);
   }
   validateManifest(updated, vaultPath, localVaultPaths);
   await Bun.write(manifestPath, serializeManifest(updated));
-  console.log(`${subCommand === "pin" ? "pinned" : "unpinned"} "${skillId}" ${core ? "[core]" : `[project.${project}]`}`);
+  const idList = skillIds.map((id) => `"${id}"`).join(", ");
+  console.log(`${subCommand === "pin" ? "pinned" : "unpinned"} ${idList} ${core ? "[core]" : `[project.${project}]`}`);
 }
 
 async function runLocalVaultInit(args: string[]): Promise<void> {

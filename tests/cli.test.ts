@@ -415,6 +415,72 @@ describe("skillmux manifest CLI", () => {
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
+
+  test("manifest pin <skill_id>... --core pins multiple skill_ids atomically in one call", async () => {
+    writeManifest([]);
+
+    const result = await runCli("manifest", "pin", "first-skill", "second-skill", "--core");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`pinned "first-skill", "second-skill" [core]`);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(
+      `skills = ["first-skill", "second-skill"]`,
+    );
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest pin <skill_id>... --core fails atomically and writes nothing when one id is already pinned elsewhere", async () => {
+    writeSkill("third-skill", "A third fixture skill for multi-id manifest tests.");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = []`,
+        ``,
+        `[project.infra]`,
+        `paths = ["~/workspace/infra"]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.test]`,
+        `dir = "~/does-not-matter"`,
+      ].join("\n"),
+    );
+    const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+
+    const result = await runCli("manifest", "pin", "third-skill", "first-skill", "--core");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(`already pinned in [project.infra]`);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest unpin <skill_id>... --core unpins multiple skill_ids atomically in one call", async () => {
+    writeManifest(["first-skill", "second-skill", "third-skill"]);
+
+    const result = await runCli("manifest", "unpin", "first-skill", "second-skill", "--core");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`unpinned "first-skill", "second-skill" [core]`);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(`skills = ["third-skill"]`);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("manifest unpin <skill_id>... --core fails atomically and writes nothing when one id is not pinned", async () => {
+    writeManifest(["first-skill", "second-skill"]);
+    const before = readFileSync(join(vaultDir, "skillmux.toml"), "utf-8");
+
+    const result = await runCli("manifest", "unpin", "first-skill", "third-skill", "--core");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(`is not pinned in [core]`);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toBe(before);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
 });
 
 describe("skillmux project CLI", () => {

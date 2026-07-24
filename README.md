@@ -283,7 +283,13 @@ existing core pins and makes no guesses. Add another pin with:
 skillmux manifest pin csv-formatter --core
 ```
 
-Unpin the same way: `skillmux manifest unpin csv-formatter --core`. `--project <group>` pins into a `[project.<group>]` tier instead (add `--path <path>` the first time, to create the group). Every pin is validated before writing — the skill must actually resolve from the vault, and `[core]` stays under its 25-skill cap.
+Pin several skills to `[core]` in one atomic call by passing more than one `skill_id`:
+
+```sh
+skillmux manifest pin csv-formatter pdf-extractor terraform-plans --core
+```
+
+Unpin the same way: `skillmux manifest unpin csv-formatter --core` (or `skillmux manifest unpin csv-formatter pdf-extractor --core` for several at once). `--project <group>` pins into a `[project.<group>]` tier instead (add `--path <path>` the first time, to create the group) and takes exactly one `skill_id` per call. Every pin is validated before writing — the skill must actually resolve from the vault, and `[core]` stays under its 25-skill cap. When multiple `skill_id`s are given with `--core`, they're applied to a single in-memory manifest and written once: if any one of them is already pinned elsewhere (or already unpinned, for `unpin`), the whole call fails and nothing is written.
 
 Hand-editing `skillmux.toml` still works if you prefer it:
 
