@@ -10,7 +10,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyInit, deriveTargetName, detectSurfaces, printLastMile, proposeManifest } from "../src/init";
 import { parseManifest } from "../src/manifest";
@@ -157,6 +157,21 @@ describe("printLastMile", () => {
 });
 
 describe("applyInit", () => {
+  test("scopes a newly added target to the current hostname", () => {
+    const vaultPath = tmpDir("skillmux-init-host-vault-");
+    const targetDir = tmpDir("skillmux-init-host-target-");
+
+    const manifest = applyInit(vaultPath, [{ name: "claude", dir: targetDir }]);
+
+    expect(manifest.targets.claude?.host).toBe(hostname());
+    expect(readFileSync(join(vaultPath, "skillmux.toml"), "utf-8")).toContain(
+      `host = ${JSON.stringify(hostname())}`,
+    );
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
   test("preserves existing pins, projects, and targets when adding a target", () => {
     const vaultPath = tmpDir("skillmux-init-merge-vault-");
     const agentsDir = tmpDir("skillmux-init-merge-agents-");
@@ -197,6 +212,7 @@ describe("applyInit", () => {
         },
         claude: {
           dir: claudeDir,
+          host: hostname(),
           project_groups: [],
         },
       },
@@ -206,6 +222,38 @@ describe("applyInit", () => {
     rmSync(agentsDir, { recursive: true, force: true });
     rmSync(claudeDir, { recursive: true, force: true });
     rmSync(projectPath, { recursive: true, force: true });
+  });
+
+  test("preserves an existing target's host scope and project groups when reinitialized", () => {
+    const vaultPath = tmpDir("skillmux-init-existing-target-vault-");
+    const targetDir = tmpDir("skillmux-init-existing-target-");
+    writeFileSync(
+      join(vaultPath, "skillmux.toml"),
+      [
+        "[core]",
+        "skills = []",
+        "",
+        "[project.shared]",
+        `paths = [${JSON.stringify(vaultPath)}]`,
+        "skills = []",
+        "",
+        "[targets.claude]",
+        `dir = ${JSON.stringify(targetDir)}`,
+        'host = "another-host"',
+        'project_groups = ["shared"]',
+      ].join("\n"),
+    );
+
+    const manifest = applyInit(vaultPath, [{ name: "claude", dir: targetDir }]);
+
+    expect(manifest.targets.claude).toEqual({
+      dir: targetDir,
+      host: "another-host",
+      project_groups: ["shared"],
+    });
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
   });
 
   test("does not rewrite the manifest or marker when the same target is initialized again", () => {
@@ -296,7 +344,7 @@ describe("applyInit", () => {
     expect(manifest).toEqual({
       core: { skills: [] },
       project: {},
-      targets: { claude: { dir: claudeDir, project_groups: [] } },
+      targets: { claude: { dir: claudeDir, host: hostname(), project_groups: [] } },
     });
     expect(readFileSync(join(vaultPath, "skillmux.toml"), "utf-8")).toContain("[targets.claude]");
     expect(readSkillmuxMarker(claudeDir)?.target).toBe("claude");

@@ -90,13 +90,14 @@ skills = ["pdf-extractor"]           # must not overlap [core]
 
 [targets.claude]
 dir = "/Users/you/.claude/skills"
+host = "workhorse"                    # optional; init adds the current hostname
 project_groups = ["repo1"]           # which [project.*] groups materialize into this target — [] means none
 ```
 
 - `[core].skills` — symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills; `sync` fails if a listed skill id isn't actually in the vault.
 - `[project.<group>].skills` — symlinked only into `<path>/<relative path from $HOME to the target dir>`, for each `paths` entry, and only for targets whose `project_groups` names that group. `paths` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
 - `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`) — `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
-- `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these; hand-editing is fine as long as `sync` is still allowed to own the directory (see below). `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
+- `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these and scopes newly added targets to the current hostname. Hand-editing is fine as long as `sync` is still allowed to own the directory (see below). An optional `host` limits the target to an exact machine-hostname match; omit it for a global, backward-compatible target. A host mismatch is reported and skipped before any target filesystem operation. `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
 
 **Pin/unpin without hand-editing.** `skillmux manifest pin`/`unpin` mutate `[core]`/`[project.*]` for you, validating with the same rules `sync`/`doctor` enforce (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under the 25-skill cap) before writing anything:
 

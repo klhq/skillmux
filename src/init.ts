@@ -10,6 +10,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   parseManifest,
@@ -218,7 +219,15 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
     targets: {
       ...existingManifest.targets,
       ...Object.fromEntries(
-        confirmedTargets.map((target) => [target.name, { dir: target.dir, project_groups: [] }]),
+        confirmedTargets.map((target) => {
+          const existingTarget = existingManifest.targets[target.name];
+          return [
+            target.name,
+            existingTarget
+              ? { ...existingTarget, dir: target.dir }
+              : { dir: target.dir, host: hostname(), project_groups: [] },
+          ];
+        }),
       ),
     },
   };

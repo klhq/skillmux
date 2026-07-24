@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { generateDataset } from "./dataset-generator";
 
@@ -685,7 +686,14 @@ async function runSync(args: string[]): Promise<void> {
   const { notes } = validateManifest(manifest, vaultPath, localVaultPaths);
   for (const note of notes) console.log(`note: ${note}`);
 
+  const currentHost = hostname();
   for (const [targetName, target] of Object.entries(manifest.targets)) {
+    if (target.host !== undefined && target.host !== currentHost) {
+      console.log(
+        `${targetName}: skipped (host ${target.host} does not match current host ${currentHost})`,
+      );
+      continue;
+    }
     const targetDir = expandHome(target.dir);
 
     if (restoreMonolith) {

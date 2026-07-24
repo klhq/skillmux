@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { insertAudit, openIndex } from "../src/db";
 import { startServer } from "../src/server";
@@ -223,7 +223,14 @@ describe("skillmux sync CLI", () => {
     const targetDir = join(tmp, "sync-target");
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
-      [`[core]`, `skills = ["first-skill"]`, ``, `[targets.test]`, `dir = "${targetDir}"`].join("\n"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.test]`,
+        `dir = "${targetDir}"`,
+        `host = "${hostname()}"`,
+      ].join("\n"),
     );
 
     const result = await runCli("sync");
@@ -234,6 +241,30 @@ describe("skillmux sync CLI", () => {
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
     rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("skips a host-scoped target when its host does not match the current machine", async () => {
+    const targetDir = join(tmp, "sync-other-host-target");
+    const otherHost = `not-${hostname()}`;
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.other-machine]`,
+        `dir = "${targetDir}"`,
+        `host = "${otherHost}"`,
+      ].join("\n"),
+    );
+
+    const result = await runCli("sync");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`other-machine: skipped (host ${otherHost} does not match`);
+    expect(existsSync(targetDir)).toBe(false);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
   test("only materializes a [project.*] group into a target that lists it in project_groups", async () => {
