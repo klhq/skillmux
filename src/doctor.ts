@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { createClients } from "./clients";
 import { embeddingDimension, expandHome } from "./config";
-import { resolveManifestPath } from "./manifest";
+import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
 import { readSkillmuxMarker } from "./sync";
 import type { Config } from "./types";
 import { findShadowedSkills } from "./vault";
@@ -60,6 +60,24 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
       ok: true,
       detail: `served from ${shadow.winner}; shadows ${shadow.shadowed.join(", ")}`,
     });
+  }
+
+  const vaultPath = expandHome(config.vault_path);
+  const manifestPath = resolveManifestPath(vaultPath);
+  if (!manifestPath) {
+    checks.push({ name: "manifest", ok: true, detail: "not yet initialized" });
+  } else {
+    try {
+      const manifest = parseManifest(await Bun.file(manifestPath).text());
+      validateManifest(manifest, vaultPath, config.local_vault_paths.map(expandHome));
+      checks.push({ name: "manifest", ok: true, detail: manifestPath });
+    } catch (error) {
+      checks.push({
+        name: `manifest:${manifestPath}`,
+        ok: false,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   try {
