@@ -46,6 +46,18 @@ export class CliError extends Error {
   }
 }
 
+export function emitSuccess<T>(
+  ctx: { isJson: boolean; target?: ResolvedTarget | string | { name: string; server: string } },
+  data: T,
+  renderText: () => void,
+): void {
+  if (ctx.isJson) {
+    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target ?? "local", data })));
+  } else {
+    renderText();
+  }
+}
+
 export function mapExitCode(err: unknown): number {
   if (!err) return 0;
   if (err instanceof CliError) return err.exitCode;

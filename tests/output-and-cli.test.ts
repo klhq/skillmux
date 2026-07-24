@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CliError, formatJsonEnvelope, isInteractive, mapExitCode, suggestCorrection } from "../src/output";
+import { CliError, emitSuccess, formatJsonEnvelope, isInteractive, mapExitCode, suggestCorrection } from "../src/output";
 import { generateCompletions } from "../src/completions";
 
 describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () => {
@@ -47,6 +47,29 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
 
   it("does not misclassify an untagged Error as a conflict just because its message contains the word 'conflict'", () => {
     expect(mapExitCode(new Error('skill "foo" already pinned in [project.conflict-resolution]'))).toBe(2);
+  });
+
+  it("emitSuccess prints a schema-versioned JSON envelope when isJson is true, and defers to the text renderer otherwise", () => {
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => {
+      logs.push(msg);
+    };
+    try {
+      emitSuccess({ isJson: true }, { foo: "bar" }, () => console.log("plain text"));
+      emitSuccess({ isJson: false }, { foo: "bar" }, () => console.log("plain text"));
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(JSON.parse(logs[0]!)).toEqual({
+      schema_version: 1,
+      ok: true,
+      target: "local",
+      data: { foo: "bar" },
+      error: null,
+    });
+    expect(logs[1]).toBe("plain text");
   });
 
   it("suggests corrections for mistyped commands (AC12)", () => {
