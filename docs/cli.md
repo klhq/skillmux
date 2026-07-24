@@ -52,6 +52,9 @@ skillmux context remove prod
 Local and remote targets share identical `config` subcommands.
 
 ```sh
+# Create the machine config after validating a populated vault
+skillmux config init --vault ~/skills --yes
+
 # View current configuration and source attribution (default, toml, environment)
 skillmux config show
 
@@ -73,6 +76,55 @@ skillmux config set recall.k_lexical 30 --dry-run
 # Inspect runtime status, revision hashes, and readiness
 skillmux config status
 ```
+
+`config init` writes only `vault_path`. It leaves an existing config unchanged
+and does not add `local_vault_paths`.
+
+---
+
+## Setup Planner (`skillmux init`)
+
+Select clients by product name:
+
+```sh
+skillmux init --client claude-code --client codex --core csv-formatter --dry-run
+skillmux init --client claude-code --client codex --core csv-formatter --yes
+```
+
+Skillmux supports these client IDs:
+
+| Client | Skill delivery |
+|--------|----------------|
+| `claude-code` | `~/.claude/skills` |
+| `codex` | `$CODEX_HOME/skills`, falling back to `~/.codex/skills` |
+| `gemini-cli`, `opencode`, `github-copilot`, `windsurf` | Shared `~/.agents/skills` surface |
+| `antigravity` | `~/.gemini/config/skills` |
+| `goose`, `hermes` | Manual full-vault configuration |
+| `skillmux-mcp` | Manual MCP registration |
+
+Direct target IDs are `agent-skills`, `claude-code`, `codex`, and `custom`.
+Custom targets require `--path <dir>`. The legacy `agents` and `claude` IDs
+print deprecation warnings and retain their manifest names.
+
+`--dry-run` prints the config, target, instruction, and core plan without
+prompting or writing. `--json` emits one schema-versioned plan or result
+object. Noninteractive writes require `--yes`; an interactive terminal asks
+about each planned change.
+
+Skillmux rejects a target that currently links to the whole vault. Convert it
+only after reviewing the smaller post-sync skill set:
+
+```sh
+skillmux init --client claude-code --migrate-full-vault \
+  --core csv-formatter --dry-run
+skillmux init --client claude-code --migrate-full-vault \
+  --core csv-formatter --yes
+```
+
+Client instruction adapters append one managed discovery block and preserve
+the rest of each file. Skillmux uses `.hermes.md` for Hermes and refuses
+`SOUL.md` or Hermes's installed-source `AGENTS.md`. A client without a safe
+user-level convention reports manual setup.
 
 ### Reloadable vs. Restart-Required Keys
 

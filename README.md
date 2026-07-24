@@ -186,23 +186,68 @@ bun run src/cli.ts serve
 
 Optional — skip this if `resolve_skill` alone is enough (most setups). Use it once you want a small set of skills loaded *statically* in every agent that reads from a given directory, instead of routed on demand — see [Tiers](#tiers-routed-vs-pinned).
 
-### 1. Discover surfaces and adopt one
+### 1. Check the plan
 
 ```sh
-skillmux init
+skillmux init --client claude-code --client codex --core csv-formatter --dry-run
 ```
 
-Lists candidate surfaces (default: `~/.claude/skills`, `~/.agents/skills`) with their dir/symlink status and skill count. Nothing is written until you pass `--target`:
+`--client` names the tool you use. Skillmux maps it to the correct user-level
+skill directory and merges clients that share one directory. Gemini CLI,
+OpenCode, GitHub Copilot, and Windsurf share `~/.agents/skills`. Claude Code
+uses `~/.claude/skills`; Codex uses `$CODEX_HOME/skills` or
+`~/.codex/skills`.
+
+Supported clients are `claude-code`, `codex`, `gemini-cli`, `opencode`,
+`github-copilot`, `windsurf`, `antigravity`, `goose`, `hermes`, and
+`skillmux-mcp`. Goose, Hermes, and Skillmux MCP report the manual registration
+work they need instead of inventing a target directory.
+
+The dry run prints target classification, config changes, instruction-file
+changes, readiness, and core pins. It does not prompt or write.
+
+### 2. Apply the plan
 
 ```sh
-skillmux init --target claude --yes
+skillmux init --client claude-code --client codex --core csv-formatter --yes
 ```
 
-This writes `skillmux.toml` at the vault root and marks `~/.claude/skills` as skillmux-owned — a `.skillmux` marker file that `sync` requires before it will touch the directory.
+Skillmux writes `skillmux.toml`, adds host-scoped targets, adopts each selected
+directory, and installs one managed discovery block in each client's durable
+instruction file. Existing manifest entries and instruction text stay intact.
+Without `--yes`, an interactive terminal asks about each change; a pipe or CI
+job must pass `--yes`.
 
-### 2. Pick which skills are pinned
+Use direct targets when you want paths rather than clients:
 
-`init` always starts `[core]` empty — there's no heuristic yet for which skills belong there. Pin with the CLI instead of hand-editing `skillmux.toml`:
+```sh
+skillmux init --target agent-skills --yes
+skillmux init --target claude-code --yes
+skillmux init --target codex --yes
+skillmux init --target custom --path /srv/my-agent/skills --yes
+```
+
+The old `agents` and `claude` target names still work and print a deprecation
+warning. Skillmux keeps those names in an existing manifest.
+
+If a target points at the whole vault, Skillmux classifies it as `full-vault`
+and refuses managed-pin adoption. Review the visibility change before
+converting it:
+
+```sh
+skillmux init --client claude-code --migrate-full-vault \
+  --core csv-formatter --dry-run
+skillmux init --client claude-code --migrate-full-vault \
+  --core csv-formatter --yes
+```
+
+After conversion and `skillmux sync`, the client sees the selected core pins
+instead of every vault skill.
+
+### 3. Add or remove pins later
+
+`--core` seeds only the skill IDs you name. Without it, `init` preserves
+existing core pins and makes no guesses. Add another pin with:
 
 ```sh
 skillmux manifest pin csv-formatter --core

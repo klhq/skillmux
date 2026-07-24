@@ -20,7 +20,7 @@ _skillmux_completions() {
             COMPREPLY=( $(compgen -W "add list current use remove" -- "$cur") )
             ;;
         config)
-            COMPREPLY=( $(compgen -W "show get validate diff set status" -- "$cur") )
+            COMPREPLY=( $(compgen -W "init show get validate diff set status" -- "$cur") )
             ;;
         calibrate)
             COMPREPLY=( $(compgen -W "run list show apply generate-dataset" -- "$cur") )
@@ -34,7 +34,16 @@ _skillmux_completions() {
         local-vault)
             COMPREPLY=( $(compgen -W "init" -- "$cur") )
             ;;
+        --client)
+            COMPREPLY=( $(compgen -W "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp" -- "$cur") )
+            ;;
+        --target)
+            COMPREPLY=( $(compgen -W "agent-skills claude-code codex custom" -- "$cur") )
+            ;;
     esac
+    if [ "\${COMP_WORDS[1]}" = "init" ] && [ "\${#COMPREPLY[@]}" -eq 0 ]; then
+        COMPREPLY=( $(compgen -W "--client --target --path --vault --core --migrate-full-vault --yes --dry-run --json" -- "$cur") )
+    fi
 }
 complete -F _skillmux_completions skillmux
 `;
@@ -63,7 +72,20 @@ _skillmux() {
         'models:Manage local models'
         'completions:Generate shell completions'
     )
-    _describe -t commands 'skillmux command' commands
+    if (( CURRENT == 2 )); then
+        _describe -t commands 'skillmux command' commands
+    elif [[ "$words[2]" == "init" ]]; then
+        _arguments \
+          '*--client[select a client]:client:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp)' \
+          '*--target[select a target]:target:(agent-skills claude-code codex custom)' \
+          '--path[custom target directory]:directory:_directories' \
+          '--vault[vault directory]:directory:_directories' \
+          '*--core[seed a core skill]:skill id:' \
+          '--migrate-full-vault[convert a full-vault symlink to managed pins]' \
+          '--yes[apply without prompts]' \
+          '--dry-run[print the plan without writing]' \
+          '--json[emit a JSON envelope]'
+    fi
 }
 _skillmux "$@"
 `;
@@ -77,6 +99,15 @@ complete -c skillmux -n "__fish_use_subcommand" -a config -d "Manage configurati
 complete -c skillmux -n "__fish_use_subcommand" -a calibrate -d "Manage policy calibration"
 complete -c skillmux -n "__fish_use_subcommand" -a serve -d "Start MCP server"
 complete -c skillmux -n "__fish_use_subcommand" -a completions -d "Generate shell completions"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l client -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp" -d "Select a client"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l target -x -a "agent-skills claude-code codex custom" -d "Select a target"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l path -r -d "Custom target directory"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l vault -r -d "Vault directory"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l core -x -d "Seed a core skill"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l migrate-full-vault -d "Convert a full-vault symlink"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l yes -d "Apply without prompts"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l dry-run -d "Print the plan without writing"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l json -d "Emit a JSON envelope"
 `;
   }
 

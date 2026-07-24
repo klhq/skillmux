@@ -331,28 +331,75 @@ async function handleConfigCommand(
         if (!vaultPath) throw new Error("usage: skillmux config init --vault <path> --yes");
       } else if (option === "--yes") {
         yes = true;
+      } else if (option === "--dry-run" || option === "--json") {
+        continue;
       } else {
         throw new Error(`unknown config init option: ${option}`);
       }
     }
-    if (!vaultPath) throw new Error("usage: skillmux config init --vault <path> --yes");
+    if (!vaultPath) {
+      if (isInteractive() && !ctx.isJson) {
+        vaultPath = "~/skills";
+      } else {
+        throw new Error("usage: skillmux config init --vault <path> --yes");
+      }
+    }
 
     migrateLegacyPaths();
     const plan = planConfigInit(resolveConfigPath(), expandHome(vaultPath));
     if (plan.action === "preserve") {
-      console.log(`preserved existing config: ${plan.configPath}`);
+      console.log(ctx.isJson
+        ? JSON.stringify({
+            schema_version: 1,
+            ok: true,
+            command: "config init",
+            phase: "result",
+            dry_run: ctx.dryRun,
+            applied: false,
+            plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: "preserve" },
+          })
+        : `preserved existing config: ${plan.configPath}`);
+      return;
+    }
+    if (ctx.dryRun) {
+      console.log(ctx.isJson
+        ? JSON.stringify({
+            schema_version: 1,
+            ok: true,
+            command: "config init",
+            phase: "plan",
+            dry_run: true,
+            applied: false,
+            plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: "create" },
+          })
+        : `config create: ${plan.configPath} (dry-run)`);
       return;
     }
     if (!yes) {
-      throw new Error("config initialization requires --yes in noninteractive mode");
+      if (!ctx.isJson && isInteractive()) {
+        if (!(await confirmAction(`Create ${plan.configPath} with vault_path ${plan.vaultPath}?`))) {
+          console.log("config init cancelled; nothing written");
+          return;
+        }
+      } else {
+        throw new Error("config initialization requires --yes in noninteractive mode");
+      }
     }
 
     const result = applyConfigInit(plan);
-    console.log(
-      result === "created"
+    console.log(ctx.isJson
+      ? JSON.stringify({
+          schema_version: 1,
+          ok: true,
+          command: "config init",
+          phase: "result",
+          dry_run: false,
+          applied: result === "created",
+          plan: { config_path: plan.configPath, vault_path: plan.vaultPath, action: plan.action },
+        })
+      : result === "created"
         ? `created ${plan.configPath}`
-        : `preserved existing config: ${plan.configPath}`,
-    );
+        : `preserved existing config: ${plan.configPath}`);
     return;
   }
 
@@ -432,6 +479,16 @@ async function handleConfigCommand(
   }
 
   throw new Error("usage: skillmux config show");
+}
+
+async function confirmAction(prompt: string): Promise<boolean> {
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await readline.question(`${prompt} [y/N] `)).trim().toLowerCase();
+    return answer === "y" || answer === "yes";
+  } finally {
+    readline.close();
+  }
 }
 
 async function handleCalibrateCommand(
@@ -540,7 +597,24 @@ function handleError(
 }
 
 function printHelp(): void {
-  console.log(`usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset> [--transport stdio|http] [--port N] [--dry-run|--restore-monolith|--install-hook] [--target name --yes] [--server url|--db path] --since window [<path>] [--format text|json] [--fail-on low|medium|high] [<repo>[/path] [--force]] [--vault path] [--out file]`);
+  console.log(`usage: skillmux <command> [options]
+
+Setup:
+  skillmux config init --vault <path> --yes
+  skillmux init [--client <name>...] [--target <name>...] [--path <dir>]
+                [--vault <path>] [--core <skill_id>...]
+                [--migrate-full-vault] [--yes|--dry-run] [--json]
+
+Init clients:
+  claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
+  antigravity, goose, hermes, skillmux-mcp
+
+Init targets:
+  agent-skills, claude-code, codex, custom
+
+Commands:
+  serve, index, sync, init, report, scan, install, eval, doctor, which,
+  manifest, local-vault, config, models, calibrate, context, completions`);
 }
 
 // ---------------------------------------------------------------------------
@@ -867,10 +941,12 @@ async function runInit(
   let configPlan: ConfigInitPlan | undefined;
   let vaultPath: string;
   if (!existsSync(configPath)) {
-    if (!requestedVaultPath) {
+    const bootstrapVaultPath = requestedVaultPath ??
+      (!options.isJson && isInteractive() ? "~/skills" : undefined);
+    if (!bootstrapVaultPath) {
       throw new Error(`machine config does not exist: ${configPath}; re-run with --vault <path>`);
     }
-    configPlan = planConfigInit(configPath, expandHome(requestedVaultPath));
+    configPlan = planConfigInit(configPath, expandHome(bootstrapVaultPath));
     vaultPath = configPlan.vaultPath;
     if (!options.isJson) {
       console.log(`config create: ${configPath}`);
@@ -1090,17 +1166,11 @@ async function runInit(
         ...(hasConfigWrite ? [`Create machine config ${configPath}?`] : []),
         ...(coreSkillIds.length > 0 ? [`Pin core skills: ${coreSkillIds.join(", ")}?`] : []),
       ];
-      const readline = createInterface({ input: process.stdin, output: process.stdout });
-      try {
-        for (const prompt of prompts) {
-          const answer = (await readline.question(`${prompt} [y/N] `)).trim().toLowerCase();
-          if (answer !== "y" && answer !== "yes") {
-            console.log("init cancelled; nothing written");
-            return;
-          }
+      for (const prompt of prompts) {
+        if (!(await confirmAction(prompt))) {
+          console.log("init cancelled; nothing written");
+          return;
         }
-      } finally {
-        readline.close();
       }
     } else {
       throw new Error(
