@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5](https://github.com/klhq/skillmux/compare/v0.4.4...v0.4.5) (2026-07-24)
+
+
+### Changed
+
+* **manifest:** rename project group repos to paths ([51263f1](https://github.com/klhq/skillmux/commit/51263f175a45b6368509bb3c25ce8dcbeb07d127))
+
 ## [0.4.4](https://github.com/klhq/skillmux/compare/v0.4.3...v0.4.4) (2026-07-23)
 
 
