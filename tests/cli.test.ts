@@ -442,6 +442,59 @@ describe("skillmux local-vault CLI", () => {
   });
 });
 
+describe("skillmux config init CLI", () => {
+  test("scaffolds only vault_path for a healthy vault", async () => {
+    const configPath2 = join(tmp, "config-init.toml");
+
+    const result = await runCliEnv(
+      ["config", "init", "--vault", vaultDir, "--yes"],
+      { SKILLMUX_CONFIG: configPath2 },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`created ${configPath2}`);
+    const written = readFileSync(configPath2, "utf8");
+    expect(written).toContain(`vault_path = ${JSON.stringify(vaultDir)}`);
+    expect(written).not.toContain("local_vault_paths");
+
+    rmSync(configPath2, { force: true });
+  });
+
+  test("preserves an existing config byte-for-byte", async () => {
+    const configPath2 = join(tmp, "config-init-existing.toml");
+    const existing = `vault_path = "/already/configured"\n# keep this comment\n`;
+    writeFileSync(configPath2, existing);
+
+    const result = await runCliEnv(
+      ["config", "init", "--vault", vaultDir, "--yes"],
+      { SKILLMUX_CONFIG: configPath2 },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("preserved existing config");
+    expect(readFileSync(configPath2, "utf8")).toBe(existing);
+
+    rmSync(configPath2, { force: true });
+  });
+
+  test("rejects an empty vault without creating config", async () => {
+    const configPath2 = join(tmp, "config-init-empty-vault.toml");
+    const emptyVault = join(tmp, "empty-init-vault");
+    mkdirSync(emptyVault);
+
+    const result = await runCliEnv(
+      ["config", "init", "--vault", emptyVault, "--yes"],
+      { SKILLMUX_CONFIG: configPath2 },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(`vault contains no skill directories: ${emptyVault}`);
+    expect(existsSync(configPath2)).toBe(false);
+
+    rmSync(emptyVault, { recursive: true, force: true });
+  });
+});
+
 describe("skillmux init CLI", () => {
   // deriveTargetName reads the *parent* dir's name (e.g. ~/.claude/skills -> "claude"),
   // so fixtures nest a "skills" leaf under a distinctly-named parent.
@@ -452,6 +505,36 @@ describe("skillmux init CLI", () => {
     const targetName = (parent.split("/").pop() as string).toLowerCase();
     return { surface, parent, targetName };
   }
+
+  test("fails with an actionable vault diagnostic before planning targets", async () => {
+    const missingVault = join(tmp, "missing-init-vault");
+    const configPath2 = join(tmp, "config-init-missing-vault.toml");
+    writeFileSync(configPath2, `vault_path = ${JSON.stringify(missingVault)}\n`);
+
+    const result = await runCliEnv(["init"], { SKILLMUX_CONFIG: configPath2 });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(`vault does not exist: ${missingVault}`);
+    expect(existsSync(missingVault)).toBe(false);
+
+    rmSync(configPath2, { force: true });
+  });
+
+  test("bootstraps an absent machine config from --vault", async () => {
+    const configPath2 = join(tmp, "config-init-via-init.toml");
+    const missingSurface = join(tmp, "missing-init-surface");
+
+    const result = await runCliEnv(["init", "--vault", vaultDir, "--yes"], {
+      SKILLMUX_CONFIG: configPath2,
+      SKILLMUX_INIT_SURFACES: missingSurface,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`created ${configPath2}`);
+    expect(readFileSync(configPath2, "utf8")).toBe(`vault_path = ${JSON.stringify(vaultDir)}\n`);
+
+    rmSync(configPath2, { force: true });
+  });
 
   test("detects surfaces and writes nothing when run without --target", async () => {
     const { surface, parent } = makeSurface("skillmux-init-cli-detect-");

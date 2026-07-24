@@ -6,8 +6,7 @@ import { join } from "node:path";
 import { generateDataset } from "./dataset-generator";
 
 import { createClients } from "./clients";
-import { loadConfig } from "./config";
-import { expandHome } from "./config";
+import { expandHome, loadConfig, migrateLegacyPaths, resolveConfigPath } from "./config";
 import { openIndex } from "./db";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
@@ -33,6 +32,7 @@ import {
 import { downloadLocalModels } from "./models";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import { renderScanJson, renderScanText, scanExitCode, scanPath, type ScanSeverity } from "./scan";
+import { applyConfigInit, inspectVault, planConfigInit } from "./setup";
 import { getStats, renderStatsText, type StatsResponse } from "./stats";
 import {
   installPostMergeHook,
@@ -106,7 +106,8 @@ async function main() {
   let resolvedTarget: ResolvedTarget = { type: "local", name: "local" };
 
   // Only resolve target if command is target-aware or context/config/calibrate
-  if (["context", "config", "calibrate"].includes(command) || flagContext || flagServer) {
+  const isLocalConfigInit = command === "config" && rawArgv[1] === "init";
+  if ((["context", "config", "calibrate"].includes(command) && !isLocalConfigInit) || flagContext || flagServer) {
     try {
       resolvedTarget = await resolveTarget({ context: flagContext, server: flagServer });
     } catch (err: any) {
@@ -294,6 +295,41 @@ async function handleConfigCommand(
   args: string[],
   ctx: { target: ResolvedTarget; isJson: boolean; dryRun: boolean }
 ) {
+  if (sub === "init") {
+    let vaultPath: string | undefined;
+    let yes = false;
+    for (let i = 0; i < args.length; i++) {
+      const option = args[i];
+      if (option === "--vault") {
+        vaultPath = args[++i];
+        if (!vaultPath) throw new Error("usage: skillmux config init --vault <path> --yes");
+      } else if (option === "--yes") {
+        yes = true;
+      } else {
+        throw new Error(`unknown config init option: ${option}`);
+      }
+    }
+    if (!vaultPath) throw new Error("usage: skillmux config init --vault <path> --yes");
+
+    migrateLegacyPaths();
+    const plan = planConfigInit(resolveConfigPath(), expandHome(vaultPath));
+    if (plan.action === "preserve") {
+      console.log(`preserved existing config: ${plan.configPath}`);
+      return;
+    }
+    if (!yes) {
+      throw new Error("config initialization requires --yes in noninteractive mode");
+    }
+
+    const result = applyConfigInit(plan);
+    console.log(
+      result === "created"
+        ? `created ${plan.configPath}`
+        : `preserved existing config: ${plan.configPath}`,
+    );
+    return;
+  }
+
   if (sub === "show") {
     const data = await adapter.getConfigShow();
     if (ctx.isJson) {
@@ -731,8 +767,9 @@ async function runSync(args: string[]): Promise<void> {
   }
 }
 
-function parseInitArgs(args: string[]): { targets: string[]; yes: boolean } {
+function parseInitArgs(args: string[]): { targets: string[]; vaultPath?: string; yes: boolean } {
   const targets: string[] = [];
+  let vaultPath: string | undefined;
   let yes = false;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
@@ -741,19 +778,43 @@ function parseInitArgs(args: string[]): { targets: string[]; yes: boolean } {
       if (!value) throw new Error("--target requires a name");
       targets.push(value);
       i++;
+    } else if (option === "--vault") {
+      const value = args[i + 1];
+      if (!value) throw new Error("--vault requires a path");
+      vaultPath = value;
+      i++;
     } else if (option === "--yes") {
       yes = true;
     } else {
       throw new Error(`unknown init option: ${option}`);
     }
   }
-  return { targets, yes };
+  return { targets, vaultPath, yes };
 }
 
 async function runInit(args: string[]): Promise<void> {
-  const { targets: requestedTargets, yes } = parseInitArgs(args);
+  const { targets: requestedTargets, vaultPath: requestedVaultPath, yes } = parseInitArgs(args);
+  migrateLegacyPaths();
+  const configPath = resolveConfigPath();
+  if (!existsSync(configPath)) {
+    if (!requestedVaultPath) {
+      throw new Error(`machine config does not exist: ${configPath}; re-run with --vault <path>`);
+    }
+    const configPlan = planConfigInit(configPath, expandHome(requestedVaultPath));
+    if (!yes) {
+      throw new Error("machine config initialization requires --yes in noninteractive mode");
+    }
+    if (applyConfigInit(configPlan) === "created") {
+      console.log(`created ${configPath}`);
+    }
+  }
+
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
+  const vaultHealth = inspectVault(vaultPath);
+  if (!vaultHealth.ok) {
+    throw new Error(vaultHealth.message);
+  }
 
   const candidates = detectSurfaces(surfaceCandidates().map(expandHome), vaultPath);
   for (const candidate of candidates) {
