@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { parseNumberSelection, shouldUseWizard } from "../src/prompts";
+import { parseCommaList, parseNumberSelection, shouldUseWizard } from "../src/prompts";
 
 describe("parseNumberSelection", () => {
   test("accepts comma-separated choices, deduplicates them, and preserves option order", () => {
     expect(parseNumberSelection("3, 1, 3", 4)).toEqual([0, 2]);
   });
+});
+
+test("parseCommaList trims and deduplicates values", () => {
+  expect(parseCommaList("sdd-tdd, code-context, sdd-tdd")).toEqual(["sdd-tdd", "code-context"]);
 });
 
 describe("shouldUseWizard", () => {

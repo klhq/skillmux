@@ -456,6 +456,42 @@ describe("skillmux project CLI", () => {
     rmSync(projectPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
+
+  test("project init maps clients to deduplicated configured targets", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-client-init-"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = []`,
+        ``,
+        `[targets.agent-skills]`,
+        `dir = "~/.agents/skills"`,
+        `project_groups = []`,
+      ].join("\n"),
+    );
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--client",
+      "gemini-cli",
+      "--client",
+      "opencode",
+      "--yes",
+      "--no-sync",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf8");
+    expect(written.match(/project_groups = \["demo"\]/g)).toHaveLength(1);
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
 });
 
 describe("skillmux local-vault CLI", () => {
