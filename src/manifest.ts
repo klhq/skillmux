@@ -167,6 +167,50 @@ export function unpinProject(manifest: Manifest, skillId: string, group: string)
   };
 }
 
+export interface UpsertProjectOptions {
+  name: string;
+  paths: string[];
+  skills: string[];
+  targets: string[];
+}
+
+export function upsertProject(manifest: Manifest, options: UpsertProjectOptions): Manifest {
+  if (!groupNameSchema.safeParse(options.name).success) {
+    throw new Error(
+      `invalid group name "${options.name}" — must match /^[a-z][a-z0-9_-]*$/ (max 64 chars)`,
+    );
+  }
+
+  const existingGroup = manifest.project?.[options.name] ?? { paths: [], skills: [] };
+  for (const skillId of options.skills) {
+    if (existingGroup.skills.includes(skillId)) continue;
+    const existing = findExistingPin(manifest, skillId);
+    if (existing) throw new Error(`skill "${skillId}" already pinned in ${existing}`);
+  }
+
+  const targets = { ...manifest.targets };
+  for (const targetName of options.targets) {
+    const target = targets[targetName];
+    if (!target) throw new Error(`target "${targetName}" does not exist`);
+    targets[targetName] = {
+      ...target,
+      project_groups: [...new Set([...target.project_groups, options.name])],
+    };
+  }
+
+  return {
+    ...manifest,
+    project: {
+      ...manifest.project,
+      [options.name]: {
+        paths: [...new Set([...existingGroup.paths, ...options.paths])],
+        skills: [...new Set([...existingGroup.skills, ...options.skills])],
+      },
+    },
+    targets,
+  };
+}
+
 export interface ManifestValidationResult {
   notes: string[];
 }

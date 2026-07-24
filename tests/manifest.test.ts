@@ -7,6 +7,7 @@ import {
   serializeManifest,
   unpinCore,
   unpinProject,
+  upsertProject,
   validateManifest,
 } from "../src/manifest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -258,6 +259,36 @@ dir = "~/.claude/skills"
     expect(() => pinProject(manifest, "some-skill", "Bad Group!", ["~/workspace/x"])).toThrow(
       /invalid group name/,
     );
+  });
+});
+
+describe("upsertProject", () => {
+  test("merges paths, skills, and target attachments without duplicates", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+paths = ["/work/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+project_groups = []
+`);
+
+    const updated = upsertProject(manifest, {
+      name: "infra",
+      paths: ["/work/infra", "/Users/me/infra"],
+      skills: ["terraform-plans", "incident-response"],
+      targets: ["claude"],
+    });
+
+    expect(updated.project?.infra).toEqual({
+      paths: ["/work/infra", "/Users/me/infra"],
+      skills: ["terraform-plans", "incident-response"],
+    });
+    expect(updated.targets.claude?.project_groups).toEqual(["infra"]);
   });
 });
 
