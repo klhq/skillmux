@@ -557,7 +557,11 @@ describe("skillmux init CLI", () => {
     expect(result.stdout).toContain("gemini-cli readiness:");
     expect(result.stdout).toContain("skill surface:");
     expect(result.stdout).toContain("MCP registration:");
-    expect(result.stdout).toContain("instructions:");
+    expect(result.stdout).toContain("instructions: planned");
+    expect(readFileSync(join(clientHome, ".gemini", "GEMINI.md"), "utf8"))
+      .toContain("<!-- skillmux:discovery:start -->");
+    expect(readFileSync(join(clientHome, ".config", "opencode", "AGENTS.md"), "utf8"))
+      .toContain("<!-- skillmux:discovery:start -->");
 
     rmSync(clientHome, { recursive: true, force: true });
     rmSync(clientVault, { recursive: true, force: true });

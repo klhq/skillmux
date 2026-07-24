@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -364,5 +365,36 @@ describe("applyInit", () => {
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("rolls back a transaction participant when the manifest commit fails", () => {
+    const root = tmpDir("skillmux-init-participant-rollback-");
+    const vaultPath = join(root, "vault");
+    const targetDir = join(root, "target");
+    const instructionPath = join(root, "instructions.md");
+    mkdirSync(vaultPath);
+
+    expect(() =>
+      applyInit(
+        vaultPath,
+        [{ name: "target", dir: targetDir }],
+        {
+          apply: () => {
+            writeFileSync(instructionPath, "managed instructions\n");
+            chmodSync(vaultPath, 0o500);
+          },
+          rollback: () => {
+            chmodSync(vaultPath, 0o700);
+            rmSync(instructionPath, { force: true });
+          },
+        },
+      ),
+    ).toThrow();
+
+    expect(existsSync(instructionPath)).toBe(false);
+    expect(existsSync(join(vaultPath, "skillmux.toml"))).toBe(false);
+    expect(existsSync(targetDir)).toBe(false);
+
+    rmSync(root, { recursive: true, force: true });
   });
 });

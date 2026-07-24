@@ -172,6 +172,11 @@ export interface ConfirmedTarget {
   dir: string;
 }
 
+export interface InitTransactionParticipant {
+  apply: () => void;
+  rollback: () => void;
+}
+
 function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]): void {
   const canonicalVaultPath = realpathSync(vaultPath);
 
@@ -207,7 +212,11 @@ function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]):
  * first if it doesn't exist yet). Unconfirmed candidates are simply never
  * passed in — this function never discovers paths on its own.
  */
-export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]): Manifest {
+export function applyInit(
+  vaultPath: string,
+  confirmedTargets: ConfirmedTarget[],
+  participant?: InitTransactionParticipant,
+): Manifest {
   preflightManagedTargets(vaultPath, confirmedTargets);
 
   const existingManifestPath = resolveManifestPath(vaultPath);
@@ -238,6 +247,7 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
     !existsSync(manifestPath) || readFileSync(manifestPath, "utf-8") !== serializedManifest;
   const createdDirs: string[] = [];
   const adoptedDirs: string[] = [];
+  let participantApplied = false;
 
   try {
     for (const target of confirmedTargets) {
@@ -248,6 +258,11 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
       if (adoptTarget(target.dir, target.name, vaultPath).adopted) {
         adoptedDirs.push(target.dir);
       }
+    }
+
+    if (participant) {
+      participant.apply();
+      participantApplied = true;
     }
 
     if (shouldWriteManifest) {
@@ -264,12 +279,16 @@ export function applyInit(vaultPath: string, confirmedTargets: ConfirmedTarget[]
       }
     }
   } catch (error) {
-    for (const dir of adoptedDirs.reverse()) {
-      const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
-      if (existsSync(markerPath)) unlinkSync(markerPath);
-    }
-    for (const dir of createdDirs.reverse()) {
-      if (existsSync(dir)) rmdirSync(dir);
+    try {
+      if (participantApplied) participant?.rollback();
+    } finally {
+      for (const dir of adoptedDirs.reverse()) {
+        const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
+        if (existsSync(markerPath)) unlinkSync(markerPath);
+      }
+      for (const dir of createdDirs.reverse()) {
+        if (existsSync(dir)) rmdirSync(dir);
+      }
     }
     throw error;
   }

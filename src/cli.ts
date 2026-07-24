@@ -10,7 +10,18 @@ import { expandHome, loadConfig, migrateLegacyPaths, resolveConfigPath } from ".
 import { openIndex } from "./db";
 import { diagnose } from "./doctor";
 import { evalVault } from "./eval";
-import { assessClientReadiness, planClientSurfaces, resolveBuiltInTarget } from "./init-clients";
+import {
+  assessClientReadiness,
+  planClientSurfaces,
+  resolveBuiltInTarget,
+  type ClientId,
+  type ReadinessAxis,
+} from "./init-clients";
+import {
+  applyInstructionPlan,
+  planInstructionSetup,
+  rollbackInstructionPlan,
+} from "./init-instructions";
 import { applyInit, deriveTargetName, detectSurfaces, printLastMile, surfaceCandidates } from "./init";
 import {
   cloneToTemp,
@@ -844,6 +855,21 @@ async function runInit(args: string[]): Promise<void> {
   const clientPlan = planClientSurfaces(requestedClients, {
     codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
   });
+  const instructionPlan = planInstructionSetup(clientPlan.clients.map((client) => client.id), {
+    codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+  });
+  const instructionReadiness: Partial<Record<ClientId, ReadinessAxis>> = {};
+  for (const change of instructionPlan.changes) {
+    for (const client of change.clients) {
+      instructionReadiness[client] = {
+        status: change.status === "unchanged" ? "ready" : "planned",
+        detail: change.path,
+      };
+    }
+  }
+  for (const manual of instructionPlan.manual) {
+    instructionReadiness[manual.client] = { status: "manual", detail: manual.reason };
+  }
   const builtInNames = new Set(["agent-skills", "claude-code", "codex", "custom", "agents", "claude"]);
   const explicitSurfaceTargets = explicitTargets
     .filter((name) => builtInNames.has(name))
@@ -898,11 +924,19 @@ async function runInit(args: string[]): Promise<void> {
     const marked = candidate.alreadyMarked ? ", already skillmux-managed" : "";
     console.log(`${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`);
   }
-  for (const readiness of assessClientReadiness(clientPlan)) {
+  for (const readiness of assessClientReadiness(clientPlan, instructionReadiness)) {
     console.log(`\n${readiness.client} readiness:`);
     console.log(`  skill surface: ${readiness.skillSurface.status} — ${readiness.skillSurface.detail}`);
     console.log(`  MCP registration: ${readiness.mcpRegistration.status} — ${readiness.mcpRegistration.detail}`);
     console.log(`  instructions: ${readiness.instructionSetup.status} — ${readiness.instructionSetup.detail}`);
+  }
+  for (const change of instructionPlan.changes) {
+    console.log(
+      `instructions ${change.status}: ${change.path} (${change.clients.join(", ")})`,
+    );
+  }
+  for (const manual of instructionPlan.manual) {
+    console.log(`instructions manual: ${manual.client} — ${manual.reason}`);
   }
 
   const requestedTargets = [
@@ -911,14 +945,17 @@ async function runInit(args: string[]): Promise<void> {
       ...targetByPath.values(),
     ]),
   ];
-  if (requestedTargets.length === 0) {
+  const hasInstructionWrites = instructionPlan.changes.some(
+    (change) => change.status !== "unchanged",
+  );
+  if (requestedTargets.length === 0 && !hasInstructionWrites) {
     console.log("\nno managed-pins surface selected — nothing written.");
     return;
   }
 
   if (!yes) {
     throw new Error(
-      "usage: skillmux init --target <name> [--target <name>...] --yes (interactive per-target confirm is not available non-interactively)",
+      "skillmux init requires --yes before applying target or instruction changes non-interactively",
     );
   }
 
@@ -935,10 +972,25 @@ async function runInit(args: string[]): Promise<void> {
   }
 
   const confirmedTargets = requestedTargets.map((name) => ({ name, dir: byName.get(name)!.path }));
-  applyInit(vaultPath, confirmedTargets);
+  if (confirmedTargets.length === 0) {
+    applyInstructionPlan(instructionPlan);
+  } else {
+    applyInit(
+      vaultPath,
+      confirmedTargets,
+      hasInstructionWrites
+        ? {
+            apply: () => applyInstructionPlan(instructionPlan),
+            rollback: () => rollbackInstructionPlan(instructionPlan),
+          }
+        : undefined,
+    );
+  }
 
-  console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`);
-  console.log(`run "skillmux sync" next to materialize [core] skills into these targets.\n`);
+  if (confirmedTargets.length > 0) {
+    console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`);
+    console.log(`run "skillmux sync" next to materialize [core] skills into these targets.\n`);
+  }
   console.log(printLastMile());
 }
 

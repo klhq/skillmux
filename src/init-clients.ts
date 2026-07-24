@@ -152,7 +152,10 @@ export function planClientSurfaces(
   return { clients, surfaces: [...surfaces.values()] };
 }
 
-export function assessClientReadiness(plan: ClientSurfacePlan): ClientReadiness[] {
+export function assessClientReadiness(
+  plan: ClientSurfacePlan,
+  instructionReadiness: Partial<Record<ClientId, ReadinessAxis>> = {},
+): ClientReadiness[] {
   return plan.clients.map((client) => {
     const surface = plan.surfaces.find((candidate) => candidate.clients.includes(client.id));
     let skillSurface: ReadinessAxis;
@@ -177,7 +180,7 @@ export function assessClientReadiness(plan: ClientSurfacePlan): ClientReadiness[
       client: client.id,
       skillSurface,
       mcpRegistration,
-      instructionSetup: {
+      instructionSetup: instructionReadiness[client.id] ?? {
         status: "manual",
         detail: "instruction adapter not applied",
       },
