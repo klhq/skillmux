@@ -14,6 +14,7 @@ export const LIVE_RELOAD_KEYS = new Set([
   "inference.thresholds.match_score",
   "inference.thresholds.match_margin",
   "inference.thresholds.candidate_floor",
+  "inference.calibration.run_id",
   "recall.k_lexical",
   "recall.k_vector",
   "thresholds.candidate_limit",
@@ -53,6 +54,47 @@ const DEBOUNCE_MS = 300;
 const STABLE_STAT_INTERVAL_MS = 80;
 const STABLE_STAT_MAX_TRIES = 8;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function changedConfigKeys(
+  previous: Record<string, unknown>,
+  next: Record<string, unknown>,
+  prefix = "",
+): string[] {
+  const changed: string[] = [];
+  const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+
+  for (const key of keys) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    const previousValue = previous[key];
+    const nextValue = next[key];
+    if (!(key in previous) || !(key in next)) {
+      if (isRecord(previousValue) || isRecord(nextValue)) {
+        changed.push(
+          ...changedConfigKeys(
+            isRecord(previousValue) ? previousValue : {},
+            isRecord(nextValue) ? nextValue : {},
+            path,
+          ),
+        );
+      } else {
+        changed.push(path);
+      }
+      continue;
+    }
+
+    if (isRecord(previousValue) && isRecord(nextValue)) {
+      changed.push(...changedConfigKeys(previousValue, nextValue, path));
+    } else if (JSON.stringify(previousValue) !== JSON.stringify(nextValue)) {
+      changed.push(path);
+    }
+  }
+
+  return changed;
+}
+
 /**
  * Watch the parent directory of a TOML config file for changes.
  * Parent-dir watching catches both direct writes (change events) and
@@ -79,6 +121,7 @@ export class ConfigWatcher {
   private constructor(
     private readonly tomlPath: string,
     private readonly opts: ConfigWatcherOptions,
+    private activeConfig: Config,
   ) {
     const dir = dirname(tomlPath);
     const filename = tomlPath.split(/[/\\]/).pop()!;
@@ -110,7 +153,8 @@ export class ConfigWatcher {
     tomlPath: string,
     opts: ConfigWatcherOptions,
   ): Promise<ConfigWatcher> {
-    return new ConfigWatcher(tomlPath, opts);
+    const activeConfig = await loadConfig(tomlPath);
+    return new ConfigWatcher(tomlPath, opts, activeConfig);
   }
 
   private scheduleReload(): void {
@@ -130,10 +174,27 @@ export class ConfigWatcher {
 
     try {
       const config = await loadConfig(this.tomlPath);
+      const restartRequiredKeys = changedConfigKeys(
+        this.activeConfig as unknown as Record<string, unknown>,
+        config as unknown as Record<string, unknown>,
+      )
+        .filter((key) => !LIVE_RELOAD_KEYS.has(key))
+        .sort();
+
+      if (restartRequiredKeys.length > 0) {
+        this.status = {
+          ...this.status,
+          last_reload_error: null,
+          restart_required_keys: restartRequiredKeys,
+        };
+        return;
+      }
+
+      this.activeConfig = config;
       this.status = {
         last_successful_reload_at: new Date().toISOString(),
         last_reload_error: null,
-        restart_required_keys: this.status.restart_required_keys,
+        restart_required_keys: [],
       };
       this.opts.onReload(config);
     } catch (err) {

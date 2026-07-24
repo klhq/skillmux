@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigWatcher, type ReloadStatus } from "../src/config-watcher";
@@ -9,7 +15,20 @@ import type { Config } from "../src/types";
 // Helpers
 // ---------------------------------------------------------------------------
 
-const WATCHER_SETTLE_MS = 600; // debounce (300ms) + a little extra
+const WATCHER_SETTLE_TIMEOUT_MS = 2_000;
+const POLL_INTERVAL_MS = 25;
+
+async function waitFor(
+  condition: () => boolean,
+  timeoutMs = WATCHER_SETTLE_TIMEOUT_MS,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (condition()) return;
+    await Bun.sleep(POLL_INTERVAL_MS);
+  }
+  throw new Error(`condition was not met within ${timeoutMs}ms`);
+}
 
 function baseToml(extraKLexical = 20): string {
   return `vault_path = "~/skills"
@@ -68,11 +87,37 @@ describe("ConfigWatcher", () => {
     });
 
     writeToml(tomlPath, baseToml(10));
-    await Bun.sleep(WATCHER_SETTLE_MS);
+    await waitFor(() => received.length > 0);
     watcher.stop();
 
     expect(received.length).toBeGreaterThanOrEqual(1);
     expect(received.at(-1)!.recall.k_lexical).toBe(10);
+  });
+
+  test("should report restart-required keys without reloading for disallowed changes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-cw-restart-"));
+    dirs.push(root);
+    const tomlPath = join(root, "config.toml");
+    writeToml(tomlPath, baseToml(20));
+
+    const received: Config[] = [];
+    const watcher = await ConfigWatcher.start(tomlPath, {
+      onReload: (config) => received.push(config),
+      onError: () => {},
+    });
+
+    writeToml(
+      tomlPath,
+      baseToml(20).replace("Xenova/gte-small", "Xenova/other-model"),
+    );
+    await waitFor(
+      () => watcher.reloadStatus().restart_required_keys.length > 0,
+    );
+    const status = watcher.reloadStatus();
+    watcher.stop();
+
+    expect(received).toHaveLength(0);
+    expect(status.restart_required_keys).toEqual(["inference.embedding.model"]);
   });
 
   test("should detect changes made via atomic rename (rename-based saves)", async () => {
@@ -91,7 +136,7 @@ describe("ConfigWatcher", () => {
     const tmpToml = join(root, "config.toml.tmp");
     writeFileSync(tmpToml, baseToml(30));
     renameSync(tmpToml, tomlPath);
-    await Bun.sleep(WATCHER_SETTLE_MS);
+    await waitFor(() => received.length > 0);
     watcher.stop();
 
     expect(received.length).toBeGreaterThanOrEqual(1);
@@ -107,13 +152,15 @@ describe("ConfigWatcher", () => {
     const errors: unknown[] = [];
     let goodReloads = 0;
     const watcher = await ConfigWatcher.start(tomlPath, {
-      onReload: () => { goodReloads++; },
+      onReload: () => {
+        goodReloads++;
+      },
       onError: (err) => errors.push(err),
     });
 
     // Write invalid TOML
     writeToml(tomlPath, "this is [not valid toml = {{{");
-    await Bun.sleep(WATCHER_SETTLE_MS);
+    await waitFor(() => errors.length > 0);
     watcher.stop();
 
     // Should have called onError, not crashed, not called onReload
@@ -138,7 +185,7 @@ describe("ConfigWatcher", () => {
 
     // Write after stop — should not fire
     writeToml(tomlPath, baseToml(5));
-    await Bun.sleep(WATCHER_SETTLE_MS);
+    await Bun.sleep(500);
 
     expect(received.length).toBe(countAfterStop);
   });
@@ -171,7 +218,9 @@ describe("ConfigWatcher", () => {
 
     // Write a valid config — should reload successfully
     writeToml(tomlPath, baseToml(15));
-    await Bun.sleep(WATCHER_SETTLE_MS);
+    await waitFor(
+      () => watcher.reloadStatus().last_successful_reload_at !== null,
+    );
     lastStatus = watcher.reloadStatus();
     watcher.stop();
 
@@ -193,17 +242,21 @@ describe("ConfigWatcher", () => {
 
     // First: write a valid config to establish last_successful_reload_at
     writeToml(tomlPath, baseToml(15));
-    await Bun.sleep(WATCHER_SETTLE_MS);
+    await waitFor(
+      () => watcher.reloadStatus().last_successful_reload_at !== null,
+    );
     const statusAfterGood = watcher.reloadStatus();
 
     // Then: write bad TOML
     writeToml(tomlPath, "[[[[bad toml");
-    await Bun.sleep(WATCHER_SETTLE_MS);
+    await waitFor(() => watcher.reloadStatus().last_reload_error !== null);
     const statusAfterBad = watcher.reloadStatus();
     watcher.stop();
 
     // last_successful_reload_at preserved from the good reload
-    expect(statusAfterBad.last_successful_reload_at).toBe(statusAfterGood.last_successful_reload_at);
+    expect(statusAfterBad.last_successful_reload_at).toBe(
+      statusAfterGood.last_successful_reload_at,
+    );
     expect(statusAfterBad.last_reload_error).not.toBeNull();
   });
 });
