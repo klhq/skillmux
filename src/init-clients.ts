@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +17,11 @@ export const SUPPORTED_CLIENT_IDS = [
 
 export type ClientId = (typeof SUPPORTED_CLIENT_IDS)[number];
 export type DeliveryMode = "managed-pins" | "full-vault" | "mcp";
+
+export interface DetectedClient {
+  client: ClientId;
+  evidence: string;
+}
 
 interface ClientDefinition {
   id: ClientId;
@@ -68,6 +74,31 @@ const CLIENTS: Record<ClientId, ClientDefinition> = {
   hermes: { id: "hermes", deliveryMode: "full-vault" },
   "skillmux-mcp": { id: "skillmux-mcp", deliveryMode: "mcp" },
 };
+
+export function detectInstalledClients(
+  options: {
+    home?: string;
+    codexHome?: string;
+    exists?: (path: string) => boolean;
+  } = {},
+): DetectedClient[] {
+  const home = options.home ?? homedir();
+  const codexHome = options.codexHome ?? join(home, ".codex");
+  const exists = options.exists ?? existsSync;
+  const candidates: Array<[ClientId, string]> = [
+    ["claude-code", join(home, ".claude")],
+    ["codex", codexHome],
+    ["gemini-cli", join(home, ".gemini")],
+    ["opencode", join(home, ".config", "opencode")],
+    ["github-copilot", join(home, ".config", "github-copilot")],
+    ["windsurf", join(home, ".codeium", "windsurf")],
+    ["goose", join(home, ".config", "goose")],
+    ["hermes", join(home, ".hermes")],
+  ];
+  return candidates
+    .filter(([, evidence]) => exists(evidence))
+    .map(([client, evidence]) => ({ client, evidence }));
+}
 
 function surfacePath(
   surfaceId: NonNullable<ClientDefinition["surfaceId"]>,

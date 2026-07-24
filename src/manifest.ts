@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { expandHome } from "./config";
@@ -94,6 +94,16 @@ export function serializeManifest(manifest: Manifest): string {
   return `${sections.join("\n\n")}\n`;
 }
 
+export function writeManifestAtomic(path: string, manifest: Manifest): void {
+  const temporaryPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporaryPath, serializeManifest(manifest), "utf8");
+    renameSync(temporaryPath, path);
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
+}
+
 function findExistingPin(manifest: Manifest, skillId: string): string | null {
   if (manifest.core.skills.includes(skillId)) return "[core]";
   for (const [groupName, group] of Object.entries(manifest.project ?? {})) {
@@ -164,6 +174,53 @@ export function unpinProject(manifest: Manifest, skillId: string, group: string)
       ...manifest.project,
       [group]: { ...existingGroup, skills: existingGroup.skills.filter((id) => id !== skillId) },
     },
+  };
+}
+
+export interface UpsertProjectOptions {
+  name: string;
+  paths: string[];
+  skills: string[];
+  targets: string[];
+}
+
+export function upsertProject(manifest: Manifest, options: UpsertProjectOptions): Manifest {
+  if (!groupNameSchema.safeParse(options.name).success) {
+    throw new Error(
+      `invalid group name "${options.name}" — must match /^[a-z][a-z0-9_-]*$/ (max 64 chars)`,
+    );
+  }
+
+  const existingGroup = manifest.project?.[options.name] ?? { paths: [], skills: [] };
+  for (const skillId of options.skills) {
+    if (!skillIdSchema.safeParse(skillId).success) {
+      throw new Error(`invalid skill ID "${skillId}"`);
+    }
+    if (existingGroup.skills.includes(skillId)) continue;
+    const existing = findExistingPin(manifest, skillId);
+    if (existing) throw new Error(`skill "${skillId}" already pinned in ${existing}`);
+  }
+
+  const targets = { ...manifest.targets };
+  for (const targetName of options.targets) {
+    const target = targets[targetName];
+    if (!target) throw new Error(`target "${targetName}" does not exist`);
+    targets[targetName] = {
+      ...target,
+      project_groups: [...new Set([...target.project_groups, options.name])],
+    };
+  }
+
+  return {
+    ...manifest,
+    project: {
+      ...manifest.project,
+      [options.name]: {
+        paths: [...new Set([...existingGroup.paths, ...options.paths])],
+        skills: [...new Set([...existingGroup.skills, ...options.skills])],
+      },
+    },
+    targets,
   };
 }
 

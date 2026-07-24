@@ -202,7 +202,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|project|report|scan|install|eval|doctor|which|manifest pin/unpin|local-vault init|config show|models download|calibrate generate-dataset>",
     );
 
   });
@@ -413,6 +413,136 @@ describe("skillmux manifest CLI", () => {
     expect(written).toContain(`[project.infra]`);
     expect(written).toContain(`skills = []`);
 
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+});
+
+describe("skillmux project CLI", () => {
+  test("project init creates a group and attaches it to a target", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-init-"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.test]`,
+        `dir = "~/does-not-matter"`,
+        `project_groups = []`,
+      ].join("\n"),
+    );
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--skill",
+      "second-skill",
+      "--target",
+      "test",
+      "--yes",
+      "--no-sync",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf8");
+    expect(written).toContain("[project.demo]");
+    expect(written).toContain(`paths = [${JSON.stringify(projectPath)}]`);
+    expect(written).toContain(`skills = ["second-skill"]`);
+    expect(written).toContain(`project_groups = ["demo"]`);
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("project init maps clients to deduplicated configured targets", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-client-init-"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = []`,
+        ``,
+        `[targets.agent-skills]`,
+        `dir = "~/.agents/skills"`,
+        `project_groups = []`,
+      ].join("\n"),
+    );
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--client",
+      "gemini-cli",
+      "--client",
+      "opencode",
+      "--yes",
+      "--no-sync",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const written = readFileSync(join(vaultDir, "skillmux.toml"), "utf8");
+    expect(written.match(/project_groups = \["demo"\]/g)).toHaveLength(1);
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("project init rejects a file path", async () => {
+    const projectPath = join(tmp, "not-a-project.txt");
+    writeFileSync(projectPath, "file");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.test]\ndir = "~/.agents/skills"\n`,
+    );
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--yes",
+      "--no-sync",
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("project path is not a directory");
+
+    rmSync(projectPath, { force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("project init attaches a client to an existing legacy-named target with the same directory", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-legacy-target-"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.claude]\ndir = "~/.claude/skills"\n`,
+    );
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--client",
+      "claude-code",
+      "--yes",
+      "--no-sync",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf8")).toContain(
+      `[targets.claude]\ndir = "~/.claude/skills"\nproject_groups = ["demo"]`,
+    );
+
+    rmSync(projectPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 });

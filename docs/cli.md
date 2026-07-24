@@ -84,6 +84,11 @@ and does not add `local_vault_paths`.
 
 ## Setup Planner (`skillmux init`)
 
+Run `skillmux init` with no arguments in a terminal to start guided setup.
+Skillmux preselects clients it can detect from filesystem evidence, asks for
+core skills, prints one complete review, and applies after one confirmation.
+The prompt stays line-oriented and does not use an alternate terminal screen.
+
 Select clients by product name:
 
 ```sh
@@ -108,8 +113,9 @@ print deprecation warnings and retain their manifest names.
 
 `--dry-run` prints the config, target, instruction, and core plan without
 prompting or writing. `--json` emits one schema-versioned plan or result
-object. Noninteractive writes require `--yes`; an interactive terminal asks
-about each planned change.
+object. Noninteractive writes require `--yes`. `--interactive` forces the
+wizard and seeds it with supplied flags. `--no-instructions` skips managed
+instruction files; `--no-sync` saves setup without materializing links.
 
 Skillmux rejects a target that currently links to the whole vault. Convert it
 only after reviewing the smaller post-sync skill set:
@@ -125,6 +131,38 @@ Client instruction adapters append one managed discovery block and preserve
 the rest of each file. Skillmux uses `.hermes.md` for Hermes and refuses
 `SOUL.md` or Hermes's installed-source `AGENTS.md`. A client without a safe
 user-level convention reports manual setup.
+
+---
+
+## Project Setup (`skillmux project init`)
+
+Run the guided flow from a project directory:
+
+```sh
+skillmux project init
+```
+
+Skillmux resolves the project directory from an explicit positional path, then
+the current Git root, then the current directory. It suggests the directory
+basename as the project-group name.
+
+The noninteractive form accepts repeatable client and skill flags:
+
+```sh
+skillmux project init ~/code/skillmux \
+  --name skillmux \
+  --client claude-code \
+  --client codex \
+  --skill sdd-tdd \
+  --skill code-context \
+  --yes
+```
+
+`--client` maps product names to configured, deduplicated targets. Advanced
+callers can attach a configured target with repeated `--target <name>`.
+Re-running the command merges missing paths, skills, and target attachments.
+It validates the complete manifest before an atomic write and runs `sync` by
+default. Use `--no-sync` when another process will materialize the links.
 
 ### Reloadable vs. Restart-Required Keys
 

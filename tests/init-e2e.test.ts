@@ -86,4 +86,16 @@ describe("skillmux init end-to-end", () => {
     expect(readFileSync(instructions, "utf8")).toBe(before.instructions);
     expect(readFileSync(join(target, ".skillmux"), "utf8")).toBe(before.marker);
   });
+
+  test("can skip managed instruction files", async () => {
+    const result = await run([
+      "init",
+      "--client", "codex",
+      "--no-instructions",
+      "--yes",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(home, ".codex", "AGENTS.md"))).toBe(false);
+  });
 });

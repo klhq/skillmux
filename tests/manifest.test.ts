@@ -7,9 +7,11 @@ import {
   serializeManifest,
   unpinCore,
   unpinProject,
+  upsertProject,
   validateManifest,
+  writeManifestAtomic,
 } from "../src/manifest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -258,6 +260,53 @@ dir = "~/.claude/skills"
     expect(() => pinProject(manifest, "some-skill", "Bad Group!", ["~/workspace/x"])).toThrow(
       /invalid group name/,
     );
+  });
+});
+
+describe("upsertProject", () => {
+  test("merges paths, skills, and target attachments without duplicates", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.infra]
+paths = ["/work/infra"]
+skills = ["terraform-plans"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+project_groups = []
+`);
+
+    const updated = upsertProject(manifest, {
+      name: "infra",
+      paths: ["/work/infra", "/Users/me/infra"],
+      skills: ["terraform-plans", "incident-response"],
+      targets: ["claude"],
+    });
+
+    expect(updated.project?.infra).toEqual({
+      paths: ["/work/infra", "/Users/me/infra"],
+      skills: ["terraform-plans", "incident-response"],
+    });
+    expect(updated.targets.claude?.project_groups).toEqual(["infra"]);
+  });
+
+  test("rejects an invalid project skill ID before manifest validation", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.test]
+dir = "~/.agents/skills"
+`);
+
+    expect(() => upsertProject(manifest, {
+      name: "demo",
+      paths: ["/work/demo"],
+      skills: ["../../outside"],
+      targets: [],
+    })).toThrow(/invalid skill ID/);
   });
 });
 
@@ -510,6 +559,23 @@ dir = "~/.claude/skills"
 
     expect(roundTripped).toEqual(manifest);
   });
+});
+
+test("writeManifestAtomic replaces a manifest with parseable content", () => {
+  const root = tmpVault();
+  const path = join(root, "skillmux.toml");
+  const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.test]
+dir = "~/.agents/skills"
+`);
+
+  writeManifestAtomic(path, manifest);
+
+  expect(parseManifest(readFileSync(path, "utf8"))).toEqual(manifest);
+  rmSync(root, { recursive: true, force: true });
 });
 
 describe("resolveManifestPath (Shim 3)", () => {

@@ -8,7 +8,7 @@ _skillmux_completions() {
     COMPREPLY=()
     cur="\${COMP_WORDS[COMP_CWORD]}"
     prev="\${COMP_WORDS[COMP_CWORD-1]}"
-    opts="context config calibrate serve index sync init report scan install eval doctor which manifest local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
+    opts="context config calibrate serve index sync init project report scan install eval doctor which manifest local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -31,6 +31,9 @@ _skillmux_completions() {
         manifest)
             COMPREPLY=( $(compgen -W "pin unpin" -- "$cur") )
             ;;
+        project)
+            COMPREPLY=( $(compgen -W "init" -- "$cur") )
+            ;;
         local-vault)
             COMPREPLY=( $(compgen -W "init" -- "$cur") )
             ;;
@@ -42,7 +45,10 @@ _skillmux_completions() {
             ;;
     esac
     if [ "\${COMP_WORDS[1]}" = "init" ] && [ "\${#COMPREPLY[@]}" -eq 0 ]; then
-        COMPREPLY=( $(compgen -W "--client --target --path --vault --core --migrate-full-vault --yes --dry-run --json" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--client --target --path --vault --core --migrate-full-vault --no-instructions --no-sync --interactive --yes --dry-run --json" -- "$cur") )
+    fi
+    if [ "\${COMP_WORDS[1]}" = "project" ] && [ "\${COMP_WORDS[2]}" = "init" ]; then
+        COMPREPLY=( $(compgen -W "--name --skill --client --target --no-sync --interactive --yes --dry-run --json" -- "$cur") )
     fi
 }
 complete -F _skillmux_completions skillmux
@@ -61,6 +67,7 @@ _skillmux() {
         'index:Rebuild local search index'
         'sync:Synchronize vault skills'
         'init:Initialize project targets'
+        'project:Configure project-scoped skills'
         'report:Generate usage stats'
         'scan:Audit skills for issues'
         'install:Install skills into vault'
@@ -82,6 +89,21 @@ _skillmux() {
           '--vault[vault directory]:directory:_directories' \
           '*--core[seed a core skill]:skill id:' \
           '--migrate-full-vault[convert a full-vault symlink to managed pins]' \
+          '--no-instructions[skip managed instruction files]' \
+          '--no-sync[save setup without synchronizing targets]' \
+          '--interactive[force guided setup]' \
+          '--yes[apply without prompts]' \
+          '--dry-run[print the plan without writing]' \
+          '--json[emit a JSON envelope]'
+    elif [[ "$words[2]" == "project" && "$words[3]" == "init" ]]; then
+        _arguments \
+          '1:project directory:_directories' \
+          '--name[project group name]:group:' \
+          '*--skill[project skill]:skill id:' \
+          '*--client[select a client]:client:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity)' \
+          '*--target[select an advanced target]:target:' \
+          '--no-sync[save setup without synchronizing targets]' \
+          '--interactive[force guided setup]' \
           '--yes[apply without prompts]' \
           '--dry-run[print the plan without writing]' \
           '--json[emit a JSON envelope]'
@@ -98,6 +120,8 @@ complete -c skillmux -n "__fish_use_subcommand" -a context -d "Manage connection
 complete -c skillmux -n "__fish_use_subcommand" -a config -d "Manage configuration"
 complete -c skillmux -n "__fish_use_subcommand" -a calibrate -d "Manage policy calibration"
 complete -c skillmux -n "__fish_use_subcommand" -a serve -d "Start MCP server"
+complete -c skillmux -n "__fish_use_subcommand" -a init -d "Configure this machine and its clients"
+complete -c skillmux -n "__fish_use_subcommand" -a project -d "Configure project-scoped skills"
 complete -c skillmux -n "__fish_use_subcommand" -a completions -d "Generate shell completions"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l client -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp" -d "Select a client"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l target -x -a "agent-skills claude-code codex custom" -d "Select a target"
@@ -105,9 +129,20 @@ complete -c skillmux -n "__fish_seen_subcommand_from init" -l path -r -d "Custom
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l vault -r -d "Vault directory"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l core -x -d "Seed a core skill"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l migrate-full-vault -d "Convert a full-vault symlink"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l no-instructions -d "Skip managed instruction files"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l no-sync -d "Save without synchronizing"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l interactive -d "Force guided setup"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l yes -d "Apply without prompts"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l dry-run -d "Print the plan without writing"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l json -d "Emit a JSON envelope"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -a init -d "Configure a project"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l name -x -d "Project group name"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l skill -x -d "Project skill"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l client -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity" -d "Select a client"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l target -x -d "Select an advanced target"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Save without synchronizing"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l interactive -d "Force guided setup"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l yes -d "Apply without prompts"
 `;
   }
 
