@@ -932,6 +932,35 @@ describe("skillmux init CLI", () => {
     rmSync(clientConfig, { force: true });
   });
 
+  test("client init reuses a legacy-named target with the same physical directory", async () => {
+    const clientHome = join(tmp, "legacy-client-home");
+    const clientVault = join(tmp, "legacy-client-vault");
+    const clientConfig = join(tmp, "legacy-client-config.toml");
+    mkdirSync(join(clientVault, "legacy-skill"), { recursive: true });
+    writeFileSync(join(clientVault, "legacy-skill", "SKILL.md"), "---\nname: legacy-skill\n---\n");
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const first = await runCliEnv(["init", "--target", "claude", "--yes"], {
+      HOME: clientHome,
+      SKILLMUX_CONFIG: clientConfig,
+    });
+    expect(first.exitCode).toBe(0);
+
+    const second = await runCliEnv(
+      ["init", "--client", "claude-code", "--no-instructions", "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(second.exitCode).toBe(0);
+    const manifest = readFileSync(join(clientVault, "skillmux.toml"), "utf8");
+    expect(manifest).toContain("[targets.claude]");
+    expect(manifest).not.toContain("[targets.claude-code]");
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
   test("dry-runs the exact target, instruction, and core plan without confirmation or writes", async () => {
     const clientHome = join(tmp, "dry-run-home");
     const clientVault = join(tmp, "dry-run-vault");

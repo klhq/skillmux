@@ -1495,8 +1495,19 @@ async function runInit(
   const targetByPath = new Map(
     explicitSurfaceTargets.map((target) => [target.path, target.targetName] as const),
   );
+  const existingManifestPath = resolveManifestPath(vaultPath);
+  const existingManifest = existingManifestPath
+    ? parseManifest(await Bun.file(existingManifestPath).text())
+    : undefined;
   for (const surface of clientPlan.surfaces) {
-    if (!targetByPath.has(surface.path)) targetByPath.set(surface.path, surface.targetName);
+    if (!targetByPath.has(surface.path)) {
+      targetByPath.set(
+        surface.path,
+        existingManifest
+          ? configuredTargetForSurface(existingManifest, surface) ?? surface.targetName
+          : surface.targetName,
+      );
+    }
   }
   const candidatePaths = [
     ...new Set([
