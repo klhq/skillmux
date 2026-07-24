@@ -134,26 +134,26 @@ describe("skillmux index CLI (AC8)", () => {
   });
 });
 
-describe("skillmux which CLI", () => {
+describe("skillmux skill which CLI", () => {
   test("reports the resolving root for a skill that only exists in vault_path", async () => {
-    const result = await runCli("which", "first-skill");
+    const result = await runCli("skill", "which", "first-skill");
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`first-skill: serving from ${vaultDir}`);
   });
 
   test("exits non-zero and reports not found for an unknown skill_id", async () => {
-    const result = await runCli("which", "ghost-skill");
+    const result = await runCli("skill", "which", "ghost-skill");
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stdout).toContain("ghost-skill: not found");
   });
 
   test("requires a skill_id argument", async () => {
-    const result = await runCli("which");
+    const result = await runCli("skill", "which");
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("usage: skillmux which <skill_id>");
+    expect(result.stderr).toContain("usage: skillmux skill which <skill_id>");
   });
 
   test("reports the shadowed root when a local_vault_paths entry overrides vault_path", async () => {
@@ -172,7 +172,7 @@ describe("skillmux which CLI", () => {
       ),
     );
 
-    const result = await runCliEnv(["which", "first-skill"], { SKILLMUX_CONFIG: configPath2 });
+    const result = await runCliEnv(["skill", "which", "first-skill"], { SKILLMUX_CONFIG: configPath2 });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`first-skill: serving from ${localDir}`);
@@ -180,6 +180,14 @@ describe("skillmux which CLI", () => {
 
     rmSync(localDir, { recursive: true, force: true });
     rmSync(configPath2, { force: true });
+  });
+
+  test("bare which is removed and points to skill which as the replacement", async () => {
+    const result = await runCli("which", "first-skill");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).not.toContain("Unknown command");
+    expect(result.stderr).toContain(`skillmux skill which first-skill`);
   });
 });
 
@@ -215,7 +223,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|which|local-vault init|config show|models download|calibrate generate-dataset>",
+      "usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|skill which|local-vault init|config show|models download|calibrate generate-dataset>",
     );
 
   });

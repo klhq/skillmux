@@ -108,7 +108,7 @@ const KNOWN_COMMANDS = [
   "eval",
   "doctor",
   "models",
-  "which",
+  "skill",
   "local-vault",
 ];
 
@@ -226,7 +226,9 @@ async function main() {
         await runDoctor({ isJson });
         break;
       case "which":
-        await runWhich(rawArgv.slice(1));
+        throw new Error(`skillmux which is removed - use "skillmux skill which ${subCommand}" instead`);
+      case "skill":
+        await runSkill(subCommand, commandArgs);
         break;
       case "manifest":
         throw new Error(
@@ -244,7 +246,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|which|local-vault init|config show|models download|calibrate generate-dataset>`;
+          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|skill which|local-vault init|config show|models download|calibrate generate-dataset>`;
         throw new Error(msg);
       }
     }
@@ -631,6 +633,7 @@ Setup:
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
   skillmux target <list|show|add|remove>
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
+  skillmux skill which <skill_id>
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
@@ -640,7 +643,7 @@ Init targets:
   agent-skills, claude-code, codex, custom
 
 Commands:
-  serve, index, sync, init, project, target, core, report, scan, install, eval, doctor, which,
+  serve, index, sync, init, project, target, core, report, scan, install, eval, doctor, skill,
   local-vault, config, models, calibrate, context, completions`);
 }
 
@@ -725,9 +728,14 @@ async function runDoctor(options: { isJson: boolean }): Promise<void> {
   if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
 }
 
+async function runSkill(subCommand: string, args: string[]): Promise<void> {
+  if (subCommand !== "which") throw new Error("usage: skillmux skill <which>");
+  await runWhich(args);
+}
+
 async function runWhich(args: string[]): Promise<void> {
   const skillId = args[0];
-  if (!skillId) throw new Error("usage: skillmux which <skill_id>");
+  if (!skillId) throw new Error("usage: skillmux skill which <skill_id>");
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);

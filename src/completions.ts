@@ -8,7 +8,7 @@ _skillmux_completions() {
     COMPREPLY=()
     cur="\${COMP_WORDS[COMP_CWORD]}"
     prev="\${COMP_WORDS[COMP_CWORD-1]}"
-    opts="context config calibrate serve index sync init project target core report scan install eval doctor which local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
+    opts="context config calibrate serve index sync init project target core report scan install eval doctor skill local-vault models completions --context --server --json --allow-insecure --verbose --dry-run --help"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
@@ -30,6 +30,9 @@ _skillmux_completions() {
             ;;
         core)
             COMPREPLY=( $(compgen -W "pin unpin" -- "$cur") )
+            ;;
+        skill)
+            COMPREPLY=( $(compgen -W "which" -- "$cur") )
             ;;
         project)
             COMPREPLY=( $(compgen -W "init list show add-path remove-path pin unpin attach detach" -- "$cur") )
@@ -77,7 +80,7 @@ _skillmux() {
         'install:Install skills into vault'
         'eval:Evaluate search accuracy'
         'doctor:Check runtime health'
-        'which:Show which root resolves a skill_id'
+        'skill:Show which root resolves a skill_id'
         'core:Pin/unpin skills into [core]'
         'local-vault:Manage local_vault_paths discoverability markers'
         'models:Manage local models'
@@ -115,6 +118,8 @@ _skillmux() {
         _values 'project command' init list show add-path remove-path pin unpin attach detach
     elif [[ "$words[2]" == "target" && CURRENT == 3 ]]; then
         _values 'target command' list show add remove
+    elif [[ "$words[2]" == "skill" && CURRENT == 3 ]]; then
+        _values 'skill command' which
     fi
 }
 _skillmux "$@"
