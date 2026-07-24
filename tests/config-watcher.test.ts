@@ -12,23 +12,8 @@ import { ConfigWatcher, type ReloadStatus } from "../src/config-watcher";
 import type { Config } from "../src/types";
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+import { assertRemainsFalse, waitFor } from "./test-utils";
 
-const WATCHER_SETTLE_TIMEOUT_MS = 2_000;
-const POLL_INTERVAL_MS = 25;
-
-async function waitFor(
-  condition: () => boolean,
-  timeoutMs = WATCHER_SETTLE_TIMEOUT_MS,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (condition()) return;
-    await Bun.sleep(POLL_INTERVAL_MS);
-  }
-  throw new Error(`condition was not met within ${timeoutMs}ms`);
-}
 
 function baseToml(extraKLexical = 20): string {
   return `vault_path = "~/skills"
@@ -185,7 +170,7 @@ describe("ConfigWatcher", () => {
 
     // Write after stop — should not fire
     writeToml(tomlPath, baseToml(5));
-    await Bun.sleep(500);
+    await assertRemainsFalse(() => received.length > countAfterStop, 400);
 
     expect(received.length).toBe(countAfterStop);
   });

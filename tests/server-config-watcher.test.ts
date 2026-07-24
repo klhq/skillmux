@@ -16,17 +16,8 @@ const dirs: string[] = [];
 const ADMIN_TOKEN_ENV = "SKILLMUX_SERVER_WATCHER_ADMIN_TOKEN";
 let handle: ServerHandle | undefined;
 
-async function waitFor(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs = 2_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await condition()) return;
-    await Bun.sleep(25);
-  }
-  throw new Error(`condition was not met within ${timeoutMs}ms`);
-}
+import { assertRemainsFalse, waitFor } from "./test-utils";
+
 
 function writeToml(path: string, content: string): void {
   const temporaryPath = `${path}.tmp`;
@@ -189,7 +180,12 @@ describe("server config watcher lifecycle", () => {
     await handle.stop();
     const statusAfterStop = handle.reloadStatus();
     writeToml(configPath, configToml(root, 10));
-    await Bun.sleep(500);
+    await assertRemainsFalse(
+      () =>
+        JSON.stringify(handle!.reloadStatus()) !==
+        JSON.stringify(statusAfterStop),
+      400,
+    );
 
     expect(handle.reloadStatus()).toEqual(statusAfterStop);
   });

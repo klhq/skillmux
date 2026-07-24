@@ -732,66 +732,14 @@ export async function applyCalibrationRun(
   // --- Atomic TOML write ---
   const { match_score, match_margin, candidate_floor } = run.selected_thresholds;
 
-  const existing = await Bun.file(tomlPath).text();
-  const patched = patchToml(existing, runId, match_score, match_margin, candidate_floor);
-
-  // Write to a temp file then rename for atomicity
-  const tmpPath = `${tomlPath}.${process.pid}.tmp`;
-  await Bun.write(tmpPath, patched);
-  const { renameSync } = await import("node:fs");
-  renameSync(tmpPath, tomlPath);
+  const { patchTomlFile } = await import("./config-mutation");
+  await patchTomlFile(tomlPath, {
+    matchScore: match_score,
+    matchMargin: match_margin,
+    candidateFloor: candidate_floor,
+    runId,
+  });
 }
 
-// ---------------------------------------------------------------------------
-// TOML patch helpers (surgical text manipulation)
-// ---------------------------------------------------------------------------
-
-/**
- * Patch an existing TOML string to set [inference.thresholds] values and
- * add/update [inference.calibration] with run_id.
- *
- * Strategy:
- *   1. Replace any existing [inference.thresholds] section content
- *   2. Add/replace [inference.calibration] section
- */
-function patchToml(
-  source: string,
-  runId: string,
-  matchScore: number,
-  matchMargin: number,
-  candidateFloor: number,
-): string {
-  const thresholdsBlock = `[inference.thresholds]\nmatch_score = ${matchScore}\nmatch_margin = ${matchMargin}\ncandidate_floor = ${candidateFloor}\n`;
-  const calibrationBlock = `[inference.calibration]\nrun_id = "${runId}"\n`;
-
-  // Remove existing [inference.thresholds] section
-  let result = removeSectionBlock(source, "[inference.thresholds]");
-  // Remove existing [inference.calibration] section
-  result = removeSectionBlock(result, "[inference.calibration]");
-  // Append both sections
-  result = result.trimEnd() + "\n\n" + thresholdsBlock + "\n" + calibrationBlock;
-  return result;
-}
-
-/**
- * Remove a TOML section header and all lines until the next section header
- * (or end of file). Matches exact header string at start of line.
- */
-function removeSectionBlock(source: string, header: string): string {
-  const lines = source.split("\n");
-  const out: string[] = [];
-  let skipping = false;
-  for (const line of lines) {
-    if (line.trimEnd() === header) {
-      skipping = true;
-      continue;
-    }
-    if (skipping && line.startsWith("[")) {
-      skipping = false;
-    }
-    if (!skipping) out.push(line);
-  }
-  return out.join("\n");
-}
 
 
