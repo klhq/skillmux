@@ -7,6 +7,8 @@ import {
   serializeManifest,
   unpinCore,
   unpinProject,
+  updateProjectPaths,
+  updateProjectTargets,
   upsertProject,
   validateManifest,
   writeManifestAtomic,
@@ -308,6 +310,61 @@ dir = "~/.agents/skills"
       targets: [],
     })).toThrow(/invalid skill ID/);
   });
+});
+
+describe("updateProjectPaths", () => {
+  test("adds and removes paths idempotently while preserving project skills", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.demo]
+paths = ["/work/one"]
+skills = ["first-skill"]
+
+[targets.test]
+dir = "~/.agents/skills"
+`);
+
+    const added = updateProjectPaths(manifest, "demo", {
+      add: ["/work/one", "/work/two"],
+    });
+    const removed = updateProjectPaths(added, "demo", {
+      remove: ["/work/one", "/missing"],
+    });
+
+    expect(removed.project?.demo).toEqual({
+      paths: ["/work/two"],
+      skills: ["first-skill"],
+    });
+  });
+});
+
+test("updateProjectTargets attaches and detaches a group idempotently", () => {
+  const manifest = parseManifest(`
+[core]
+skills = []
+
+[project.demo]
+paths = ["/work/demo"]
+skills = []
+
+[targets.one]
+dir = "~/.one/skills"
+project_groups = []
+
+[targets.two]
+dir = "~/.two/skills"
+project_groups = ["demo"]
+`);
+
+  const updated = updateProjectTargets(manifest, "demo", {
+    attach: ["one", "one"],
+    detach: ["two"],
+  });
+
+  expect(updated.targets.one?.project_groups).toEqual(["demo"]);
+  expect(updated.targets.two?.project_groups).toEqual([]);
 });
 
 describe("unpinProject", () => {

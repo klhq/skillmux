@@ -32,7 +32,7 @@ _skillmux_completions() {
             COMPREPLY=( $(compgen -W "pin unpin" -- "$cur") )
             ;;
         project)
-            COMPREPLY=( $(compgen -W "init" -- "$cur") )
+            COMPREPLY=( $(compgen -W "init list show add-path remove-path pin unpin attach detach" -- "$cur") )
             ;;
         local-vault)
             COMPREPLY=( $(compgen -W "init" -- "$cur") )
@@ -107,6 +107,8 @@ _skillmux() {
           '--yes[apply without prompts]' \
           '--dry-run[print the plan without writing]' \
           '--json[emit a JSON envelope]'
+    elif [[ "$words[2]" == "project" && CURRENT == 3 ]]; then
+        _values 'project command' init list show add-path remove-path pin unpin attach detach
     fi
 }
 _skillmux "$@"
@@ -135,7 +137,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from init" -l interactive -d "Fo
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l yes -d "Apply without prompts"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l dry-run -d "Print the plan without writing"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l json -d "Emit a JSON envelope"
-complete -c skillmux -n "__fish_seen_subcommand_from project" -a init -d "Configure a project"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -a "init list show add-path remove-path pin unpin attach detach" -d "Manage projects"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l name -x -d "Project group name"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l skill -x -d "Project skill"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l client -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity" -d "Select a client"

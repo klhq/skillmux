@@ -50,6 +50,8 @@ import {
   unpinCore,
   unpinProject,
   upsertProject,
+  updateProjectPaths,
+  updateProjectTargets,
   validateManifest,
   writeManifestAtomic,
 } from "./manifest";
@@ -618,6 +620,7 @@ Setup:
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
                 [--client <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
+  skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
@@ -800,6 +803,155 @@ async function runProject(
   args: string[],
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
+  if (subCommand === "list" || subCommand === "show") {
+    const config = await loadConfig();
+    const vaultPath = expandHome(config.vault_path);
+    const manifestPath = resolveManifestPath(vaultPath);
+    if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+    const manifest = parseManifest(await Bun.file(manifestPath).text());
+    const names = subCommand === "show"
+      ? [args[0] ?? ""]
+      : Object.keys(manifest.project ?? {});
+    if (subCommand === "show" && !manifest.project?.[names[0]!]) {
+      throw new Error(`[project.${names[0]}] does not exist`);
+    }
+    const projects = names.map((name) => ({
+      name,
+      paths: manifest.project?.[name]!.paths ?? [],
+      skills: manifest.project?.[name]!.skills ?? [],
+      targets: Object.entries(manifest.targets)
+        .filter(([, target]) => target.project_groups.includes(name))
+        .map(([target]) => target),
+    }));
+    if (options.isJson) {
+      console.log(JSON.stringify({ schema_version: 1, projects }));
+    } else if (projects.length === 0) {
+      console.log("no project groups configured");
+    } else {
+      for (const project of projects) {
+        console.log(`${project.name}:`);
+        console.log(`  paths: ${project.paths.join(", ") || "(none)"}`);
+        console.log(`  skills: ${project.skills.join(", ") || "(none)"}`);
+        console.log(`  targets: ${project.targets.join(", ") || "(none)"}`);
+      }
+    }
+    return;
+  }
+  if (subCommand === "add-path" || subCommand === "remove-path") {
+    const group = args[0];
+    if (!group) throw new Error(`usage: skillmux project ${subCommand} <group> [path] --yes`);
+    const rawPath = args[1]?.startsWith("-") ? undefined : args[1];
+    const projectPath = resolveProjectDirectory(rawPath ? expandHome(rawPath) : undefined);
+    const yes = args.includes("--yes");
+    if (!existsSync(projectPath) || !lstatSync(projectPath).isDirectory()) {
+      throw new Error(`project path is not a directory: ${projectPath}`);
+    }
+    const config = await loadConfig();
+    const vaultPath = expandHome(config.vault_path);
+    const manifestPath = resolveManifestPath(vaultPath);
+    if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+    const manifest = parseManifest(await Bun.file(manifestPath).text());
+    const updated = updateProjectPaths(manifest, group, {
+      ...(subCommand === "add-path" ? { add: [projectPath] } : { remove: [projectPath] }),
+    });
+    validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
+    if (options.dryRun) {
+      console.log(`${subCommand}: [project.${group}] ${projectPath} (dry-run)`);
+      return;
+    }
+    if (!yes) {
+      if (!options.isJson && isInteractive()) {
+        if (!(await confirmAction(`${subCommand} ${projectPath} in [project.${group}]?`))) return;
+      } else {
+        throw new Error(`skillmux project ${subCommand} requires --yes when run non-interactively`);
+      }
+    }
+    writeManifestAtomic(manifestPath, updated);
+    console.log(`${subCommand}: [project.${group}] ${projectPath}`);
+    return;
+  }
+  if (subCommand === "pin" || subCommand === "unpin") {
+    const group = args[0];
+    const skills = args.slice(1).filter((arg) => !arg.startsWith("-"));
+    if (!group || skills.length === 0) {
+      throw new Error(`usage: skillmux project ${subCommand} <group> <skill_id>... --yes`);
+    }
+    const yes = args.includes("--yes");
+    const config = await loadConfig();
+    const vaultPath = expandHome(config.vault_path);
+    const manifestPath = resolveManifestPath(vaultPath);
+    if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+    let updated = parseManifest(await Bun.file(manifestPath).text());
+    for (const skill of skills) {
+      updated = subCommand === "pin"
+        ? pinProject(updated, skill, group)
+        : unpinProject(updated, skill, group);
+    }
+    validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
+    if (options.dryRun) {
+      console.log(`${subCommand}: [project.${group}] ${skills.join(", ")} (dry-run)`);
+      return;
+    }
+    if (!yes) {
+      if (!options.isJson && isInteractive()) {
+        if (!(await confirmAction(`${subCommand} ${skills.join(", ")} in [project.${group}]?`))) return;
+      } else {
+        throw new Error(`skillmux project ${subCommand} requires --yes when run non-interactively`);
+      }
+    }
+    writeManifestAtomic(manifestPath, updated);
+    console.log(`${subCommand}: [project.${group}] ${skills.join(", ")}`);
+    return;
+  }
+  if (subCommand === "attach" || subCommand === "detach") {
+    const group = args[0];
+    if (!group) throw new Error(`usage: skillmux project ${subCommand} <group> (--client <id>... | --target <name>...) --yes`);
+    const clients: string[] = [];
+    const requestedTargets: string[] = [];
+    for (let i = 1; i < args.length; i++) {
+      if (args[i] === "--client") {
+        const value = args[++i];
+        if (!value) throw new Error("--client requires a name");
+        clients.push(value);
+      } else if (args[i] === "--target") {
+        const value = args[++i];
+        if (!value) throw new Error("--target requires a name");
+        requestedTargets.push(value);
+      } else if (args[i] !== "--yes" && args[i] !== "--dry-run" && args[i] !== "--json") {
+        throw new Error(`unknown project ${subCommand} option: ${args[i]}`);
+      }
+    }
+    const config = await loadConfig();
+    const vaultPath = expandHome(config.vault_path);
+    const manifestPath = resolveManifestPath(vaultPath);
+    if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
+    const manifest = parseManifest(await Bun.file(manifestPath).text());
+    const clientTargets = planClientSurfaces(clients).surfaces.map(
+      (surface) => configuredTargetForSurface(manifest, surface) ?? surface.targetName,
+    );
+    const targets = [...new Set([...requestedTargets, ...clientTargets])];
+    if (targets.length === 0) {
+      throw new Error(`project ${subCommand} requires --client or --target`);
+    }
+    const updated = updateProjectTargets(manifest, group, {
+      ...(subCommand === "attach" ? { attach: targets } : { detach: targets }),
+    });
+    validateManifest(updated, vaultPath, config.local_vault_paths.map(expandHome));
+    if (options.dryRun) {
+      console.log(`${subCommand}: [project.${group}] ${targets.join(", ")} (dry-run)`);
+      return;
+    }
+    if (!args.includes("--yes")) {
+      if (!options.isJson && isInteractive()) {
+        if (!(await confirmAction(`${subCommand} [project.${group}] to ${targets.join(", ")}?`))) return;
+      } else {
+        throw new Error(`skillmux project ${subCommand} requires --yes when run non-interactively`);
+      }
+    }
+    writeManifestAtomic(manifestPath, updated);
+    console.log(`${subCommand}: [project.${group}] ${targets.join(", ")}`);
+    return;
+  }
   if (subCommand !== "init") throw new Error(PROJECT_INIT_USAGE);
   let request = parseProjectInitArgs(args);
   const guided = shouldUseWizard(args, {

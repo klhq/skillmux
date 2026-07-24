@@ -224,6 +224,48 @@ export function upsertProject(manifest: Manifest, options: UpsertProjectOptions)
   };
 }
 
+export function updateProjectPaths(
+  manifest: Manifest,
+  group: string,
+  changes: { add?: string[]; remove?: string[] },
+): Manifest {
+  const existingGroup = manifest.project?.[group];
+  if (!existingGroup) throw new Error(`[project.${group}] does not exist`);
+  const removed = new Set(changes.remove ?? []);
+  const paths = [...new Set([...existingGroup.paths, ...(changes.add ?? [])])]
+    .filter((path) => !removed.has(path));
+  return {
+    ...manifest,
+    project: {
+      ...manifest.project,
+      [group]: { ...existingGroup, paths },
+    },
+  };
+}
+
+export function updateProjectTargets(
+  manifest: Manifest,
+  group: string,
+  changes: { attach?: string[]; detach?: string[] },
+): Manifest {
+  if (!manifest.project?.[group]) throw new Error(`[project.${group}] does not exist`);
+  const attach = new Set(changes.attach ?? []);
+  const detach = new Set(changes.detach ?? []);
+  const requested = new Set([...attach, ...detach]);
+  for (const target of requested) {
+    if (!manifest.targets[target]) throw new Error(`target "${target}" does not exist`);
+  }
+  return {
+    ...manifest,
+    targets: Object.fromEntries(Object.entries(manifest.targets).map(([name, target]) => {
+      let groups = target.project_groups;
+      if (attach.has(name)) groups = [...new Set([...groups, group])];
+      if (detach.has(name)) groups = groups.filter((item) => item !== group);
+      return [name, { ...target, project_groups: groups }];
+    })),
+  };
+}
+
 export interface ManifestValidationResult {
   notes: string[];
 }

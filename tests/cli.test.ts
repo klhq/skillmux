@@ -545,6 +545,88 @@ describe("skillmux project CLI", () => {
     rmSync(projectPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
+
+  test("project add-path appends a path to an existing group", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-add-path-"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[project.demo]\npaths = ["/work/one"]\nskills = []\n\n[targets.test]\ndir = "~/.agents/skills"\n`,
+    );
+
+    const result = await runCli("project", "add-path", "demo", projectPath, "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf8")).toContain(
+      `paths = ["/work/one", ${JSON.stringify(projectPath)}]`,
+    );
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("project pin accepts multiple skill IDs in one command", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[project.demo]\npaths = ["${tmp}"]\nskills = []\n\n[targets.test]\ndir = "~/does-not-matter"\n`,
+    );
+
+    const result = await runCli(
+      "project",
+      "pin",
+      "demo",
+      "first-skill",
+      "second-skill",
+      "--yes",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf8")).toContain(
+      `skills = ["first-skill", "second-skill"]`,
+    );
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("project attach maps clients to a deduplicated target", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[project.demo]\npaths = ["${tmp}"]\nskills = []\n\n[targets.agent-skills]\ndir = "~/.agents/skills"\nproject_groups = []\n`,
+    );
+
+    const result = await runCli(
+      "project",
+      "attach",
+      "demo",
+      "--client",
+      "gemini-cli",
+      "--client",
+      "opencode",
+      "--yes",
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf8")).toContain(
+      `project_groups = ["demo"]`,
+    );
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("project list reports configured groups and attached targets", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[project.demo]\npaths = ["${tmp}"]\nskills = ["first-skill"]\n\n[targets.test]\ndir = "~/does-not-matter"\nproject_groups = ["demo"]\n`,
+    );
+
+    const result = await runCli("project", "list");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("demo");
+    expect(result.stdout).toContain("first-skill");
+    expect(result.stdout).toContain("test");
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
 });
 
 describe("skillmux local-vault CLI", () => {
