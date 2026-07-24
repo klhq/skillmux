@@ -164,6 +164,25 @@ Re-running the command merges missing paths, skills, and target attachments.
 It validates the complete manifest before an atomic write and runs `sync` by
 default. Use `--no-sync` when another process will materialize the links.
 
+Direct project commands support later maintenance:
+
+```sh
+skillmux project list
+skillmux project show skillmux
+skillmux project add-path skillmux ~/code/skillmux --yes
+skillmux project remove-path skillmux ~/old/skillmux --yes
+skillmux project pin skillmux sdd-tdd code-context --yes
+skillmux project unpin skillmux old-skill --yes
+skillmux project attach skillmux --client claude-code --client codex --yes
+skillmux project detach skillmux --target codex --yes
+```
+
+`add-path` and `remove-path` detect the current Git root when the path is
+omitted. Client attachments map to configured physical targets and deduplicate
+clients that share `~/.agents/skills`. Mutating commands validate the complete
+manifest and replace it atomically. Run `skillmux sync` after direct
+maintenance commands to materialize the new state.
+
 ### Reloadable vs. Restart-Required Keys
 
 Config changes are categorized into live-reloadable and restart-required settings:

@@ -620,6 +620,7 @@ Setup:
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
                 [--client <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
+  skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
