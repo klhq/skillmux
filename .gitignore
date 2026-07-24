@@ -9,4 +9,6 @@ dist/
 # Local planning and review artifacts are not part of the OSS documentation.
 docs/sdd/
 docs/notes/
+docs/refactoring-roadmap.md
+
 
