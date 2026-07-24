@@ -2,6 +2,7 @@ import { expandHome } from "../config";
 import { planClientSurfaces, SUPPORTED_CLIENT_IDS } from "../init-clients";
 import { planInitManifest, applyInit } from "../init";
 import { writeManifestAtomic } from "../manifest";
+import { emitSuccess } from "../output";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
 export async function runTarget(
   subCommand: string,
@@ -24,21 +25,21 @@ export async function runTarget(
       });
       return { name, ...target, clients };
     });
-    if (options.isJson) {
-      console.log(JSON.stringify({ schema_version: 1, targets }));
-    } else if (targets.length === 0) {
-      console.log("no targets configured");
-    } else {
-      for (const target of targets) {
-        console.log(`${target.name}:`);
-        console.log(`  dir: ${target.dir}`);
-        console.log(`  host: ${target.host ?? "(global)"}`);
-        console.log(`  clients: ${target.clients.join(", ") || "(custom)"}`);
-        console.log(
-          `  projects: ${target.project_groups.join(", ") || "(none)"}`,
-        );
+    emitSuccess({ isJson: options.isJson }, { targets }, () => {
+      if (targets.length === 0) {
+        console.log("no targets configured");
+      } else {
+        for (const target of targets) {
+          console.log(`${target.name}:`);
+          console.log(`  dir: ${target.dir}`);
+          console.log(`  host: ${target.host ?? "(global)"}`);
+          console.log(`  clients: ${target.clients.join(", ") || "(custom)"}`);
+          console.log(
+            `  projects: ${target.project_groups.join(", ") || "(none)"}`,
+          );
+        }
       }
-    }
+    });
     return;
   }
 
@@ -51,10 +52,10 @@ export async function runTarget(
     const path = expandHome(rawPath);
     if (options.dryRun) {
       const planned = planInitManifest(vaultPath, [{ name, dir: path }], []);
-      console.log(
-        options.isJson
-          ? JSON.stringify({ schema_version: 1, target: planned.targets[name] })
-          : `target add: ${name} -> ${path} (dry-run)`,
+      emitSuccess(
+        { isJson: options.isJson },
+        { target: planned.targets[name] },
+        () => console.log(`target add: ${name} -> ${path} (dry-run)`),
       );
       return;
     }

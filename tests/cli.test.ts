@@ -1508,3 +1508,86 @@ describe("skillmux install CLI", () => {
     expect(result.stderr).toContain("--fail-on must be low, medium, or high");
   });
 });
+
+
+describe("CLI output envelopes for project, target, and local-vault", () => {
+  test("wraps project plans and results without changing project list text", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-output-"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.test]\ndir = "~/does-not-matter"\nproject_groups = []\n`,
+    );
+
+    const text = await runCli("project", "list");
+    expect(text.stdout).toBe("no project groups configured\n");
+
+    const plan = JSON.parse(
+      (await runCli("project", "init", projectPath, "--name", "demo", "--dry-run", "--json")).stdout,
+    );
+    expect(plan).toMatchObject({
+      schema_version: 1, ok: true, target: "local",
+      data: { plan: { mode: "project", project: "demo" } }, error: null,
+    });
+
+    const result = JSON.parse(
+      (await runCli("project", "init", projectPath, "--name", "demo", "--yes", "--no-sync", "--json")).stdout,
+    );
+    expect(result).toMatchObject({
+      schema_version: 1, ok: true, target: "local",
+      data: { result: { mode: "project", project: "demo" } }, error: null,
+    });
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("wraps target lists without changing their text output", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.claude]\ndir = "~/.claude/skills"\n`,
+    );
+
+    const text = await runCli("target", "list");
+    expect(text.stdout).toContain("clients: claude-code");
+    const json = JSON.parse((await runCli("target", "list", "--json")).stdout);
+    expect(json).toMatchObject({
+      schema_version: 1, ok: true, target: "local",
+      data: { targets: [{ name: "claude" }] }, error: null,
+    });
+    const plan = JSON.parse((await runCli("target", "add", "planned", "--dir", join(tmp, "planned-target"), "--dry-run", "--json")).stdout);
+    expect(plan).toMatchObject({
+      schema_version: 1, ok: true, target: "local",
+      data: { target: { dir: join(tmp, "planned-target") } }, error: null,
+    });
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("wraps local-vault results without changing their text output", async () => {
+    const localDir = mkdtempSync(join(tmpdir(), "skillmux-local-vault-output-"));
+    const configPath2 = join(tmp, "config-local-vault-output.toml");
+    writeFileSync(
+      configPath2,
+      readFileSync(configPath, "utf8").replace(
+        `vault_path = "${vaultDir}"`,
+        `vault_path = "${vaultDir}"\nlocal_vault_paths = ["${localDir}"]`,
+      ),
+    );
+
+    const text = await runCliEnv(["local-vault", "init", localDir, "--yes"], { SKILLMUX_CONFIG: configPath2 });
+    expect(text.stdout).toBe(`wrote ${join(localDir, ".skillmux")} (role: local_vault, vault_path: ${vaultDir})\n`);
+    const json = JSON.parse((await runCliEnv(["local-vault", "init", localDir, "--yes", "--json"], { SKILLMUX_CONFIG: configPath2 })).stdout);
+    expect(json).toMatchObject({
+      schema_version: 1, ok: true, target: "local",
+      data: { marker_path: join(localDir, ".skillmux"), vault_path: vaultDir }, error: null,
+    });
+    const plan = JSON.parse((await runCliEnv(["local-vault", "init", localDir, "--dry-run", "--json"], { SKILLMUX_CONFIG: configPath2 })).stdout);
+    expect(plan).toMatchObject({
+      schema_version: 1, ok: true, target: "local",
+      data: { marker_path: join(localDir, ".skillmux"), vault_path: vaultDir }, error: null,
+    });
+
+    rmSync(localDir, { recursive: true, force: true });
+    rmSync(configPath2, { force: true });
+  });
+});

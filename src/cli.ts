@@ -656,14 +656,16 @@ async function runLocalVaultInit(
   if (!existsSync(expanded)) throw new Error(`"${path}" does not exist`);
   const markerPath = join(expanded, ".skillmux");
   if (options.dryRun) {
-    console.log(
-      options.isJson
-        ? JSON.stringify({
-            schema_version: 1,
-            marker_path: markerPath,
-            vault_path: expandHome(config.vault_path),
-          })
-        : `local-vault init: ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)}) (dry-run)`,
+    emitSuccess(
+      { isJson: options.isJson },
+      {
+        marker_path: markerPath,
+        vault_path: expandHome(config.vault_path),
+      },
+      () =>
+        console.log(
+          `local-vault init: ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)}) (dry-run)`,
+        ),
     );
     return;
   }
@@ -678,19 +680,17 @@ async function runLocalVaultInit(
   )
     return;
   writeLocalVaultMarker(expanded, expandHome(config.vault_path));
-  if (options.isJson) {
-    console.log(
-      JSON.stringify({
-        schema_version: 1,
-        marker_path: markerPath,
-        vault_path: expandHome(config.vault_path),
-      }),
-    );
-  } else {
-    console.log(
-      `wrote ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)})`,
-    );
-  }
+  emitSuccess(
+    { isJson: options.isJson },
+    {
+      marker_path: markerPath,
+      vault_path: expandHome(config.vault_path),
+    },
+    () =>
+      console.log(
+        `wrote ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)})`,
+      ),
+  );
 }
 
 async function runModelDownload(options: { isJson: boolean }): Promise<void> {
