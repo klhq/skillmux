@@ -87,7 +87,7 @@ import {
   type ResolvedTarget,
 } from "./context";
 import { createTargetAdapter, type TargetAdapter } from "./adapters";
-import { formatJsonEnvelope, isInteractive, mapExitCode, renderTable, renderTargetBanner, suggestCorrection } from "./output";
+import { emitSuccess, formatJsonEnvelope, isInteractive, mapExitCode, renderTable, renderTargetBanner, suggestCorrection } from "./output";
 import { generateCompletions, type ShellType } from "./completions";
 
 const KNOWN_COMMANDS = [
@@ -706,29 +706,25 @@ async function runEval(options: { isJson: boolean }): Promise<void> {
   const report = await evalVault().catch((error: unknown) => {
     throw new Error(`eval requires local embeddings: ${String(error)}`);
   });
-  if (options.isJson) {
-    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: report })));
-    return;
-  }
-  console.log(`holdout queries: ${report.queries}`);
-  console.log(`lexical recall@3: ${report.lexical.recall_at_3.toFixed(3)}`);
-  console.log(`lexical recall@5: ${report.lexical.recall_at_5.toFixed(3)}`);
-  console.log(`lexical MRR:      ${report.lexical.mrr.toFixed(3)}`);
-  console.log(`hybrid recall@3:  ${report.hybrid.recall_at_3.toFixed(3)}`);
-  console.log(`hybrid recall@5:  ${report.hybrid.recall_at_5.toFixed(3)}`);
-  console.log(`hybrid MRR:       ${report.hybrid.mrr.toFixed(3)}`);
+  emitSuccess({ isJson: options.isJson }, report, () => {
+    console.log(`holdout queries: ${report.queries}`);
+    console.log(`lexical recall@3: ${report.lexical.recall_at_3.toFixed(3)}`);
+    console.log(`lexical recall@5: ${report.lexical.recall_at_5.toFixed(3)}`);
+    console.log(`lexical MRR:      ${report.lexical.mrr.toFixed(3)}`);
+    console.log(`hybrid recall@3:  ${report.hybrid.recall_at_3.toFixed(3)}`);
+    console.log(`hybrid recall@5:  ${report.hybrid.recall_at_5.toFixed(3)}`);
+    console.log(`hybrid MRR:       ${report.hybrid.mrr.toFixed(3)}`);
+  });
 }
 
 async function runDoctor(options: { isJson: boolean }): Promise<void> {
   const report = await diagnose(await loadConfig());
-  if (options.isJson) {
-    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: report })));
-  } else {
+  emitSuccess({ isJson: options.isJson }, report, () => {
     console.log(`inference mode: ${report.mode}`);
     console.log(`routing capability: ${report.capability}`);
     for (const check of report.checks)
       console.log(`${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`);
-  }
+  });
   if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
 }
 
@@ -1250,9 +1246,7 @@ async function runLocalVaultInit(args: string[], options: { isJson: boolean; dry
 
 async function runModelDownload(options: { isJson: boolean }): Promise<void> {
   const cacheDir = await downloadLocalModels(await loadConfig());
-  console.log(options.isJson
-    ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: { cache_dir: cacheDir } }))
-    : `models ready in ${cacheDir}`);
+  emitSuccess({ isJson: options.isJson }, { cache_dir: cacheDir }, () => console.log(`models ready in ${cacheDir}`));
 }
 
 function parseSyncArgs(args: string[]): {
@@ -1857,13 +1851,13 @@ async function runReport(args: string[], options: { isJson: boolean }): Promise<
     const res = await fetch(url);
     if (!res.ok) throw new Error(`skillmux report --server failed: ${res.status} ${await res.text()}`);
     const stats = (await res.json()) as StatsResponse;
-    console.log(options.isJson ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: stats })) : renderStatsText(stats));
+    emitSuccess({ isJson: options.isJson }, stats, () => console.log(renderStatsText(stats)));
     return;
   }
 
   const db = dbPath ? new Database(dbPath, { readonly: true }) : openIndex(expandHome((await loadConfig()).state_dir));
   const stats = getStats(db, since);
-  console.log(options.isJson ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: stats })) : renderStatsText(stats));
+  emitSuccess({ isJson: options.isJson }, stats, () => console.log(renderStatsText(stats)));
   db.close();
 }
 
@@ -1900,11 +1894,9 @@ async function runScan(args: string[], options: { isJson: boolean }): Promise<vo
   const { path, format, failOn } = parseScanArgs(args);
   const rootPath = path ? expandHome(path) : expandHome((await loadConfig()).vault_path);
   const result = await scanPath(rootPath);
-  if (options.isJson) {
-    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: result })));
-  } else {
+  emitSuccess({ isJson: options.isJson }, result, () => {
     console.log(format === "json" ? renderScanJson(result) : renderScanText(result));
-  }
+  });
   process.exitCode = scanExitCode(result.findings, failOn);
 }
 
@@ -1963,16 +1955,20 @@ async function runInstall(args: string[], options: { isJson: boolean }): Promise
     const vaultPath = expandHome((await loadConfig()).vault_path);
     if (dryRun) {
       const plannedPath = join(vaultPath, resolved.skillId);
-      console.log(options.isJson
-        ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: { skill_id: resolved.skillId, would_install_at: plannedPath } }))
-        : `dry-run: would install "${resolved.skillId}" into ${plannedPath}`);
+      emitSuccess(
+        { isJson: options.isJson },
+        { skill_id: resolved.skillId, would_install_at: plannedPath },
+        () => console.log(`dry-run: would install "${resolved.skillId}" into ${plannedPath}`),
+      );
       return;
     }
 
     const targetDir = installIntoVault(vaultPath, resolved.skillId, resolved.dir, force);
-    console.log(options.isJson
-      ? JSON.stringify(formatJsonEnvelope({ ok: true, target: "local", data: { skill_id: resolved.skillId, installed_at: targetDir } }))
-      : `installed "${resolved.skillId}" into ${targetDir}`);
+    emitSuccess(
+      { isJson: options.isJson },
+      { skill_id: resolved.skillId, installed_at: targetDir },
+      () => console.log(`installed "${resolved.skillId}" into ${targetDir}`),
+    );
   } finally {
     rmSync(cloneDir, { recursive: true, force: true });
   }
