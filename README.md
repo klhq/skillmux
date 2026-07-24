@@ -186,6 +186,11 @@ bun run src/cli.ts serve
 
 Optional — skip this if `resolve_skill` alone is enough (most setups). Use it once you want a small set of skills loaded *statically* in every agent that reads from a given directory, instead of routed on demand — see [Tiers](#tiers-routed-vs-pinned).
 
+Run `skillmux init` with no arguments in a terminal for guided setup. It checks
+the vault, preselects clients with concrete filesystem evidence, asks for core
+skills, shows one review, and applies after one confirmation. The wizard uses
+line-oriented prompts and does not take over the terminal screen.
+
 ### 1. Check the plan
 
 ```sh
@@ -216,8 +221,10 @@ Skillmux writes `skillmux.toml`, adds host-scoped targets, adopts each selected
 directory, and installs one managed discovery block for each client with a
 known safe durable instruction file. Other clients report manual setup.
 Existing manifest entries and instruction text stay intact.
-Without `--yes`, an interactive terminal asks about each change; a pipe or CI
-job must pass `--yes`.
+Explicit flags keep the command deterministic. Without `--yes`, an interactive
+terminal reviews the plan before applying; a pipe or CI job must pass `--yes`.
+Use `--no-instructions` to leave instruction files untouched or `--no-sync` to
+save setup for a later `skillmux sync`.
 
 Use direct targets when you want paths rather than clients:
 
@@ -245,7 +252,29 @@ skillmux init --client claude-code --migrate-full-vault \
 After conversion and `skillmux sync`, the client sees the selected core pins
 instead of every vault skill.
 
-### 3. Add or remove pins later
+### 3. Set up project-scoped skills
+
+From a project directory:
+
+```sh
+skillmux project init
+```
+
+The guided flow detects the Git root, suggests a project-group name, asks which
+configured clients should receive the group, and accepts project skill IDs.
+For automation:
+
+```sh
+skillmux project init ~/code/skillmux --name skillmux \
+  --client claude-code --client codex \
+  --skill sdd-tdd --skill code-context --yes
+```
+
+Re-running the command adds missing paths, skills, and target attachments
+without duplicating existing entries. Project setup runs `sync` unless
+`--no-sync` is supplied.
+
+### 4. Add or remove pins later
 
 `--core` seeds only the skill IDs you name. Without it, `init` preserves
 existing core pins and makes no guesses. Add another pin with:

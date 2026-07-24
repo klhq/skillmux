@@ -613,7 +613,11 @@ Setup:
   skillmux config init --vault <path> --yes
   skillmux init [--client <name>...] [--target <name>...] [--path <dir>]
                 [--vault <path>] [--core <skill_id>...]
-                [--migrate-full-vault] [--yes|--dry-run] [--json]
+                [--migrate-full-vault] [--no-instructions] [--no-sync]
+                [--interactive|--yes|--dry-run] [--json]
+  skillmux project init [path] [--name <group>] [--skill <skill_id>...]
+                [--client <name>...] [--target <name>...] [--no-sync]
+                [--interactive|--yes|--dry-run] [--json]
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
@@ -623,7 +627,7 @@ Init targets:
   agent-skills, claude-code, codex, custom
 
 Commands:
-  serve, index, sync, init, report, scan, install, eval, doctor, which,
+  serve, index, sync, init, project, report, scan, install, eval, doctor, which,
   manifest, local-vault, config, models, calibrate, context, completions`);
 }
 
