@@ -1100,7 +1100,9 @@ async function runTarget(
       for (const target of targets) {
         console.log(`${target.name}:`);
         console.log(`  dir: ${target.dir}`);
-        console.log(`  host: ${target.host ?? "(global)"}`);
+        console.log(
+          `  host: ${Array.isArray(target.host) ? target.host.join(", ") : target.host ?? "(global)"}`,
+        );
         console.log(`  clients: ${target.clients.join(", ") || "(custom)"}`);
         console.log(`  projects: ${target.project_groups.join(", ") || "(none)"}`);
       }
@@ -1242,6 +1244,11 @@ function parseSyncArgs(args: string[]): {
   return { dryRun, restoreMonolith, installHook };
 }
 
+function hostMatches(targetHost: string | string[] | undefined, currentHost: string): boolean {
+  if (targetHost === undefined) return true;
+  return Array.isArray(targetHost) ? targetHost.includes(currentHost) : targetHost === currentHost;
+}
+
 async function runSync(args: string[]): Promise<void> {
   const { dryRun, restoreMonolith, installHook } = parseSyncArgs(args);
   const config = await loadConfig();
@@ -1269,9 +1276,10 @@ async function runSync(args: string[]): Promise<void> {
 
   const currentHost = hostname();
   for (const [targetName, target] of Object.entries(manifest.targets)) {
-    if (target.host !== undefined && target.host !== currentHost) {
+    if (!hostMatches(target.host, currentHost)) {
+      const hostLabel = Array.isArray(target.host) ? target.host.join(", ") : target.host;
       console.log(
-        `${targetName}: skipped (host ${target.host} does not match current host ${currentHost})`,
+        `${targetName}: skipped (host ${hostLabel} does not match current host ${currentHost})`,
       );
       continue;
     }

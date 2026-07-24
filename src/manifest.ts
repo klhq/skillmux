@@ -25,7 +25,7 @@ const projectGroupSchema = z.object({
 
 const targetSchema = z.object({
   dir: z.string().min(1),
-  host: z.string().min(1).optional(),
+  host: z.union([z.string().min(1), z.array(z.string().min(1))]).optional(),
   project_groups: z.array(groupNameSchema).default([]),
 }).strict();
 
@@ -85,7 +85,12 @@ export function serializeManifest(manifest: Manifest): string {
   }
 
   for (const [name, target] of Object.entries(manifest.targets)) {
-    const host = target.host ? `\nhost = ${JSON.stringify(target.host)}` : "";
+    let host = "";
+    if (Array.isArray(target.host)) {
+      host = `\nhost = ${tomlStringArray(target.host)}`;
+    } else if (target.host) {
+      host = `\nhost = ${JSON.stringify(target.host)}`;
+    }
     sections.push(
       `[targets.${name}]\ndir = ${JSON.stringify(target.dir)}${host}\nproject_groups = ${tomlStringArray(target.project_groups)}`,
     );

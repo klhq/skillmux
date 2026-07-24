@@ -626,6 +626,43 @@ dir = "~/.claude/skills"
 
     expect(roundTripped).toEqual(manifest);
   });
+
+  test("re-serializes a bare-string host as a bare string, not a single-element array", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+host = "workhorse"
+project_groups = []
+`);
+
+    const serialized = serializeManifest(manifest);
+
+    expect(serialized).toContain(`host = "workhorse"`);
+    expect(serialized).not.toContain(`host = ["workhorse"]`);
+    expect(parseManifest(serialized)).toEqual(manifest);
+  });
+
+  test("re-serializes a multi-host array as the same array form", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.claude]
+dir = "~/.claude/skills"
+host = ["workhorse", "piedpiper"]
+project_groups = []
+`);
+
+    const serialized = serializeManifest(manifest);
+
+    expect(serialized).toContain(`host = ["workhorse", "piedpiper"]`);
+    const roundTripped = parseManifest(serialized);
+    expect(roundTripped).toEqual(manifest);
+    expect(roundTripped.targets.claude!.host).toEqual(["workhorse", "piedpiper"]);
+  });
 });
 
 test("writeManifestAtomic replaces a manifest with parseable content", () => {

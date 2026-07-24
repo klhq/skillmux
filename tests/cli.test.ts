@@ -276,6 +276,57 @@ describe("skillmux sync CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("materializes a host-array-scoped target when the current host is a listed member", async () => {
+    const targetDir = join(tmp, "sync-host-array-target");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.multi-host]`,
+        `dir = "${targetDir}"`,
+        `host = ["${hostname()}", "some-other-machine"]`,
+      ].join("\n"),
+    );
+
+    const result = await runCli("sync");
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(targetDir, "first-skill"))).toBe(true);
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(true);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("skips a host-array-scoped target when the current host is not a listed member", async () => {
+    const targetDir = join(tmp, "sync-other-host-array-target");
+    const otherHostA = `not-${hostname()}-a`;
+    const otherHostB = `not-${hostname()}-b`;
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.other-machines]`,
+        `dir = "${targetDir}"`,
+        `host = ["${otherHostA}", "${otherHostB}"]`,
+      ].join("\n"),
+    );
+
+    const result = await runCli("sync");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      `other-machines: skipped (host ${otherHostA}, ${otherHostB} does not match`,
+    );
+    expect(existsSync(targetDir)).toBe(false);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("only materializes a [project.*] group into a target that lists it in project_groups", async () => {
     const fakeHome = mkdtempSync(join(tmpdir(), "skillmux-cli-sync-home-"));
     const repoA = mkdtempSync(join(tmpdir(), "skillmux-cli-sync-repoA-"));
@@ -663,6 +714,20 @@ describe("skillmux target CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("clients: claude-code");
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target list joins a multi-host array for display", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.agents]\ndir = "~/.agents/skills"\nhost = ["workhorse", "piedpiper"]\n`,
+    );
+
+    const result = await runCli("target", "list");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("host: workhorse, piedpiper");
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
