@@ -24,20 +24,8 @@ import type { Clients } from "../src/types";
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SETTLE_TIMEOUT_MS = 2_000;
-const POLL_INTERVAL_MS = 25;
+import { waitFor } from "./test-utils";
 
-async function waitFor(
-  condition: () => boolean,
-  timeoutMs = SETTLE_TIMEOUT_MS,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (condition()) return;
-    await Bun.sleep(POLL_INTERVAL_MS);
-  }
-  throw new Error(`condition was not met within ${timeoutMs}ms`);
-}
 
 function baseToml(matchScore = 0.8): string {
   return `vault_path = "~/skills"
