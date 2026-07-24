@@ -493,6 +493,29 @@ describe("skillmux project CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("project init explains how to configure a missing client target", async () => {
+    const projectPath = mkdtempSync(join(tmpdir(), "skillmux-project-missing-client-"));
+    writeFileSync(join(vaultDir, "skillmux.toml"), `[core]\nskills = []\n`);
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--client",
+      "codex",
+      "--yes",
+      "--no-sync",
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("skillmux init --client codex");
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("project init rejects a file path", async () => {
     const projectPath = join(tmp, "not-a-project.txt");
     writeFileSync(projectPath, "file");
@@ -630,6 +653,20 @@ describe("skillmux project CLI", () => {
 });
 
 describe("skillmux target CLI", () => {
+  test("target list reports clients derivable from the configured directory", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.claude]\ndir = "~/.claude/skills"\n`,
+    );
+
+    const result = await runCli("target", "list");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("clients: claude-code");
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("target add adopts a custom directory with current-host scoping", async () => {
     const targetPath = join(tmp, "custom-target");
     writeFileSync(

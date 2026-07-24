@@ -758,6 +758,20 @@ function configuredTargetForSurface(
   )?.[0];
 }
 
+function configuredTargetsForClients(
+  manifest: ReturnType<typeof parseManifest>,
+  clients: readonly string[],
+): string[] {
+  return planClientSurfaces(clients).surfaces.map((surface) => {
+    const target = configuredTargetForSurface(manifest, surface);
+    if (target) return target;
+    const client = surface.clients[0]!;
+    throw new Error(
+      `client target for "${client}" is not configured; run "skillmux init --client ${client} --yes" first`,
+    );
+  });
+}
+
 function parseProjectInitArgs(args: string[]): ProjectInitArgs {
   let projectPath: string | undefined;
   let name: string | undefined;
@@ -931,9 +945,7 @@ async function runProject(
     const manifestPath = resolveManifestPath(vaultPath);
     if (!manifestPath) throw new Error(`no skillmux.toml found at ${vaultPath}; run skillmux init first`);
     const manifest = parseManifest(await Bun.file(manifestPath).text());
-    const clientTargets = planClientSurfaces(clients).surfaces.map(
-      (surface) => configuredTargetForSurface(manifest, surface) ?? surface.targetName,
-    );
+    const clientTargets = configuredTargetsForClients(manifest, clients);
     const targets = [...new Set([...requestedTargets, ...clientTargets])];
     if (targets.length === 0) {
       throw new Error(`project ${subCommand} requires --client or --target`);
@@ -994,9 +1006,7 @@ async function runProject(
     );
     request = { ...request, name, clients, skills };
   }
-  const clientTargets = planClientSurfaces(request.clients).surfaces.map(
-    (surface) => configuredTargetForSurface(manifest, surface) ?? surface.targetName,
-  );
+  const clientTargets = configuredTargetsForClients(manifest, request.clients);
   const targets = [...new Set([...request.targets, ...clientTargets])];
   const updated = upsertProject(manifest, {
     name: request.name,
@@ -1074,7 +1084,14 @@ async function runTarget(
     if (subCommand === "show" && !manifest.targets[names[0]!]) {
       throw new Error(`target "${names[0]}" does not exist`);
     }
-    const targets = names.map((name) => ({ name, ...manifest.targets[name]! }));
+    const targets = names.map((name) => {
+      const target = manifest.targets[name]!;
+      const clients = SUPPORTED_CLIENT_IDS.filter((client) => {
+        const surface = planClientSurfaces([client]).surfaces[0];
+        return surface !== undefined && surface.path === expandHome(target.dir);
+      });
+      return { name, ...target, clients };
+    });
     if (options.isJson) {
       console.log(JSON.stringify({ schema_version: 1, targets }));
     } else if (targets.length === 0) {
@@ -1084,6 +1101,7 @@ async function runTarget(
         console.log(`${target.name}:`);
         console.log(`  dir: ${target.dir}`);
         console.log(`  host: ${target.host ?? "(global)"}`);
+        console.log(`  clients: ${target.clients.join(", ") || "(custom)"}`);
         console.log(`  projects: ${target.project_groups.join(", ") || "(none)"}`);
       }
     }
