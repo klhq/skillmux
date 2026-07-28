@@ -688,7 +688,7 @@ export async function applyCalibrationRun(
 
   // --- Gate 3: fingerprint staleness ---
   if (
-    opts.currentRerankerFingerprint !== undefined &&
+    "currentRerankerFingerprint" in opts &&
     opts.currentRerankerFingerprint !== run.reranker_fingerprint
   ) {
     throw new ApplyCalibrationError(
@@ -740,6 +740,5 @@ export async function applyCalibrationRun(
     runId,
   });
 }
-
 
 
