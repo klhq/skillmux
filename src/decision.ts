@@ -23,7 +23,10 @@ export function decideResolveOutcome({ reranked, candidates, thresholds }: Decis
     || thresholds.match_margin === undefined
     || thresholds.candidate_floor === undefined
   ) {
-    throw new Error("Reranked decisions require calibrated thresholds.");
+    return {
+      outcome: "ambiguous",
+      candidates: candidates.slice(0, thresholds.candidate_limit),
+    };
   }
   const { match_score, match_margin, candidate_floor } = thresholds;
 

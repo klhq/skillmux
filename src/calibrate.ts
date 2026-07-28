@@ -198,7 +198,11 @@ export interface CalibrationResult {
 
 export interface RunCalibrationOptions {
   cases: DecisionCase[];
-  getCandidates: (query: string) => Promise<CandidateDoc[]>;
+  getCandidates?: (query: string) => Promise<CandidateDoc[]>;
+  /** Production hook: candidates already scored by the shared retrieval pipeline. */
+  getRankedCandidates?: (
+    query: string,
+  ) => Promise<Array<{ skill_id: string; score: number }>>;
   reranker:
     | ((query: string, docs: CandidateDoc[]) => Promise<number[]>)
     | undefined;
@@ -411,13 +415,14 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
   const {
     cases,
     getCandidates,
+    getRankedCandidates,
     reranker,
     minAutoMatchPrecision = 0.99,
     minRetrievalRecallAtK = 0.95,
     candidateLimit,
   } = opts;
 
-  if (!reranker) {
+  if (!getRankedCandidates && (!getCandidates || !reranker)) {
     throw new Error(
       "A configured reranker is required to run calibration. " +
         "Configure inference.reranker in your TOML config.",
@@ -427,11 +432,16 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
   // --- Step 1: Cache observations (reranker called exactly once per query) ---
   const observations: QueryObservation[] = [];
   for (const c of cases) {
-    const docs = await getCandidates(c.query);
-    const scores = await reranker(c.query, docs);
-    const ranked = docs
-      .map((d, i) => ({ skill_id: d.skill_id, score: scores[i] ?? 0 }))
-      .sort((a, b) => b.score - a.score);
+    let ranked: Array<{ skill_id: string; score: number }>;
+    if (getRankedCandidates) {
+      ranked = await getRankedCandidates(c.query);
+    } else {
+      const docs = await getCandidates!(c.query);
+      const scores = await reranker!(c.query, docs);
+      ranked = docs
+        .map((d, i) => ({ skill_id: d.skill_id, score: scores[i] ?? 0 }))
+        .sort((a, b) => b.score - a.score);
+    }
     observations.push({
       query: c.query,
       split: c.split,

@@ -319,7 +319,14 @@ export async function loadConfig(path?: string): Promise<Config> {
       throw new Error("Configured inference.reranker requires adapter, endpoint, and model.");
     }
     if (merged.inference.reranker && !merged.inference.thresholds) {
-      throw new Error("Configured inference.reranker requires calibrated inference.thresholds.");
+      const warningKey = "inference.reranker.without-thresholds";
+      if (!warnedEnv.has(warningKey)) {
+        warnedEnv.add(warningKey);
+        console.error(
+          "skillmux: configured reranker has no calibrated inference.thresholds; " +
+            "routing will remain ambiguous until you run `skillmux calibrate run`.",
+        );
+      }
     }
     const embedEndpoint = getEnv("SKILLMUX_EMBED_ENDPOINT", "EMBED_ENDPOINT");
     const embedModel = getEnv("SKILLMUX_EMBED_MODEL", "EMBED_MODEL");

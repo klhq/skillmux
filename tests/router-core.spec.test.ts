@@ -377,6 +377,25 @@ describe("decision logic", () => {
     expect(result.outcome).not.toBe("matched");
   });
 
+  test("reranked candidates without calibrated thresholds remain ambiguous", () => {
+    const result = decideResolveOutcome({
+      reranked: true,
+      candidates: [
+        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.99 },
+        { skill_id: "beta-skill", title: "Beta", description: "B", score: 0.5 },
+      ],
+      thresholds: { candidate_limit: 5 },
+    });
+
+    expect(result).toEqual({
+      outcome: "ambiguous",
+      candidates: [
+        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.99 },
+        { skill_id: "beta-skill", title: "Beta", description: "B", score: 0.5 },
+      ],
+    });
+  });
+
   test("limits candidates to candidate_limit when outcome is ambiguous", () => {
     const result = decideResolveOutcome({
       reranked: true,

@@ -19,7 +19,7 @@ import {
   type SetConfigResult,
 } from "./config-service";
 import type { ResolvedTarget } from "./context";
-import { resolveSkill } from "./router-core";
+import { configure, retrieveAndRerank } from "./router-core";
 import type { Config } from "./types";
 
 export interface Capabilities {
@@ -129,17 +129,20 @@ export class LocalAdapter implements TargetAdapter {
     const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
     const cases = loadDecisionCasesFromFile(datasetFile);
     const clients = createClients(config);
+    configure({ config, clients });
     const result = await runCalibration({
       cases,
-      getCandidates: async (query: string) => {
-        const res = await resolveSkill({ query, forceLexical: false });
-        if (res.outcome === "matched") {
-          return [{ skill_id: res.skill_id, text: `${res.title} ${res.body}` }];
+      getRankedCandidates: async (query: string) => {
+        const result = await retrieveAndRerank({ query, forceLexical: false });
+        if (result.retrieval !== "reranked") {
+          throw new Error(
+            "Calibration requires successful hybrid retrieval and reranking for every query.",
+          );
         }
-        if (res.outcome === "ambiguous") {
-          return res.candidates.map((c) => ({ skill_id: c.skill_id, text: `${c.title} ${c.description}` }));
-        }
-        return [];
+        return result.candidates.map((candidate) => ({
+          skill_id: candidate.skill_id,
+          score: candidate.score ?? 0,
+        }));
       },
       reranker: clients.rerank,
       candidateLimit: config.thresholds.candidate_limit,
