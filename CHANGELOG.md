@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/klhq/skillmux/compare/v1.1.0...v1.2.0) (2026-07-28)
+
+
+### Added
+
+* **calibration:** finish remote contract and docs ([f696da2](https://github.com/klhq/skillmux/commit/f696da25094c19537b1291f694114f8e4052ea69))
+* **calibration:** improve dataset quality ([#88](https://github.com/klhq/skillmux/issues/88)) ([e99b764](https://github.com/klhq/skillmux/commit/e99b764ce90b7432fca0b01c22560ba73b401dd2))
+* **calibration:** require labelled audit feedback ([16d9ec8](https://github.com/klhq/skillmux/commit/16d9ec81acbdca0e42a401b9e28f9e3814b3e0ab))
+* **calibration:** require labelled audit feedback ([#89](https://github.com/klhq/skillmux/issues/89)) ([a7a99e2](https://github.com/klhq/skillmux/commit/a7a99e2d82e619255135b1e941c69c8d6653012c))
+
 ## [1.1.0](https://github.com/klhq/skillmux/compare/v1.0.1...v1.1.0) (2026-07-28)
 
 
