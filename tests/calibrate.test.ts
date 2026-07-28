@@ -14,6 +14,7 @@ import {
   applyCalibrationRun,
   ApplyCalibrationError,
 } from "../src/calibrate";
+import { decideResolveOutcome } from "../src/decision";
 
 // ---------------------------------------------------------------------------
 // AC1 — Decision-policy dataset schema
@@ -545,6 +546,70 @@ describe("runCalibration — in-memory calibration run", () => {
     expect(result.status).toBe("completed");
     expect(result.observations).toHaveLength(500);
   }, 10_000);
+
+  test("tunes candidate_floor to trim an ambiguous shortlist without changing classification", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    const floorCases: import("../src/calibrate").DecisionCase[] = [
+      { query: "tune-match", split: "tune", expected_outcome: "matched", relevant_skill_ids: ["target"] },
+      { query: "tune-ambiguous", split: "tune", expected_outcome: "ambiguous", relevant_skill_ids: ["target"] },
+      { query: "tune-no-match", split: "tune", expected_outcome: "no_match", relevant_skill_ids: [] },
+      { query: "test-match", split: "test", expected_outcome: "matched", relevant_skill_ids: ["target"] },
+      { query: "test-ambiguous", split: "test", expected_outcome: "ambiguous", relevant_skill_ids: ["target"] },
+      { query: "test-no-match", split: "test", expected_outcome: "no_match", relevant_skill_ids: [] },
+    ];
+    const ranked = (query: string) => {
+      if (query.endsWith("match") && !query.endsWith("no-match")) {
+        return [
+          { skill_id: "target", score: 0.95 },
+          { skill_id: "tail", score: 0.1 },
+        ];
+      }
+      if (query.endsWith("ambiguous")) {
+        return [
+          { skill_id: "target", score: 0.7 },
+          { skill_id: "near", score: 0.69 },
+          { skill_id: "tail", score: 0.1 },
+        ];
+      }
+      return [
+        { skill_id: "other", score: 0.2 },
+        { skill_id: "tail", score: 0.1 },
+      ];
+    };
+    const result = await runCalibration({
+      cases: floorCases,
+      getRankedCandidates: async (query) => ranked(query),
+      reranker: undefined,
+      ...permissiveCertification,
+      candidateLimit: 5,
+    });
+
+    expect(result.status).toBe("completed");
+    const selected = result.selected_thresholds!;
+    expect(selected.candidate_floor).toBeGreaterThan(0.1);
+
+    const candidates = ranked("tune-ambiguous").map((candidate) => ({
+      ...candidate,
+      title: candidate.skill_id,
+      description: "",
+    }));
+    const untrimmed = decideResolveOutcome({
+      reranked: true,
+      candidates,
+      thresholds: { ...selected, candidate_floor: 0, candidate_limit: 5 },
+    });
+    const trimmed = decideResolveOutcome({
+      reranked: true,
+      candidates,
+      thresholds: { ...selected, candidate_limit: 5 },
+    });
+
+    expect(untrimmed.outcome).toBe("ambiguous");
+    expect(trimmed.outcome).toBe("ambiguous");
+    if (untrimmed.outcome === "ambiguous" && trimmed.outcome === "ambiguous") {
+      expect(trimmed.candidates.length).toBeLessThan(untrimmed.candidates.length);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
