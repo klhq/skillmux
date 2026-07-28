@@ -44,7 +44,13 @@ export interface TargetAdapter {
   configDiff(): Promise<{ diff: Record<string, { prior: unknown; resulting: unknown }> }>;
   configSet(key: string, rawValStr: string, opts?: { dryRun?: boolean }): Promise<SetConfigResult>;
   configStatus(): Promise<ConfigStatusResponse>;
-  calibrateRun(opts?: { datasetPath?: string }): Promise<{ run_id?: string; result?: CalibrationResult }>;
+  calibrateRun(opts?: {
+    datasetPath?: string;
+    minAutoMatchPrecision?: number;
+    minRetrievalRecallAtK?: number;
+    minDeliveredShortlistRecallAtK?: number;
+    minAutoMatchCount?: number;
+  }): Promise<{ run_id?: string; result?: CalibrationResult }>;
   calibrateList(): Promise<any[]>;
   calibrateShow(runId: string): Promise<any>;
   calibrateApply(runId: string): Promise<any>;
@@ -124,7 +130,13 @@ export class LocalAdapter implements TargetAdapter {
     return getLocalConfigStatus(this.configPath);
   }
 
-  async calibrateRun(opts?: { datasetPath?: string }): Promise<{ run_id?: string; result?: CalibrationResult }> {
+  async calibrateRun(opts?: {
+    datasetPath?: string;
+    minAutoMatchPrecision?: number;
+    minRetrievalRecallAtK?: number;
+    minDeliveredShortlistRecallAtK?: number;
+    minAutoMatchCount?: number;
+  }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     const config = await loadConfig(this.configPath);
     const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
     const cases = loadDecisionCasesFromFile(datasetFile);
@@ -146,6 +158,10 @@ export class LocalAdapter implements TargetAdapter {
       },
       reranker: clients.rerank,
       candidateLimit: config.thresholds.candidate_limit,
+      minAutoMatchPrecision: opts?.minAutoMatchPrecision,
+      minRetrievalRecallAtK: opts?.minRetrievalRecallAtK,
+      minDeliveredShortlistRecallAtK: opts?.minDeliveredShortlistRecallAtK,
+      minAutoMatchCount: opts?.minAutoMatchCount,
     });
     const fingerprint = rerankerFingerprint(config);
     if (!fingerprint) {
@@ -176,8 +192,14 @@ export class LocalAdapter implements TargetAdapter {
         corpus_fingerprint: corpusFingerprint,
         dataset_hash: createHash("sha256").update(datasetText).digest("hex"),
         candidate_limit: config.thresholds.candidate_limit,
-        min_auto_match_precision: 0.99,
-        min_shortlist_recall_at_5: 0.95,
+        min_auto_match_precision: opts?.minAutoMatchPrecision ?? 0.99,
+        min_auto_match_count: opts?.minAutoMatchCount ?? 30,
+        min_delivered_shortlist_recall_at_k:
+          opts?.minDeliveredShortlistRecallAtK ??
+          opts?.minRetrievalRecallAtK ??
+          0.95,
+        min_shortlist_recall_at_5: opts?.minRetrievalRecallAtK ?? 0.95,
+        failed_reason: result.failed_reason,
         selected_thresholds: result.selected_thresholds,
         tune_metrics: result.tune_metrics,
         test_metrics: result.test_metrics,
@@ -391,11 +413,23 @@ export class RemoteAdapter implements TargetAdapter {
     return data.runtime;
   }
 
-  async calibrateRun(opts?: { datasetPath?: string }): Promise<{ run_id?: string; result?: CalibrationResult }> {
+  async calibrateRun(opts?: {
+    datasetPath?: string;
+    minAutoMatchPrecision?: number;
+    minRetrievalRecallAtK?: number;
+    minDeliveredShortlistRecallAtK?: number;
+    minAutoMatchCount?: number;
+  }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     const { status, data } = await this.fetchJson("/admin/v1/calibrations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dataset_path: opts?.datasetPath }),
+      body: JSON.stringify({
+        dataset_path: opts?.datasetPath,
+        min_auto_match_precision: opts?.minAutoMatchPrecision,
+        min_retrieval_recall_at_k: opts?.minRetrievalRecallAtK,
+        min_delivered_shortlist_recall_at_k: opts?.minDeliveredShortlistRecallAtK,
+        min_auto_match_count: opts?.minAutoMatchCount,
+      }),
     });
     if (status !== 202) {
       throw new Error(`Remote calibration start failed (${status}): ${data?.message || data}`);

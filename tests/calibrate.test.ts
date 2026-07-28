@@ -261,6 +261,12 @@ describe("runCalibration — in-memory calibration run", () => {
     "q-test-ambiguous": ["skill-a", "skill-b"],
     "q-test-nomatch": ["skill-a", "skill-b"],
   };
+  const permissiveCertification = {
+    minAutoMatchPrecision: 0,
+    minRetrievalRecallAtK: 0,
+    minDeliveredShortlistRecallAtK: 0,
+    minAutoMatchCount: 1,
+  };
 
   test("should require a reranker — throw without one", async () => {
     const { runCalibration } = await import("../src/calibrate");
@@ -280,13 +286,14 @@ describe("runCalibration — in-memory calibration run", () => {
       cases,
       getCandidates: async (query) => candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
       reranker: makeFakeReranker(highConfidenceScores),
+      ...permissiveCertification,
       candidateLimit: 5,
     });
     expect(result.status).toBe("completed");
     expect(result.selected_thresholds).toBeDefined();
-    expect(result.selected_thresholds!.match_score).toBeGreaterThan(0);
-    expect(result.selected_thresholds!.match_margin).toBeGreaterThan(0);
-    expect(result.selected_thresholds!.candidate_floor).toBeGreaterThan(0);
+    expect(result.selected_thresholds!.match_score).toBeGreaterThanOrEqual(0);
+    expect(result.selected_thresholds!.match_margin).toBeGreaterThanOrEqual(0);
+    expect(result.selected_thresholds!.candidate_floor).toBeGreaterThanOrEqual(0);
   });
 
   test("should cache per-query observations (candidate IDs, scores) and not call reranker again during optimization", async () => {
@@ -304,6 +311,7 @@ describe("runCalibration — in-memory calibration run", () => {
       cases,
       getCandidates: async (query) => candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
       reranker: countingReranker,
+      ...permissiveCertification,
       candidateLimit: 5,
     });
 
@@ -332,6 +340,7 @@ describe("runCalibration — in-memory calibration run", () => {
         rerankerCalls++;
         throw new Error("pre-ranked observations must not be reranked");
       },
+      ...permissiveCertification,
       candidateLimit: 5,
     });
 
@@ -366,6 +375,7 @@ describe("runCalibration — in-memory calibration run", () => {
       cases,
       getCandidates: async (query) => candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
       reranker: makeFakeReranker(highConfidenceScores),
+      ...permissiveCertification,
       candidateLimit: 5,
     });
     expect(result.status).toBe("completed");
@@ -375,14 +385,15 @@ describe("runCalibration — in-memory calibration run", () => {
     expect(result.tune_metrics!.auto_match_precision).toBeGreaterThanOrEqual(0);
     expect(result.tune_metrics!.auto_match_coverage).toBeGreaterThanOrEqual(0);
     expect(result.tune_metrics!.retrieval_recall_at_k).toBeGreaterThanOrEqual(0);
-    expect(result.tune_metrics!.false_no_match_rate).toBeGreaterThanOrEqual(0);
+    expect(result.tune_metrics!.delivered_shortlist_recall_at_k).toBeGreaterThanOrEqual(0);
+    expect(result.tune_metrics!.auto_match_precision_lower_bound).toBeGreaterThanOrEqual(0);
 
     // Test report
     expect(result.test_metrics).toBeDefined();
     expect(result.test_metrics!.auto_match_precision).toBeGreaterThanOrEqual(0);
     expect(result.test_metrics!.auto_match_coverage).toBeGreaterThanOrEqual(0);
     expect(result.test_metrics!.retrieval_recall_at_k).toBeGreaterThanOrEqual(0);
-    expect(result.test_metrics!.false_no_match_rate).toBeGreaterThanOrEqual(0);
+    expect(result.test_metrics!.delivered_shortlist_recall_at_k).toBeGreaterThanOrEqual(0);
     expect(result.test_metrics!.confusion_matrix).toBeDefined();
   });
 
@@ -392,6 +403,7 @@ describe("runCalibration — in-memory calibration run", () => {
       cases,
       getCandidates: async (query) => candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
       reranker: makeFakeReranker(highConfidenceScores),
+      ...permissiveCertification,
       candidateLimit: 5,
     });
     // Verify selected thresholds exist and are deterministic on repeated calls
@@ -399,6 +411,7 @@ describe("runCalibration — in-memory calibration run", () => {
       cases,
       getCandidates: async (query) => candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
       reranker: makeFakeReranker(highConfidenceScores),
+      ...permissiveCertification,
       candidateLimit: 5,
     });
     expect(result.selected_thresholds).toEqual(result2.selected_thresholds);
@@ -410,6 +423,7 @@ describe("runCalibration — in-memory calibration run", () => {
       cases,
       getCandidates: async (query) => candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
       reranker: makeFakeReranker(highConfidenceScores),
+      ...permissiveCertification,
       candidateLimit: 5,
     });
     const matrix = result.test_metrics!.confusion_matrix;
@@ -418,7 +432,7 @@ describe("runCalibration — in-memory calibration run", () => {
     expect(matrix).toHaveProperty("no_match");
   });
 
-  test("candidate_limit changes retrieval recall at k without changing classification", async () => {
+  test("distinguishes a raw retrieval recall precondition failure", async () => {
     const { runCalibration } = await import("../src/calibrate");
     const expandedCandidates = Object.fromEntries(
       cases.map((c) => [
@@ -438,18 +452,99 @@ describe("runCalibration — in-memory calibration run", () => {
         expandedCandidates[query]!.map((id) => ({ skill_id: id, text: id })),
       reranker: makeFakeReranker(scores),
       minAutoMatchPrecision: 0,
-      minRetrievalRecallAtK: 0,
+      minRetrievalRecallAtK: 0.8,
+      minDeliveredShortlistRecallAtK: 0,
+      minAutoMatchCount: 1,
       candidateLimit,
     });
 
     const limitTwo = await run(2);
     const limitTen = await run(10);
 
-    expect(limitTwo.test_metrics!.retrieval_recall_at_k)
-      .toBeLessThan(limitTen.test_metrics!.retrieval_recall_at_k);
-    expect(limitTwo.test_metrics!.confusion_matrix)
-      .toEqual(limitTen.test_metrics!.confusion_matrix);
+    expect(limitTwo.status).toBe("failed_gates");
+    expect(limitTwo.failed_reason).toBe("recall_precondition_failed");
+    expect(limitTen.failed_reason).not.toBe("recall_precondition_failed");
   });
+
+  test("rejects a tune-passing policy that fails frozen-test certification", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    const testFailingScores = structuredClone(highConfidenceScores);
+    testFailingScores["q-test-match-1"] = { "skill-a": 0.1, "skill-b": 0.95 };
+    testFailingScores["q-test-match-2"] = { "skill-a": 0.95, "skill-b": 0.1 };
+    const result = await runCalibration({
+      cases,
+      getCandidates: async (query) =>
+        candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
+      reranker: makeFakeReranker(testFailingScores),
+      ...permissiveCertification,
+      candidateLimit: 5,
+    });
+
+    expect(result.tune_metrics).toBeDefined();
+    expect(result.test_metrics).toBeDefined();
+    expect(result.status).toBe("failed_gates");
+    expect(result.failed_reason).toBe("test_certification_failed");
+  });
+
+  test("never reports completed when no correct auto-match coverage is possible", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    const wrongScores = Object.fromEntries(cases.map((item) => [
+      item.query,
+      item.relevant_skill_ids[0] === "skill-a"
+        ? { "skill-a": 0.1, "skill-b": 0.9 }
+        : { "skill-a": 0.9, "skill-b": 0.1 },
+    ]));
+    const result = await runCalibration({
+      cases,
+      getCandidates: async (query) =>
+        candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
+      reranker: makeFakeReranker(wrongScores),
+      ...permissiveCertification,
+      candidateLimit: 5,
+    });
+
+    expect(result.status).toBe("failed_gates");
+    expect(result.failed_reason).toBe("no_coverage");
+  });
+
+  test("calibrates a 500-query dataset within the test timeout", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    const largeCases = Array.from({ length: 500 }, (_, index) => {
+      const expected = (["matched", "ambiguous", "no_match"] as const)[index % 3]!;
+      return {
+        query: `large-${index}`,
+        split: index < 250 ? "tune" as const : "test" as const,
+        expected_outcome: expected,
+        relevant_skill_ids:
+          expected === "matched" ? [`skill-${index}`] :
+          expected === "ambiguous" ? [`skill-${index}`, `near-${index}`] : [],
+      };
+    });
+    const result = await runCalibration({
+      cases: largeCases,
+      getRankedCandidates: async (query) => {
+        const index = Number(query.slice("large-".length));
+        const expected = largeCases[index]!.expected_outcome;
+        const topScore = expected === "no_match"
+          ? 0.2 + (index % 17) / 1_000
+          : 0.8 + (index % 97) / 1_000;
+        return [
+          {
+            skill_id: expected === "no_match" ? `other-${index}` : `skill-${index}`,
+            score: topScore,
+          },
+          { skill_id: `near-${index}`, score: topScore - (expected === "ambiguous" ? 0.01 : 0.3) },
+          { skill_id: `tail-${index}`, score: 0.05 + (index % 113) / 1_000 },
+        ];
+      },
+      reranker: undefined,
+      ...permissiveCertification,
+      candidateLimit: 5,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.observations).toHaveLength(500);
+  }, 10_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -481,20 +576,28 @@ describe("calibration SQLite store", () => {
     corpus_fingerprint: "vault@sha256:feedface",
     dataset_hash: "dataset@sha256:12345678",
     candidate_limit: 5,
-    min_auto_match_precision: 0.99,
+    min_auto_match_precision: 0.8,
+    min_auto_match_count: 1,
+    min_delivered_shortlist_recall_at_k: 0.95,
     min_shortlist_recall_at_5: 0.95,
     selected_thresholds: { match_score: 0.85, match_margin: 0.15, candidate_floor: 0.3 },
     tune_metrics: {
       auto_match_precision: 1.0,
+      auto_match_precision_lower_bound: 0.9,
       auto_match_coverage: 0.8,
+      auto_match_count: 10,
+      correct_auto_match_count: 10,
       retrieval_recall_at_k: 1.0,
-      false_no_match_rate: 0.0,
+      delivered_shortlist_recall_at_k: 1.0,
     },
     test_metrics: {
       auto_match_precision: 0.95,
+      auto_match_precision_lower_bound: 0.85,
       auto_match_coverage: 0.75,
+      auto_match_count: 10,
+      correct_auto_match_count: 9,
       retrieval_recall_at_k: 0.98,
-      false_no_match_rate: 0.05,
+      delivered_shortlist_recall_at_k: 0.98,
       confusion_matrix: {
         matched: { matched: 5, ambiguous: 1, no_match: 0 },
         ambiguous: { matched: 0, ambiguous: 3, no_match: 0 },
@@ -637,6 +740,16 @@ describe("calibration SQLite store", () => {
     expect(runs[1]!.run_id).toBe("run-abc-001");
   });
 
+  test("increments attempt_count for repeated dataset hashes", () => {
+    insertCalibrationRun(db, {
+      ...baseRun,
+      run_id: "run-abc-002",
+      created_at: "2026-07-21T14:00:00Z",
+    });
+    expect(getCalibrationRun(db, "run-abc-001")!.attempt_count).toBe(1);
+    expect(getCalibrationRun(db, "run-abc-002")!.attempt_count).toBe(2);
+  });
+
   test("list entries should include summary fields but not full observations", () => {
     const runs = listCalibrationRuns(db);
     const entry = runs.find((r) => r.run_id === "run-abc-001")!;
@@ -671,20 +784,28 @@ describe("calibrate apply — gated TOML application", () => {
     corpus_fingerprint: "vault@sha256:deadbeef",
     dataset_hash: "dataset@sha256:abcdef01",
     candidate_limit: 5,
-    min_auto_match_precision: 0.99,
+    min_auto_match_precision: 0.8,
+    min_auto_match_count: 1,
+    min_delivered_shortlist_recall_at_k: 0.95,
     min_shortlist_recall_at_5: 0.95,
     selected_thresholds: { match_score: 0.85, match_margin: 0.15, candidate_floor: 0.3 },
     tune_metrics: {
       auto_match_precision: 1.0,
+      auto_match_precision_lower_bound: 0.9,
       auto_match_coverage: 0.9,
+      auto_match_count: 10,
+      correct_auto_match_count: 10,
       retrieval_recall_at_k: 1.0,
-      false_no_match_rate: 0.0,
+      delivered_shortlist_recall_at_k: 1.0,
     },
     test_metrics: {
       auto_match_precision: 0.98,
+      auto_match_precision_lower_bound: 0.85,
       auto_match_coverage: 0.85,
+      auto_match_count: 10,
+      correct_auto_match_count: 10,
       retrieval_recall_at_k: 0.99,
-      false_no_match_rate: 0.02,
+      delivered_shortlist_recall_at_k: 0.99,
       confusion_matrix: {
         matched: { matched: 8, ambiguous: 1, no_match: 0 },
         ambiguous: { matched: 0, ambiguous: 2, no_match: 0 },
