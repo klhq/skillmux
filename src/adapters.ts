@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { applyCalibrationRun, getCalibrationRun, insertCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, type CalibrationResult } from "./calibrate";
+import { applyCalibrationRun, getCalibrationRun, insertCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, summarizeDatasetProvenance, type CalibrationResult } from "./calibrate";
 import { createClients } from "./clients";
 import { DEFAULT_CONFIG_PATH, embeddingFingerprint, expandHome, loadConfig, rerankerFingerprint } from "./config";
 import { openIndex } from "./db";
@@ -194,6 +194,7 @@ export class LocalAdapter implements TargetAdapter {
         embedding_fingerprint: embeddingFingerprint(config),
         corpus_fingerprint: corpusFingerprint,
         dataset_hash: createHash("sha256").update(datasetText).digest("hex"),
+        dataset_provenance: summarizeDatasetProvenance(cases),
         candidate_limit: config.thresholds.candidate_limit,
         min_auto_match_precision: opts?.minAutoMatchPrecision ?? 0.99,
         min_auto_match_count: opts?.minAutoMatchCount ?? 30,

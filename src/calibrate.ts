@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import { z } from "zod";
 import { decideResolveOutcome } from "./decision";
-import type { RankedCandidate } from "./types";
+import type { AuditRow, RankedCandidate } from "./types";
 
 export { generateDataset, type GenerateDatasetOptions } from "./dataset-generator";
 
@@ -15,11 +15,21 @@ export { generateDataset, type GenerateDatasetOptions } from "./dataset-generato
 export type DecisionSplit = "tune" | "test";
 export type DecisionOutcome = "matched" | "ambiguous" | "no_match";
 
+export interface DecisionCaseProvenance {
+  version: 1;
+  source: "authored" | "audit_import";
+  review_status: "human_labelled" | "unreviewed";
+  query_storage: "raw" | "redacted";
+  audit_id?: number;
+  labelled_at?: string;
+}
+
 export interface DecisionCase {
   query: string;
   split: DecisionSplit;
   expected_outcome: DecisionOutcome;
   relevant_skill_ids: string[];
+  provenance?: DecisionCaseProvenance;
 }
 
 // ---------------------------------------------------------------------------
@@ -31,6 +41,14 @@ const rawCaseSchema = z.object({
   split: z.enum(["tune", "test"]),
   expected_outcome: z.enum(["matched", "ambiguous", "no_match"]),
   relevant_skill_ids: z.array(z.string()),
+  provenance: z.object({
+    version: z.literal(1),
+    source: z.enum(["authored", "audit_import"]),
+    review_status: z.enum(["human_labelled", "unreviewed"]),
+    query_storage: z.enum(["raw", "redacted"]),
+    audit_id: z.number().int().positive().optional(),
+    labelled_at: z.string().datetime().optional(),
+  }).strict().optional(),
 }).strict();
 
 type RawCase = z.infer<typeof rawCaseSchema>;
@@ -45,6 +63,25 @@ function validateCase(raw: RawCase, idx: number): DecisionCase {
   }
 
   const { expected_outcome, relevant_skill_ids } = raw;
+  const provenance: DecisionCaseProvenance = raw.provenance ?? {
+    version: 1,
+    source: "authored",
+    review_status: "human_labelled",
+    query_storage: "raw",
+  };
+
+  if (provenance.source === "audit_import") {
+    if (provenance.audit_id === undefined) {
+      throw new Error(
+        `Validation error at case ${idx}: imported field "provenance.audit_id" is required`,
+      );
+    }
+    if (provenance.review_status !== "human_labelled" || !provenance.labelled_at) {
+      throw new Error(
+        `Validation error at case ${idx}: imported audit case is unreviewed; human label and "provenance.labelled_at" are required for certification`,
+      );
+    }
+  }
 
   if (expected_outcome === "matched") {
     if (relevant_skill_ids.length !== 1) {
@@ -67,7 +104,85 @@ function validateCase(raw: RawCase, idx: number): DecisionCase {
     }
   }
 
-  return raw as DecisionCase;
+  return { ...raw, provenance };
+}
+
+export interface AuditFeedbackLabel {
+  split: DecisionSplit;
+  expected_outcome: DecisionOutcome;
+  relevant_skill_ids: string[];
+  labelled_at: string;
+}
+
+export type AuditQueryPrivacy =
+  | { include_raw_query: true }
+  | { include_raw_query: false; redacted_query: string };
+
+/** Import an audit outcome only after a separate human label is supplied. */
+export function importLabelledAuditCase(
+  audit: AuditRow,
+  label: AuditFeedbackLabel,
+  privacy: AuditQueryPrivacy,
+): DecisionCase {
+  const query = privacy.include_raw_query ? audit.query : privacy.redacted_query.trim();
+  if (!query) {
+    throw new Error("A non-empty redacted_query is required when raw audit queries are excluded");
+  }
+  const parsed = rawCaseSchema.parse({
+    query,
+    split: label.split,
+    expected_outcome: label.expected_outcome,
+    relevant_skill_ids: label.relevant_skill_ids,
+    provenance: {
+      version: 1,
+      source: "audit_import",
+      review_status: "human_labelled",
+      query_storage: privacy.include_raw_query ? "raw" : "redacted",
+      audit_id: audit.id,
+      labelled_at: label.labelled_at,
+    },
+  });
+  return validateCase(parsed, audit.id);
+}
+
+export interface DatasetProvenanceSummary {
+  version: 1;
+  human_labelled_case_count: number;
+  imported_labelled_case_count: number;
+  imported_unreviewed_case_count: number;
+  raw_query_case_count: number;
+  redacted_query_case_count: number;
+}
+
+export function summarizeDatasetProvenance(
+  cases: DecisionCase[],
+): DatasetProvenanceSummary {
+  const provenance = (item: DecisionCase): DecisionCaseProvenance =>
+    item.provenance ?? {
+      version: 1,
+      source: "authored",
+      review_status: "human_labelled",
+      query_storage: "raw",
+    };
+  return {
+    version: 1,
+    human_labelled_case_count:
+      cases.filter((item) => provenance(item).review_status === "human_labelled").length,
+    imported_labelled_case_count:
+      cases.filter((item) =>
+        provenance(item).source === "audit_import" &&
+        provenance(item).review_status === "human_labelled"
+      ).length,
+    imported_unreviewed_case_count:
+      cases.filter((item) =>
+        provenance(item).source === "audit_import" &&
+        provenance(item).review_status === "unreviewed"
+      ).length,
+    raw_query_case_count:
+      cases.filter((item) => provenance(item).query_storage === "raw").length,
+    redacted_query_case_count:
+      cases.filter((item) => provenance(item).query_storage === "redacted").length,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -751,6 +866,7 @@ export interface CalibrationRunRecord {
   embedding_fingerprint: string;
   corpus_fingerprint: string;
   dataset_hash: string;
+  dataset_provenance?: DatasetProvenanceSummary;
   candidate_limit: number;
   attempt_count?: number;
   min_auto_match_precision: number;
@@ -773,6 +889,8 @@ export interface CalibrationRunSummary {
   embedding_fingerprint: string;
   corpus_fingerprint: string;
   dataset_hash: string;
+  human_labelled_case_count: number;
+  imported_labelled_case_count: number;
   candidate_limit: number;
   attempt_count: number;
   min_auto_match_precision: number;
@@ -823,6 +941,15 @@ export function openCalibrateDb(stateDir: string): Database {
   if (!columns.some((column) => column.name === "failed_reason")) {
     db.run("ALTER TABLE calibration_runs ADD COLUMN failed_reason TEXT");
   }
+  if (!columns.some((column) => column.name === "dataset_provenance")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN dataset_provenance TEXT NOT NULL DEFAULT '{}'");
+  }
+  if (!columns.some((column) => column.name === "human_labelled_case_count")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN human_labelled_case_count INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!columns.some((column) => column.name === "imported_labelled_case_count")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN imported_labelled_case_count INTEGER NOT NULL DEFAULT 0");
+  }
   return db;
 }
 
@@ -839,8 +966,9 @@ export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): v
       candidate_limit,
       attempt_count, min_auto_match_precision, min_auto_match_count,
       min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason,
-      selected_thresholds, tune_metrics, test_metrics, observations
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      selected_thresholds, tune_metrics, test_metrics, observations,
+      dataset_provenance, human_labelled_case_count, imported_labelled_case_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       run.run_id,
       run.created_at,
@@ -860,6 +988,9 @@ export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): v
       run.tune_metrics != null ? JSON.stringify(run.tune_metrics) : null,
       run.test_metrics != null ? JSON.stringify(run.test_metrics) : null,
       JSON.stringify(run.observations),
+      JSON.stringify(run.dataset_provenance ?? {}),
+      run.dataset_provenance?.human_labelled_case_count ?? 0,
+      run.dataset_provenance?.imported_labelled_case_count ?? 0,
     ],
   );
 }
@@ -883,6 +1014,9 @@ interface RawCalibrationRow {
   tune_metrics: string | null;
   test_metrics: string | null;
   observations: string;
+  dataset_provenance: string;
+  human_labelled_case_count: number;
+  imported_labelled_case_count: number;
 }
 
 function parseMetrics(json: string): CalibrationMetrics {
@@ -917,6 +1051,10 @@ function rowToRecord(row: RawCalibrationRow): CalibrationRunRecord {
     embedding_fingerprint: row.embedding_fingerprint,
     corpus_fingerprint: row.corpus_fingerprint,
     dataset_hash: row.dataset_hash,
+    dataset_provenance:
+      Object.keys(JSON.parse(row.dataset_provenance) as object).length > 0
+        ? JSON.parse(row.dataset_provenance) as DatasetProvenanceSummary
+        : undefined,
     candidate_limit: row.candidate_limit,
     attempt_count: row.attempt_count,
     min_auto_match_precision: row.min_auto_match_precision,
@@ -956,7 +1094,8 @@ export function listCalibrationRuns(db: Database): CalibrationRunSummary[] {
         reranker_fingerprint, embedding_fingerprint, corpus_fingerprint, dataset_hash,
         candidate_limit,
         attempt_count, min_auto_match_precision, min_auto_match_count,
-        min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason
+        min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason,
+        human_labelled_case_count, imported_labelled_case_count
        FROM calibration_runs ORDER BY created_at DESC`,
     )
     .all() as CalibrationRunSummary[];

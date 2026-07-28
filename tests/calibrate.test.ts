@@ -13,6 +13,8 @@ import {
   getCalibrationRun,
   applyCalibrationRun,
   ApplyCalibrationError,
+  importLabelledAuditCase,
+  summarizeDatasetProvenance,
 } from "../src/calibrate";
 import { decideResolveOutcome } from "../src/decision";
 
@@ -75,6 +77,87 @@ describe("decision-policy dataset schema", () => {
     expect(cases[0]!.split).toBe("tune");
     expect(cases[0]!.expected_outcome).toBe("matched");
     expect(cases[0]!.relevant_skill_ids).toEqual(["mock-skill-a"]);
+    expect(cases[0]!.provenance!.source).toBe("authored");
+  });
+
+  test("rejects unreviewed imported audit cases from certification datasets", () => {
+    const imported = {
+      ...validTuneMatch,
+      provenance: {
+        version: 1,
+        source: "audit_import",
+        review_status: "unreviewed",
+        query_storage: "raw",
+        audit_id: 42,
+      },
+    };
+    expect(() => loadDecisionCases([imported, ...minimalValidDataset])).toThrow(
+      /unreviewed.*human label/i,
+    );
+  });
+
+  test("imports a human label without copying the raw audit query by default", () => {
+    const imported = importLabelledAuditCase(
+      {
+        id: 42,
+        ts: "2026-07-29T00:00:00Z",
+        query: "private customer incident details",
+        outcome: "matched",
+        retrieval: "reranked",
+        candidates: [{ skill_id: "mock-skill-a", score: 0.9 }],
+        selected_skill_id: "mock-skill-a",
+        latency_ms: 10,
+      },
+      {
+        split: "tune",
+        expected_outcome: "no_match",
+        relevant_skill_ids: [],
+        labelled_at: "2026-07-29T00:01:00Z",
+      },
+      { include_raw_query: false, redacted_query: "redacted incident request" },
+    );
+
+    expect(imported.query).toBe("redacted incident request");
+    expect(imported.expected_outcome).toBe("no_match");
+    expect(imported.provenance).toEqual({
+      version: 1,
+      source: "audit_import",
+      review_status: "human_labelled",
+      query_storage: "redacted",
+      audit_id: 42,
+      labelled_at: "2026-07-29T00:01:00Z",
+    });
+  });
+
+  test("summarizes human-labelled and query privacy provenance", () => {
+    const authored = loadDecisionCases(minimalValidDataset);
+    const imported = importLabelledAuditCase(
+      {
+        id: 7,
+        ts: "2026-07-29T00:00:00Z",
+        query: "raw",
+        outcome: "ambiguous",
+        retrieval: "reranked",
+        candidates: [],
+        selected_skill_id: null,
+        latency_ms: 1,
+      },
+      {
+        split: "test",
+        expected_outcome: "no_match",
+        relevant_skill_ids: [],
+        labelled_at: "2026-07-29T00:01:00Z",
+      },
+      { include_raw_query: false, redacted_query: "safe paraphrase" },
+    );
+    expect(summarizeDatasetProvenance([...authored, imported])).toEqual({
+      version: 1,
+      human_labelled_case_count: 7,
+      imported_labelled_case_count: 1,
+      imported_unreviewed_case_count: 0,
+      raw_query_case_count: 6,
+      redacted_query_case_count: 1,
+    });
   });
 
 
@@ -758,6 +841,27 @@ describe("calibration SQLite store", () => {
     expect(retrieved!.status).toBe("completed");
     expect(retrieved!.reranker_fingerprint).toBe("model/reranker-v1@sha256:deadbeef");
     expect(retrieved!.dataset_hash).toBe("dataset@sha256:12345678");
+  });
+
+  test("persists human-labelled provenance counts in run detail and list output", () => {
+    const provenance = {
+      version: 1 as const,
+      human_labelled_case_count: 12,
+      imported_labelled_case_count: 4,
+      imported_unreviewed_case_count: 0,
+      raw_query_case_count: 8,
+      redacted_query_case_count: 4,
+    };
+    insertCalibrationRun(db, {
+      ...baseRun,
+      run_id: "run-provenance-001",
+      dataset_hash: "dataset@sha256:provenance",
+      dataset_provenance: provenance,
+    });
+    expect(getCalibrationRun(db, "run-provenance-001")!.dataset_provenance).toEqual(provenance);
+    const summary = listCalibrationRuns(db).find((run) => run.run_id === "run-provenance-001")!;
+    expect(summary.human_labelled_case_count).toBe(12);
+    expect(summary.imported_labelled_case_count).toBe(4);
   });
 
   test("should round-trip selected thresholds as structured data", () => {
