@@ -171,9 +171,12 @@ export interface SelectedThresholds {
 
 export interface CalibrationMetrics {
   auto_match_precision: number;
+  auto_match_precision_lower_bound: number;
   auto_match_coverage: number;
+  auto_match_count: number;
+  correct_auto_match_count: number;
   retrieval_recall_at_k: number;
-  false_no_match_rate: number;
+  delivered_shortlist_recall_at_k: number;
 }
 
 export interface ConfusionMatrix {
@@ -187,9 +190,16 @@ export interface CalibrationTestMetrics extends CalibrationMetrics {
 }
 
 export type CalibrationStatus = "completed" | "failed_gates";
+export type CalibrationFailureReason =
+  | "recall_precondition_failed"
+  | "precision_floor_unreachable"
+  | "no_coverage"
+  | "insufficient_sample"
+  | "test_certification_failed";
 
 export interface CalibrationResult {
   status: CalibrationStatus;
+  failed_reason?: CalibrationFailureReason;
   observations: QueryObservation[];
   selected_thresholds?: SelectedThresholds;
   tune_metrics?: CalibrationMetrics;
@@ -210,6 +220,10 @@ export interface RunCalibrationOptions {
   minAutoMatchPrecision?: number;
   /** Default: 0.95 */
   minRetrievalRecallAtK?: number;
+  /** Default: minRetrievalRecallAtK */
+  minDeliveredShortlistRecallAtK?: number;
+  /** Default: 30 */
+  minAutoMatchCount?: number;
   candidateLimit: number;
 }
 
@@ -241,39 +255,70 @@ function computeMetrics(
 ): CalibrationMetrics {
   let autoMatchCount = 0;
   let correctAutoMatch = 0;
-  let shortlistHit = 0;
-  let falseNoMatch = 0;
+  let retrievalHit = 0;
+  let deliveredHit = 0;
   const matchableCases = observations.filter((o) => o.expected_outcome !== "no_match");
+  const expectedMatches = observations.filter((o) => o.expected_outcome === "matched");
 
   for (const obs of observations) {
     const decision = decideObservation(obs, thresholds, candidateLimit);
     if (decision.outcome === "matched") {
       autoMatchCount++;
-      // Correct if the top candidate is in relevant_skill_ids
       const top = obs.ranked[0];
-      if (top && obs.relevant_skill_ids.includes(top.skill_id)) correctAutoMatch++;
+      if (
+        obs.expected_outcome === "matched" &&
+        top?.skill_id === obs.relevant_skill_ids[0]
+      ) {
+        correctAutoMatch++;
+      }
     }
     if (obs.expected_outcome !== "no_match") {
       const topK = obs.ranked.slice(0, candidateLimit).map((c) => c.skill_id);
-      if (obs.relevant_skill_ids.some((id) => topK.includes(id))) shortlistHit++;
-    }
-    if (obs.expected_outcome !== "no_match" && decision.outcome === "no_match") {
-      falseNoMatch++;
+      if (obs.relevant_skill_ids.some((id) => topK.includes(id))) retrievalHit++;
+      const deliveredIds = decision.outcome === "matched"
+        ? [decision.skill_id]
+        : decision.outcome === "ambiguous"
+          ? decision.candidates.map((candidate) => candidate.skill_id)
+          : [];
+      if (obs.relevant_skill_ids.some((id) => deliveredIds.includes(id))) deliveredHit++;
     }
   }
 
-  const auto_match_precision = autoMatchCount === 0 ? 1.0 : correctAutoMatch / autoMatchCount;
-  const auto_match_coverage = matchableCases.length === 0
+  const auto_match_precision = autoMatchCount === 0 ? 0 : correctAutoMatch / autoMatchCount;
+  const auto_match_precision_lower_bound = wilsonLowerBound(correctAutoMatch, autoMatchCount);
+  const auto_match_coverage = expectedMatches.length === 0
     ? 0
-    : autoMatchCount / matchableCases.length;
+    : correctAutoMatch / expectedMatches.length;
   const retrieval_recall_at_k = matchableCases.length === 0
     ? 1.0
-    : shortlistHit / matchableCases.length;
-  const false_no_match_rate = matchableCases.length === 0
-    ? 0
-    : falseNoMatch / matchableCases.length;
+    : retrievalHit / matchableCases.length;
+  const delivered_shortlist_recall_at_k = matchableCases.length === 0
+    ? 1.0
+    : deliveredHit / matchableCases.length;
 
-  return { auto_match_precision, auto_match_coverage, retrieval_recall_at_k, false_no_match_rate };
+  return {
+    auto_match_precision,
+    auto_match_precision_lower_bound,
+    auto_match_coverage,
+    auto_match_count: autoMatchCount,
+    correct_auto_match_count: correctAutoMatch,
+    retrieval_recall_at_k,
+    delivered_shortlist_recall_at_k,
+  };
+}
+
+/** 95% Wilson score lower confidence bound for a binomial proportion. */
+export function wilsonLowerBound(successes: number, total: number): number {
+  if (total === 0) return 0;
+  const z = 1.959963984540054;
+  const proportion = successes / total;
+  const zSquared = z * z;
+  const denominator = 1 + zSquared / total;
+  const centre = proportion + zSquared / (2 * total);
+  const adjustment = z * Math.sqrt(
+    (proportion * (1 - proportion) + zSquared / (4 * total)) / total,
+  );
+  return Math.max(0, (centre - adjustment) / denominator);
 }
 
 function computeTestMetrics(
@@ -308,8 +353,9 @@ function deriveThresholdCandidates(observations: QueryObservation[]): {
   marginBreakpoints: number[];
   floorBreakpoints: number[];
 } {
-  const scores: number[] = [];
+  const scores: number[] = [0];
   const margins: number[] = [];
+  const floors: number[] = [0];
 
   for (const obs of observations) {
     if (obs.ranked.length === 0) continue;
@@ -317,22 +363,12 @@ function deriveThresholdCandidates(observations: QueryObservation[]): {
     scores.push(top.score);
     const second = obs.ranked[1];
     margins.push(second ? top.score - second.score : top.score);
+    for (const candidate of obs.ranked.slice(1)) floors.push(candidate.score);
   }
 
-  // Breakpoints: observed values + a small epsilon step below each
-  const epsilon = 0.001;
-  const scoreBreakpoints = uniqueSorted([
-    ...scores.map((s) => Math.max(0, s - epsilon)),
-    ...scores,
-  ]);
-  const marginBreakpoints = uniqueSorted([
-    ...margins.map((m) => Math.max(0, m - epsilon)),
-    ...margins,
-  ]);
-  const floorBreakpoints = uniqueSorted([
-    ...scores.map((s) => Math.max(0, s - epsilon)),
-    ...scores,
-  ]);
+  const scoreBreakpoints = uniqueSorted(scores);
+  const marginBreakpoints = uniqueSorted([0, ...margins]);
+  const floorBreakpoints = uniqueSorted(floors);
 
   return { scoreBreakpoints, marginBreakpoints, floorBreakpoints };
 }
@@ -343,61 +379,205 @@ function deriveThresholdCandidates(observations: QueryObservation[]): {
 
 /**
  * Find the threshold triple that:
- *   1. Satisfies minAutoMatchPrecision AND minRetrievalRecallAtK gates
+ *   1. Satisfies Wilson precision, sample-count, coverage, and delivered-recall gates
  *   2. Among those: maximizes auto_match_coverage
- *   3. Ties broken by: higher auto_match_precision, then higher retrieval_recall_at_k,
- *      then lower auto_match_coverage (as coverage the tiebreak)
+ *   3. Ties break on confidence, delivered recall, then deterministic lower thresholds
  */
+interface CalibrationGates {
+  minAutoMatchPrecision: number;
+  minRetrievalRecallAtK: number;
+  minDeliveredShortlistRecallAtK: number;
+  minAutoMatchCount: number;
+}
+
+function metricsPass(metrics: CalibrationMetrics, gates: CalibrationGates): boolean {
+  return (
+    metrics.auto_match_precision_lower_bound >= gates.minAutoMatchPrecision &&
+    metrics.auto_match_count >= gates.minAutoMatchCount &&
+    metrics.auto_match_coverage > 0 &&
+    metrics.delivered_shortlist_recall_at_k >= gates.minDeliveredShortlistRecallAtK
+  );
+}
+
+function betterPolicy(
+  candidate: { thresholds: SelectedThresholds; metrics: CalibrationMetrics },
+  best: { thresholds: SelectedThresholds; metrics: CalibrationMetrics } | undefined,
+): boolean {
+  if (!best) return true;
+  const a = candidate.metrics;
+  const b = best.metrics;
+  return (
+    a.auto_match_coverage > b.auto_match_coverage ||
+    (a.auto_match_coverage === b.auto_match_coverage &&
+      (a.auto_match_precision_lower_bound > b.auto_match_precision_lower_bound ||
+        (a.auto_match_precision_lower_bound === b.auto_match_precision_lower_bound &&
+          (a.delivered_shortlist_recall_at_k > b.delivered_shortlist_recall_at_k ||
+            (a.delivered_shortlist_recall_at_k === b.delivered_shortlist_recall_at_k &&
+              (candidate.thresholds.match_score < best.thresholds.match_score ||
+                (candidate.thresholds.match_score === best.thresholds.match_score &&
+                  candidate.thresholds.match_margin < best.thresholds.match_margin)))))))
+  );
+}
+
+function sampledFloorIndexes(length: number, maxSamples = 32): number[] {
+  if (length <= maxSamples) return Array.from({ length }, (_, index) => index);
+  return uniqueSorted(
+    Array.from({ length: maxSamples }, (_, index) =>
+      Math.round(index * (length - 1) / (maxSamples - 1))),
+  );
+}
+
 function selectThresholds(
   tuneObservations: QueryObservation[],
-  gates: { minAutoMatchPrecision: number; minRetrievalRecallAtK: number },
+  gates: CalibrationGates,
   candidateLimit: number,
-): SelectedThresholds | undefined {
+): { selected?: SelectedThresholds; reason?: CalibrationFailureReason } {
   const { scoreBreakpoints, marginBreakpoints, floorBreakpoints } =
     deriveThresholdCandidates(tuneObservations);
 
   let best:
     | { thresholds: SelectedThresholds; metrics: CalibrationMetrics }
     | undefined;
+  let sawCoverage = false;
+  let sawSample = false;
+  let sawPrecision = false;
+  const scoreIndexes = new Map(scoreBreakpoints.map((value, index) => [value, index]));
+  const marginIndexes = new Map(marginBreakpoints.map((value, index) => [value, index]));
+  const width = marginBreakpoints.length;
+  const expectedMatchCount = tuneObservations.filter(
+    (observation) => observation.expected_outcome === "matched",
+  ).length;
+  const matchable = tuneObservations.filter(
+    (observation) => observation.expected_outcome !== "no_match",
+  );
+  const retrievalHits = matchable.filter((observation) => {
+    const ids = observation.ranked.slice(0, candidateLimit).map((candidate) => candidate.skill_id);
+    return observation.relevant_skill_ids.some((id) => ids.includes(id));
+  }).length;
+  const retrievalRecall = matchable.length === 0 ? 1 : retrievalHits / matchable.length;
 
-  for (const floor of floorBreakpoints) {
-    for (const score of scoreBreakpoints) {
-      if (score < floor) continue;
-      for (const margin of marginBreakpoints) {
-        const candidate: SelectedThresholds = { match_score: score, match_margin: margin, candidate_floor: floor };
-        const m = computeMetrics(tuneObservations, candidate, candidateLimit);
+  const evaluateFloor = (floorIndex: number) => {
+    const floor = floorBreakpoints[floorIndex]!;
+    const cells = scoreBreakpoints.length * width;
+    const autoMatches = new Uint32Array(cells);
+    const correctMatches = new Uint32Array(cells);
+    const deliveredDelta = new Int32Array(cells);
+    let ambiguousDeliveredHits = 0;
 
-        if (
-          m.auto_match_precision < gates.minAutoMatchPrecision ||
-          m.retrieval_recall_at_k < gates.minRetrievalRecallAtK
-        ) {
-          continue;
+    for (const observation of tuneObservations) {
+      const top = observation.ranked[0];
+      if (!top || top.score < floor) continue;
+      const second = observation.ranked[1];
+      const margin = second ? top.score - second.score : top.score;
+      const cell = scoreIndexes.get(top.score)! * width + marginIndexes.get(margin)!;
+      autoMatches[cell] = autoMatches[cell]! + 1;
+      const correct = (
+        observation.expected_outcome === "matched" &&
+        top.skill_id === observation.relevant_skill_ids[0]
+      );
+      if (correct) correctMatches[cell] = correctMatches[cell]! + 1;
+
+      if (observation.expected_outcome !== "no_match") {
+        const ambiguousIds = observation.ranked
+          .filter((candidate) => candidate.score >= floor)
+          .slice(0, candidateLimit)
+          .map((candidate) => candidate.skill_id);
+        const ambiguousHit = observation.relevant_skill_ids.some(
+          (id) => ambiguousIds.includes(id),
+        );
+        const matchedHit = observation.relevant_skill_ids.includes(top.skill_id);
+        if (ambiguousHit) ambiguousDeliveredHits++;
+        deliveredDelta[cell] =
+          deliveredDelta[cell]! + Number(matchedHit) - Number(ambiguousHit);
+      }
+    }
+
+    // A suffix sum turns the score/margin sweep into O(1) metric lookups:
+    // a case auto-matches at every threshold pair at or below its point.
+    for (let scoreIndex = scoreBreakpoints.length - 1; scoreIndex >= 0; scoreIndex--) {
+      for (let marginIndex = width - 1; marginIndex >= 0; marginIndex--) {
+        const cell = scoreIndex * width + marginIndex;
+        if (scoreIndex + 1 < scoreBreakpoints.length) {
+          const below = (scoreIndex + 1) * width + marginIndex;
+          autoMatches[cell] = autoMatches[cell]! + autoMatches[below]!;
+          correctMatches[cell] = correctMatches[cell]! + correctMatches[below]!;
+          deliveredDelta[cell] = deliveredDelta[cell]! + deliveredDelta[below]!;
         }
-
-        if (!best) {
-          best = { thresholds: candidate, metrics: m };
-          continue;
+        if (marginIndex + 1 < width) {
+          const right = cell + 1;
+          autoMatches[cell] = autoMatches[cell]! + autoMatches[right]!;
+          correctMatches[cell] = correctMatches[cell]! + correctMatches[right]!;
+          deliveredDelta[cell] = deliveredDelta[cell]! + deliveredDelta[right]!;
         }
-
-        // Prefer higher coverage, then higher precision, then higher recall, then lower coverage (impossible but symmetry)
-        const bm = best.metrics;
-        if (m.auto_match_coverage > bm.auto_match_coverage) {
-          best = { thresholds: candidate, metrics: m };
-        } else if (m.auto_match_coverage === bm.auto_match_coverage) {
-          if (m.auto_match_precision > bm.auto_match_precision) {
-            best = { thresholds: candidate, metrics: m };
-          } else if (
-            m.auto_match_precision === bm.auto_match_precision &&
-            m.retrieval_recall_at_k > bm.retrieval_recall_at_k
-          ) {
-            best = { thresholds: candidate, metrics: m };
-          }
+        if (scoreIndex + 1 < scoreBreakpoints.length && marginIndex + 1 < width) {
+          const diagonal = (scoreIndex + 1) * width + marginIndex + 1;
+          autoMatches[cell] = autoMatches[cell]! - autoMatches[diagonal]!;
+          correctMatches[cell] = correctMatches[cell]! - correctMatches[diagonal]!;
+          deliveredDelta[cell] = deliveredDelta[cell]! - deliveredDelta[diagonal]!;
         }
       }
     }
+
+    for (let scoreIndex = 0; scoreIndex < scoreBreakpoints.length; scoreIndex++) {
+      const score = scoreBreakpoints[scoreIndex]!;
+      if (score < floor) continue;
+      for (let marginIndex = 0; marginIndex < marginBreakpoints.length; marginIndex++) {
+        const margin = marginBreakpoints[marginIndex]!;
+        const cell = scoreIndex * width + marginIndex;
+        const autoMatchCount = autoMatches[cell]!;
+        const correctAutoMatchCount = correctMatches[cell]!;
+        const deliveredHits = ambiguousDeliveredHits + deliveredDelta[cell]!;
+        const thresholds = {
+          match_score: score,
+          match_margin: margin,
+          candidate_floor: floor,
+        };
+        const metrics: CalibrationMetrics = {
+          auto_match_precision:
+            autoMatchCount === 0 ? 0 : correctAutoMatchCount / autoMatchCount,
+          auto_match_precision_lower_bound:
+            wilsonLowerBound(correctAutoMatchCount, autoMatchCount),
+          auto_match_coverage:
+            expectedMatchCount === 0 ? 0 : correctAutoMatchCount / expectedMatchCount,
+          auto_match_count: autoMatchCount,
+          correct_auto_match_count: correctAutoMatchCount,
+          retrieval_recall_at_k: retrievalRecall,
+          delivered_shortlist_recall_at_k:
+            matchable.length === 0 ? 1 : deliveredHits / matchable.length,
+        };
+        sawCoverage ||= metrics.auto_match_coverage > 0;
+        sawSample ||= metrics.auto_match_count >= gates.minAutoMatchCount;
+        sawPrecision ||= (
+          metrics.auto_match_precision_lower_bound >= gates.minAutoMatchPrecision
+        );
+        if (!metricsPass(metrics, gates)) continue;
+        const candidate = { thresholds, metrics };
+        if (betterPolicy(candidate, best)) best = candidate;
+      }
+    }
+  };
+
+  // Coarse-to-fine floor search. Floor candidates come from non-top scores, so
+  // this tunes shortlist trimming instead of merely suppressing top matches.
+  const coarse = sampledFloorIndexes(floorBreakpoints.length);
+  for (const index of coarse) evaluateFloor(index);
+  if (best && coarse.length < floorBreakpoints.length) {
+    const bestIndex = floorBreakpoints.indexOf(best.thresholds.candidate_floor);
+    const radius = Math.ceil(floorBreakpoints.length / coarse.length);
+    for (
+      let index = Math.max(0, bestIndex - radius);
+      index <= Math.min(floorBreakpoints.length - 1, bestIndex + radius);
+      index++
+    ) {
+      if (!coarse.includes(index)) evaluateFloor(index);
+    }
   }
 
-  return best?.thresholds;
+  if (best) return { selected: best.thresholds };
+  if (!sawCoverage) return { reason: "no_coverage" };
+  if (!sawSample) return { reason: "insufficient_sample" };
+  if (!sawPrecision) return { reason: "precision_floor_unreachable" };
+  return { reason: "precision_floor_unreachable" };
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +599,8 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
     reranker,
     minAutoMatchPrecision = 0.99,
     minRetrievalRecallAtK = 0.95,
+    minDeliveredShortlistRecallAtK = minRetrievalRecallAtK,
+    minAutoMatchCount = 30,
     candidateLimit,
   } = opts;
 
@@ -453,22 +635,61 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
 
   // --- Step 2: Select thresholds from tune split only ---
   const tuneObs = observations.filter((o) => o.split === "tune");
-  const selected = selectThresholds(
+  const testObs = observations.filter((o) => o.split === "test");
+  const retrievalThresholds = {
+    match_score: 0,
+    match_margin: 0,
+    candidate_floor: 0,
+  };
+  const tuneRetrieval = computeMetrics(tuneObs, retrievalThresholds, candidateLimit);
+  const testRetrieval = computeMetrics(testObs, retrievalThresholds, candidateLimit);
+  if (
+    tuneRetrieval.retrieval_recall_at_k < minRetrievalRecallAtK ||
+    testRetrieval.retrieval_recall_at_k < minRetrievalRecallAtK
+  ) {
+    return {
+      status: "failed_gates",
+      failed_reason: "recall_precondition_failed",
+      observations,
+    };
+  }
+
+  const gates = {
+    minAutoMatchPrecision,
+    minRetrievalRecallAtK,
+    minDeliveredShortlistRecallAtK,
+    minAutoMatchCount,
+  };
+  const selection = selectThresholds(
     tuneObs,
-    { minAutoMatchPrecision, minRetrievalRecallAtK },
+    gates,
     candidateLimit,
   );
 
-  if (!selected) {
-    return { status: "failed_gates", observations };
+  if (!selection.selected) {
+    return {
+      status: "failed_gates",
+      failed_reason: selection.reason,
+      observations,
+    };
   }
+  const selected = selection.selected;
 
   // --- Step 3: Report tune metrics ---
   const tune_metrics = computeMetrics(tuneObs, selected, candidateLimit);
 
   // --- Step 4: Evaluate untouched test split ---
-  const testObs = observations.filter((o) => o.split === "test");
   const test_metrics = computeTestMetrics(testObs, selected, candidateLimit);
+  if (!metricsPass(test_metrics, gates)) {
+    return {
+      status: "failed_gates",
+      failed_reason: "test_certification_failed",
+      observations,
+      selected_thresholds: selected,
+      tune_metrics,
+      test_metrics,
+    };
+  }
 
   return { status: "completed", observations, selected_thresholds: selected, tune_metrics, test_metrics };
 }
@@ -490,8 +711,12 @@ export interface CalibrationRunRecord {
   corpus_fingerprint: string;
   dataset_hash: string;
   candidate_limit: number;
+  attempt_count?: number;
   min_auto_match_precision: number;
+  min_auto_match_count?: number;
+  min_delivered_shortlist_recall_at_k?: number;
   min_shortlist_recall_at_5: number;
+  failed_reason?: CalibrationFailureReason;
   selected_thresholds?: SelectedThresholds;
   tune_metrics?: CalibrationMetrics;
   test_metrics?: CalibrationTestMetrics;
@@ -508,8 +733,12 @@ export interface CalibrationRunSummary {
   corpus_fingerprint: string;
   dataset_hash: string;
   candidate_limit: number;
+  attempt_count: number;
   min_auto_match_precision: number;
+  min_auto_match_count: number;
+  min_delivered_shortlist_recall_at_k: number;
   min_shortlist_recall_at_5: number;
+  failed_reason?: CalibrationFailureReason;
 }
 
 /**
@@ -541,19 +770,36 @@ export function openCalibrateDb(stateDir: string): Database {
   if (!columns.some((column) => column.name === "candidate_limit")) {
     db.run("ALTER TABLE calibration_runs ADD COLUMN candidate_limit INTEGER NOT NULL DEFAULT 5");
   }
+  if (!columns.some((column) => column.name === "attempt_count")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!columns.some((column) => column.name === "min_auto_match_count")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN min_auto_match_count INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!columns.some((column) => column.name === "min_delivered_shortlist_recall_at_k")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN min_delivered_shortlist_recall_at_k REAL NOT NULL DEFAULT 0.95");
+  }
+  if (!columns.some((column) => column.name === "failed_reason")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN failed_reason TEXT");
+  }
   return db;
 }
 
 /** Persist a calibration run (all fields) to the evidence store. */
 export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): void {
+  const attemptCount = (
+    db.query("SELECT COUNT(*) AS count FROM calibration_runs WHERE dataset_hash = ?")
+      .get(run.dataset_hash) as { count: number }
+  ).count + 1;
   db.run(
     `INSERT INTO calibration_runs (
       run_id, created_at, status,
       reranker_fingerprint, embedding_fingerprint, corpus_fingerprint, dataset_hash,
       candidate_limit,
-      min_auto_match_precision, min_shortlist_recall_at_5,
+      attempt_count, min_auto_match_precision, min_auto_match_count,
+      min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason,
       selected_thresholds, tune_metrics, test_metrics, observations
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       run.run_id,
       run.created_at,
@@ -563,8 +809,12 @@ export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): v
       run.corpus_fingerprint,
       run.dataset_hash,
       run.candidate_limit,
+      attemptCount,
       run.min_auto_match_precision,
+      run.min_auto_match_count ?? 1,
+      run.min_delivered_shortlist_recall_at_k ?? run.min_shortlist_recall_at_5,
       run.min_shortlist_recall_at_5,
+      run.failed_reason ?? null,
       run.selected_thresholds != null ? JSON.stringify(run.selected_thresholds) : null,
       run.tune_metrics != null ? JSON.stringify(run.tune_metrics) : null,
       run.test_metrics != null ? JSON.stringify(run.test_metrics) : null,
@@ -582,8 +832,12 @@ interface RawCalibrationRow {
   corpus_fingerprint: string;
   dataset_hash: string;
   candidate_limit: number;
+  attempt_count: number;
   min_auto_match_precision: number;
+  min_auto_match_count: number;
+  min_delivered_shortlist_recall_at_k: number;
   min_shortlist_recall_at_5: number;
+  failed_reason: string | null;
   selected_thresholds: string | null;
   tune_metrics: string | null;
   test_metrics: string | null;
@@ -591,14 +845,26 @@ interface RawCalibrationRow {
 }
 
 function parseMetrics(json: string): CalibrationMetrics {
-  const parsed = JSON.parse(json) as CalibrationMetrics & {
+  const parsed = JSON.parse(json) as Partial<CalibrationMetrics> & {
     shortlist_recall_at_5?: number;
+    false_no_match_rate?: number;
   };
   if (parsed.retrieval_recall_at_k === undefined) {
     parsed.retrieval_recall_at_k = parsed.shortlist_recall_at_5 ?? 0;
   }
   delete parsed.shortlist_recall_at_5;
-  return parsed;
+  delete parsed.false_no_match_rate;
+  return {
+    auto_match_precision: parsed.auto_match_precision ?? 0,
+    auto_match_precision_lower_bound:
+      parsed.auto_match_precision_lower_bound ?? parsed.auto_match_precision ?? 0,
+    auto_match_coverage: parsed.auto_match_coverage ?? 0,
+    auto_match_count: parsed.auto_match_count ?? 0,
+    correct_auto_match_count: parsed.correct_auto_match_count ?? 0,
+    retrieval_recall_at_k: parsed.retrieval_recall_at_k,
+    delivered_shortlist_recall_at_k:
+      parsed.delivered_shortlist_recall_at_k ?? parsed.retrieval_recall_at_k,
+  };
 }
 
 function rowToRecord(row: RawCalibrationRow): CalibrationRunRecord {
@@ -611,8 +877,12 @@ function rowToRecord(row: RawCalibrationRow): CalibrationRunRecord {
     corpus_fingerprint: row.corpus_fingerprint,
     dataset_hash: row.dataset_hash,
     candidate_limit: row.candidate_limit,
+    attempt_count: row.attempt_count,
     min_auto_match_precision: row.min_auto_match_precision,
+    min_auto_match_count: row.min_auto_match_count,
+    min_delivered_shortlist_recall_at_k: row.min_delivered_shortlist_recall_at_k,
     min_shortlist_recall_at_5: row.min_shortlist_recall_at_5,
+    failed_reason: row.failed_reason as CalibrationFailureReason | null ?? undefined,
     selected_thresholds: row.selected_thresholds != null
       ? (JSON.parse(row.selected_thresholds) as SelectedThresholds)
       : undefined,
@@ -644,7 +914,8 @@ export function listCalibrationRuns(db: Database): CalibrationRunSummary[] {
       `SELECT run_id, created_at, status,
         reranker_fingerprint, embedding_fingerprint, corpus_fingerprint, dataset_hash,
         candidate_limit,
-        min_auto_match_precision, min_shortlist_recall_at_5
+        attempt_count, min_auto_match_precision, min_auto_match_count,
+        min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason
        FROM calibration_runs ORDER BY created_at DESC`,
     )
     .all() as CalibrationRunSummary[];
@@ -718,6 +989,21 @@ export async function applyCalibrationRun(
     throw new ApplyCalibrationError(
       `Calibration run "${runId}" has status "${run.status}" and cannot be applied`,
       "failed_gates",
+    );
+  }
+  if (
+    !run.test_metrics ||
+    !metricsPass(run.test_metrics, {
+      minAutoMatchPrecision: run.min_auto_match_precision,
+      minRetrievalRecallAtK: run.min_shortlist_recall_at_5,
+      minDeliveredShortlistRecallAtK:
+        run.min_delivered_shortlist_recall_at_k ?? run.min_shortlist_recall_at_5,
+      minAutoMatchCount: run.min_auto_match_count ?? 1,
+    })
+  ) {
+    throw new ApplyCalibrationError(
+      `Calibration run "${runId}" is not certified on its frozen test split`,
+      "test_certification_failed",
     );
   }
 

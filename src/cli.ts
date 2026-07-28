@@ -399,10 +399,52 @@ async function handleCalibrateCommand(
 ) {
   if (sub === "run") {
     let datasetPath: string | undefined;
+    let minAutoMatchPrecision: number | undefined;
+    let minRetrievalRecallAtK: number | undefined;
+    let minDeliveredShortlistRecallAtK: number | undefined;
+    let minAutoMatchCount: number | undefined;
+    const readNumber = (flag: string, raw: string | undefined): number => {
+      if (raw === undefined) throw new Error(`${flag} requires a value`);
+      const value = Number(raw);
+      if (!Number.isFinite(value)) throw new Error(`${flag} must be a number`);
+      return value;
+    };
     for (let i = 0; i < args.length; i++) {
-      if (args[i] === "--dataset") datasetPath = args[++i];
+      const option = args[i];
+      if (option === "--dataset") {
+        datasetPath = args[++i];
+        if (!datasetPath) throw new Error("--dataset requires a path value");
+      } else if (option === "--min-auto-match-precision") {
+        minAutoMatchPrecision = readNumber(option, args[++i]);
+      } else if (option === "--min-retrieval-recall-at-k") {
+        minRetrievalRecallAtK = readNumber(option, args[++i]);
+      } else if (option === "--min-delivered-shortlist-recall-at-k") {
+        minDeliveredShortlistRecallAtK = readNumber(option, args[++i]);
+      } else if (option === "--min-auto-match-count") {
+        minAutoMatchCount = readNumber(option, args[++i]);
+        if (!Number.isInteger(minAutoMatchCount) || minAutoMatchCount < 1) {
+          throw new Error("--min-auto-match-count must be a positive integer");
+        }
+      } else {
+        throw new Error(`unknown calibrate run option: ${option}`);
+      }
     }
-    const res = await adapter.calibrateRun({ datasetPath });
+    for (const [flag, value] of [
+      ["--min-auto-match-precision", minAutoMatchPrecision],
+      ["--min-retrieval-recall-at-k", minRetrievalRecallAtK],
+      ["--min-delivered-shortlist-recall-at-k", minDeliveredShortlistRecallAtK],
+    ] as const) {
+      if (value !== undefined && (value < 0 || value > 1)) {
+        throw new Error(`${flag} must be between 0 and 1`);
+      }
+    }
+    const res = await adapter.calibrateRun({
+      datasetPath,
+      minAutoMatchPrecision,
+      minRetrievalRecallAtK,
+      minDeliveredShortlistRecallAtK,
+      minAutoMatchCount,
+    });
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       console.log(`Calibration run complete.`);
