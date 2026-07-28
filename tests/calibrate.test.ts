@@ -184,6 +184,17 @@ describe("decision-policy dataset schema", () => {
     ];
     expect(() => loadDecisionCases(dataset)).toThrow(/case 6.*query/i);
   });
+
+  test("should reject relevant ids that do not exist in the vault", () => {
+    const validIds = minimalValidDataset.flatMap((item) => item.relevant_skill_ids);
+    const dataset = [
+      ...minimalValidDataset,
+      { ...validTuneMatch, relevant_skill_ids: ["missing-skill"] },
+    ];
+    expect(() => loadDecisionCases(dataset, validIds)).toThrow(
+      /case 6.*relevant_skill_ids.*unknown vault skill.*missing-skill/i,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

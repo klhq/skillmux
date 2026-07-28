@@ -113,8 +113,12 @@ function validateDatasetCompleteness(cases: DecisionCase[]): void {
  *     no_match → 0)
  *   - Dataset completeness (both splits, all outcome types in each split)
  */
-export function loadDecisionCases(raw: unknown[]): DecisionCase[] {
+export function loadDecisionCases(
+  raw: unknown[],
+  validSkillIds?: Iterable<string>,
+): DecisionCase[] {
   const parsed: DecisionCase[] = [];
+  const validIds = validSkillIds ? new Set(validSkillIds) : undefined;
 
   for (let i = 0; i < raw.length; i++) {
     const item = raw[i];
@@ -128,7 +132,17 @@ export function loadDecisionCases(raw: unknown[]): DecisionCase[] {
       );
     }
 
-    parsed.push(validateCase(result.data, i));
+    const parsedCase = validateCase(result.data, i);
+    if (validIds) {
+      for (const skillId of parsedCase.relevant_skill_ids) {
+        if (!validIds.has(skillId)) {
+          throw new Error(
+            `Validation error at case ${i}: field "relevant_skill_ids" references unknown vault skill "${skillId}"`,
+          );
+        }
+      }
+    }
+    parsed.push(parsedCase);
   }
 
   validateDatasetCompleteness(parsed);
@@ -139,9 +153,12 @@ export function loadDecisionCases(raw: unknown[]): DecisionCase[] {
  * Read a JSON file from disk and validate it as a decision-policy dataset.
  * Throws if the file cannot be read or the contents fail validation.
  */
-export function loadDecisionCasesFromFile(path: string): DecisionCase[] {
+export function loadDecisionCasesFromFile(
+  path: string,
+  validSkillIds?: Iterable<string>,
+): DecisionCase[] {
   const raw = JSON.parse(readFileSync(path, "utf8")) as unknown[];
-  return loadDecisionCases(raw);
+  return loadDecisionCases(raw, validSkillIds);
 }
 
 // ---------------------------------------------------------------------------
