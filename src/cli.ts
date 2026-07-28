@@ -446,7 +446,7 @@ async function handleCalibrateCommand(
       minAutoMatchCount,
     });
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderTargetBanner(ctx.target);
+      renderCalibrationTarget(ctx.target);
       console.log(`Calibration run complete.`);
       if (res.result) console.log(JSON.stringify(res.result, null, 2));
     });
@@ -456,7 +456,7 @@ async function handleCalibrateCommand(
   if (sub === "list") {
     const res = await adapter.calibrateList();
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderTargetBanner(ctx.target);
+      renderCalibrationTarget(ctx.target);
       renderTable(
         [
           { key: "run_id", header: "RUN_ID" },
@@ -474,7 +474,7 @@ async function handleCalibrateCommand(
     if (!runId) throw new Error("usage: skillmux calibrate show <run_id>");
     const res = await adapter.calibrateShow(runId);
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderTargetBanner(ctx.target);
+      renderCalibrationTarget(ctx.target);
       console.log(JSON.stringify(res, null, 2));
     });
     return;
@@ -485,7 +485,7 @@ async function handleCalibrateCommand(
     if (!runId) throw new Error("usage: skillmux calibrate apply <run_id>");
     const res = await adapter.calibrateApply(runId);
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderTargetBanner(ctx.target);
+      renderCalibrationTarget(ctx.target);
       console.log(`Applied calibration run "${runId}"`);
     });
     return;
@@ -499,6 +499,14 @@ async function handleCalibrateCommand(
   throw new Error(
     "usage: skillmux calibrate generate-dataset [--vault <path>] [--out <file>]",
   );
+}
+
+function renderCalibrationTarget(target: ResolvedTarget): void {
+  if (target.type === "local") {
+    console.log("Target: local");
+  } else {
+    console.log(`Target: remote (${target.name} -> ${target.server})`);
+  }
 }
 
 async function handleCompletionsCommand(shell: string) {

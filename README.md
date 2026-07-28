@@ -14,6 +14,7 @@ Built for agents that lack native skill triggering (Goose recipe workers, openco
 - [Docker Usage](#docker-usage)
 - [Configuration](#configuration) — inference modes, security scanning, installing skills, env vars
 - [CLI & Automation](docs/cli.md) — context management, remote target resolution, policy calibration, JSON envelopes
+- [Policy Calibration](docs/calibration.md) — labelled datasets, certification, apply lifecycle, and reference profile
 - [Benchmarks & Evaluation](#benchmarks--evaluation)
 - [FAQ & Troubleshooting](#faq--troubleshooting)
 - [Guarantees](#guarantees)
@@ -546,7 +547,11 @@ bun run src/cli.ts eval
 # hybrid recall@5:  1.000
 ```
 
-Custom policy calibration can also be performed against domain-specific query logs using `skillmux calibrate` (see [`docs/cli.md`](docs/cli.md#policy-calibration-skillmux-calibrate)).
+Custom policy calibration can also be performed against reviewed,
+domain-specific query datasets using `skillmux calibrate`. See the
+[calibration guide](docs/calibration.md) for the full operator lifecycle and
+the [CLI reference](docs/cli.md#policy-calibration-skillmux-calibrate) for
+command syntax.
 
 ## FAQ & Troubleshooting
 

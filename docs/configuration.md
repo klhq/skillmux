@@ -2,7 +2,10 @@
 
 Skillmux defaults to FTS5 plus local GTE-small semantic retrieval. Most users need no config file.
 
-For detailed CLI command reference, target resolution, policy calibration, and automation envelopes, see [`docs/cli.md`](cli.md).
+For detailed CLI command reference, target resolution, and automation
+envelopes, see [`docs/cli.md`](cli.md). For labelled datasets, threshold
+certification, reference values, and the apply lifecycle, see
+[`docs/calibration.md`](calibration.md).
 
 ## Machine config bootstrap
 
@@ -105,7 +108,13 @@ candidate list returned to the calling LLM after retrieval, reranking, and
 threshold filtering. It does not change retrieval depth or the matched,
 ambiguous, or no-match classification.
 
-Reranker thresholds have no universal default because score distributions are model-specific. When configuring a reranker, provide calibrated `inference.thresholds.match_score`, `inference.thresholds.match_margin`, and `inference.thresholds.candidate_floor`; otherwise configuration is rejected rather than silently applying unsuitable values.
+Reranker thresholds have no universal default because score distributions are
+model-specific. Without `inference.thresholds`, Skillmux still uses the
+reranker to order candidates but keeps outcomes ambiguous rather than
+auto-matching. Use `skillmux calibrate run` to select
+`match_score`, `match_margin`, and `candidate_floor`, then explicitly apply the
+certified run. The [calibration guide](calibration.md) also publishes a
+clearly-scoped BGE reference profile for smoke tests.
 
 ## HTTP server
 

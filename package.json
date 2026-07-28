@@ -24,6 +24,7 @@
     "src",
     "docs/schema.json",
     "docs/configuration.md",
+    "docs/calibration.md",
     "docs/releasing.md",
     "README.md",
     "LICENSE",
