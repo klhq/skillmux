@@ -85,7 +85,7 @@ adapter or model does.
 
 ## Advanced retrieval
 
-Candidate-generation depth is configurable but normally does not need tuning:
+Candidate-generation depth and agent-context delivery are separate controls:
 
 ```toml
 [recall]
@@ -96,7 +96,14 @@ k_vector = 20
 candidate_limit = 5
 ```
 
-The router considers up to 20 candidates from each retrieval lane but returns at most 5 to the calling LLM.
+`recall.k_lexical` and `recall.k_vector` control retrieval depth and cost. The
+reranker receives the fused union from both retrieval lanes. Increasing these
+values can improve retrieval recall, but costs more work.
+
+`thresholds.candidate_limit` controls agent context: it caps the ambiguous
+candidate list returned to the calling LLM after retrieval, reranking, and
+threshold filtering. It does not change retrieval depth or the matched,
+ambiguous, or no-match classification.
 
 Reranker thresholds have no universal default because score distributions are model-specific. When configuring a reranker, provide calibrated `inference.thresholds.match_score`, `inference.thresholds.match_margin`, and `inference.thresholds.candidate_floor`; otherwise configuration is rejected rather than silently applying unsuitable values.
 
