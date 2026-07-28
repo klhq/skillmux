@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { backfillEmbeddings, configure, resolveSkill } from "../src/router-core";
+import {
+  backfillEmbeddings,
+  configure,
+  resolveSkill,
+  retrieveAndRerank,
+} from "../src/router-core";
 import type { Config } from "../src/types";
 
 // Hybrid recall (AC6): FTS5 top-k ∪ cosine top-k. The query shares zero
@@ -69,6 +74,42 @@ afterAll(() => {
 });
 
 describe("hybrid recall (AC6)", () => {
+  test("raw retrieval returns the full reranked shortlist with one reranker call", async () => {
+    let rerankerCalls = 0;
+    configure({
+      config: {
+        ...config,
+        inference: { ...config.inference, thresholds: undefined },
+      },
+      clients: {
+        embed: async (texts) => texts.map(vectorFor),
+        rerank: async (_query, docs) => {
+          rerankerCalls++;
+          return docs.map((_, index) => 0.99 - index * 0.1);
+        },
+      },
+    });
+
+    const raw = await retrieveAndRerank({ query: "quantum flux routing" });
+    expect(raw.retrieval).toBe("reranked");
+    expect(raw.candidates.length).toBeGreaterThan(1);
+    expect(raw.candidates.every((candidate) => candidate.score !== null)).toBe(true);
+    expect(rerankerCalls).toBe(1);
+
+    const resolved = await resolveSkill({ query: "quantum flux routing" });
+    expect(resolved.outcome).toBe("ambiguous");
+    expect(resolved.retrieval).toBe("reranked");
+    expect(rerankerCalls).toBe(2);
+
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => texts.map(vectorFor),
+        rerank: async (_query, docs) => docs.map(() => 0.5),
+      },
+    });
+  });
+
   test("includes a semantically-near skill that lexical recall alone misses", async () => {
     const result = await resolveSkill({ query: "quantum flux routing" });
 

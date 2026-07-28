@@ -351,7 +351,7 @@ candidate_floor = 0.4
     await expect(loadConfig(path)).rejects.toThrow(new RegExp(envName));
   });
 
-  test("rejects a configured reranker without calibrated thresholds", async () => {
+  test("warns but loads a configured reranker without calibrated thresholds", async () => {
     const path = await configFile(`
 [inference]
 mode = "remote"
@@ -366,7 +366,24 @@ adapter = "jina-v1"
 endpoint = "https://rerank.example.com/v1/rerank"
 model = "reranker"
 `);
-    await expect(loadConfig(path)).rejects.toThrow("requires calibrated inference.thresholds");
+    const warningKey = "inference.reranker.without-thresholds";
+    warnedEnv.delete(warningKey);
+    const originalError = console.error;
+    const warnings: string[] = [];
+    console.error = (...args: unknown[]) => warnings.push(args.join(" "));
+    try {
+      const config = await loadConfig(path);
+      expect(config.inference.mode).toBe("remote");
+      if (config.inference.mode !== "remote") throw new Error("expected remote config");
+      expect(config.inference.reranker).toBeDefined();
+      expect(config.inference.thresholds).toBeUndefined();
+      expect(warnings).toEqual([
+        expect.stringContaining("skillmux calibrate run"),
+      ]);
+    } finally {
+      console.error = originalError;
+      warnedEnv.delete(warningKey);
+    }
   });
 });
 

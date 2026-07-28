@@ -395,45 +395,7 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
     return result;
   }
 
-  const clients = getClients();
-
-  const lexical = ftsSearch(db, input.query, config.recall.k_lexical);
-
-  let retrieval: RetrievalCapability = "lexical";
-  let rows = lexical;
-  if (!input.forceLexical) {
-    try {
-      const queryVec = (await clients.embed([input.query]))[0];
-      if (!queryVec) throw new Error("Embedding client returned no query vector.");
-      const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
-      rows = reciprocalRankFusion(lexical, nearest);
-      retrieval = "hybrid";
-    } catch {
-      retrieval = "lexical";
-    }
-  }
-
-  let scores: number[] | null = null;
-  if (clients.rerank && retrieval === "hybrid" && rows.length > 0) {
-    try {
-      scores = await clients.rerank(
-        input.query,
-        rows.map((r) => ({ skill_id: r.skill_id, text: rerankText(r) })),
-      );
-      retrieval = "reranked";
-    } catch {
-      scores = null;
-    }
-  }
-
-  const rankedCandidates: RankedCandidate[] = rows
-    .map((r, i) => ({
-      skill_id: r.skill_id,
-      title: r.title,
-      description: r.description,
-      score: scores?.[i] ?? null,
-    }))
-    .sort((a, b) => scores === null ? 0 : (b.score ?? -Infinity) - (a.score ?? -Infinity));
+  const { retrieval, candidates: rankedCandidates } = await retrieveAndRerank(input);
 
   const decisionThresholds = retrieval === "reranked" && config.inference.mode === "remote"
     ? { candidate_limit: config.thresholds.candidate_limit, ...config.inference.thresholds }
@@ -483,6 +445,63 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
   );
 
   return result;
+}
+
+export interface RetrievalResult {
+  retrieval: Exclude<RetrievalCapability, "exact">;
+  candidates: RankedCandidate[];
+}
+
+/**
+ * Retrieve the full fused candidate set and rerank it once without applying
+ * decision thresholds. Calibration uses this to avoid observing the policy it
+ * is trying to replace.
+ */
+export async function retrieveAndRerank(
+  input: ResolveSkillInput,
+): Promise<RetrievalResult> {
+  const { config, db } = await getEnv();
+  await syncVaultIfNeeded();
+  const clients = getClients();
+  const lexical = ftsSearch(db, input.query, config.recall.k_lexical);
+
+  let retrieval: RetrievalResult["retrieval"] = "lexical";
+  let rows = lexical;
+  if (!input.forceLexical) {
+    try {
+      const queryVec = (await clients.embed([input.query]))[0];
+      if (!queryVec) throw new Error("Embedding client returned no query vector.");
+      const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
+      rows = reciprocalRankFusion(lexical, nearest);
+      retrieval = "hybrid";
+    } catch {
+      retrieval = "lexical";
+    }
+  }
+
+  let scores: number[] | null = null;
+  if (clients.rerank && retrieval === "hybrid" && rows.length > 0) {
+    try {
+      scores = await clients.rerank(
+        input.query,
+        rows.map((r) => ({ skill_id: r.skill_id, text: rerankText(r) })),
+      );
+      retrieval = "reranked";
+    } catch {
+      scores = null;
+    }
+  }
+
+  const candidates = rows
+    .map((r, i) => ({
+      skill_id: r.skill_id,
+      title: r.title,
+      description: r.description,
+      score: scores?.[i] ?? null,
+    }))
+    .sort((a, b) => scores === null ? 0 : (b.score ?? -Infinity) - (a.score ?? -Infinity));
+
+  return { retrieval, candidates };
 }
 
 export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {

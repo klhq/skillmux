@@ -312,6 +312,35 @@ describe("runCalibration — in-memory calibration run", () => {
     expect(result.observations).toHaveLength(cases.length);
   });
 
+  test("accepts pre-ranked observations without reranking them again", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    let observationCalls = 0;
+    let rerankerCalls = 0;
+
+    const result = await runCalibration({
+      cases,
+      getRankedCandidates: async (query) => {
+        observationCalls++;
+        return candidatesByQuery[query]!
+          .map((skill_id) => ({
+            skill_id,
+            score: highConfidenceScores[query]?.[skill_id] ?? 0,
+          }))
+          .sort((a, b) => b.score - a.score);
+      },
+      reranker: async () => {
+        rerankerCalls++;
+        throw new Error("pre-ranked observations must not be reranked");
+      },
+      candidateLimit: 5,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(observationCalls).toBe(cases.length);
+    expect(rerankerCalls).toBe(0);
+    expect(result.observations.some((observation) => observation.ranked.length > 1)).toBe(true);
+  });
+
   test("should return status 'failed_gates' when no threshold combo satisfies both gates", async () => {
     const { runCalibration } = await import("../src/calibrate");
     // All scores are uniformly low — can't get good precision without losing recall
