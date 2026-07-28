@@ -348,6 +348,18 @@ function uniqueSorted(values: number[]): number[] {
   return [...new Set(values)].sort((a, b) => a - b);
 }
 
+/** Smallest representable number greater than value. */
+function nextUp(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  if (Object.is(value, -0)) value = 0;
+  const buffer = new ArrayBuffer(8);
+  const float = new Float64Array(buffer);
+  const bits = new BigUint64Array(buffer);
+  float[0] = value;
+  bits[0] = bits[0]! + (value >= 0 ? 1n : -1n);
+  return float[0]!;
+}
+
 function deriveThresholdCandidates(observations: QueryObservation[]): {
   scoreBreakpoints: number[];
   marginBreakpoints: number[];
@@ -363,7 +375,10 @@ function deriveThresholdCandidates(observations: QueryObservation[]): {
     scores.push(top.score);
     const second = obs.ranked[1];
     margins.push(second ? top.score - second.score : top.score);
-    for (const candidate of obs.ranked.slice(1)) floors.push(candidate.score);
+    // candidate_floor is inclusive, so the policy changes only immediately
+    // above an observed score. Use that transition to make every breakpoint
+    // capable of trimming at least one non-top candidate.
+    for (const candidate of obs.ranked.slice(1)) floors.push(nextUp(candidate.score));
   }
 
   const scoreBreakpoints = uniqueSorted(scores);
@@ -381,7 +396,8 @@ function deriveThresholdCandidates(observations: QueryObservation[]): {
  * Find the threshold triple that:
  *   1. Satisfies Wilson precision, sample-count, coverage, and delivered-recall gates
  *   2. Among those: maximizes auto_match_coverage
- *   3. Ties break on confidence, delivered recall, then deterministic lower thresholds
+ *   3. Ties break on confidence, delivered recall, maximal safe shortlist trimming,
+ *      then deterministic lower match thresholds
  */
 interface CalibrationGates {
   minAutoMatchPrecision: number;
@@ -406,17 +422,25 @@ function betterPolicy(
   if (!best) return true;
   const a = candidate.metrics;
   const b = best.metrics;
-  return (
-    a.auto_match_coverage > b.auto_match_coverage ||
-    (a.auto_match_coverage === b.auto_match_coverage &&
-      (a.auto_match_precision_lower_bound > b.auto_match_precision_lower_bound ||
-        (a.auto_match_precision_lower_bound === b.auto_match_precision_lower_bound &&
-          (a.delivered_shortlist_recall_at_k > b.delivered_shortlist_recall_at_k ||
-            (a.delivered_shortlist_recall_at_k === b.delivered_shortlist_recall_at_k &&
-              (candidate.thresholds.match_score < best.thresholds.match_score ||
-                (candidate.thresholds.match_score === best.thresholds.match_score &&
-                  candidate.thresholds.match_margin < best.thresholds.match_margin)))))))
-  );
+  if (a.auto_match_coverage !== b.auto_match_coverage) {
+    return a.auto_match_coverage > b.auto_match_coverage;
+  }
+  if (a.auto_match_precision_lower_bound !== b.auto_match_precision_lower_bound) {
+    return a.auto_match_precision_lower_bound > b.auto_match_precision_lower_bound;
+  }
+  if (a.delivered_shortlist_recall_at_k !== b.delivered_shortlist_recall_at_k) {
+    return a.delivered_shortlist_recall_at_k > b.delivered_shortlist_recall_at_k;
+  }
+  if (candidate.thresholds.candidate_floor !== best.thresholds.candidate_floor) {
+    return candidate.thresholds.candidate_floor > best.thresholds.candidate_floor;
+  }
+  if (candidate.thresholds.match_score !== best.thresholds.match_score) {
+    return candidate.thresholds.match_score < best.thresholds.match_score;
+  }
+  if (candidate.thresholds.match_margin !== best.thresholds.match_margin) {
+    return candidate.thresholds.match_margin < best.thresholds.match_margin;
+  }
+  return false;
 }
 
 function sampledFloorIndexes(length: number, maxSamples = 32): number[] {
