@@ -51,9 +51,33 @@ Use `skillmux models download` to prefetch models and `skillmux doctor` to verif
 
 ## Remote mode
 
-See [`config.remote.example.toml`](../config.remote.example.toml). Embeddings must implement the OpenAI-compatible `POST /v1/embeddings` API. Optional reranking must implement Infinity's `POST /rerank` API. Credentials are read from the environment variables named by `api_key_env`.
+See [`config.remote.example.toml`](../config.remote.example.toml). Embeddings
+must implement the OpenAI-compatible `POST /v1/embeddings` API. Optional
+reranking uses a versioned wire-protocol adapter and a complete request URL:
+
+```toml
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "https://reranker.example.com/v1/rerank"
+model = "BAAI/bge-reranker-v2-m3"
+```
+
+`jina-v1` sends documents as strings. `bifrost-v1` sends Bifrost document
+objects and requires a Bifrost-style provider-prefixed model name. Skillmux
+does not append `/rerank`, infer the adapter from the URL, or otherwise rewrite
+the endpoint.
+
+For embeddings and rerankers independently, omitting `api_key_env` sends no
+`Authorization` header. If `api_key_env` is configured, the named environment
+variable must be non-empty when configuration is loaded; Skillmux sends it as
+a Bearer token. The variable name may appear in diagnostics, but its value
+never does.
 
 Remote embedding `dimension` is required. Changing the provider, model, or dimension invalidates stored vectors and safely rebuilds them.
+
+Reranker adapter and model form the calibration identity. Moving an unchanged
+deployment to another endpoint does not invalidate calibration; changing the
+adapter or model does.
 
 ## Advanced retrieval
 

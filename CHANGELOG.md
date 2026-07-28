@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ⚠ BREAKING CHANGES
+
+* **inference:** reranker configuration now requires a versioned `adapter` and
+  complete `endpoint`; the removed `provider`, `base_url`, and legacy reranker
+  base-URL environment variables fail with migration guidance.
+
+### Added
+
+* **inference:** add `jina-v1` and `bifrost-v1` reranker wire-protocol adapters
+  with strict indexed-score validation and independent optional Bearer auth.
+
+### Changed
+
+* **doctor:** incomplete or malformed reranker responses now report degraded or
+  unavailable instead of silently filling missing scores with zero.
+
 ## [1.0.1](https://github.com/klhq/skillmux/compare/v1.0.0...v1.0.1) (2026-07-24)
 
 

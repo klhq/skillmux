@@ -407,7 +407,7 @@ No config is required for the battery-included local ONNX mode. See [`config.exa
 ### Inference Modes
 
 - The zero-config default combines SQLite FTS5 with the small `Xenova/gte-small` embedding model and returns an ordered shortlist.
-- Configured OpenAI-compatible embeddings replace the local embedder. An optional Infinity-compatible reranker enables confident automatic matches.
+- Configured OpenAI-compatible embeddings replace the local embedder. An optional versioned reranker protocol adapter enables confident automatic matches without coupling configuration to a server product or URL shape.
 
 Run `skillmux doctor` to verify routing capability. Run `skillmux config show` to inspect effective configuration; it prints credential variable names, never values.
 
@@ -469,8 +469,9 @@ All core settings can be overridden via environment variables (handy for Docker)
 - `EMBED_MODEL` / `SKILLMUX_EMBED_MODEL` — overrides `embedding.model`
 - `EMBED_DIMENSION` / `SKILLMUX_EMBED_DIMENSION` — overrides `embedding.dimension`
 - `EMBED_DEVICE` / `EMBED_DTYPE` — overrides local `inference.embedding.device` / `inference.embedding.dtype`
-- `RERANK_BASE_URL` / `SKILLMUX_RERANK_BASE_URL` — overrides remote `inference.reranker.base_url`
-- `RERANK_MODEL` / `SKILLMUX_RERANK_MODEL` — overrides `rerank.model`
+- `RERANK_ENDPOINT` / `SKILLMUX_RERANK_ENDPOINT` — overrides the complete remote `inference.reranker.endpoint`
+- `RERANK_ADAPTER` / `SKILLMUX_RERANK_ADAPTER` — overrides `inference.reranker.adapter`
+- `RERANK_MODEL` / `SKILLMUX_RERANK_MODEL` — overrides `inference.reranker.model`
 - `SKILLMUX_CONFIG` — path to custom `config.toml` (default `~/.config/skillmux/config.toml`)
 - `SKILLMUX_MODELS_DIR` — path to directory storing downloaded local models (default `~/.cache/skillmux/models`, `/models` inside Docker)
 - `PORT` — HTTP listen port (default `3000`, HTTP transport only)
@@ -482,7 +483,31 @@ All core settings can be overridden via environment variables (handy for Docker)
 - `HTTP_RATE_LIMIT_RPM` / `SKILLMUX_HTTP_RATE_LIMIT_RPM` — overrides `server.rate_limit.requests_per_minute`
 - `HTTP_RATE_LIMIT_TRUST_PROXY` / `SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY` — overrides `server.rate_limit.trust_proxy` (`"true"` to trust `X-Forwarded-For`)
 
-Remote API keys are read from the environment variables named by `inference.embedding.api_key_env` and `inference.reranker.api_key_env`; no secret ever lives in the config file.
+Remote API keys are read independently from the environment variables named by
+`inference.embedding.api_key_env` and `inference.reranker.api_key_env`. Omit
+`api_key_env` for an intentionally unauthenticated endpoint. If it is present,
+the named variable must be non-empty before clients are created and is sent as
+a Bearer token. Secret values never live in the config file or diagnostics.
+
+Rerankers use an exact endpoint plus an explicit adapter. `jina-v1` sends
+string documents; `bifrost-v1` sends Bifrost document objects. Skillmux never
+infers an adapter from the URL and never adds or removes path components.
+
+> **Breaking reranker migration:** replace `provider = "infinity"` with
+> `adapter = "jina-v1"`, and replace `base_url` with the complete `endpoint`.
+> The old client appended `/rerank`. For example,
+> `base_url = "http://host/v1"` becomes
+> `endpoint = "http://host/v1/rerank"`; a bare `http://host` becomes
+> `http://host/rerank`. The removed `RERANK_BASE_URL`,
+> `SKILLMUX_RERANK_BASE_URL`, and `SKILL_ROUTER_RERANK_BASE_URL` variables are
+> startup errors with migration guidance.
+
+Verified reranker contracts:
+
+| Implementation | Tested version | Endpoint | Adapter | Verification |
+|---|---:|---|---|---|
+| Bifrost | 1.6.6 | `/v1/rerank` | `bifrost-v1` | Live end-to-end request and recorded contract fixture, 2026-07-28 |
+| Jina-style contract | fixture | exact configured URL | `jina-v1` | Automated request/response contract suite |
 
 ## Benchmarks & Evaluation
 
