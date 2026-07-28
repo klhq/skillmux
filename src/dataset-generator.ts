@@ -13,14 +13,45 @@ export interface GenerateDatasetOptions {
   queriesPerSplit?: number;
 }
 
-const GENERIC_NO_MATCH_QUERIES = [
-  "what is the weather in Paris today",
-  "recipe for baking sourdough bread at home",
-  "what is the distance from Earth to Mars",
-  "explain quantum entanglement simply",
-  "how do I solve a quadratic equation",
-  "who won the 1998 World Cup",
-];
+const STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is",
+  "it", "of", "on", "or", "the", "this", "to", "use", "with",
+]);
+
+function words(value: string): string[] {
+  return value
+    .toLowerCase()
+    .match(/[a-z0-9]+/g)
+    ?.filter((word) => word.length > 2 && !STOP_WORDS.has(word)) ?? [];
+}
+
+function anchors(skill: VaultSkill): string[] {
+  const preferred = [...skill.aliases.flatMap(words), ...words(skill.title)];
+  const fallback = words(skill.description);
+  return [...new Set([...preferred, ...fallback])].slice(0, 2);
+}
+
+function matchedQuery(skill: VaultSkill, variant: number): string {
+  const [first = "specialized", second = "workflow"] = anchors(skill);
+  const templates = [
+    `I need practical guidance completing an unfamiliar ${first} ${second} task safely`,
+    `Which available workflow can handle my unusual ${first} ${second} problem end to end`,
+    `Please guide me through a difficult unfamiliar ${first} ${second} operation safely`,
+  ];
+  return templates[variant % templates.length]!;
+}
+
+function ambiguousQuery(first: VaultSkill, second: VaultSkill): string {
+  const [firstAnchor = "first"] = anchors(first);
+  const [secondAnchor = "second"] = anchors(second);
+  return `Help with a workflow spanning both ${firstAnchor} and ${secondAnchor} responsibilities`;
+}
+
+function nearMissQuery(first: VaultSkill, second: VaultSkill): string {
+  const [firstAnchor = "one"] = anchors(first);
+  const [secondAnchor = "another"] = anchors(second);
+  return `Explain the theory comparing ${firstAnchor} and ${secondAnchor} without performing either workflow`;
+}
 
 /**
  * Automatically generate a synthetic decision-policy calibration dataset
@@ -30,110 +61,58 @@ export function generateDataset(
   skills: VaultSkill[],
   options: GenerateDatasetOptions = {},
 ): RawDecisionCase[] {
+  if (skills.length < 4) {
+    throw new Error(
+      "Dataset generation requires at least 4 vault skills so tune and test can each contain matched and ambiguous cases without skill leakage",
+    );
+  }
+
   const cases: RawDecisionCase[] = [];
+  const sorted = [...skills].sort((a, b) => a.skill_id.localeCompare(b.skill_id));
+  const splitAt = Math.ceil(sorted.length / 2);
+  const bySplit: Record<DecisionSplit, VaultSkill[]> = {
+    tune: sorted.slice(0, splitAt),
+    test: sorted.slice(splitAt),
+  };
+  const targetPerSplit = Math.max(3, options.queriesPerSplit ?? 10);
 
-  // --- 1. Matched Cases ---
-  for (const skill of skills) {
-    // Primary query from title + description
-    cases.push({
-      query: `how do I ${skill.title.toLowerCase()}: ${skill.description.toLowerCase()}`,
-      split: "tune",
-      expected_outcome: "matched",
-      relevant_skill_ids: [skill.skill_id],
-    });
-
-    // Secondary query from aliases
-    if (skill.aliases.length > 0) {
+  for (const split of ["tune", "test"] as const) {
+    const splitSkills = bySplit[split];
+    for (let i = 0; i < splitSkills.length; i++) {
+      const skill = splitSkills[i]!;
       cases.push({
-        query: `help me with ${skill.aliases[0]}`,
-        split: "test",
-        expected_outcome: "matched",
-        relevant_skill_ids: [skill.skill_id],
-      });
-    } else {
-      cases.push({
-        query: `execute task related to ${skill.title}`,
-        split: "test",
-        expected_outcome: "matched",
-        relevant_skill_ids: [skill.skill_id],
-      });
-    }
-  }
-
-  // --- 2. Ambiguous Cases ---
-  if (skills.length >= 2) {
-    // Pair skills for ambiguous multi-match
-    for (let i = 0; i < skills.length - 1; i += 2) {
-      const s1 = skills[i]!;
-      const s2 = skills[i + 1]!;
-      const split: DecisionSplit = i % 4 === 0 ? "tune" : "test";
-      cases.push({
-        query: `automated task using ${s1.title} and ${s2.title}`,
+        query: matchedQuery(skill, i),
         split,
-        expected_outcome: "ambiguous",
-        relevant_skill_ids: [s1.skill_id, s2.skill_id],
+        expected_outcome: "matched",
+        relevant_skill_ids: [skill.skill_id],
       });
     }
-  } else {
-    // Fallback ambiguous cases if fewer than 2 skills
-    cases.push({
-      query: "automate browser workflow testing",
-      split: "tune",
-      expected_outcome: "ambiguous",
-      relevant_skill_ids: ["mock-e2e", "mock-browser"],
-    });
-    cases.push({
-      query: "extract and fetch clean web text",
-      split: "test",
-      expected_outcome: "ambiguous",
-      relevant_skill_ids: ["mock-fetch", "mock-extract"],
-    });
-  }
 
-  // Ensure both tune and test have ambiguous cases
-  if (!cases.some((c) => c.split === "tune" && c.expected_outcome === "ambiguous")) {
-    const sIds = skills.length >= 2 ? [skills[0]!.skill_id, skills[1]!.skill_id] : ["mock-a", "mock-b"];
+    const first = splitSkills[0]!;
+    const second = splitSkills[1]!;
     cases.push({
-      query: "integrated workflow multi skill query",
-      split: "tune",
+      query: ambiguousQuery(first, second),
+      split,
       expected_outcome: "ambiguous",
-      relevant_skill_ids: sIds,
+      relevant_skill_ids: [first.skill_id, second.skill_id],
     });
-  }
-  if (!cases.some((c) => c.split === "test" && c.expected_outcome === "ambiguous")) {
-    const sIds = skills.length >= 2 ? [skills[0]!.skill_id, skills[1]!.skill_id] : ["mock-a", "mock-b"];
     cases.push({
-      query: "combined operations multi skill query",
-      split: "test",
-      expected_outcome: "ambiguous",
-      relevant_skill_ids: sIds,
-    });
-  }
-
-  // --- 3. No Match Cases ---
-  GENERIC_NO_MATCH_QUERIES.forEach((q, idx) => {
-    cases.push({
-      query: q,
-      split: idx % 2 === 0 ? "tune" : "test",
+      query: nearMissQuery(first, second),
+      split,
       expected_outcome: "no_match",
       relevant_skill_ids: [],
     });
-  });
 
-  // Ensure both splits have at least 1 matched case if skills were empty
-  if (skills.length === 0) {
-    cases.push({
-      query: "run mock container action",
-      split: "tune",
-      expected_outcome: "matched",
-      relevant_skill_ids: ["mock-container"],
-    });
-    cases.push({
-      query: "search mock API docs",
-      split: "test",
-      expected_outcome: "matched",
-      relevant_skill_ids: ["mock-docs"],
-    });
+    for (let i = cases.filter((item) => item.split === split).length; i < targetPerSplit; i++) {
+      const left = splitSkills[i % splitSkills.length]!;
+      const right = splitSkills[(i + 1) % splitSkills.length]!;
+      cases.push({
+        query: i % 2 === 0 ? matchedQuery(left, i) : nearMissQuery(left, right),
+        split,
+        expected_outcome: i % 2 === 0 ? "matched" : "no_match",
+        relevant_skill_ids: i % 2 === 0 ? [left.skill_id] : [],
+      });
+    }
   }
 
   return cases;

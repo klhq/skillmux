@@ -139,7 +139,19 @@ export class LocalAdapter implements TargetAdapter {
   }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     const config = await loadConfig(this.configPath);
     const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
-    const cases = loadDecisionCasesFromFile(datasetFile);
+    const indexDb = openIndex(expandHome(config.state_dir));
+    let indexedSkills: Array<{ skill_id: string; content_sha256: string }>;
+    try {
+      indexedSkills = indexDb
+        .query("SELECT skill_id, content_sha256 FROM skills ORDER BY skill_id")
+        .all() as Array<{ skill_id: string; content_sha256: string }>;
+    } finally {
+      indexDb.close();
+    }
+    const cases = loadDecisionCasesFromFile(
+      datasetFile,
+      indexedSkills.map((skill) => skill.skill_id),
+    );
     const clients = createClients(config);
     configure({ config, clients });
     const result = await runCalibration({
@@ -168,18 +180,9 @@ export class LocalAdapter implements TargetAdapter {
       throw new Error("A configured remote reranker is required to record calibration.");
     }
     const datasetText = await Bun.file(datasetFile).text();
-    const indexDb = openIndex(expandHome(config.state_dir));
-    let corpusFingerprint: string;
-    try {
-      const rows = indexDb
-        .query("SELECT skill_id, content_sha256 FROM skills ORDER BY skill_id")
-        .all();
-      corpusFingerprint =
-        "vault:" +
-        createHash("sha256").update(JSON.stringify(rows)).digest("hex");
-    } finally {
-      indexDb.close();
-    }
+    const corpusFingerprint =
+      "vault:" +
+      createHash("sha256").update(JSON.stringify(indexedSkills)).digest("hex");
     const runId = `run_${crypto.randomUUID()}`;
     const db = openCalibrateDb(expandHome(config.state_dir));
     try {

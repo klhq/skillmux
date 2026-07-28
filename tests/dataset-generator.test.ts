@@ -44,7 +44,7 @@ describe("generateDataset (AC2)", () => {
     expect(raw.length).toBeGreaterThan(0);
 
     // Validate that loadDecisionCases does not throw
-    const cases = loadDecisionCases(raw);
+    const cases = loadDecisionCases(raw, sampleSkills.map((skill) => skill.skill_id));
     expect(cases.length).toBe(raw.length);
   });
 
@@ -82,9 +82,52 @@ describe("generateDataset (AC2)", () => {
     }
   });
 
-  test("should generate dataset even with empty skills array (uses generic fallback queries)", () => {
-    const cases = generateDataset([]);
-    expect(cases.length).toBeGreaterThan(0);
-    expect(() => loadDecisionCases(cases)).not.toThrow();
+  test("keeps every skill in exactly one split", () => {
+    const cases = generateDataset(sampleSkills);
+    const splitsBySkill = new Map<string, Set<string>>();
+    for (const item of cases) {
+      for (const skillId of item.relevant_skill_ids) {
+        const splits = splitsBySkill.get(skillId) ?? new Set<string>();
+        splits.add(item.split);
+        splitsBySkill.set(skillId, splits);
+      }
+    }
+    expect([...splitsBySkill.values()].every((splits) => splits.size === 1)).toBe(true);
+  });
+
+  test("bounds matched-query token overlap with the source skill", () => {
+    const sourceById = new Map(sampleSkills.map((skill) => [
+      skill.skill_id,
+      `${skill.title} ${skill.description} ${skill.aliases.join(" ")}`.toLowerCase(),
+    ]));
+    for (const item of generateDataset(sampleSkills).filter(
+      (candidate) => candidate.expected_outcome === "matched",
+    )) {
+      const queryTokens = new Set(item.query.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+      const sourceTokens = new Set(
+        sourceById.get(item.relevant_skill_ids[0]!)!.match(/[a-z0-9]+/g) ?? [],
+      );
+      const overlap = [...queryTokens].filter((token) => sourceTokens.has(token)).length;
+      expect(overlap / queryTokens.size).toBeLessThanOrEqual(0.35);
+    }
+  });
+
+  test("uses adjacent vault concepts for no-match cases", () => {
+    const sourceTokens = new Set(
+      sampleSkills.flatMap((skill) => [
+        ...skill.title.toLowerCase().match(/[a-z0-9]+/g) ?? [],
+        ...skill.aliases.flatMap((alias) => alias.toLowerCase().match(/[a-z0-9]+/g) ?? []),
+      ]),
+    );
+    for (const item of generateDataset(sampleSkills).filter(
+      (candidate) => candidate.expected_outcome === "no_match",
+    )) {
+      const queryTokens = item.query.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+      expect(queryTokens.some((token) => sourceTokens.has(token))).toBe(true);
+    }
+  });
+
+  test("rejects vaults too small to isolate tune and test skills", () => {
+    expect(() => generateDataset(sampleSkills.slice(0, 3))).toThrow(/at least 4/i);
   });
 });

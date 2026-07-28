@@ -18,12 +18,14 @@ describe("calibrate generate-dataset CLI integration (AC3)", () => {
     dirs.push(tmp);
 
     const vaultDir = join(tmp, "vault");
-    const skillDir = join(vaultDir, "my-skill");
-    mkdirSync(skillDir, { recursive: true });
-    writeFileSync(
-      join(skillDir, "SKILL.md"),
-      "---\nname: My Custom Skill\ndescription: Custom automation workflow.\naliases: [custom-flow]\n---\nBody content",
-    );
+    for (let i = 1; i <= 4; i++) {
+      const skillDir = join(vaultDir, `my-skill-${i}`);
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(
+        join(skillDir, "SKILL.md"),
+        `---\nname: Custom Skill ${i}\ndescription: Specialized automation workflow ${i}.\naliases: [custom-flow-${i}]\n---\nBody content`,
+      );
+    }
 
     const outPath = join(tmp, "out", "dataset.json");
 
@@ -37,7 +39,7 @@ describe("calibrate generate-dataset CLI integration (AC3)", () => {
     const content = JSON.parse(readFileSync(outPath, "utf-8"));
     expect(Array.isArray(content)).toBe(true);
 
-    const cases = loadDecisionCases(content);
+    const cases = loadDecisionCases(content, skills.map((skill) => skill.skill_id));
     expect(cases.length).toBeGreaterThan(0);
   });
 });
