@@ -14,7 +14,7 @@ describe("embedding fingerprint", () => {
         timeout_ms: 2000,
         embedding: {
           provider: "openai",
-          base_url: "https://embed.example.com",
+          endpoint: "https://embed.example.com/v1/embeddings",
           model: "another-1024-model",
           dimension: 1024,
         },
@@ -60,7 +60,7 @@ describe("reranker fingerprint", () => {
         timeout_ms: 2000,
         embedding: {
           provider: "openai",
-          base_url: "https://embed.example.com",
+          endpoint: "https://embed.example.com/v1/embeddings",
           model: "embed",
           dimension: 384,
         },

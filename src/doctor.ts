@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { createClients } from "./clients";
+import { createClients, RemoteInferenceError } from "./clients";
 import { embeddingDimension, expandHome } from "./config";
 import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
 import { readSkillmuxMarker } from "./sync";
@@ -10,6 +10,7 @@ export interface DoctorCheck {
   name: string;
   ok: boolean;
   detail: string;
+  failure_kind?: "configuration" | "availability" | "protocol" | "unexpected";
 }
 
 export interface DoctorReport {
@@ -99,8 +100,13 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
     }
   }
 
+  const inferenceFailure = (error: unknown): Pick<DoctorCheck, "detail" | "failure_kind"> =>
+    error instanceof RemoteInferenceError
+      ? { detail: error.message, failure_kind: error.kind }
+      : { detail: "unexpected inference failure", failure_kind: "unexpected" };
+
+  const clients = createClients(config);
   try {
-    const clients = createClients(config);
     const vectors = await clients.embed(["skill router diagnostic"]);
     const actualDimension = vectors[0]?.length ?? 0;
     checks.push({
@@ -108,14 +114,19 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
       ok: actualDimension === embeddingDimension(config),
       detail: `dimension ${actualDimension}`,
     });
-    if (clients.rerank) {
+  } catch (error) {
+    checks.push({ name: "embedding", ok: false, ...inferenceFailure(error) });
+  }
+
+  if (clients.rerank) {
+    try {
       const scores = await clients.rerank("skill router diagnostic", [
         { skill_id: "doctor", text: "Routes a task to an appropriate skill." },
       ]);
       checks.push({ name: "reranker", ok: scores.length === 1 && Number.isFinite(scores[0]), detail: "one finite score" });
+    } catch (error) {
+      checks.push({ name: "reranker", ok: false, ...inferenceFailure(error) });
     }
-  } catch (error) {
-    checks.push({ name: "inference", ok: false, detail: String(error) });
   }
 
   const inferenceReady = checks.some((check) => check.name === "embedding" && check.ok);

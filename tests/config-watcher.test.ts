@@ -56,7 +56,7 @@ timeout_ms = ${timeoutMs}
 
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 
@@ -138,7 +138,7 @@ describe("ConfigWatcher", () => {
     expect(status.restart_required_keys).toEqual(["inference.embedding.model"]);
   });
 
-  test("reloads reranker endpoint and shared timeout changes", async () => {
+  test("reloads embedding and reranker endpoints plus the shared timeout", async () => {
     const root = mkdtempSync(join(tmpdir(), "skillmux-cw-reranker-"));
     dirs.push(root);
     const tomlPath = join(root, "config.toml");
@@ -152,7 +152,10 @@ describe("ConfigWatcher", () => {
 
     writeToml(
       tomlPath,
-      remoteToml("https://two.example.com/rerank", 3000),
+      remoteToml("https://two.example.com/rerank", 3000).replace(
+        "https://embed.example.com/v1/embeddings",
+        "https://gateway.example.com/custom/embeddings?route=direct",
+      ),
     );
     await waitFor(() => received.length > 0);
     const latest = received.at(-1)!;
@@ -163,6 +166,9 @@ describe("ConfigWatcher", () => {
       expect(latest.inference.timeout_ms).toBe(3000);
       expect(latest.inference.reranker?.endpoint).toBe(
         "https://two.example.com/rerank",
+      );
+      expect(latest.inference.embedding.endpoint).toBe(
+        "https://gateway.example.com/custom/embeddings?route=direct",
       );
     }
   });

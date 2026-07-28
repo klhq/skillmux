@@ -32,7 +32,7 @@ const config: Config = {
     timeout_ms: 200,
     embedding: {
       provider: "openai",
-      base_url: "http://127.0.0.1:9",
+      endpoint: "http://127.0.0.1:9/v1/embeddings",
       model: "microsoft/harrier-oss-v1-0.6b",
       dimension: 3,
     },

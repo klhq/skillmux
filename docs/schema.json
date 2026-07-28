@@ -224,12 +224,16 @@
               "type": "object",
               "properties": {
                 "provider": { "const": "openai" },
-                "base_url": { "type": "string", "format": "uri" },
+                "endpoint": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "Complete HTTP(S) OpenAI-compatible embeddings request URL. Skillmux does not modify its path."
+                },
                 "model": { "type": "string", "minLength": 1 },
                 "dimension": { "type": "integer", "minimum": 1 },
                 "api_key_env": { "type": "string", "minLength": 1 }
               },
-              "required": ["provider", "base_url", "model", "dimension"],
+              "required": ["provider", "endpoint", "model", "dimension"],
               "additionalProperties": false
             },
             "reranker": {

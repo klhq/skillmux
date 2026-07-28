@@ -7,7 +7,7 @@ timeout_ms = 5000
 
 [inference.embedding]
 provider = "openai"
-base_url = "https://embedding.example.com"
+endpoint = "https://embedding.example.com/v1/embeddings"
 model = "your-embedding-model"
 dimension = 1024
 api_key_env = "EMBEDDING_API_KEY"

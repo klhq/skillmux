@@ -371,7 +371,7 @@ docker run -d \
   -v ~/skills:/vault:ro \
   -v skillmux-data:/data \
   -p 3000:3000 \
-  -e EMBED_BASE_URL="http://embeddings-host:8080" \
+  -e EMBED_ENDPOINT="http://embeddings-host:8080/v1/embeddings" \
   ghcr.io/klhq/skillmux:latest-slim
 ```
 
@@ -465,7 +465,7 @@ once. Use `skillmux sync` afterward if the installed skill needs to be pinned in
 All core settings can be overridden via environment variables (handy for Docker):
 - `VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
 - `STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
-- `EMBED_BASE_URL` / `SKILLMUX_EMBED_BASE_URL` — overrides remote `inference.embedding.base_url`
+- `EMBED_ENDPOINT` / `SKILLMUX_EMBED_ENDPOINT` — overrides the complete remote `inference.embedding.endpoint`
 - `EMBED_MODEL` / `SKILLMUX_EMBED_MODEL` — overrides `embedding.model`
 - `EMBED_DIMENSION` / `SKILLMUX_EMBED_DIMENSION` — overrides `embedding.dimension`
 - `EMBED_DEVICE` / `EMBED_DTYPE` — overrides local `inference.embedding.device` / `inference.embedding.dtype`
@@ -492,6 +492,15 @@ a Bearer token. Secret values never live in the config file or diagnostics.
 Rerankers use an exact endpoint plus an explicit adapter. `jina-v1` sends
 string documents; `bifrost-v1` sends Bifrost document objects. Skillmux never
 infers an adapter from the URL and never adds or removes path components.
+
+Embeddings likewise use an exact endpoint and the OpenAI-compatible
+`{ model, input }` contract. Skillmux never adds `/v1/embeddings` or rewrites
+the configured path or query string. Replace the removed `base_url` setting
+with the complete endpoint, for example `base_url = "http://host"` or
+`base_url = "http://host/v1"` becomes
+`endpoint = "http://host/v1/embeddings"`. The removed `EMBED_BASE_URL`,
+`SKILLMUX_EMBED_BASE_URL`, and `SKILL_ROUTER_EMBED_BASE_URL` variables are
+startup errors with migration guidance.
 
 > **Breaking reranker migration:** replace `provider = "infinity"` with
 > `adapter = "jina-v1"`, and replace `base_url` with the complete `endpoint`.

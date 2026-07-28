@@ -2,11 +2,7 @@ import type { Clients, Config, RemoteRerankerConfig } from "./types";
 import { expandHome } from "./config";
 import type { pipeline as createPipeline } from "@huggingface/transformers";
 
-interface EmbeddingResponse {
-  data: { index: number; embedding: number[] }[];
-}
-
-type RemoteErrorKind = "configuration" | "availability" | "protocol";
+export type RemoteErrorKind = "configuration" | "availability" | "protocol";
 
 export class RemoteInferenceError extends Error {
   constructor(
@@ -36,6 +32,95 @@ function authorizationHeaders(
     );
   }
   return { authorization: `Bearer ${apiKey}` };
+}
+
+function httpFailure(surface: string, status: number): RemoteInferenceError {
+  const kind: RemoteErrorKind =
+    status === 401 || status === 403
+      ? "configuration"
+      : status === 408 || status === 429 || status >= 500
+        ? "availability"
+        : "protocol";
+  return new RemoteInferenceError(kind, `${surface} returned HTTP ${status}`);
+}
+
+function finiteFloat32(
+  values: unknown[],
+  error: () => Error,
+): Float32Array {
+  const result = new Float32Array(values.length);
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index];
+    if (typeof value !== "number" || !Number.isFinite(value)) throw error();
+    result[index] = value;
+    if (!Number.isFinite(result[index]!)) throw error();
+  }
+  return result;
+}
+
+function parseEmbeddingVectors(
+  value: unknown,
+  inputCount: number,
+  dimension: number,
+): Float32Array[] {
+  const response = value as { data?: unknown };
+  if (
+    typeof response !== "object" ||
+    response === null ||
+    !Array.isArray(response.data) ||
+    response.data.length !== inputCount
+  ) {
+    throw new RemoteInferenceError(
+      "protocol",
+      "embedding endpoint returned an incomplete data array",
+    );
+  }
+
+  const vectors = new Array<Float32Array>(inputCount);
+  const seen = new Set<number>();
+  for (const value of response.data) {
+    const entry = value as { index?: unknown; embedding?: unknown };
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !Number.isInteger(entry.index) ||
+      (entry.index as number) < 0 ||
+      (entry.index as number) >= inputCount ||
+      seen.has(entry.index as number) ||
+      !Array.isArray(entry.embedding) ||
+      entry.embedding.length !== dimension
+    ) {
+      throw new RemoteInferenceError(
+        "protocol",
+        "embedding endpoint returned invalid indexed vectors",
+      );
+    }
+    seen.add(entry.index as number);
+    vectors[entry.index as number] = finiteFloat32(
+      entry.embedding,
+      () => new RemoteInferenceError("protocol", "embedding endpoint returned invalid vector values"),
+    );
+  }
+  return vectors;
+}
+
+export function parseLocalEmbeddingVectors(
+  value: unknown,
+  inputCount: number,
+  dimension: number,
+): Float32Array[] {
+  if (!Array.isArray(value) || value.length !== inputCount) {
+    throw new Error("Embedding model returned an unexpected batch size.");
+  }
+  return value.map((row) => {
+    if (!Array.isArray(row) || row.length !== dimension) {
+      throw new Error("Embedding model returned unexpected vector dimensions.");
+    }
+    return finiteFloat32(
+      row,
+      () => new Error("Embedding model returned invalid vector values."),
+    );
+  });
 }
 
 function rerankerRequestBody(
@@ -109,7 +194,6 @@ function parseRerankerScores(
 async function fetchRerankerScores(
   reranker: RemoteRerankerConfig,
   timeoutMs: number,
-  headers: Record<string, string>,
   query: string,
   docs: { skill_id: string; text: string }[],
 ): Promise<number[]> {
@@ -119,7 +203,10 @@ async function fetchRerankerScores(
   try {
     response = await fetch(reranker.endpoint, {
       method: "POST",
-      headers: { "content-type": "application/json", ...headers },
+      headers: {
+        "content-type": "application/json",
+        ...authorizationHeaders(reranker.api_key_env, "inference.reranker.api_key_env"),
+      },
       body: JSON.stringify(rerankerRequestBody(reranker, query, docs)),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -131,10 +218,7 @@ async function fetchRerankerScores(
     );
   }
   if (!response.ok) {
-    throw new RemoteInferenceError(
-      "availability",
-      `reranker adapter "${reranker.adapter}" returned HTTP ${response.status}`,
-    );
+    throw httpFailure(`reranker adapter "${reranker.adapter}"`, response.status);
   }
 
   let parsed: unknown;
@@ -184,57 +268,51 @@ async function getLocalEmbedder(config: Config): Promise<FeatureExtractor> {
  * Local ONNX calls run in-process using @huggingface/transformers.
  */
 export function createClients(config: Config): Clients {
-  const remoteAuth =
-    config.inference.mode === "remote"
-      ? {
-          embedding: authorizationHeaders(
-            config.inference.embedding.api_key_env,
-            "inference.embedding.api_key_env",
-          ),
-          reranker: config.inference.reranker
-            ? authorizationHeaders(
-                config.inference.reranker.api_key_env,
-                "inference.reranker.api_key_env",
-              )
-            : {},
-        }
-      : undefined;
   const clients: Clients = {
     async embed(texts: string[]): Promise<Float32Array[]> {
       if (config.inference.mode === "local") {
         const pipe = await getLocalEmbedder(config);
         const output = await pipe(texts, { pooling: "mean", normalize: true });
         const dim = output.dims[1];
-        if (dim === undefined || output.dims.length !== 2 || output.dims[0] !== texts.length) {
+        if (
+          dim === undefined ||
+          output.dims.length !== 2 ||
+          output.dims[0] !== texts.length ||
+          dim !== config.inference.embedding.dimension
+        ) {
           throw new Error(`Embedding model returned unexpected dimensions: ${output.dims.join("x")}`);
         }
-        const result: Float32Array[] = [];
-        for (let i = 0; i < texts.length; i++) {
-          const row = output.slice(i, null).tolist();
-          if (!Array.isArray(row) || row.some((value) => typeof value !== "number")) {
-            throw new Error("Embedding model returned non-numeric values.");
-          }
-          result.push(Float32Array.from(row));
-        }
-        return result;
+        const rows = Array.from({ length: texts.length }, (_, index) =>
+          output.slice(index, null).tolist(),
+        );
+        return parseLocalEmbeddingVectors(rows, texts.length, dim);
       }
 
       const embedding = config.inference.embedding;
-      const cleanBase = embedding.base_url.replace(/\/$/, "");
-      const embedPath = cleanBase.endsWith("/v1") ? "/embeddings" : "/v1/embeddings";
-      const response = await fetch(`${cleanBase}${embedPath}`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...remoteAuth?.embedding,
-        },
-        body: JSON.stringify({ model: embedding.model, input: texts }),
-        signal: AbortSignal.timeout(config.inference.timeout_ms),
-      });
-      if (!response.ok) throw new Error(`embeddings endpoint returned ${response.status}`);
-      const parsed = (await response.json()) as EmbeddingResponse;
-      const byIndex = [...parsed.data].sort((a, b) => a.index - b.index);
-      return byIndex.map((d) => Float32Array.from(d.embedding));
+      let response: Response;
+      try {
+        response = await fetch(embedding.endpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...authorizationHeaders(embedding.api_key_env, "inference.embedding.api_key_env"),
+          },
+          body: JSON.stringify({ model: embedding.model, input: texts }),
+          signal: AbortSignal.timeout(config.inference.timeout_ms),
+        });
+      } catch (error) {
+        if (error instanceof RemoteInferenceError) throw error;
+        throw new RemoteInferenceError("availability", "embedding endpoint request failed");
+      }
+      if (!response.ok) throw httpFailure("embedding endpoint", response.status);
+
+      let parsed: unknown;
+      try {
+        parsed = await response.json();
+      } catch {
+        throw new RemoteInferenceError("protocol", "embedding endpoint returned malformed JSON");
+      }
+      return parseEmbeddingVectors(parsed, texts.length, embedding.dimension);
     },
   };
   if (config.inference.mode === "remote" && config.inference.reranker) {
@@ -245,7 +323,6 @@ export function createClients(config: Config): Clients {
       return fetchRerankerScores(
         reranker,
         inference.timeout_ms,
-        remoteAuth?.reranker ?? {},
         query,
         docs,
       );

@@ -54,7 +54,7 @@ export interface LocalInferenceConfig {
 
 export interface RemoteEmbeddingConfig {
   provider: "openai";
-  base_url: string;
+  endpoint: string;
   model: string;
   dimension: number;
   api_key_env?: string;

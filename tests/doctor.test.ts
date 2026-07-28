@@ -15,6 +15,12 @@ const server = Bun.serve({
         data: body.input.map((_, index) => ({ index, embedding: [0.1, 0.2, 0.3] })),
       });
     }
+    if (url.pathname === "/embedding-forbidden") {
+      return new Response("secret response body", { status: 403 });
+    }
+    if (url.pathname === "/rerank-unavailable") {
+      return new Response("secret response body", { status: 503 });
+    }
     return new Response("not found", { status: 404 });
   },
 });
@@ -35,7 +41,7 @@ function testConfig(overrides: Partial<Config> = {}): Config {
     inference: {
       mode: "remote",
       timeout_ms: 2000,
-      embedding: { provider: "openai", base_url: `http://127.0.0.1:${server.port}`, model: "test-model", dimension: 3 },
+      embedding: { provider: "openai", endpoint: `http://127.0.0.1:${server.port}/v1/embeddings`, model: "test-model", dimension: 3 },
     },
     ...overrides,
   };
@@ -62,6 +68,31 @@ describe("diagnose", () => {
     const report = await diagnose(testConfig({ vault_path: "/definitely/does/not/exist/skillmux-doctor-test" }));
 
     expect(report.capability).toBe("unavailable");
+  });
+
+  test("reports sanitized inference failure kinds without expanding readiness", async () => {
+    const config = testConfig();
+    if (config.inference.mode !== "remote") throw new Error("expected remote");
+    config.inference.embedding.endpoint = `http://127.0.0.1:${server.port}/embedding-forbidden?token=secret`;
+    config.inference.reranker = {
+      adapter: "jina-v1",
+      endpoint: `http://127.0.0.1:${server.port}/rerank-unavailable?token=secret`,
+      model: "reranker",
+    };
+    config.inference.thresholds = { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 };
+
+    const report = await diagnose(config);
+    expect(report.checks.find((check) => check.name === "embedding")).toMatchObject({
+      ok: false,
+      failure_kind: "configuration",
+      detail: expect.stringContaining("403"),
+    });
+    expect(report.checks.find((check) => check.name === "reranker")).toMatchObject({
+      ok: false,
+      failure_kind: "availability",
+      detail: expect.stringContaining("503"),
+    });
+    for (const check of report.checks) expect(String(check.detail)).not.toContain("secret");
   });
 
   test("reports each local_vault_paths entry's existence status", async () => {

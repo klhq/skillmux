@@ -78,7 +78,8 @@ export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
   const hybridRankings: string[][] = [];
   for (const evalCase of cases) {
     const lexical = ftsSearch(db, evalCase.query, config.recall.k_lexical);
-    const vector = (await clients.embed([evalCase.query]))[0]!;
+    const vector = (await clients.embed([evalCase.query]))[0];
+    if (!vector) throw new Error("Embedding client returned no query vector.");
     const semantic = vectorTopK(db, vector, config.recall.k_vector);
     lexicalRankings.push(lexical.map((row) => row.skill_id));
     hybridRankings.push(reciprocalRankFusion<SkillRow>(lexical, semantic).map((row) => row.skill_id));

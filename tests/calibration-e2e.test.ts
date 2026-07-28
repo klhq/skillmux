@@ -110,7 +110,7 @@ timeout_ms = 5000
 
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed-model"
 dimension = 1024
 
