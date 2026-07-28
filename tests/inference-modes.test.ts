@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { embeddingFingerprint, loadConfig } from "../src/config";
+import { embeddingFingerprint, loadConfig, rerankerFingerprint } from "../src/config";
 import { ingestVault, openIndex, skillsNeedingVectors, upsertVector } from "../src/db";
 import type { Config } from "../src/types";
 
@@ -19,8 +19,8 @@ describe("embedding fingerprint", () => {
           dimension: 1024,
         },
         reranker: {
-          provider: "infinity",
-          base_url: "https://rerank.example.com",
+          adapter: "jina-v1",
+          endpoint: "https://rerank.example.com/rerank",
           model: "reranker",
         },
       },
@@ -47,5 +47,48 @@ describe("embedding fingerprint", () => {
     expect(skillsNeedingVectors(db, 3, "local:bundle:model:3")).toHaveLength(0);
     expect(skillsNeedingVectors(db, 3, "remote:openai:model:3")).toHaveLength(1);
     db.close();
+  });
+});
+
+describe("reranker fingerprint", () => {
+  test("tracks adapter and model but excludes endpoint", async () => {
+    const config = await loadConfig("/does/not/exist/config.toml");
+    const remote: Config = {
+      ...config,
+      inference: {
+        mode: "remote",
+        timeout_ms: 2000,
+        embedding: {
+          provider: "openai",
+          base_url: "https://embed.example.com",
+          model: "embed",
+          dimension: 384,
+        },
+        reranker: {
+          adapter: "jina-v1",
+          endpoint: "https://one.example.com/v1/rerank",
+          model: "reranker",
+        },
+        thresholds: {
+          match_score: 0.9,
+          match_margin: 0.2,
+          candidate_floor: 0.4,
+        },
+      },
+    };
+    const fingerprint = rerankerFingerprint(remote);
+    expect(fingerprint).toBe("remote:jina-v1:reranker");
+
+    const moved = structuredClone(remote);
+    if (moved.inference.mode !== "remote" || !moved.inference.reranker) {
+      throw new Error("expected reranker");
+    }
+    moved.inference.reranker.endpoint = "https://two.example.com/rerank";
+    expect(rerankerFingerprint(moved)).toBe(fingerprint);
+    moved.inference.reranker.adapter = "bifrost-v1";
+    expect(rerankerFingerprint(moved)).not.toBe(fingerprint);
+    moved.inference.reranker.adapter = "jina-v1";
+    moved.inference.reranker.model = "new-reranker";
+    expect(rerankerFingerprint(moved)).not.toBe(fingerprint);
   });
 });

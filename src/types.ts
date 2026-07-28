@@ -61,8 +61,8 @@ export interface RemoteEmbeddingConfig {
 }
 
 export interface RemoteRerankerConfig {
-  provider: "infinity";
-  base_url: string;
+  adapter: "jina-v1" | "bifrost-v1";
+  endpoint: string;
   model: string;
   api_key_env?: string;
 }

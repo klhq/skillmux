@@ -60,6 +60,11 @@ export const RELOADABLE_KEYS = [
   "inference.embedding.dtype",
   "inference.embedding.base_url",
   "inference.embedding.api_key_env",
+  "inference.reranker.adapter",
+  "inference.reranker.endpoint",
+  "inference.reranker.model",
+  "inference.reranker.api_key_env",
+  "inference.timeout_ms",
   "server.rate_limit.enabled",
   "server.rate_limit.requests_per_minute",
   "server.rate_limit.trust_proxy",
@@ -148,6 +153,10 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
     "inference.embedding.dtype",
     "inference.embedding.base_url",
     "inference.embedding.api_key_env",
+    "inference.reranker.adapter",
+    "inference.reranker.endpoint",
+    "inference.reranker.model",
+    "inference.reranker.api_key_env",
     "inference.timeout_ms",
     "server.auth_enabled",
     "server.auth_token_env",
@@ -180,6 +189,9 @@ export function isEnvMasked(key: string): boolean {
   if (key === "inference.embedding.dtype" && process.env.EMBED_DTYPE) return true;
   if (key === "inference.embedding.base_url" && (process.env.SKILLMUX_EMBED_BASE_URL || process.env.EMBED_BASE_URL)) return true;
   if (key === "inference.embedding.model" && (process.env.SKILLMUX_EMBED_MODEL || process.env.EMBED_MODEL)) return true;
+  if (key === "inference.reranker.adapter" && (process.env.SKILLMUX_RERANK_ADAPTER || process.env.RERANK_ADAPTER)) return true;
+  if (key === "inference.reranker.endpoint" && (process.env.SKILLMUX_RERANK_ENDPOINT || process.env.RERANK_ENDPOINT)) return true;
+  if (key === "inference.reranker.model" && (process.env.SKILLMUX_RERANK_MODEL || process.env.RERANK_MODEL)) return true;
   if (key === "server.auth_enabled" && process.env.HTTP_AUTH_ENABLED) return true;
   if (key === "server.auth_token_env" && process.env.HTTP_AUTH_TOKEN_ENV) return true;
   if (key === "server.hostname" && process.env.HTTP_HOSTNAME) return true;
@@ -208,6 +220,10 @@ export function validateDottedKey(key: string): void {
     "inference.embedding.dtype",
     "inference.embedding.base_url",
     "inference.embedding.api_key_env",
+    "inference.reranker.adapter",
+    "inference.reranker.endpoint",
+    "inference.reranker.model",
+    "inference.reranker.api_key_env",
     "inference.timeout_ms",
     "server.auth_enabled",
     "server.auth_token_env",

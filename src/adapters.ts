@@ -1,8 +1,9 @@
-import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { applyCalibrationRun, getCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, type CalibrationResult } from "./calibrate";
+import { applyCalibrationRun, getCalibrationRun, insertCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, type CalibrationResult } from "./calibrate";
 import { createClients } from "./clients";
-import { DEFAULT_CONFIG_PATH, expandHome, loadConfig } from "./config";
+import { DEFAULT_CONFIG_PATH, embeddingFingerprint, expandHome, loadConfig, rerankerFingerprint } from "./config";
+import { openIndex } from "./db";
 import { CliError } from "./output";
 import {
   computeHash,
@@ -142,7 +143,45 @@ export class LocalAdapter implements TargetAdapter {
       },
       reranker: clients.rerank,
     });
-    return { result };
+    const fingerprint = rerankerFingerprint(config);
+    if (!fingerprint) {
+      throw new Error("A configured remote reranker is required to record calibration.");
+    }
+    const datasetText = await Bun.file(datasetFile).text();
+    const indexDb = openIndex(expandHome(config.state_dir));
+    let corpusFingerprint: string;
+    try {
+      const rows = indexDb
+        .query("SELECT skill_id, content_sha256 FROM skills ORDER BY skill_id")
+        .all();
+      corpusFingerprint =
+        "vault:" +
+        createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+    } finally {
+      indexDb.close();
+    }
+    const runId = `run_${crypto.randomUUID()}`;
+    const db = openCalibrateDb(expandHome(config.state_dir));
+    try {
+      insertCalibrationRun(db, {
+        run_id: runId,
+        created_at: new Date().toISOString(),
+        status: result.status,
+        reranker_fingerprint: fingerprint,
+        embedding_fingerprint: embeddingFingerprint(config),
+        corpus_fingerprint: corpusFingerprint,
+        dataset_hash: createHash("sha256").update(datasetText).digest("hex"),
+        min_auto_match_precision: 0.99,
+        min_shortlist_recall_at_5: 0.95,
+        selected_thresholds: result.selected_thresholds,
+        tune_metrics: result.tune_metrics,
+        test_metrics: result.test_metrics,
+        observations: result.observations,
+      });
+    } finally {
+      db.close();
+    }
+    return { run_id: runId, result };
   }
 
   async calibrateList(): Promise<any[]> {
@@ -173,7 +212,9 @@ export class LocalAdapter implements TargetAdapter {
     try {
       const run = getCalibrationRun(db, runId);
       if (!run) throw new Error(`Calibration run "${runId}" not found`);
-      await applyCalibrationRun(db, runId, expandHome(this.configPath), {});
+      await applyCalibrationRun(db, runId, expandHome(this.configPath), {
+        currentRerankerFingerprint: rerankerFingerprint(config),
+      });
       return { ok: true, run_id: runId };
     } finally {
       db.close();

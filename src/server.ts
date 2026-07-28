@@ -4,7 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { createClients } from "./clients";
-import { loadConfig, resolveConfigPath } from "./config";
+import { expandHome, loadConfig, rerankerFingerprint, resolveConfigPath } from "./config";
 import { ConfigWatcher, type ReloadStatus } from "./config-watcher";
 import { RuntimeSnapshotManager } from "./snapshot";
 import {
@@ -513,13 +513,16 @@ export async function startServer(opts?: {
                   JSON.stringify({ error: "Calibration run not found" }),
                   { status: 404, headers },
                 );
-              const { DEFAULT_CONFIG_PATH, expandHome } =
-                await import("./config");
+              const active = snapshots.acquire();
+              const currentRerankerFingerprint = rerankerFingerprint(
+                active.snapshot.config,
+              );
+              active.release();
               await applyCalibrationRun(
                 db,
                 runId,
-                expandHome(DEFAULT_CONFIG_PATH),
-                {},
+                expandHome(configPath),
+                { currentRerankerFingerprint },
               );
               return new Response(JSON.stringify({ ok: true, run_id: runId }), {
                 status: 200,

@@ -1,0 +1,8 @@
+{
+  "model": "BAAI/bge-reranker-v2-m3",
+  "query": "route my task",
+  "documents": [
+    "Alpha\nfirst description",
+    "Beta\nsecond description"
+  ]
+}

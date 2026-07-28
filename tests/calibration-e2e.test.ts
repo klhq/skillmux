@@ -115,8 +115,8 @@ model = "embed-model"
 dimension = 1024
 
 [inference.reranker]
-provider = "infinity"
-base_url = "https://rerank.example.com"
+adapter = "jina-v1"
+endpoint = "https://rerank.example.com"
 model = "rerank-model"
 
 [inference.thresholds]

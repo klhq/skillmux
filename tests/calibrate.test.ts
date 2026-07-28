@@ -589,7 +589,7 @@ describe("calibrate apply — gated TOML application", () => {
 
   function makeTomlFile(extra = ""): string {
     const path = join(tmp, `config-${Math.random().toString(36).slice(2)}.toml`);
-    writeFileSync(path, `vault_path = "~/skills"\n\n[inference]\nmode = "remote"\ntimeout_ms = 5000\n\n[inference.embedding]\nprovider = "openai"\nbase_url = "https://embed.example.com"\nmodel = "embed-model"\ndimension = 1024\n\n[inference.reranker]\nprovider = "infinity"\nbase_url = "https://rerank.example.com"\nmodel = "rerank-model"\n\n[inference.thresholds]\nmatch_score = 0.80\nmatch_margin = 0.20\ncandidate_floor = 0.40\n${extra}`);
+    writeFileSync(path, `vault_path = "~/skills"\n\n[inference]\nmode = "remote"\ntimeout_ms = 5000\n\n[inference.embedding]\nprovider = "openai"\nbase_url = "https://embed.example.com"\nmodel = "embed-model"\ndimension = 1024\n\n[inference.reranker]\nadapter = "jina-v1"\nendpoint = "https://rerank.example.com/rerank"\nmodel = "rerank-model"\n\n[inference.thresholds]\nmatch_score = 0.80\nmatch_margin = 0.20\ncandidate_floor = 0.40\n${extra}`);
     return path;
   }
 
@@ -668,4 +668,3 @@ describe("calibrate apply — gated TOML application", () => {
     expect(typeof (caught as ApplyCalibrationError).reason).toBe("string");
   });
 });
-

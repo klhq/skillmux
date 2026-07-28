@@ -54,8 +54,8 @@ const configSchema = z.object({
         api_key_env: z.string().min(1).optional(),
       }).strict(),
       reranker: z.object({
-        provider: z.literal("infinity"),
-        base_url: z.url(),
+        adapter: z.enum(["jina-v1", "bifrost-v1"]),
+        endpoint: z.url(),
         model: z.string().min(1),
         api_key_env: z.string().min(1).optional(),
       }).strict().optional(),
@@ -133,6 +133,12 @@ export function embeddingFingerprint(config: Config): string {
   return `${implementation}:${inference.embedding.model}:${inference.embedding.dimension}`;
 }
 
+export function rerankerFingerprint(config: Config): string | undefined {
+  const inference = config.inference;
+  if (inference.mode !== "remote" || !inference.reranker) return undefined;
+  return `remote:${inference.reranker.adapter}:${inference.reranker.model}`;
+}
+
 export function expandHome(path: string): string {
   return path.startsWith("~") ? join(homedir(), path.slice(1)) : path;
 }
@@ -183,6 +189,18 @@ export function resolveConfigPath(path?: string): string {
 
 export async function loadConfig(path?: string): Promise<Config> {
   migrateLegacyPaths();
+  const removedRerankerEnv = [
+    "SKILLMUX_RERANK_BASE_URL",
+    "SKILL_ROUTER_RERANK_BASE_URL",
+    "RERANK_BASE_URL",
+  ].find((name) => process.env[name] !== undefined);
+  if (removedRerankerEnv) {
+    throw new Error(
+      `${removedRerankerEnv} is no longer supported. Configure ` +
+        "inference.reranker.endpoint with the complete request URL and " +
+        'inference.reranker.adapter (for example, "jina-v1"). The old client appended /rerank.',
+    );
+  }
   const configPath = resolveConfigPath(path);
   const file = Bun.file(expandHome(configPath));
 
@@ -202,6 +220,18 @@ export async function loadConfig(path?: string): Promise<Config> {
     if ("embedding" in parsed || "rerank" in parsed || "remote_timeout_ms" in parsed) {
       throw new Error(
         "Legacy inference config is not supported. Move [embedding], [rerank], and remote_timeout_ms under [inference] using config.remote.example.toml.",
+      );
+    }
+    const rawReranker = isPlainObject(parsed.inference)
+      ? parsed.inference.reranker
+      : undefined;
+    if (
+      isPlainObject(rawReranker) &&
+      ("provider" in rawReranker || "base_url" in rawReranker)
+    ) {
+      throw new Error(
+        "inference.reranker.provider and inference.reranker.base_url are no longer supported. " +
+          "Use adapter and the complete endpoint URL instead; the old client appended /rerank.",
       );
     }
     if (isPlainObject(parsed.inference) && parsed.inference.mode === "remote") {
@@ -258,45 +288,68 @@ export async function loadConfig(path?: string): Promise<Config> {
     if (merged.inference.embedding?.provider !== "openai") {
       throw new Error('Remote inference.embedding.provider must be "openai".');
     }
-    if (merged.inference.reranker && merged.inference.reranker.provider !== "infinity") {
-      throw new Error('Remote inference.reranker.provider must be "infinity".');
-    }
     if (!Number.isInteger(merged.inference.timeout_ms) || merged.inference.timeout_ms < 100) {
       throw new Error("Remote inference.timeout_ms must be an integer of at least 100.");
     }
     if (!merged.inference.embedding?.base_url || !merged.inference.embedding.model || !merged.inference.embedding.dimension) {
       throw new Error("Remote inference requires inference.embedding base_url, model, and dimension.");
     }
-    if (merged.inference.reranker && (!merged.inference.reranker.base_url || !merged.inference.reranker.model)) {
-      throw new Error("Configured inference.reranker requires base_url and model.");
+    if (merged.inference.reranker && (!merged.inference.reranker.endpoint || !merged.inference.reranker.model)) {
+      throw new Error("Configured inference.reranker requires adapter, endpoint, and model.");
     }
     if (merged.inference.reranker && !merged.inference.thresholds) {
       throw new Error("Configured inference.reranker requires calibrated inference.thresholds.");
     }
-    for (const [name, value] of [
-      ["inference.embedding.base_url", merged.inference.embedding.base_url],
-      ...(merged.inference.reranker ? [["inference.reranker.base_url", merged.inference.reranker.base_url] as const] : []),
-    ] as const) {
-      try {
-        const url = new URL(value);
-        if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
-      } catch {
-        throw new Error(`${name} must be an HTTP(S) URL.`);
-      }
-    }
     const embedUrl = getEnv("SKILLMUX_EMBED_BASE_URL", "EMBED_BASE_URL");
     const embedModel = getEnv("SKILLMUX_EMBED_MODEL", "EMBED_MODEL");
     const embedDimStr = getEnv("SKILLMUX_EMBED_DIMENSION", "EMBED_DIMENSION");
-    const rerankUrl = getEnv("SKILLMUX_RERANK_BASE_URL", "RERANK_BASE_URL");
+    const rerankEndpoint = getEnv("SKILLMUX_RERANK_ENDPOINT", "RERANK_ENDPOINT");
+    const rerankAdapter = getEnv("SKILLMUX_RERANK_ADAPTER", "RERANK_ADAPTER");
     const rerankModel = getEnv("SKILLMUX_RERANK_MODEL", "RERANK_MODEL");
     if (embedUrl) merged.inference.embedding.base_url = embedUrl;
     if (embedModel) merged.inference.embedding.model = embedModel;
-    if (rerankUrl && merged.inference.reranker) merged.inference.reranker.base_url = rerankUrl;
+    if (rerankEndpoint && merged.inference.reranker) merged.inference.reranker.endpoint = rerankEndpoint;
+    if (rerankAdapter && merged.inference.reranker) {
+      merged.inference.reranker.adapter = rerankAdapter as "jina-v1" | "bifrost-v1";
+    }
     if (rerankModel && merged.inference.reranker) merged.inference.reranker.model = rerankModel;
     if (embedDimStr) {
       const dimension = Number(embedDimStr);
       if (!Number.isInteger(dimension) || dimension < 1) throw new Error(`Invalid embedding dimension: ${embedDimStr}`);
       merged.inference.embedding.dimension = dimension;
+    }
+    for (const [name, value, exactEndpoint] of [
+      ["inference.embedding.base_url", merged.inference.embedding.base_url, false],
+      ...(merged.inference.reranker
+        ? [["inference.reranker.endpoint", merged.inference.reranker.endpoint, true] as const]
+        : []),
+    ] as const) {
+      try {
+        const url = new URL(value);
+        if (!["http:", "https:"].includes(url.protocol)) throw new Error();
+        if (exactEndpoint && (url.username || url.password || url.hash)) throw new Error();
+      } catch {
+        throw new Error(
+          exactEndpoint
+            ? `${name} must be an absolute HTTP(S) URL without userinfo or a fragment.`
+            : `${name} must be an HTTP(S) URL.`,
+        );
+      }
+    }
+    for (const [name, apiKeyEnv] of [
+      ["inference.embedding.api_key_env", merged.inference.embedding.api_key_env],
+      ...(merged.inference.reranker
+        ? [["inference.reranker.api_key_env", merged.inference.reranker.api_key_env] as const]
+        : []),
+    ] as const) {
+      if (
+        apiKeyEnv !== undefined &&
+        (process.env[apiKeyEnv] === undefined || process.env[apiKeyEnv] === "")
+      ) {
+        throw new Error(
+          `${name} names environment variable "${apiKeyEnv}", but it is unset or empty.`,
+        );
+      }
     }
   } else {
     throw new Error(`Invalid inference.mode: ${(merged.inference as { mode?: unknown }).mode}`);

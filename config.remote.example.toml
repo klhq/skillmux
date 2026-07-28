@@ -13,8 +13,8 @@ dimension = 1024
 api_key_env = "EMBEDDING_API_KEY"
 
 [inference.reranker]
-provider = "infinity"
-base_url = "https://reranker.example.com"
+adapter = "jina-v1"
+endpoint = "https://reranker.example.com/v1/rerank"
 model = "your-reranker-model"
 api_key_env = "RERANKER_API_KEY"
 
