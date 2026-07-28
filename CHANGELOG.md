@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/klhq/skillmux/compare/v1.0.1...v1.1.0) (2026-07-28)
+
+
+### Added
+
+* **calibration:** bind runs to reranker identity ([6ad547a](https://github.com/klhq/skillmux/commit/6ad547a97a6657521fd317d946ab941761fa18b3))
+* **calibration:** certify selected policies ([#86](https://github.com/klhq/skillmux/issues/86)) ([2ced660](https://github.com/klhq/skillmux/commit/2ced660504b7d86dcad94e801944c4e5f2c2d8bd))
+* **calibration:** finish optimizer floor sweep ([#87](https://github.com/klhq/skillmux/issues/87)) ([eed9bc3](https://github.com/klhq/skillmux/commit/eed9bc355f354aa23e6b85d157e9147484457052))
+* **calibration:** honor candidate delivery limit ([#84](https://github.com/klhq/skillmux/issues/84)) ([797d144](https://github.com/klhq/skillmux/commit/797d1443fc0d7b179716f789663220449f5c93d4))
+* **calibration:** make bootstrap reachable ([#85](https://github.com/klhq/skillmux/issues/85)) ([a572d47](https://github.com/klhq/skillmux/commit/a572d47f854e7a2be46504d069d21ccdb346d88c))
+* **config:** reload reranker transport settings ([e15c7af](https://github.com/klhq/skillmux/commit/e15c7afa9dd591f7f838c5747e86d33670afefbf))
+* **config:** require exact embedding endpoints ([3df7584](https://github.com/klhq/skillmux/commit/3df7584749cc3646713d1cb70e6901cc5aab37cc))
+* harden remote embedding clients ([11b2852](https://github.com/klhq/skillmux/commit/11b2852f8c4bf29676da168c01804460570d3061))
+* **inference:** add versioned reranker adapters ([40b85a0](https://github.com/klhq/skillmux/commit/40b85a0b4b9e9877c7eae54477f8a708737a8472))
+* **inference:** add versioned reranker protocol adapters ([#81](https://github.com/klhq/skillmux/issues/81)) ([4e44685](https://github.com/klhq/skillmux/commit/4e446857ed906888034943d4a23877f183596c04))
+* **inference:** harden embedding responses ([f850f8a](https://github.com/klhq/skillmux/commit/f850f8acfd4ab9c78e3b254346b9c2027027a04b))
+
 ## [Unreleased]
 
 ### ⚠ BREAKING CHANGES
