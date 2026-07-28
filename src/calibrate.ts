@@ -470,12 +470,12 @@ function selectThresholds(
       const second = observation.ranked[1];
       const margin = second ? top.score - second.score : top.score;
       const cell = scoreIndexes.get(top.score)! * width + marginIndexes.get(margin)!;
-      autoMatches[cell]++;
+      autoMatches[cell] = autoMatches[cell]! + 1;
       const correct = (
         observation.expected_outcome === "matched" &&
         top.skill_id === observation.relevant_skill_ids[0]
       );
-      if (correct) correctMatches[cell]++;
+      if (correct) correctMatches[cell] = correctMatches[cell]! + 1;
 
       if (observation.expected_outcome !== "no_match") {
         const ambiguousIds = observation.ranked
@@ -487,7 +487,8 @@ function selectThresholds(
         );
         const matchedHit = observation.relevant_skill_ids.includes(top.skill_id);
         if (ambiguousHit) ambiguousDeliveredHits++;
-        deliveredDelta[cell] += Number(matchedHit) - Number(ambiguousHit);
+        deliveredDelta[cell] =
+          deliveredDelta[cell]! + Number(matchedHit) - Number(ambiguousHit);
       }
     }
 
@@ -498,21 +499,21 @@ function selectThresholds(
         const cell = scoreIndex * width + marginIndex;
         if (scoreIndex + 1 < scoreBreakpoints.length) {
           const below = (scoreIndex + 1) * width + marginIndex;
-          autoMatches[cell] += autoMatches[below]!;
-          correctMatches[cell] += correctMatches[below]!;
-          deliveredDelta[cell] += deliveredDelta[below]!;
+          autoMatches[cell] = autoMatches[cell]! + autoMatches[below]!;
+          correctMatches[cell] = correctMatches[cell]! + correctMatches[below]!;
+          deliveredDelta[cell] = deliveredDelta[cell]! + deliveredDelta[below]!;
         }
         if (marginIndex + 1 < width) {
           const right = cell + 1;
-          autoMatches[cell] += autoMatches[right]!;
-          correctMatches[cell] += correctMatches[right]!;
-          deliveredDelta[cell] += deliveredDelta[right]!;
+          autoMatches[cell] = autoMatches[cell]! + autoMatches[right]!;
+          correctMatches[cell] = correctMatches[cell]! + correctMatches[right]!;
+          deliveredDelta[cell] = deliveredDelta[cell]! + deliveredDelta[right]!;
         }
         if (scoreIndex + 1 < scoreBreakpoints.length && marginIndex + 1 < width) {
           const diagonal = (scoreIndex + 1) * width + marginIndex + 1;
-          autoMatches[cell] -= autoMatches[diagonal]!;
-          correctMatches[cell] -= correctMatches[diagonal]!;
-          deliveredDelta[cell] -= deliveredDelta[diagonal]!;
+          autoMatches[cell] = autoMatches[cell]! - autoMatches[diagonal]!;
+          correctMatches[cell] = correctMatches[cell]! - correctMatches[diagonal]!;
+          deliveredDelta[cell] = deliveredDelta[cell]! - deliveredDelta[diagonal]!;
         }
       }
     }
