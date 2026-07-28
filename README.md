@@ -44,10 +44,10 @@ If embeddings are unavailable, the router remains ready with FTS5 lexical retrie
 
 ### Tools
 
-| Tool | Input | Returns |
-|------|-------|---------|
-| `resolve_skill` | `query` | outcome + metadata in `structuredContent`; on match the verbatim body as text content (exactly once on the wire) |
-| `fetch_skill` | `skill_id` | verbatim body, `content_sha256`, supporting-file paths |
+| Tool            | Input      | Returns                                                                                                          |
+| --------------- | ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `resolve_skill` | `query`    | outcome + metadata in `structuredContent`; on match the verbatim body as text content (exactly once on the wire) |
+| `fetch_skill`   | `skill_id` | verbatim body, `content_sha256`, supporting-file paths                                                           |
 
 The full contract lives in [`docs/schema.json`](docs/schema.json) (JSON Schema 2020-12, language-neutral).
 
@@ -131,12 +131,12 @@ Register with your MCP client directly, e.g.:
 
 ```json
 {
-  "mcpServers": {
-    "skillmux": {
-      "command": "skillmux",
-      "args": ["serve"]
+    "mcpServers": {
+        "skillmux": {
+            "command": "skillmux",
+            "args": ["serve"]
+        }
     }
-  }
 }
 ```
 
@@ -167,9 +167,21 @@ curl -sS -X POST http://127.0.0.1:3000/mcp \
 Against the `csv-formatter` skill authored above, that returns a real match — trimmed here for length:
 
 ```json
-{"result":{"structuredContent":{"outcome":"ambiguous","retrieval":"hybrid","candidates":[
-  {"skill_id":"csv-formatter","title":"CSV Formatter","description":"Converts CSV or spreadsheet data..."}
-]}}}
+{
+    "result": {
+        "structuredContent": {
+            "outcome": "ambiguous",
+            "retrieval": "hybrid",
+            "candidates": [
+                {
+                    "skill_id": "csv-formatter",
+                    "title": "CSV Formatter",
+                    "description": "Converts CSV or spreadsheet data..."
+                }
+            ]
+        }
+    }
+}
 ```
 
 `outcome` is `"ambiguous"` here specifically because the vault only has one skill in it — with more skills installed, a clear top match returns `"matched"` with the full `SKILL.md` body inline instead of a candidate list.
@@ -184,7 +196,7 @@ bun run src/cli.ts serve
 
 ## Pinning skills across surfaces
 
-Optional — skip this if `resolve_skill` alone is enough (most setups). Use it once you want a small set of skills loaded *statically* in every agent that reads from a given directory, instead of routed on demand — see [Tiers](#tiers-routed-vs-pinned).
+Optional — skip this if `resolve_skill` alone is enough (most setups). Use it once you want a small set of skills loaded _statically_ in every agent that reads from a given directory, instead of routed on demand — see [Tiers](#tiers-routed-vs-pinned).
 
 Run `skillmux init` with no arguments in a terminal for guided setup. It checks
 the vault, preselects clients with concrete filesystem evidence, asks for core
@@ -350,7 +362,7 @@ The `skillmux` is packaged and distributed as a Docker image in two variants:
 1. **`skillmux:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
 2. **`skillmux:latest-slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
 
-Both tags are multi-architecture manifests for Linux AMD64 and ARM64; Docker selects the correct image automatically. Images are published to both [`ghcr.io/klhq/skillmux`](https://github.com/klhq/skillmux/pkgs/container/skillmux) and [`docker.io/lazyskyline/skillmux`](https://hub.docker.com/r/lazyskyline/skillmux) — either registry works, examples below use GHCR.
+Both tags are multi-architecture manifests for Linux AMD64 and ARM64; Docker selects the correct image automatically. Images are published to both [`ghcr.io/klhq/skillmux`](https://github.com/klhq/skillmux/pkgs/container/skillmux) and [`docker.io/klhq/skillmux`](https://hub.docker.com/r/klhq/skillmux) — either registry works, examples below use GHCR.
 
 ### Running HTTP Server (Docker Default)
 
@@ -376,6 +388,7 @@ docker run -d \
 ```
 
 Connect your MCP client to the HTTP endpoint (e.g. standard Streamable HTTP transport):
+
 - POST messages to `http://localhost:3000/mcp`
 
 #### HTTP server: auth, CORS, rate limiting
@@ -428,12 +441,12 @@ skillmux scan --fail-on high           # exit 1 if any finding is high severity 
 The v1 rule set covers four categories, each attached to the finding as `rule_id` with a fixed
 `severity`:
 
-| `rule_id` | `severity` | Flags |
-|---|---|---|
-| `prompt-injection-phrase` | `high` | Known instruction-override phrases (e.g. "ignore previous instructions") |
-| `invisible-unicode` | `high` | Zero-width/invisible Unicode code points, including hidden tag-character payloads |
-| `secret-pattern` | `high` | Hardcoded-credential-shaped strings (AWS-style keys, PEM blocks, `api_key=`/`token=` assignments) |
-| `suspicious-url` | `medium` | Bare-IP-address URLs, or URLs paired with exfiltration-suggesting text |
+| `rule_id`                 | `severity` | Flags                                                                                             |
+| ------------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| `prompt-injection-phrase` | `high`     | Known instruction-override phrases (e.g. "ignore previous instructions")                          |
+| `invisible-unicode`       | `high`     | Zero-width/invisible Unicode code points, including hidden tag-character payloads                 |
+| `secret-pattern`          | `high`     | Hardcoded-credential-shaped strings (AWS-style keys, PEM blocks, `api_key=`/`token=` assignments) |
+| `suspicious-url`          | `medium`   | Bare-IP-address URLs, or URLs paired with exfiltration-suggesting text                            |
 
 `skillmux scan` is unrelated to the `audit` SQLite table / `skillmux report` — that's query telemetry (what got
 routed where); `skillmux scan` is content security (what's in the vault).
@@ -462,7 +475,9 @@ core/project/routed tier assignment (that's `skillmux sync`'s domain) — it onl
 once. Use `skillmux sync` afterward if the installed skill needs to be pinned into a tier.
 
 ### Environment Variable Overrides
+
 All core settings can be overridden via environment variables (handy for Docker):
+
 - `VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
 - `STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
 - `EMBED_ENDPOINT` / `SKILLMUX_EMBED_ENDPOINT` — overrides the complete remote `inference.embedding.endpoint`
@@ -513,10 +528,10 @@ startup errors with migration guidance.
 
 Verified reranker contracts:
 
-| Implementation | Tested version | Endpoint | Adapter | Verification |
-|---|---:|---|---|---|
-| Bifrost | 1.6.6 | `/v1/rerank` | `bifrost-v1` | Live end-to-end request and recorded contract fixture, 2026-07-28 |
-| Jina-style contract | fixture | exact configured URL | `jina-v1` | Automated request/response contract suite |
+| Implementation      | Tested version | Endpoint             | Adapter      | Verification                                                      |
+| ------------------- | -------------: | -------------------- | ------------ | ----------------------------------------------------------------- |
+| Bifrost             |          1.6.6 | `/v1/rerank`         | `bifrost-v1` | Live end-to-end request and recorded contract fixture, 2026-07-28 |
+| Jina-style contract |        fixture | exact configured URL | `jina-v1`    | Automated request/response contract suite                         |
 
 ## Benchmarks & Evaluation
 
