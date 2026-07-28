@@ -1,0 +1,14 @@
+{
+  "id": "rerank-test",
+  "model": "vllm/BAAI/bge-reranker-v2-m3",
+  "results": [
+    {
+      "index": 1,
+      "relevance_score": 0.6
+    },
+    {
+      "index": 0,
+      "relevance_score": 0.9
+    }
+  ]
+}

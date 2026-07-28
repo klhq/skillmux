@@ -77,7 +77,9 @@ describe("inference configuration", () => {
     if (config.inference.mode === "local") expect(config.inference.models_dir).toBe("/models");
   });
 
-  test("loads an explicit remote OpenAI plus Infinity configuration", async () => {
+  test("loads OpenAI embeddings plus an explicit reranker adapter", async () => {
+    process.env.EMBED_SECRET = "embed-token";
+    process.env.RERANK_SECRET = "rerank-token";
     const path = await configFile(`
 [inference]
 mode = "remote"
@@ -91,8 +93,8 @@ dimension = 768
 api_key_env = "EMBED_SECRET"
 
 [inference.reranker]
-provider = "infinity"
-base_url = "https://rerank.example.com"
+adapter = "jina-v1"
+endpoint = "https://rerank.example.com/v1/rerank"
 model = "example/reranker"
 api_key_env = "RERANK_SECRET"
 
@@ -114,8 +116,8 @@ candidate_floor = 0.41
         api_key_env: "EMBED_SECRET",
       },
       reranker: {
-        provider: "infinity",
-        base_url: "https://rerank.example.com",
+        adapter: "jina-v1",
+        endpoint: "https://rerank.example.com/v1/rerank",
         model: "example/reranker",
         api_key_env: "RERANK_SECRET",
       },
@@ -158,8 +160,8 @@ base_url = "https://old.example.com"
 model = "old/embed"
 dimension = 768
 [inference.reranker]
-provider = "infinity"
-base_url = "https://old-rerank.example.com"
+adapter = "jina-v1"
+endpoint = "https://old-rerank.example.com/rerank"
 model = "old/reranker"
 [inference.thresholds]
 match_score = 0.9
@@ -169,6 +171,9 @@ candidate_floor = 0.4
     process.env.SKILLMUX_EMBED_BASE_URL = "https://new.example.com";
     process.env.SKILLMUX_EMBED_MODEL = "new/embed";
     process.env.SKILLMUX_EMBED_DIMENSION = "1024";
+    process.env.SKILLMUX_RERANK_ENDPOINT = "https://new-rerank.example.com/v1/rerank";
+    process.env.SKILLMUX_RERANK_ADAPTER = "bifrost-v1";
+    process.env.SKILLMUX_RERANK_MODEL = "vllm/new-reranker";
     config = await loadConfig(path);
     expect(config.inference.mode).toBe("remote");
     if (config.inference.mode === "remote") {
@@ -177,7 +182,141 @@ candidate_floor = 0.4
         model: "new/embed",
         dimension: 1024,
       });
+      expect(config.inference.reranker).toMatchObject({
+        adapter: "bifrost-v1",
+        endpoint: "https://new-rerank.example.com/v1/rerank",
+        model: "vllm/new-reranker",
+      });
     }
+  });
+
+  test("does not create a reranker from environment overrides", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+`);
+    process.env.SKILLMUX_RERANK_ENDPOINT = "https://rerank.example.com/v1/rerank";
+    process.env.SKILLMUX_RERANK_ADAPTER = "jina-v1";
+    process.env.SKILLMUX_RERANK_MODEL = "reranker";
+
+    const config = await loadConfig(path);
+    expect(config.inference.mode).toBe("remote");
+    if (config.inference.mode === "remote") {
+      expect(config.inference.reranker).toBeUndefined();
+    }
+  });
+
+  test("rejects an unknown adapter supplied by environment", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "https://rerank.example.com/v1/rerank"
+model = "reranker"
+[inference.thresholds]
+match_score = 0.9
+match_margin = 0.2
+candidate_floor = 0.4
+`);
+    process.env.SKILLMUX_RERANK_ADAPTER = "unknown-v1";
+    await expect(loadConfig(path)).rejects.toThrow();
+  });
+
+  test("rejects removed reranker TOML fields with migration guidance", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+[inference.reranker]
+provider = "infinity"
+base_url = "https://rerank.example.com/v1"
+model = "reranker"
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/complete endpoint URL.*appended \/rerank/i);
+  });
+
+  test.each([
+    "SKILLMUX_RERANK_BASE_URL",
+    "SKILL_ROUTER_RERANK_BASE_URL",
+    "RERANK_BASE_URL",
+  ])("rejects removed environment variable %s", async (name) => {
+    process.env[name] = "https://rerank.example.com/v1";
+    await expect(loadConfig("/does/not/exist/config.toml")).rejects.toThrow(
+      new RegExp(name),
+    );
+  });
+
+  test.each([
+    "ftp://rerank.example.com/v1/rerank",
+    "https://user:password@rerank.example.com/v1/rerank",
+    "https://rerank.example.com/v1/rerank#fragment",
+  ])("rejects unsafe reranker endpoint %s", async (endpoint) => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "${endpoint}"
+model = "reranker"
+[inference.thresholds]
+match_score = 0.9
+match_margin = 0.2
+candidate_floor = 0.4
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/without userinfo or a fragment/);
+  });
+
+  test.each([
+    ["EMBED_SECRET", "inference.embedding.api_key_env"],
+    ["RERANK_SECRET", "inference.reranker.api_key_env"],
+  ])("rejects unset or empty named credential %s", async (envName, configKey) => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+${configKey === "inference.embedding.api_key_env" ? `api_key_env = "${envName}"` : ""}
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "https://rerank.example.com/v1/rerank"
+model = "reranker"
+${configKey === "inference.reranker.api_key_env" ? `api_key_env = "${envName}"` : ""}
+[inference.thresholds]
+match_score = 0.9
+match_margin = 0.2
+candidate_floor = 0.4
+`);
+    await expect(loadConfig(path)).rejects.toThrow(new RegExp(envName));
+    process.env[envName] = "";
+    await expect(loadConfig(path)).rejects.toThrow(new RegExp(envName));
   });
 
   test("rejects a configured reranker without calibrated thresholds", async () => {
@@ -191,8 +330,8 @@ base_url = "https://embed.example.com"
 model = "embed"
 dimension = 384
 [inference.reranker]
-provider = "infinity"
-base_url = "https://rerank.example.com"
+adapter = "jina-v1"
+endpoint = "https://rerank.example.com/v1/rerank"
 model = "reranker"
 `);
     await expect(loadConfig(path)).rejects.toThrow("requires calibrated inference.thresholds");
