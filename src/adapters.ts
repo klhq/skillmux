@@ -424,41 +424,30 @@ export class RemoteAdapter implements TargetAdapter {
     minDeliveredShortlistRecallAtK?: number;
     minAutoMatchCount?: number;
   }): Promise<{ run_id?: string; result?: CalibrationResult }> {
-    const { status, data } = await this.fetchJson("/admin/v1/calibrations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        dataset_path: opts?.datasetPath,
-        min_auto_match_precision: opts?.minAutoMatchPrecision,
-        min_retrieval_recall_at_k: opts?.minRetrievalRecallAtK,
-        min_delivered_shortlist_recall_at_k: opts?.minDeliveredShortlistRecallAtK,
-        min_auto_match_count: opts?.minAutoMatchCount,
-      }),
-    });
-    if (status !== 202) {
-      throw new Error(`Remote calibration start failed (${status}): ${data?.message || data}`);
-    }
-    return data;
+    void opts;
+    throw this.remoteCalibrationNotImplemented();
   }
 
   async calibrateList(): Promise<any[]> {
-    const { status, data } = await this.fetchJson("/admin/v1/calibrations");
-    if (status !== 200) throw new Error(`Remote calibration list failed (${status}): ${data?.message || data}`);
-    return data;
+    throw this.remoteCalibrationNotImplemented();
   }
 
   async calibrateShow(runId: string): Promise<any> {
-    const { status, data } = await this.fetchJson(`/admin/v1/calibrations/${runId}`);
-    if (status !== 200) throw new Error(`Remote calibration show failed (${status}): ${data?.message || data}`);
-    return data;
+    void runId;
+    throw this.remoteCalibrationNotImplemented();
   }
 
   async calibrateApply(runId: string): Promise<any> {
-    const { status, data } = await this.fetchJson(`/admin/v1/calibrations/${runId}/apply`, {
-      method: "POST",
-    });
-    if (status !== 200) throw new Error(`Remote calibration apply failed (${status}): ${data?.message || data}`);
-    return data;
+    void runId;
+    throw this.remoteCalibrationNotImplemented();
+  }
+
+  private remoteCalibrationNotImplemented(): CliError {
+    return new CliError(
+      `Remote calibration is not implemented for target ${this.serverUrl}; ` +
+        "run `skillmux calibrate` against a local target.",
+      2,
+    );
   }
 }
 

@@ -79,7 +79,34 @@ describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
     const caps = await resOk.json();
     expect(caps.config_read).toBe(true);
     expect(caps.config_write).toBe(true);
-    expect(caps.calibration).toBe(true);
+    expect(caps.calibration).toBe(false);
+  });
+
+  it("reports remote calibration as not implemented without fabricating a run id", async () => {
+    const config = await getTestConfig(true);
+    serverHandle = await startServer({ transport: "http", port: 0, config });
+    const baseUrl = `http://127.0.0.1:${serverHandle.port}`;
+    const headers = {
+      Authorization: `Bearer ${adminToken}`,
+      "Content-Type": "application/json",
+    };
+
+    for (const request of [
+      { path: "/admin/v1/calibrations", method: "GET" },
+      { path: "/admin/v1/calibrations", method: "POST" },
+      { path: "/admin/v1/calibrations/run_example", method: "GET" },
+      { path: "/admin/v1/calibrations/run_example/apply", method: "POST" },
+    ]) {
+      const res = await fetch(`${baseUrl}${request.path}`, {
+        method: request.method,
+        headers,
+      });
+      expect(res.status).toBe(501);
+      const body = await res.json();
+      expect(body.error).toBe("not_implemented");
+      expect(body.run_id).toBeUndefined();
+      expect(JSON.stringify(body)).not.toContain("observations");
+    }
   });
 
   it("serves GET /admin/v1/config with ETag and sources (AC8)", async () => {

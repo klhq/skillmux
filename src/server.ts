@@ -4,7 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { createClients } from "./clients";
-import { expandHome, loadConfig, rerankerFingerprint, resolveConfigPath } from "./config";
+import { loadConfig, resolveConfigPath } from "./config";
 import { ConfigWatcher, type ReloadStatus } from "./config-watcher";
 import { RuntimeSnapshotManager } from "./snapshot";
 import {
@@ -28,11 +28,6 @@ import {
   RELOADABLE_KEYS,
   RESTART_REQUIRED_KEYS,
 } from "./config-service";
-import {
-  applyCalibrationRun,
-  getCalibrationRun,
-  listCalibrationRuns,
-} from "./calibrate";
 
 export const metricsRegistry = new MetricsRegistry();
 export const readinessState = new ReadinessState();
@@ -381,7 +376,7 @@ export async function startServer(opts?: {
               JSON.stringify({
                 config_read: true,
                 config_write: !isExternallyManaged,
-                calibration: true,
+                calibration: false,
                 persistence: isExternallyManaged
                   ? "externally_managed"
                   : "writable",
@@ -465,70 +460,15 @@ export async function startServer(opts?: {
           }
 
           if (url.pathname.startsWith("/admin/v1/calibrations")) {
-            const { db } = await getRuntime();
-            if (
-              req.method === "GET" &&
-              url.pathname === "/admin/v1/calibrations"
-            ) {
-              const runs = listCalibrationRuns(db);
-              return new Response(JSON.stringify(runs), {
-                status: 200,
-                headers,
-              });
-            }
-            const runIdMatch = url.pathname.match(
-              /^\/admin\/v1\/calibrations\/([^\/]+)$/,
+            return new Response(
+              JSON.stringify({
+                error: "not_implemented",
+                message:
+                  "Remote calibration is not implemented in this release. " +
+                  "Run `skillmux calibrate` against a local target.",
+              }),
+              { status: 501, headers },
             );
-            if (req.method === "GET" && runIdMatch && runIdMatch[1]) {
-              const runId = runIdMatch[1];
-              const run = getCalibrationRun(db, runId);
-              if (!run)
-                return new Response(
-                  JSON.stringify({ error: "Calibration run not found" }),
-                  { status: 404, headers },
-                );
-              return new Response(JSON.stringify(run), {
-                status: 200,
-                headers,
-              });
-            }
-            if (
-              req.method === "POST" &&
-              url.pathname === "/admin/v1/calibrations"
-            ) {
-              const runId = "run_" + Math.random().toString(36).slice(2, 10);
-              return new Response(
-                JSON.stringify({ run_id: runId, status: "running" }),
-                { status: 202, headers },
-              );
-            }
-            const applyMatch = url.pathname.match(
-              /^\/admin\/v1\/calibrations\/([^\/]+)\/apply$/,
-            );
-            if (req.method === "POST" && applyMatch && applyMatch[1]) {
-              const runId = applyMatch[1];
-              const run = getCalibrationRun(db, runId);
-              if (!run)
-                return new Response(
-                  JSON.stringify({ error: "Calibration run not found" }),
-                  { status: 404, headers },
-                );
-              const active = snapshots.acquire();
-              const currentRerankerFingerprint = rerankerFingerprint(
-                active.snapshot.config,
-              );
-              active.release();
-              await applyCalibrationRun(
-                db,
-                runId,
-                expandHome(configPath),
-                { currentRerankerFingerprint },
-              );
-              return new Response(JSON.stringify({ ok: true, run_id: runId }), {
-                status: 200,
-                headers,
-              });
-            }
           }
 
           return new Response("Not Found", { status: 404, headers });

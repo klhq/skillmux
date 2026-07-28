@@ -244,6 +244,12 @@ skillmux skill which csv-formatter
 ## Policy Calibration (`skillmux calibrate`)
 
 Calibrate decision thresholds (`match_score`, `match_margin`, `candidate_floor`) against synthetic or labeled query datasets.
+Calibration is local-only in this release. Remote targets advertise the
+capability as unavailable and return `not_implemented`; a local dataset path is
+never uploaded or represented as remotely executed. See
+[`docs/calibration.md`](calibration.md) for dataset responsibilities,
+certification gates, run evidence, reference values, and the complete operator
+lifecycle.
 
 ```sh
 # Run calibration on a dataset
@@ -281,9 +287,9 @@ Requests require `Authorization: Bearer <token>` where `<token>` matches the env
 | `/admin/v1/capabilities` | `GET` | Advertises server features (`config_read`, `config_write`, `calibration`, `persistence`) |
 | `/admin/v1/config` | `GET` | Returns desired/effective config, sources, and `ETag` revision hash |
 | `/admin/v1/config` | `PATCH` | Applies dotted-key updates; requires matching `If-Match` header |
-| `/admin/v1/calibrations` | `GET`, `POST` | List or start server-side calibration runs |
-| `/admin/v1/calibrations/{run_id}` | `GET` | Inspect specific calibration run details |
-| `/admin/v1/calibrations/{run_id}/apply` | `POST` | Apply calibrated thresholds to remote server configuration |
+| `/admin/v1/calibrations` | `GET`, `POST` | Returns `501 not_implemented` (calibration is local-only) |
+| `/admin/v1/calibrations/{run_id}` | `GET` | Returns `501 not_implemented`; raw evaluation queries are not exposed |
+| `/admin/v1/calibrations/{run_id}/apply` | `POST` | Returns `501 not_implemented` |
 
 ---
 
