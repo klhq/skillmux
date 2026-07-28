@@ -87,7 +87,7 @@ timeout_ms = 5000
 
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "example/embed"
 dimension = 768
 api_key_env = "EMBED_SECRET"
@@ -110,7 +110,7 @@ candidate_floor = 0.41
       timeout_ms: 5000,
       embedding: {
         provider: "openai",
-        base_url: "https://embed.example.com",
+        endpoint: "https://embed.example.com/v1/embeddings",
         model: "example/embed",
         dimension: 768,
         api_key_env: "EMBED_SECRET",
@@ -156,7 +156,7 @@ mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://old.example.com"
+endpoint = "https://old.example.com/v1/embeddings"
 model = "old/embed"
 dimension = 768
 [inference.reranker]
@@ -168,7 +168,7 @@ match_score = 0.9
 match_margin = 0.2
 candidate_floor = 0.4
 `);
-    process.env.SKILLMUX_EMBED_BASE_URL = "https://new.example.com";
+    process.env.SKILLMUX_EMBED_ENDPOINT = "https://new.example.com/v1/embeddings";
     process.env.SKILLMUX_EMBED_MODEL = "new/embed";
     process.env.SKILLMUX_EMBED_DIMENSION = "1024";
     process.env.SKILLMUX_RERANK_ENDPOINT = "https://new-rerank.example.com/v1/rerank";
@@ -178,7 +178,7 @@ candidate_floor = 0.4
     expect(config.inference.mode).toBe("remote");
     if (config.inference.mode === "remote") {
       expect(config.inference.embedding).toMatchObject({
-        base_url: "https://new.example.com",
+        endpoint: "https://new.example.com/v1/embeddings",
         model: "new/embed",
         dimension: 1024,
       });
@@ -197,7 +197,7 @@ mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 `);
@@ -219,7 +219,7 @@ mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 [inference.reranker]
@@ -242,7 +242,7 @@ mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 [inference.reranker]
@@ -251,6 +251,20 @@ base_url = "https://rerank.example.com/v1"
 model = "reranker"
 `);
     await expect(loadConfig(path)).rejects.toThrow(/complete endpoint URL.*appended \/rerank/i);
+  });
+
+  test("rejects removed embedding base_url TOML with targeted migration guidance", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/inference\.embedding\.endpoint.*complete/i);
   });
 
   test.each([
@@ -275,7 +289,7 @@ mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 [inference.reranker]
@@ -291,6 +305,24 @@ candidate_floor = 0.4
   });
 
   test.each([
+    "ftp://embed.example.com/v1/embeddings",
+    "https://user:password@embed.example.com/v1/embeddings",
+    "https://embed.example.com/v1/embeddings#fragment",
+  ])("rejects unsafe embedding endpoint %s", async (endpoint) => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+endpoint = "${endpoint}"
+model = "embed"
+dimension = 384
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/without userinfo or a fragment/);
+  });
+
+  test.each([
     ["EMBED_SECRET", "inference.embedding.api_key_env"],
     ["RERANK_SECRET", "inference.reranker.api_key_env"],
   ])("rejects unset or empty named credential %s", async (envName, configKey) => {
@@ -300,7 +332,7 @@ mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 ${configKey === "inference.embedding.api_key_env" ? `api_key_env = "${envName}"` : ""}
@@ -326,7 +358,7 @@ mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 [inference.reranker]
@@ -472,20 +504,18 @@ describe("Shim 2: legacy environment variable fallbacks", () => {
     expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_MODELS_DIR is deprecated"))).toBe(true);
   });
 
-  test("SKILL_ROUTER_EMBED_BASE_URL via 3-tier getEnv works with deprecation warning", async () => {
+  test("removed embedding base-url environment variables provide targeted migration guidance", async () => {
     const path = await configFile(`
 [inference]
 mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://default.example.com"
+endpoint = "https://default.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 `);
     process.env.SKILL_ROUTER_EMBED_BASE_URL = "https://legacy-embed.example.com";
-    const config = await loadConfig(path);
-    expect(config.inference.mode === "remote" ? config.inference.embedding.base_url : "").toBe("https://legacy-embed.example.com");
-    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_EMBED_BASE_URL is deprecated"))).toBe(true);
+    await expect(loadConfig(path)).rejects.toThrow(/inference\.embedding\.endpoint/);
   });
 });

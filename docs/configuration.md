@@ -52,7 +52,9 @@ Use `skillmux models download` to prefetch models and `skillmux doctor` to verif
 ## Remote mode
 
 See [`config.remote.example.toml`](../config.remote.example.toml). Embeddings
-must implement the OpenAI-compatible `POST /v1/embeddings` API. Optional
+must implement the OpenAI-compatible `{ model, input }` contract. Configure the
+complete request URL as `inference.embedding.endpoint`; Skillmux does not append
+or rewrite its path or query string. Optional
 reranking uses a versioned wire-protocol adapter and a complete request URL:
 
 ```toml
@@ -73,7 +75,9 @@ variable must be non-empty when configuration is loaded; Skillmux sends it as
 a Bearer token. The variable name may appear in diagnostics, but its value
 never does.
 
-Remote embedding `dimension` is required. Changing the provider, model, or dimension invalidates stored vectors and safely rebuilds them.
+Remote embedding `dimension` is required. `endpoint`, `api_key_env`, and the
+shared timeout reload live; model, dimension, device, and dtype require a
+restart. Changing only endpoint does not invalidate stored vectors.
 
 Reranker adapter and model form the calibration identity. Moving an unchanged
 deployment to another endpoint does not invalidate calibration; changing the

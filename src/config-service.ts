@@ -44,6 +44,10 @@ export const RESTART_REQUIRED_KEYS = [
   "inference.bundle",
   "inference.models_dir",
   "state_dir",
+  "inference.embedding.model",
+  "inference.embedding.dimension",
+  "inference.embedding.device",
+  "inference.embedding.dtype",
 ];
 
 export const RELOADABLE_KEYS = [
@@ -54,11 +58,7 @@ export const RELOADABLE_KEYS = [
   "thresholds.match_score",
   "thresholds.match_margin",
   "thresholds.candidate_floor",
-  "inference.embedding.model",
-  "inference.embedding.dimension",
-  "inference.embedding.device",
-  "inference.embedding.dtype",
-  "inference.embedding.base_url",
+  "inference.embedding.endpoint",
   "inference.embedding.api_key_env",
   "inference.reranker.adapter",
   "inference.reranker.endpoint",
@@ -151,7 +151,7 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
     "inference.embedding.dimension",
     "inference.embedding.device",
     "inference.embedding.dtype",
-    "inference.embedding.base_url",
+    "inference.embedding.endpoint",
     "inference.embedding.api_key_env",
     "inference.reranker.adapter",
     "inference.reranker.endpoint",
@@ -187,8 +187,9 @@ export function isEnvMasked(key: string): boolean {
   if (key === "inference.models_dir" && (process.env.SKILLMUX_MODELS_DIR || process.env.SKILL_ROUTER_MODELS_DIR)) return true;
   if (key === "inference.embedding.device" && process.env.EMBED_DEVICE) return true;
   if (key === "inference.embedding.dtype" && process.env.EMBED_DTYPE) return true;
-  if (key === "inference.embedding.base_url" && (process.env.SKILLMUX_EMBED_BASE_URL || process.env.EMBED_BASE_URL)) return true;
+  if (key === "inference.embedding.endpoint" && (process.env.SKILLMUX_EMBED_ENDPOINT || process.env.EMBED_ENDPOINT)) return true;
   if (key === "inference.embedding.model" && (process.env.SKILLMUX_EMBED_MODEL || process.env.EMBED_MODEL)) return true;
+  if (key === "inference.embedding.dimension" && (process.env.SKILLMUX_EMBED_DIMENSION || process.env.EMBED_DIMENSION)) return true;
   if (key === "inference.reranker.adapter" && (process.env.SKILLMUX_RERANK_ADAPTER || process.env.RERANK_ADAPTER)) return true;
   if (key === "inference.reranker.endpoint" && (process.env.SKILLMUX_RERANK_ENDPOINT || process.env.RERANK_ENDPOINT)) return true;
   if (key === "inference.reranker.model" && (process.env.SKILLMUX_RERANK_MODEL || process.env.RERANK_MODEL)) return true;
@@ -218,7 +219,7 @@ export function validateDottedKey(key: string): void {
     "inference.embedding.dimension",
     "inference.embedding.device",
     "inference.embedding.dtype",
-    "inference.embedding.base_url",
+    "inference.embedding.endpoint",
     "inference.embedding.api_key_env",
     "inference.reranker.adapter",
     "inference.reranker.endpoint",

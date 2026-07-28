@@ -7,6 +7,7 @@ import {
   getLocalConfigStatus,
   isEnvMasked,
   RELOADABLE_KEYS,
+  RESTART_REQUIRED_KEYS,
   setDottedKey,
   validateDottedKey,
   type ConfigSourceMap,
@@ -98,7 +99,7 @@ describe("Config Service (AC4, AC5, AC6)", () => {
     expect(status.desired_source_hash.length).toBeGreaterThan(0);
   });
 
-  it("enumerates reranker sources, environment masks, and reloadable keys", async () => {
+  it("enumerates inference sources, environment masks, and reloadable keys", async () => {
     writeFileSync(
       CONFIG_FILE,
       `[inference]
@@ -106,7 +107,7 @@ mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
 provider = "openai"
-base_url = "https://embed.example.com"
+endpoint = "https://embed.example.com/v1/embeddings"
 model = "embed"
 dimension = 384
 [inference.reranker]
@@ -124,6 +125,8 @@ candidate_floor = 0.4
       "https://gateway.example.com/rerank";
     process.env.SKILLMUX_RERANK_ADAPTER = "bifrost-v1";
     process.env.SKILLMUX_RERANK_MODEL = "vllm/reranker";
+    process.env.SKILLMUX_EMBED_ENDPOINT = "https://gateway.example.com/v1/embeddings";
+    process.env.SKILLMUX_EMBED_DIMENSION = "512";
 
     const { effective, sources } = await getEffectiveConfig(CONFIG_FILE);
     expect(effective.inference.mode).toBe("remote");
@@ -137,8 +140,13 @@ candidate_floor = 0.4
     expect(sources["inference.reranker.adapter"]).toBe("environment");
     expect(sources["inference.reranker.endpoint"]).toBe("environment");
     expect(sources["inference.reranker.model"]).toBe("environment");
+    expect(sources["inference.embedding.endpoint"]).toBe("environment");
+    expect(sources["inference.embedding.dimension"]).toBe("environment");
     expect(isEnvMasked("inference.reranker.endpoint")).toBe(true);
+    expect(isEnvMasked("inference.embedding.dimension")).toBe(true);
     for (const key of [
+      "inference.embedding.endpoint",
+      "inference.embedding.api_key_env",
       "inference.reranker.adapter",
       "inference.reranker.endpoint",
       "inference.reranker.model",
@@ -147,6 +155,15 @@ candidate_floor = 0.4
     ]) {
       validateDottedKey(key);
       expect(RELOADABLE_KEYS).toContain(key);
+    }
+    for (const key of [
+      "inference.embedding.model",
+      "inference.embedding.dimension",
+      "inference.embedding.device",
+      "inference.embedding.dtype",
+    ]) {
+      expect(RELOADABLE_KEYS).not.toContain(key);
+      expect(RESTART_REQUIRED_KEYS).toContain(key);
     }
   });
 });

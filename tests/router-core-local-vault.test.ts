@@ -30,7 +30,7 @@ function freshFixture(): { tmp: string; vaultDir: string; localVaultDir: string;
     inference: {
       mode: "remote",
       timeout_ms: 2000,
-      embedding: { provider: "openai", base_url: "http://127.0.0.1:9", model: "test-model", dimension: 3 },
+      embedding: { provider: "openai", endpoint: "http://127.0.0.1:9/v1/embeddings", model: "test-model", dimension: 3 },
     },
   };
   return { tmp, vaultDir, localVaultDir, config };

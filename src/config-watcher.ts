@@ -18,6 +18,8 @@ export const LIVE_RELOAD_KEYS = new Set([
   "recall.k_lexical",
   "recall.k_vector",
   "thresholds.candidate_limit",
+  "inference.embedding.endpoint",
+  "inference.embedding.api_key_env",
   "inference.reranker.adapter",
   "inference.reranker.endpoint",
   "inference.reranker.model",

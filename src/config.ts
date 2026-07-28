@@ -48,7 +48,7 @@ const configSchema = z.object({
       timeout_ms: z.number().int().min(100),
       embedding: z.object({
         provider: z.literal("openai"),
-        base_url: z.url(),
+        endpoint: z.url(),
         model: z.string().min(1),
         dimension: z.number().int().positive(),
         api_key_env: z.string().min(1).optional(),
@@ -201,6 +201,18 @@ export async function loadConfig(path?: string): Promise<Config> {
         'inference.reranker.adapter (for example, "jina-v1"). The old client appended /rerank.',
     );
   }
+  const removedEmbeddingEnv = [
+    "SKILLMUX_EMBED_BASE_URL",
+    "SKILL_ROUTER_EMBED_BASE_URL",
+    "EMBED_BASE_URL",
+  ].find((name) => process.env[name] !== undefined);
+  if (removedEmbeddingEnv) {
+    throw new Error(
+      `${removedEmbeddingEnv} is no longer supported. Configure ` +
+        "inference.embedding.endpoint with the complete OpenAI-compatible embeddings request URL. " +
+        "The old client appended /v1/embeddings.",
+    );
+  }
   const configPath = resolveConfigPath(path);
   const file = Bun.file(expandHome(configPath));
 
@@ -225,6 +237,9 @@ export async function loadConfig(path?: string): Promise<Config> {
     const rawReranker = isPlainObject(parsed.inference)
       ? parsed.inference.reranker
       : undefined;
+    const rawEmbedding = isPlainObject(parsed.inference)
+      ? parsed.inference.embedding
+      : undefined;
     if (
       isPlainObject(rawReranker) &&
       ("provider" in rawReranker || "base_url" in rawReranker)
@@ -232,6 +247,12 @@ export async function loadConfig(path?: string): Promise<Config> {
       throw new Error(
         "inference.reranker.provider and inference.reranker.base_url are no longer supported. " +
           "Use adapter and the complete endpoint URL instead; the old client appended /rerank.",
+      );
+    }
+    if (isPlainObject(rawEmbedding) && "base_url" in rawEmbedding) {
+      throw new Error(
+        "inference.embedding.base_url is no longer supported. Use inference.embedding.endpoint " +
+          "with the complete OpenAI-compatible embeddings request URL; the old client appended /v1/embeddings.",
       );
     }
     if (isPlainObject(parsed.inference) && parsed.inference.mode === "remote") {
@@ -291,8 +312,8 @@ export async function loadConfig(path?: string): Promise<Config> {
     if (!Number.isInteger(merged.inference.timeout_ms) || merged.inference.timeout_ms < 100) {
       throw new Error("Remote inference.timeout_ms must be an integer of at least 100.");
     }
-    if (!merged.inference.embedding?.base_url || !merged.inference.embedding.model || !merged.inference.embedding.dimension) {
-      throw new Error("Remote inference requires inference.embedding base_url, model, and dimension.");
+    if (!merged.inference.embedding?.endpoint || !merged.inference.embedding.model || !merged.inference.embedding.dimension) {
+      throw new Error("Remote inference requires inference.embedding endpoint, model, and dimension.");
     }
     if (merged.inference.reranker && (!merged.inference.reranker.endpoint || !merged.inference.reranker.model)) {
       throw new Error("Configured inference.reranker requires adapter, endpoint, and model.");
@@ -300,13 +321,13 @@ export async function loadConfig(path?: string): Promise<Config> {
     if (merged.inference.reranker && !merged.inference.thresholds) {
       throw new Error("Configured inference.reranker requires calibrated inference.thresholds.");
     }
-    const embedUrl = getEnv("SKILLMUX_EMBED_BASE_URL", "EMBED_BASE_URL");
+    const embedEndpoint = getEnv("SKILLMUX_EMBED_ENDPOINT", "EMBED_ENDPOINT");
     const embedModel = getEnv("SKILLMUX_EMBED_MODEL", "EMBED_MODEL");
     const embedDimStr = getEnv("SKILLMUX_EMBED_DIMENSION", "EMBED_DIMENSION");
     const rerankEndpoint = getEnv("SKILLMUX_RERANK_ENDPOINT", "RERANK_ENDPOINT");
     const rerankAdapter = getEnv("SKILLMUX_RERANK_ADAPTER", "RERANK_ADAPTER");
     const rerankModel = getEnv("SKILLMUX_RERANK_MODEL", "RERANK_MODEL");
-    if (embedUrl) merged.inference.embedding.base_url = embedUrl;
+    if (embedEndpoint) merged.inference.embedding.endpoint = embedEndpoint;
     if (embedModel) merged.inference.embedding.model = embedModel;
     if (rerankEndpoint && merged.inference.reranker) merged.inference.reranker.endpoint = rerankEndpoint;
     if (rerankAdapter && merged.inference.reranker) {
@@ -319,7 +340,7 @@ export async function loadConfig(path?: string): Promise<Config> {
       merged.inference.embedding.dimension = dimension;
     }
     for (const [name, value, exactEndpoint] of [
-      ["inference.embedding.base_url", merged.inference.embedding.base_url, false],
+      ["inference.embedding.endpoint", merged.inference.embedding.endpoint, true],
       ...(merged.inference.reranker
         ? [["inference.reranker.endpoint", merged.inference.reranker.endpoint, true] as const]
         : []),
