@@ -37,7 +37,7 @@ resolve_skill("convert this spreadsheet to markdown")
 ```
 
 - **matched** — one skill clearly wins: full `SKILL.md` delivered inline, `sha256(body) == content_sha256 ==` hash of the file on disk at delivery time. Stale index? It re-indexes and delivers fresh bytes — never stale ones.
-- **ambiguous** — up to 10 candidates (id, title, description). The calling LLM picks and calls `fetch_skill`.
+- **ambiguous** — up to 5 candidates (id, title, description). The calling LLM picks and calls `fetch_skill`.
 - **no_match** — proceed under your normal workflow; don't load an unrelated skill.
 
 If embeddings are unavailable, the router remains ready with FTS5 lexical retrieval. If an optional reranker is unavailable, it preserves the hybrid shortlist instead of failing.
@@ -540,7 +540,7 @@ Custom policy calibration can also be performed against domain-specific query lo
 
 <br>
 
-The router returns `"outcome": "ambiguous"` when multiple candidate skills meet retrieval confidence thresholds, or when no single candidate dominates by a sufficient score margin. In this state, up to 10 candidate skill summaries (`skill_id`, `title`, `description`) are returned so the calling LLM can choose the exact skill and invoke `fetch_skill`.
+The router returns `"outcome": "ambiguous"` when multiple candidate skills meet retrieval confidence thresholds, or when no single candidate dominates by a sufficient score margin. In this state, up to 5 candidate skill summaries (`skill_id`, `title`, `description`) are returned so the calling LLM can choose the exact skill and invoke `fetch_skill`.
 
 </details>
 

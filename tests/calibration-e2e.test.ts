@@ -137,6 +137,7 @@ candidate_floor = 0.40
       embedding_fingerprint: "embed@sha256:112233",
       corpus_fingerprint: "vault@sha256:feedface",
       dataset_hash: "dataset@sha256:abcdef",
+      candidate_limit: 5,
       min_auto_match_precision: 0.99,
       min_shortlist_recall_at_5: 0.95,
       selected_thresholds: {
@@ -147,13 +148,13 @@ candidate_floor = 0.40
       tune_metrics: {
         auto_match_precision: 1.0,
         auto_match_coverage: 0.85,
-        shortlist_recall_at_5: 1.0,
+        retrieval_recall_at_k: 1.0,
         false_no_match_rate: 0.0,
       },
       test_metrics: {
         auto_match_precision: 0.97,
         auto_match_coverage: 0.8,
-        shortlist_recall_at_5: 0.99,
+        retrieval_recall_at_k: 0.99,
         false_no_match_rate: 0.03,
         confusion_matrix: {
           matched: { matched: 8, ambiguous: 0, no_match: 0 },

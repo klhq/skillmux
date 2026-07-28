@@ -142,6 +142,7 @@ export class LocalAdapter implements TargetAdapter {
         return [];
       },
       reranker: clients.rerank,
+      candidateLimit: config.thresholds.candidate_limit,
     });
     const fingerprint = rerankerFingerprint(config);
     if (!fingerprint) {
@@ -171,6 +172,7 @@ export class LocalAdapter implements TargetAdapter {
         embedding_fingerprint: embeddingFingerprint(config),
         corpus_fingerprint: corpusFingerprint,
         dataset_hash: createHash("sha256").update(datasetText).digest("hex"),
+        candidate_limit: config.thresholds.candidate_limit,
         min_auto_match_precision: 0.99,
         min_shortlist_recall_at_5: 0.95,
         selected_thresholds: result.selected_thresholds,
