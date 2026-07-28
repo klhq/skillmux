@@ -39,6 +39,39 @@ dtype = "q8"
 `;
 }
 
+function remoteToml(endpoint: string, timeoutMs = 2000): string {
+  return `vault_path = "~/skills"
+state_dir = "~/.local/state/skillmux"
+
+[recall]
+k_lexical = 20
+k_vector = 20
+
+[thresholds]
+candidate_limit = 5
+
+[inference]
+mode = "remote"
+timeout_ms = ${timeoutMs}
+
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "${endpoint}"
+model = "reranker"
+
+[inference.thresholds]
+match_score = 0.9
+match_margin = 0.2
+candidate_floor = 0.4
+`;
+}
+
 function writeToml(path: string, content: string): void {
   // Atomic write: write to tmp then rename (simulates what calibrate apply does)
   const tmp = `${path}.tmp`;
@@ -103,6 +136,35 @@ describe("ConfigWatcher", () => {
 
     expect(received).toHaveLength(0);
     expect(status.restart_required_keys).toEqual(["inference.embedding.model"]);
+  });
+
+  test("reloads reranker endpoint and shared timeout changes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-cw-reranker-"));
+    dirs.push(root);
+    const tomlPath = join(root, "config.toml");
+    writeToml(tomlPath, remoteToml("https://one.example.com/v1/rerank"));
+
+    const received: Config[] = [];
+    const watcher = await ConfigWatcher.start(tomlPath, {
+      onReload: (config) => received.push(config),
+      onError: () => {},
+    });
+
+    writeToml(
+      tomlPath,
+      remoteToml("https://two.example.com/rerank", 3000),
+    );
+    await waitFor(() => received.length > 0);
+    const latest = received.at(-1)!;
+    watcher.stop();
+
+    expect(latest.inference.mode).toBe("remote");
+    if (latest.inference.mode === "remote") {
+      expect(latest.inference.timeout_ms).toBe(3000);
+      expect(latest.inference.reranker?.endpoint).toBe(
+        "https://two.example.com/rerank",
+      );
+    }
   });
 
   test("should detect changes made via atomic rename (rename-based saves)", async () => {

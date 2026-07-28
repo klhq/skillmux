@@ -5,6 +5,8 @@ import {
   getDottedKey,
   getEffectiveConfig,
   getLocalConfigStatus,
+  isEnvMasked,
+  RELOADABLE_KEYS,
   setDottedKey,
   validateDottedKey,
   type ConfigSourceMap,
@@ -94,5 +96,57 @@ describe("Config Service (AC4, AC5, AC6)", () => {
     expect(status.runtime).toBe("not_running");
     expect(typeof status.desired_source_hash).toBe("string");
     expect(status.desired_source_hash.length).toBeGreaterThan(0);
+  });
+
+  it("enumerates reranker sources, environment masks, and reloadable keys", async () => {
+    writeFileSync(
+      CONFIG_FILE,
+      `[inference]
+mode = "remote"
+timeout_ms = 2000
+[inference.embedding]
+provider = "openai"
+base_url = "https://embed.example.com"
+model = "embed"
+dimension = 384
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "https://rerank.example.com/v1/rerank"
+model = "reranker"
+[inference.thresholds]
+match_score = 0.9
+match_margin = 0.2
+candidate_floor = 0.4
+`,
+      "utf-8",
+    );
+    process.env.SKILLMUX_RERANK_ENDPOINT =
+      "https://gateway.example.com/rerank";
+    process.env.SKILLMUX_RERANK_ADAPTER = "bifrost-v1";
+    process.env.SKILLMUX_RERANK_MODEL = "vllm/reranker";
+
+    const { effective, sources } = await getEffectiveConfig(CONFIG_FILE);
+    expect(effective.inference.mode).toBe("remote");
+    if (effective.inference.mode === "remote") {
+      expect(effective.inference.reranker).toMatchObject({
+        adapter: "bifrost-v1",
+        endpoint: "https://gateway.example.com/rerank",
+        model: "vllm/reranker",
+      });
+    }
+    expect(sources["inference.reranker.adapter"]).toBe("environment");
+    expect(sources["inference.reranker.endpoint"]).toBe("environment");
+    expect(sources["inference.reranker.model"]).toBe("environment");
+    expect(isEnvMasked("inference.reranker.endpoint")).toBe(true);
+    for (const key of [
+      "inference.reranker.adapter",
+      "inference.reranker.endpoint",
+      "inference.reranker.model",
+      "inference.reranker.api_key_env",
+      "inference.timeout_ms",
+    ]) {
+      validateDottedKey(key);
+      expect(RELOADABLE_KEYS).toContain(key);
+    }
   });
 });
