@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { createClients, RemoteInferenceError } from "../src/clients";
+import { createClients, parseLocalEmbeddingVectors, RemoteInferenceError } from "../src/clients";
 import type { Config, RemoteRerankerConfig } from "../src/types";
 
 const requests: {
@@ -37,7 +37,7 @@ const server = Bun.serve({
     ) {
       await Bun.sleep(500);
     }
-    if (url.pathname === "/v1/embeddings") {
+    if (url.pathname === "/v1/embeddings" || url.pathname === "/custom/embeddings") {
       const inputs = (body as { input: string[] }).input;
       return Response.json({
         data: inputs.map((_, index) => ({
@@ -45,6 +45,35 @@ const server = Bun.serve({
           embedding: [0.1 * (index + 1), 0.2, 0.3],
         })),
       });
+    }
+    if (url.pathname === "/malformed-embedding") {
+      return new Response("{", { headers: { "content-type": "application/json" } });
+    }
+    if (url.pathname.startsWith("/embedding-status/")) {
+      return new Response("secret response body", {
+        status: Number(url.pathname.slice("/embedding-status/".length)),
+      });
+    }
+    if (url.pathname.startsWith("/embedding-invalid/")) {
+      const inputs = (body as { input: string[] }).input;
+      const invalid = url.pathname.slice("/embedding-invalid/".length);
+      const data: Record<string, unknown> = {
+        short: inputs.slice(0, -1).map((_, index) => ({ index, embedding: [0.1, 0.2, 0.3] })),
+        long: [...inputs, "extra"].map((_, index) => ({ index, embedding: [0.1, 0.2, 0.3] })),
+        duplicate: inputs.map((_, index) => ({ index: index === 1 ? 0 : index, embedding: [0.1, 0.2, 0.3] })),
+        noninteger: inputs.map((_, index) => ({ index: index === 0 ? 0.5 : index, embedding: [0.1, 0.2, 0.3] })),
+        outofrange: inputs.map((_, index) => ({ index: index === 0 ? inputs.length : index, embedding: [0.1, 0.2, 0.3] })),
+        wrongdimension: inputs.map((_, index) => ({ index, embedding: [0.1, 0.2] })),
+        nonnumeric: inputs.map((_, index) => ({ index, embedding: [0.1, "nope", 0.3] })),
+        overflow: inputs.map((_, index) => ({ index, embedding: [3.5e38, 0.2, 0.3] })),
+        reordered: [...inputs].map((_, index) => ({ index, embedding: [0.1 * (index + 1), 0.2, 0.3] })).reverse(),
+      };
+      if (invalid === "json-nonfinite") {
+        return new Response('{"data":[{"index":0,"embedding":[1e999,0.2,0.3]}]}', {
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return Response.json({ data: data[invalid] });
     }
     if (url.pathname === "/status") {
       return new Response("secret response body", { status: 503 });
@@ -127,7 +156,7 @@ function testConfig(
       timeout_ms: 2000,
       embedding: {
         provider: "openai",
-        base_url: `http://127.0.0.1:${server.port}`,
+        endpoint: `http://127.0.0.1:${server.port}/v1/embeddings`,
         model: "microsoft/harrier-oss-v1-0.6b",
         dimension: 3,
         ...(embeddingApiKeyEnv ? { api_key_env: embeddingApiKeyEnv } : {}),
@@ -175,12 +204,12 @@ describe("embedding client", () => {
 
   test.each([undefined, ""])(
     "named unset or empty credential fails before an embedding request",
-    (value) => {
+    async (value) => {
       if (value !== undefined) process.env.SKILLMUX_TEST_EMBED_KEY = value;
       const before = requests.length;
-      expect(() =>
-        createClients(testConfig({}, "SKILLMUX_TEST_EMBED_KEY")),
-      ).toThrow(/SKILLMUX_TEST_EMBED_KEY/);
+      await expect(
+        createClients(testConfig({}, "SKILLMUX_TEST_EMBED_KEY")).embed(["text"]),
+      ).rejects.toThrow(/SKILLMUX_TEST_EMBED_KEY/);
       expect(requests).toHaveLength(before);
     },
   );
@@ -189,7 +218,78 @@ describe("embedding client", () => {
     const config = testConfig();
     if (config.inference.mode !== "remote") throw new Error("expected remote");
     config.inference.timeout_ms = 100;
-    await expect(createClients(config).embed(["slow request"])).rejects.toThrow();
+    const error = await createClients(config).embed(["slow request"]).catch((value) => value);
+    expect(error).toMatchObject({ kind: "availability" });
+  });
+
+  test("uses the embedding endpoint verbatim, including a custom path and query", async () => {
+    const config = testConfig();
+    if (config.inference.mode !== "remote") throw new Error("expected remote");
+    config.inference.embedding.endpoint = `http://127.0.0.1:${server.port}/custom/embeddings?route=direct`;
+    await createClients(config).embed(["text"]);
+    expect(requests.at(-1)).toMatchObject({ path: "/custom/embeddings", search: "?route=direct" });
+  });
+
+  test.each(["short", "long", "duplicate", "noninteger", "outofrange", "wrongdimension", "nonnumeric", "json-nonfinite", "overflow"])(
+    "rejects invalid embedding response %s as a protocol error",
+    async (invalid) => {
+      const config = testConfig();
+      if (config.inference.mode !== "remote") throw new Error("expected remote");
+      config.inference.embedding.endpoint = `http://127.0.0.1:${server.port}/embedding-invalid/${invalid}`;
+      await expect(
+        createClients(config).embed(invalid === "json-nonfinite" ? ["first"] : ["first", "second"]),
+      ).rejects.toMatchObject({ kind: "protocol" });
+    },
+  );
+
+  test("accepts reordered embedding entries and restores input order", async () => {
+    const config = testConfig();
+    if (config.inference.mode !== "remote") throw new Error("expected remote");
+    config.inference.embedding.endpoint = `http://127.0.0.1:${server.port}/embedding-invalid/reordered`;
+    const vectors = await createClients(config).embed(["first", "second"]);
+    expect(vectors.map((vector) => vector[0])).toEqual([expect.closeTo(0.1), expect.closeTo(0.2)]);
+  });
+
+  test.each([
+    [401, "configuration"],
+    [403, "configuration"],
+    [408, "availability"],
+    [429, "availability"],
+    [500, "availability"],
+    [404, "protocol"],
+  ] as const)("classifies embedding HTTP %i as %s", async (status, kind) => {
+    const config = testConfig();
+    if (config.inference.mode !== "remote") throw new Error("expected remote");
+    config.inference.embedding.endpoint = `http://127.0.0.1:${server.port}/embedding-status/${status}?token=secret`;
+    const error = await createClients(config).embed(["text"]).catch((value) => value);
+    expect(error).toMatchObject({ kind });
+    expect(error.message).toContain(String(status));
+    expect(error.message).not.toContain("secret");
+  });
+
+  test("classifies malformed successful embedding responses as protocol errors", async () => {
+    const config = testConfig();
+    if (config.inference.mode !== "remote") throw new Error("expected remote");
+    config.inference.embedding.endpoint = `http://127.0.0.1:${server.port}/malformed-embedding`;
+    await expect(createClients(config).embed(["text"])).rejects.toMatchObject({ kind: "protocol" });
+  });
+
+  test("classifies embedding transport failures as availability errors", async () => {
+    const config = testConfig();
+    if (config.inference.mode !== "remote") throw new Error("expected remote");
+    config.inference.embedding.endpoint = "http://127.0.0.1:1/embeddings";
+    await expect(createClients(config).embed(["text"])).rejects.toMatchObject({ kind: "availability" });
+  });
+});
+
+describe("local embedding validation", () => {
+  test.each([
+    [[], 1, 3],
+    [[[0.1, 0.2]], 1, 3],
+    [[[0.1, Number.NaN, 0.3]], 1, 3],
+    [[[3.5e38, 0.2, 0.3]], 1, 3],
+  ])("rejects incomplete, wrong-width, non-finite, and overflowing local output", (output, count, dimension) => {
+    expect(() => parseLocalEmbeddingVectors(output, count, dimension)).toThrow();
   });
 });
 
@@ -236,14 +336,12 @@ describe("reranker protocol adapters", () => {
 
   test.each([undefined, ""])(
     "named unset or empty credential fails before a reranker request",
-    (value) => {
+    async (value) => {
       if (value !== undefined) process.env.SKILLMUX_TEST_RERANK_KEY = value;
       const before = requests.length;
-      expect(() =>
-        createClients(
-          testConfig({ api_key_env: "SKILLMUX_TEST_RERANK_KEY" }),
-        ),
-      ).toThrow(/SKILLMUX_TEST_RERANK_KEY/);
+      await expect(
+        createClients(testConfig({ api_key_env: "SKILLMUX_TEST_RERANK_KEY" })).rerank!("query", docs),
+      ).rejects.toThrow(/SKILLMUX_TEST_RERANK_KEY/);
       expect(requests).toHaveLength(before);
     },
   );
@@ -284,6 +382,17 @@ describe("reranker protocol adapters", () => {
     expect(error).toMatchObject({ kind: "availability" });
     expect(error.message).toContain("503");
     expect(error.message).not.toContain("secret");
+  });
+
+  test.each([
+    [401, "configuration"],
+    [403, "configuration"],
+    [408, "availability"],
+    [429, "availability"],
+    [404, "protocol"],
+  ] as const)("classifies reranker HTTP %i as %s", async (status, kind) => {
+    const clients = createClients(testConfig({ endpoint: `http://127.0.0.1:${server.port}/embedding-status/${status}` }));
+    await expect(clients.rerank!("query", docs)).rejects.toMatchObject({ kind });
   });
 
   test("classifies reranker timeouts as availability errors", async () => {

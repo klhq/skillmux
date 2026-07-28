@@ -3,6 +3,7 @@ import { watch } from "node:fs";
 import { join } from "node:path";
 import { buildAuditRow } from "./audit";
 import { embeddingDimension, embeddingFingerprint, expandHome, loadConfig } from "./config";
+import { RemoteInferenceError } from "./clients";
 import {
   deleteSkill,
   findExactMatch,
@@ -269,12 +270,22 @@ export async function backfillEmbeddings(): Promise<number> {
     const chunk = pending.slice(i, i + BATCH_SIZE);
     try {
       const vectors = await clients.embed(chunk.map(rerankText));
-      chunk.forEach((row, j) => {
-        upsertVector(db, row.skill_id, row.content_sha256, fingerprint, vectors[j]!);
-      });
+      db.transaction(() => {
+        chunk.forEach((row, j) => {
+          const vector = vectors[j];
+          if (!vector) throw new Error("Embedding client returned an incomplete batch.");
+          upsertVector(db, row.skill_id, row.content_sha256, fingerprint, vector);
+        });
+      })();
       count += chunk.length;
     } catch (err) {
-      if (i === 0) throw err;
+      if (
+        i === 0 ||
+        (err instanceof RemoteInferenceError &&
+          (err.kind === "configuration" || err.kind === "protocol"))
+      ) {
+        throw err;
+      }
       break;
     }
   }
@@ -392,7 +403,8 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
   let rows = lexical;
   if (!input.forceLexical) {
     try {
-      const queryVec = (await clients.embed([input.query]))[0]!;
+      const queryVec = (await clients.embed([input.query]))[0];
+      if (!queryVec) throw new Error("Embedding client returned no query vector.");
       const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
       rows = reciprocalRankFusion(lexical, nearest);
       retrieval = "hybrid";

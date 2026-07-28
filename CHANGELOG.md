@@ -12,16 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **inference:** reranker configuration now requires a versioned `adapter` and
   complete `endpoint`; the removed `provider`, `base_url`, and legacy reranker
   base-URL environment variables fail with migration guidance.
+* **inference:** embedding configuration now requires an exact `endpoint`; the
+  removed `base_url`, `EMBED_BASE_URL`, `SKILLMUX_EMBED_BASE_URL`, and
+  `SKILL_ROUTER_EMBED_BASE_URL` inputs fail with migration guidance.
 
 ### Added
 
 * **inference:** add `jina-v1` and `bifrost-v1` reranker wire-protocol adapters
   with strict indexed-score validation and independent optional Bearer auth.
+* **inference:** validate remote and local embedding vectors before storage and
+  classify embedding and reranker failures as configuration, availability, or
+  protocol errors.
 
 ### Changed
 
 * **doctor:** incomplete or malformed reranker responses now report degraded or
   unavailable instead of silently filling missing scores with zero.
+* **config:** embedding endpoint, credential-name, and timeout changes reload
+  live; model, dimension, device, and dtype changes require restart.
 
 ## [1.0.1](https://github.com/klhq/skillmux/compare/v1.0.0...v1.0.1) (2026-07-24)
 
