@@ -9,35 +9,44 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-Skillmux manages [`SKILL.md`](https://agentskills.io) collections across AI coding clients. Keep one canonical vault, pin core and project skills into each client's native skill directory, and let agents retrieve the rest through MCP.
+Skillmux manages [`SKILL.md`](https://agentskills.io) collections across AI
+coding clients. Keep one canonical vault, pin a small set into native skill
+directories, and retrieve the rest through MCP.
 
-It works with clients that load skills themselves, clients that use MCP, and setups that combine both:
+You can use Skillmux in three ways:
 
-- **Manage one vault:** install, scan, inspect, and organize skills in one place.
-- **Deliver native skills:** sync a small core set everywhere and add project-specific skills where they belong.
-- **Retrieve the long tail:** search the full vault with SQLite FTS5, embeddings, and an optional reranker.
-- **See what gets used:** inspect routing outcomes and promote frequently used skills into a pinned tier.
+| Use case | What runs | How skills reach the client |
+| --- | --- | --- |
+| **Manage native skills** | The CLI or Linux binary on your machine | `init` and `sync` create managed links for core and project skills |
+| **Add local retrieval** | Skillmux beside one client | The client calls local stdio MCP; Skillmux searches the full vault |
+| **Run a shared service** | One Skillmux server for several clients | Clients call Streamable HTTP MCP |
 
-## How Skillmux fits together
+The same installation can manage native skills and serve local MCP. A shared
+service focuses on routed retrieval; manage its mounted vault on the host.
+
+## Choose a setup
 
 <p align="center">
-  <img src="docs/assets/architecture.svg" alt="Skillmux skill management and retrieval architecture" width="100%">
+  <img src="docs/assets/architecture.svg" alt="Three ways to use Skillmux: manage native skills, add local MCP retrieval, or run a shared MCP service" width="100%">
 </p>
 
-Skillmux supports two delivery paths from the same vault:
+Pick an installation based on the job:
 
-| Path | Use it for | Delivery |
-| --- | --- | --- |
-| **Core and project pins** | Skills an agent should load through its native skill system | `skillmux init` and `skillmux sync` create managed symlinks |
-| **Routed skills** | A larger collection that should stay out of standing context | MCP `resolve_skill` and `fetch_skill` retrieve skills on demand |
+| Installation | Native management | Local MCP | Shared HTTP MCP | Inference |
+| --- | --- | --- | --- | --- |
+| **Bun package** | Recommended | Recommended | Supported | Downloads and caches GTE-small |
+| **Linux binary** | Recommended | Recommended | Supported | Downloads and caches GTE-small |
+| **Full Docker image** | Manage on host | Supported | Recommended | GTE-small included |
+| **Slim Docker image** | Manage on host | Supported | Recommended | Remote embeddings or lexical fallback |
 
-Core pins apply to every configured target and stay capped at 25 skills. Project pins appear only in the project paths and targets you select. Everything else remains available to MCP-capable clients without loading the whole vault into every session.
+“Local” describes where Skillmux runs. “Local inference” means the embedding
+model runs in the Skillmux process. Both stdio and HTTP expose the same
+`resolve_skill` and `fetch_skill` MCP tools.
 
-## Install
+## Install the CLI
 
-### Bun package
-
-The npm package supports macOS, Linux, and Windows and requires [Bun 1.3 or newer](https://bun.sh/docs/installation):
+The Bun package supports macOS, Linux, and Windows and requires
+[Bun 1.3 or newer](https://bun.sh/docs/installation):
 
 ```sh
 bun add -g @klhapp/skillmux
@@ -46,9 +55,7 @@ skillmux --help
 
 Native target sync needs permission to create directory symlinks on Windows.
 
-### Linux binary
-
-Download the binary for your architecture from the [latest GitHub release](https://github.com/klhq/skillmux/releases/latest):
+On Linux, you can install a compiled AMD64 or ARM64 binary instead:
 
 ```sh
 gh release download --repo klhq/skillmux --pattern 'skillmux-linux-*'
@@ -57,20 +64,12 @@ chmod +x skillmux-linux-amd64
 sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
 ```
 
-Use `skillmux-linux-arm64` instead on ARM64.
+Use `skillmux-linux-arm64` on ARM64. See [Deployment](docs/deployment.md) for
+the full and slim Docker images.
 
-### Docker
+## Quick starts
 
-Skillmux publishes full and slim multi-architecture images to:
-
-- `ghcr.io/klhq/skillmux`
-- `docker.io/klhq/skillmux`
-
-The full image includes local GTE-small embeddings. The slim image uses configured remote embeddings or lexical fallback. See the [deployment guide](docs/deployment.md).
-
-## Quick start: manage skills across clients
-
-Skillmux uses `~/skills` as its default vault. Each skill lives in its own directory:
+Skillmux uses `~/skills` as its default vault:
 
 ```text
 ~/skills/
@@ -78,31 +77,18 @@ Skillmux uses `~/skills` as its default vault. Each skill lives in its own direc
     └── SKILL.md
 ```
 
-Create a small skill to try the workflow:
+### Manage native skills
 
-```sh
-mkdir -p ~/skills/csv-formatter
-cat > ~/skills/csv-formatter/SKILL.md <<'EOF'
----
-name: CSV Formatter
-description: Convert CSV or spreadsheet data into clean Markdown tables.
----
-
-# CSV Formatter
-
-Read the first row as headers. Right-align numbers and left-align text.
-EOF
-```
-
-Run the guided setup:
+Run the setup planner, then verify its managed links:
 
 ```sh
 skillmux init
+skillmux sync
+skillmux doctor
 ```
 
-The wizard detects installed clients, asks which skills belong in the core tier, shows one review, and writes only after confirmation. It can configure Claude Code, Codex, Gemini CLI, OpenCode, GitHub Copilot, Windsurf, Antigravity, Goose, Hermes, and Skillmux MCP.
-
-For scripts or dotfiles, use explicit flags:
+The planner detects clients, asks which skills belong in the core tier, and
+shows every write before confirmation. Use explicit flags for automation:
 
 ```sh
 skillmux init \
@@ -118,20 +104,46 @@ skillmux init \
   --yes
 ```
 
-`init` adopts each target safely, writes `skillmux.toml`, and runs `sync`. Repeated syncs are idempotent:
-
-```sh
-skillmux sync
-skillmux doctor
-```
-
-Add project-specific skills from a repository root:
+Core pins apply to each configured target and stay capped at 25 skills. Add
+project-specific skills from a repository root:
 
 ```sh
 skillmux project init
 ```
 
-The [getting-started guide](docs/getting-started.md) covers installation, existing vaults, deterministic setup, and project groups.
+### Add local MCP retrieval
+
+Prefetch the default GTE-small model, index the vault, and start stdio MCP:
+
+```sh
+skillmux models download
+skillmux index
+skillmux doctor
+skillmux serve
+```
+
+The model cache lives at `~/.cache/skillmux/models`. If you skip the prefetch,
+Skillmux downloads the model when local inference first needs it.
+
+### Run a shared MCP service
+
+The full image includes GTE-small and serves Streamable HTTP on `/mcp`:
+
+```sh
+docker run -d \
+  --name skillmux \
+  -v ~/skills:/vault:ro \
+  -v skillmux-data:/data \
+  -p 3000:3000 \
+  ghcr.io/klhq/skillmux:latest
+```
+
+Use `ghcr.io/klhq/skillmux:latest-slim` when you want remote embeddings or
+lexical fallback instead of a bundled model. Docker Hub mirrors both variants
+under `docker.io/klhq/skillmux`.
+
+The [getting-started guide](docs/getting-started.md) provides complete recipes
+for all three setups.
 
 ## Add and inspect skills
 
@@ -156,15 +168,7 @@ skillmux report --since 7d
 
 Read [Managing skills](docs/skill-management.md) for target ownership, project groups, local overrides, recovery, and reporting.
 
-## Enable MCP retrieval
-
-Index the vault and start a local stdio server:
-
-```sh
-skillmux index
-skillmux doctor
-skillmux serve
-```
+## MCP retrieval
 
 Register it with an MCP client:
 
@@ -186,7 +190,7 @@ Skillmux exposes two tools:
 | `resolve_skill` | Natural-language task description | A matched skill, an ordered shortlist, or no match |
 | `fetch_skill` | Exact `skill_id` | The current `SKILL.md` body, SHA-256 digest, and supporting-file paths |
 
-Routing uses the best capability available:
+Skillmux uses the best available capability:
 
 1. SQLite FTS5 provides lexical retrieval and offline fallback.
 2. Local or remote embeddings add semantic recall.
@@ -224,8 +228,8 @@ Start with the [documentation hub](docs/README.md).
 
 | Guide | Covers |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Installation, first vault, guided setup, sync, and verification |
-| [Concepts](docs/concepts.md) | Vaults, delivery tiers, targets, retrieval modes, and ownership |
+| [Getting started](docs/getting-started.md) | Native management, local MCP, and shared-service recipes |
+| [Concepts](docs/concepts.md) | Delivery tiers, deployment topologies, retrieval modes, and ownership |
 | [Managing skills](docs/skill-management.md) | Install, scan, pin, sync, report, overlays, and recovery |
 | [MCP routing](docs/mcp-routing.md) | Tools, outcomes, transports, retrieval, fallback, and integrity |
 | [Deployment](docs/deployment.md) | Docker, HTTP, auth, CORS, rate limits, health, and metrics |

@@ -1,20 +1,52 @@
 # Deployment
 
-Use stdio for a local MCP client and HTTP for a shared service. Docker images
-run the HTTP transport by default.
+Choose a deployment from the client count and inference source:
+
+| Use case | Recommended package | Transport | Inference |
+| --- | --- | --- | --- |
+| Native skill management | Bun package or Linux binary | Filesystem | None required |
+| Local MCP retrieval | Bun package or Linux binary | stdio | Downloaded GTE-small |
+| Shared MCP with local inference | Full Docker image | Streamable HTTP | Bundled GTE-small |
+| Shared MCP with remote or lexical retrieval | Slim Docker image | Streamable HTTP | Remote endpoint or lexical fallback |
+
+The Bun package and Linux binary can serve HTTP. Docker can serve stdio. These
+options expose the same MCP tools, but the table shows the shortest operational
+path for each use case.
+
+“Local inference” means the model runs in the Skillmux process. It does not
+mean that the MCP client must run on the same machine.
+
+## CLI and Linux binary
+
+Run stdio MCP beside one client:
+
+```sh
+skillmux models download
+skillmux index
+skillmux serve
+```
+
+Run an HTTP service without Docker:
+
+```sh
+skillmux serve --transport http --port 3000
+```
+
+The native HTTP server binds `127.0.0.1` by default. Configure authentication
+and a reachable hostname before serving other machines.
 
 ## Docker images
 
 Skillmux publishes Linux AMD64 and ARM64 images to GHCR and Docker Hub:
 
-| Image | Inference |
-| --- | --- |
-| `ghcr.io/klhq/skillmux:latest` | Bundled local GTE-small embeddings |
-| `ghcr.io/klhq/skillmux:latest-slim` | Remote embeddings or lexical fallback |
+| Variant | GHCR tag | Contents |
+| --- | --- | --- |
+| Full | `ghcr.io/klhq/skillmux:latest` | Runtime plus bundled GTE-small |
+| Slim | `ghcr.io/klhq/skillmux:latest-slim` | Runtime without model files |
 
 Docker Hub mirrors the same tags under `docker.io/klhq/skillmux`.
 
-Run the full image:
+Use the full image when the service should run embeddings itself:
 
 ```sh
 docker run -d \
@@ -32,10 +64,12 @@ The container sets:
 - `PORT=3000`;
 - `RUNNING_IN_DOCKER=true`.
 
-Mount the vault read-only for a retrieval-only service. Run management
-commands on the host when you need to install or change skills.
+Mount the vault read-only for a retrieval-only service. Run `install`, `init`,
+`sync`, and other filesystem management commands on the host. Containerized
+native management requires writable host mounts for every managed client
+directory and is not the recommended setup.
 
-## Slim image with remote embeddings
+## Slim image
 
 The slim image stays ready in lexical mode without an inference endpoint.
 Configure remote embeddings to enable hybrid retrieval:
@@ -70,7 +104,7 @@ docker run -d \
 
 Start from [config.remote.example.toml](../config.remote.example.toml).
 
-## Stdio in Docker
+## Docker over stdio
 
 Some local clients can launch a container as their stdio MCP command:
 
@@ -84,9 +118,8 @@ The container must keep standard input open, so use `-i`.
 
 ## Expose HTTP safely
 
-Native `skillmux serve --transport http` binds `127.0.0.1`. Docker binds
-`0.0.0.0` so port mapping works. Before exposing the port beyond a trusted
-host:
+The native CLI and Linux binary bind `127.0.0.1`. Docker binds `0.0.0.0` so
+port mapping works. Before exposing the port beyond a trusted host:
 
 ```toml
 [server]

@@ -1,8 +1,15 @@
 # MCP routing
 
-Skillmux exposes a vault through two Model Context Protocol tools. You can run
-the server beside native pinning or use it against an existing vault by
-itself.
+Skillmux exposes one vault through two Model Context Protocol tools. Choose a
+transport based on where the process runs:
+
+| Topology | Transport | Typical package |
+| --- | --- | --- |
+| Skillmux beside one client | stdio | Bun package or Linux binary |
+| Shared Skillmux service | Streamable HTTP | Full or slim Docker image |
+
+Both transports expose the same `resolve_skill` and `fetch_skill` contract.
+Local native pinning is optional and can run beside stdio MCP.
 
 ## Register a stdio server
 
@@ -30,7 +37,7 @@ Register the command in your MCP client:
 The default transport is stdio. The process exits when the client closes its
 input stream or sends a termination signal.
 
-## Connect over HTTP
+## Connect to a shared HTTP service
 
 Start a Streamable HTTP server:
 
@@ -106,17 +113,21 @@ Skillmux builds candidates in stages:
 4. An optional reranker scores the fused candidates.
 5. Calibrated thresholds select `matched`, `ambiguous`, or `no_match`.
 
-The default local mode uses FTS5 and quantized `Xenova/gte-small` embeddings.
-Remote mode accepts OpenAI-compatible embeddings and a `jina-v1` or
-`bifrost-v1` reranker adapter.
+The default local inference configuration uses FTS5 and quantized
+`Xenova/gte-small` embeddings. CLI and Linux binary installations cache the
+downloaded model under `~/.cache/skillmux/models`; the full Docker image
+includes it. The slim image starts with lexical retrieval and can call an
+OpenAI-compatible embedding endpoint.
+
+Remote inference also supports `jina-v1` or `bifrost-v1` reranker adapters.
 
 Without a reranker, Skillmux returns a shortlist and does not auto-match.
 Without calibrated thresholds, a configured reranker orders the shortlist but
 still does not auto-match.
 
-Read [Configuration](configuration.md#local-mode) for local and remote
-settings. Read [Policy calibration](calibration.md) before enabling automatic
-matches.
+Read [Configuration](configuration.md#local-inference) for local and remote
+inference settings. Read [Policy calibration](calibration.md) before enabling
+automatic matches.
 
 ## Fallback and readiness
 

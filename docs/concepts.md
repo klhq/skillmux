@@ -1,5 +1,17 @@
 # Concepts
 
+Skillmux separates three decisions:
+
+| Decision | Choices |
+| --- | --- |
+| How skills reach a client | Native core/project pins or routed MCP retrieval |
+| Where Skillmux runs | On the client machine or as a shared HTTP service |
+| How Skillmux searches | Lexical, hybrid, reranked, or exact retrieval |
+
+These decisions are independent. A local CLI can manage native pins and serve
+stdio MCP at the same time. A shared service uses HTTP MCP and can run local or
+remote inference.
+
 ## Canonical vault
 
 The vault is the source collection for Skillmux. Each direct child directory
@@ -35,6 +47,27 @@ one.
 One skill can serve different roles across machines or projects, but the
 shared manifest prevents conflicting core and project assignments. Core stays
 capped at 25 skills to protect client startup context.
+
+Delivery tiers do not select a deployment. A local Skillmux process can serve
+routed skills over stdio, while a shared Skillmux process can serve the same
+vault over HTTP.
+
+## Deployment topologies
+
+| Topology | Process location | Transport | Typical installation |
+| --- | --- | --- | --- |
+| Native management | Client machine | Filesystem links | Bun package or Linux binary |
+| Local MCP | Beside one client | stdio | Bun package or Linux binary |
+| Shared MCP | Server or container host | Streamable HTTP | Full or slim Docker image |
+
+The Bun package and Linux binary can also serve HTTP. Docker can serve stdio
+for clients that support a container command. Those combinations use the same
+MCP tools; the table lists the shortest setup for each use case.
+
+The full Docker image bundles GTE-small. The slim image contains no model
+files, so it uses configured remote embeddings or lexical fallback. The Bun
+package and Linux binary download and cache GTE-small when local inference
+first loads it; `skillmux models download` prefetches it.
 
 ## Clients and targets
 
@@ -88,7 +121,12 @@ Use overlays for work in progress or machine-specific variants. Keep portable
 core and project pins in the canonical vault because another machine may not
 have the overlay.
 
-## Retrieval capabilities
+## Inference and retrieval capabilities
+
+Inference location and deployment location use separate settings. Local
+inference runs GTE-small inside the Skillmux process. Remote inference calls
+configured embedding and reranker endpoints. Either inference choice can back
+an HTTP MCP deployment.
 
 Skillmux reports the active retrieval capability:
 

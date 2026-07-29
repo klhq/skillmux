@@ -75,7 +75,7 @@ To package the application into Docker container variants:
 # Build the slim variant (remote embeddings or lexical fallback)
 docker build --target slim -t skillmux:dev-slim .
 
-# Build the full battery-included variant
+# Build the full variant with bundled GTE-small
 docker build --target full -t skillmux:dev .
 ```
 

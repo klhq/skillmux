@@ -39,9 +39,10 @@ The release workflow publishes:
 - `skillmux-linux-arm64`
 - GitHub build provenance attestations when the repository is public
 - Full image to GHCR and Docker Hub: `:<version>`, `:<major>.<minor>`,
-  and `:latest`
+  and `:latest`; this variant includes GTE-small
 - Slim image to GHCR and Docker Hub: `:<version>-slim`,
-  `:<major>.<minor>-slim`, and `:latest-slim`
+  `:<major>.<minor>-slim`, and `:latest-slim`; this variant contains no model
+  files and uses remote embeddings or lexical fallback
 - Multi-architecture `linux/amd64` and `linux/arm64` images with SBOM and
   provenance
 

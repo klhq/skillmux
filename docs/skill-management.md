@@ -4,6 +4,10 @@ Skillmux keeps skill content in a canonical vault and materializes selected
 skills into client directories. This guide covers the commands that change or
 inspect that state.
 
+Run these commands on the machine that owns the vault and client directories.
+For a retrieval-only Docker service, manage the mounted vault on the host and
+keep the container mount read-only.
+
 ## Install from Git
 
 `skillmux install` accepts a GitHub shorthand or a full Git URL:

@@ -106,7 +106,16 @@ automatic matches.
 
 ### Server reports lexical mode
 
-Lexical mode means Skillmux can query FTS5 but cannot use embeddings. Run:
+Lexical mode means Skillmux can query FTS5 but cannot use embeddings. The next
+step depends on the installation:
+
+| Installation | Expected action |
+| --- | --- |
+| Bun package or Linux binary with local inference | Download the local model and rebuild the index |
+| Full Docker image | Confirm the running tag is the full image and inspect `doctor` output |
+| Slim Docker image | Configure remote embeddings or keep lexical fallback |
+
+For a CLI or Linux binary installation, run:
 
 ```sh
 skillmux doctor
@@ -115,7 +124,8 @@ skillmux index
 ```
 
 For remote inference, verify the endpoint, model, dimension, API-key
-environment variable, and network path.
+environment variable, and network path. The slim image does not contain
+GTE-small, so `models download` is not its recovery path.
 
 ### Reranker is unavailable
 
@@ -137,9 +147,10 @@ frontmatter and retry.
 
 ### Another machine cannot connect
 
-Native HTTP mode binds `127.0.0.1`. Set `server.hostname` or `HTTP_HOSTNAME` to
-a reachable interface, then restart the server. Enable authentication before
-exposing it.
+The CLI and Linux binary bind HTTP to `127.0.0.1`. Set `server.hostname` or
+`HTTP_HOSTNAME` to a reachable interface, then restart the server. Docker
+binds `0.0.0.0` inside the container, but the host still needs a published
+port. Enable authentication before exposing either deployment.
 
 ### Browser receives `403`
 

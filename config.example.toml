@@ -1,4 +1,5 @@
-# This file is optional. Skillmux manages and indexes an
+# This file is optional. It configures a CLI, Linux binary, or full Docker
+# deployment with local inference. Skillmux manages and indexes an
 # agentskills.io-compatible canonical vault. Keep the vault separate from
 # client skill directories such as ~/.agents/skills; skillmux sync selects
 # which core and project skills appear in those directories.
