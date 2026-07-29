@@ -66,8 +66,40 @@ The container sets:
 
 Mount the vault read-only for a retrieval-only service. Run `install`, `init`,
 `sync`, and other filesystem management commands on the host. Containerized
-native management requires writable host mounts for every managed client
-directory and is not the recommended setup.
+native management is intentionally rejected: agent directories belong to the
+host CLI, where their symlinks resolve correctly.
+
+## Container command contract
+
+The image separates its executable from its default command. Running an image
+without arguments starts Streamable HTTP MCP on port 3000:
+
+```sh
+docker run ghcr.io/klhq/skillmux:latest
+```
+
+Arguments after the image replace that default, so one-shot maintenance and
+stdio use the same image:
+
+```sh
+docker run --rm -v ~/skills:/vault:ro -v skillmux-data:/data \
+  ghcr.io/klhq/skillmux:latest doctor
+docker run --rm -v ~/skills:/vault:ro -v skillmux-data:/data \
+  ghcr.io/klhq/skillmux:latest index
+```
+
+Docker Compose `command:` and Kubernetes `args:` likewise replace only the
+default command, not the executable.
+
+The supported container commands are `serve`, `index`, `doctor`, `report`,
+`scan`, `skill which`, and read-only `config show`, `config get`,
+`config validate`, `config diff`, and `config status`.
+
+The image rejects host-management commands, including `init`, `sync`,
+`install`, `project`, `target`, `core`, `local-vault`, `models download`,
+context management, calibration, evaluation, and configuration initialization
+or mutation. Install the Skillmux CLI on the host when a command needs to
+manage a local vault or agent directory.
 
 ## Slim image
 
@@ -109,12 +141,14 @@ Start from [config.remote.example.toml](../config.remote.example.toml).
 Some local clients can launch a container as their stdio MCP command:
 
 ```sh
-docker run -i --rm \
+docker run --no-healthcheck -i --rm \
   -v ~/skills:/vault:ro \
+  -v skillmux-data:/data \
   ghcr.io/klhq/skillmux:latest serve --transport stdio
 ```
 
-The container must keep standard input open, so use `-i`.
+The container must keep standard input open, so use `-i`. Disable the baked
+HTTP health check for stdio because no HTTP listener is started.
 
 ## Expose HTTP safely
 
@@ -202,3 +236,11 @@ workflow.
 Treat the state database as sensitive because audit rows can contain raw user
 queries. Stop the process or use SQLite-safe backup tooling before copying a
 live database.
+
+## Native pins with shared retrieval
+
+For the combined topology, use one Git-backed vault source of truth: each
+machine that manages native skills keeps its own checkout and runs the CLI;
+the shared service mounts its own checkout for retrieval. Skillmux does not
+pull, push, replicate, or otherwise keep those vault checkouts fresh—Git and
+your deployment process own that responsibility.

@@ -211,6 +211,60 @@ describe("skillmux doctor CLI", () => {
   });
 });
 
+describe("skillmux Docker command policy", () => {
+  test("rejects native skill management with actionable host CLI guidance", async () => {
+    const result = await runCliEnv(["init"], { RUNNING_IN_DOCKER: "true" });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(
+      "This command manages local Skillmux or agent directories and is not supported inside the Docker image.",
+    );
+    expect(result.stderr).toContain(
+      "Install the Skillmux CLI on the host using the Bun package or standalone Linux executable.",
+    );
+  });
+
+  test("rejects configuration initialization while containerized", async () => {
+    const result = await runCliEnv(["config", "init", "--vault", vaultDir, "--yes"], {
+      RUNNING_IN_DOCKER: "true",
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("not supported inside the Docker image");
+  });
+
+  test("rejects the other host-management command families", async () => {
+    const cases = [
+      ["sync"],
+      ["install", "owner/repo"],
+      ["project", "list"],
+      ["target", "list"],
+      ["core", "pin", "first-skill"],
+      ["local-vault", "init", vaultDir],
+      ["models", "download"],
+      ["context", "list"],
+      ["calibrate", "generate-dataset"],
+      ["eval"],
+      ["config", "set", "recall.k_lexical", "10"],
+    ];
+
+    for (const args of cases) {
+      const result = await runCliEnv(args, { RUNNING_IN_DOCKER: "true" });
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("not supported inside the Docker image");
+    }
+  });
+
+  test("allows read-only configuration inspection while containerized", async () => {
+    const result = await runCliEnv(["config", "show"], {
+      RUNNING_IN_DOCKER: "true",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+  });
+});
+
 describe("skillmux serve CLI", () => {
   test("rejects invalid transport values", async () => {
     const result = await runCli("serve", "--transport", "websocket");
