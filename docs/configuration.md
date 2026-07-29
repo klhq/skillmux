@@ -1,11 +1,13 @@
 # Configuration
 
-Skillmux defaults to FTS5 plus local GTE-small semantic retrieval. Most users need no config file.
+Skillmux manages one canonical vault and defaults to FTS5 plus local GTE-small
+semantic retrieval. Most users need no config file.
 
-For detailed CLI command reference, target resolution, and automation
-envelopes, see [`docs/cli.md`](cli.md). For labelled datasets, threshold
-certification, reference values, and the apply lifecycle, see
-[`docs/calibration.md`](calibration.md).
+Read [Concepts](concepts.md) for the vault and delivery model. For detailed CLI
+commands, target resolution, and automation envelopes, see
+[CLI reference](cli.md). For labelled datasets, threshold certification,
+reference values, and the apply lifecycle, see
+[Policy calibration](calibration.md).
 
 ## Machine config bootstrap
 
@@ -137,7 +139,11 @@ Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, 
 
 ## Tiers and the manifest
 
-`skillmux init`/`sync` manage an optional second delivery path — pinning a subset of skills as real symlinks inside an agent's own skill directory, instead of routing every request through `resolve_skill`. See the README's [Tiers](../README.md#tiers-routed-vs-pinned) section for the concept and a walkthrough; this is the manifest reference.
+`skillmux init` and `skillmux sync` manage native delivery by pinning selected
+skills as symlinks inside an agent's skill directory. Routed skills remain
+available through `resolve_skill`. Read [Concepts](concepts.md#delivery-tiers)
+for the model and [Managing skills](skill-management.md) for the workflow.
+This section defines the manifest.
 
 ### `skillmux.toml`
 

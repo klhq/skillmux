@@ -86,7 +86,7 @@ Verify the container with a read-only vault mount:
 
 ```bash
 docker run --rm \
-  -v ~/.agents/skills:/vault:ro \
+  -v ~/skills:/vault:ro \
   -p 3000:3000 \
   ghcr.io/klhq/skillmux:latest
 

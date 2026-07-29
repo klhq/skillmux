@@ -2,6 +2,9 @@
 
 Skillmux provides a unified local-or-remote CLI vocabulary for context resolution, configuration management, policy calibration, and shell discoverability.
 
+For task-oriented workflows, start with [Getting started](getting-started.md)
+or [Managing skills](skill-management.md).
+
 ## Global Options & Target Resolution
 
 Every target-aware command resolves its execution target deterministically in this order:

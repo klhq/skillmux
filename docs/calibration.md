@@ -5,6 +5,9 @@ shortlist into `matched`, `ambiguous`, or `no_match`. It is an operator action,
 not background learning, and it currently runs only against a local Skillmux
 target.
 
+Read [MCP routing](mcp-routing.md#retrieval-pipeline) before calibrating a new
+retrieval deployment.
+
 ## Lifecycle
 
 The complete workflow is:

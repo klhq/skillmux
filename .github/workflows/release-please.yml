@@ -321,7 +321,7 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ vars.DOCKERHUB_USERNAME }}/skillmux
-          short-description: "Local MCP server that routes task queries to skills in a SKILL.md vault."
+          short-description: "Manage, sync, and retrieve AI agent skills from one canonical vault."
           readme-filepath: README.md
 
   release-assets:

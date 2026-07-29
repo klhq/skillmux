@@ -1,266 +1,94 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 580" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Skillmux skill management and retrieval architecture</title>
+  <desc id="desc">A canonical skill vault feeds native core and project skill directories through sync, and routed skills through lexical, embedding, and reranked MCP retrieval.</desc>
+
   <defs>
-    <!-- Dark Tech Canvas Gradients -->
-    <linearGradient id="bg-canvas" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0a0d14"/>
-      <stop offset="50%" stop-color="#0f1420"/>
-      <stop offset="100%" stop-color="#0d111a"/>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#101827"/>
     </linearGradient>
-
-    <linearGradient id="card-bg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#161d2a" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#0f1420" stop-opacity="0.98"/>
+    <linearGradient id="vault" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#7c3aed"/>
     </linearGradient>
-
-    <linearGradient id="inner-card-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#131926"/>
-      <stop offset="100%" stop-color="#0b0e17"/>
+    <linearGradient id="native" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="1" stop-color="#059669"/>
     </linearGradient>
-
-    <linearGradient id="header-bg" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#1a2333"/>
-      <stop offset="100%" stop-color="#111724"/>
+    <linearGradient id="route" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9a3412"/>
+      <stop offset="1" stop-color="#d97706"/>
     </linearGradient>
-
-    <!-- Accent Gradients -->
-    <linearGradient id="cyan-glow" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#0284c7"/>
-    </linearGradient>
-
-    <linearGradient id="purple-glow" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#c084fc"/>
-      <stop offset="100%" stop-color="#9333ea"/>
-    </linearGradient>
-
-    <linearGradient id="emerald-glow" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#34d399"/>
-      <stop offset="100%" stop-color="#059669"/>
-    </linearGradient>
-
-    <linearGradient id="amber-glow" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#fbbf24"/>
-      <stop offset="100%" stop-color="#d97706"/>
-    </linearGradient>
-
-    <!-- Flow Line Gradients -->
-    <linearGradient id="flow-cyan" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.2"/>
-      <stop offset="50%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#c084fc"/>
-    </linearGradient>
-
-    <linearGradient id="flow-emerald" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#c084fc"/>
-      <stop offset="50%" stop-color="#34d399"/>
-      <stop offset="100%" stop-color="#34d399"/>
-    </linearGradient>
-
-    <!-- Markers for arrows -->
-    <marker id="arr-cyan" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#38bdf8"/>
-    </marker>
-    <marker id="arr-purple" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#c084fc"/>
-    </marker>
-    <marker id="arr-emerald" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 9 5 L 0 8.5 z" fill="#34d399"/>
-    </marker>
-
-    <!-- Filters -->
-    <filter id="drop-shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.6"/>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#020617" flood-opacity="0.55"/>
     </filter>
-
-    <filter id="glow-cyan-filter" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b"/>
+    </marker>
+    <style>
+      .heading { font: 700 22px system-ui, -apple-system, sans-serif; fill: #f8fafc; }
+      .subheading { font: 700 16px system-ui, -apple-system, sans-serif; fill: #f8fafc; }
+      .label { font: 600 13px system-ui, -apple-system, sans-serif; fill: #e2e8f0; }
+      .body { font: 12px system-ui, -apple-system, sans-serif; fill: #a8b3c7; }
+      .mono { font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #e2e8f0; }
+      .chip { font: 700 11px system-ui, -apple-system, sans-serif; fill: #f8fafc; letter-spacing: .4px; }
+    </style>
   </defs>
 
-  <!-- Canvas Background -->
-  <rect width="1000" height="580" rx="14" fill="url(#bg-canvas)"/>
+  <rect width="1200" height="620" rx="20" fill="url(#background)"/>
+  <path d="M0 88H1200 M0 532H1200" stroke="#243047" stroke-width="1"/>
+  <text x="48" y="48" class="heading">Skillmux</text>
+  <text x="48" y="72" class="body">One skill vault, two delivery paths</text>
 
-  <!-- Radial Background Ambient Glows -->
-  <circle cx="200" cy="150" r="180" fill="#0284c7" opacity="0.06" filter="blur(40px)"/>
-  <circle cx="500" cy="280" r="220" fill="#9333ea" opacity="0.07" filter="blur(50px)"/>
-  <circle cx="850" cy="350" r="180" fill="#059669" opacity="0.06" filter="blur(40px)"/>
-
-  <!-- Grid Pattern -->
-  <path d="M 0 60 H 1000 M 0 120 H 1000 M 0 180 H 1000 M 0 240 H 1000 M 0 300 H 1000 M 0 360 H 1000 M 0 420 H 1000 M 0 480 H 1000 M 0 540 H 1000" stroke="#1e293b" stroke-width="0.5" stroke-dasharray="3,6" opacity="0.4"/>
-  <path d="M 100 0 V 580 M 200 0 V 580 M 300 0 V 580 M 400 0 V 580 M 500 0 V 580 M 600 0 V 580 M 700 0 V 580 M 800 0 V 580 M 900 0 V 580" stroke="#1e293b" stroke-width="0.5" stroke-dasharray="3,6" opacity="0.4"/>
-
-  <!-- Main Title Header -->
-  <g transform="translate(35, 38)">
-    <!-- Logo Badge / Icon -->
-    <rect x="0" y="-18" width="32" height="32" rx="8" fill="url(#cyan-glow)"/>
-    <path d="M 8 -2 L 16 -10 L 24 -2 L 16 6 z" fill="#ffffff" opacity="0.9"/>
-    <path d="M 12 2 L 16 -2 L 20 2 L 16 6 z" fill="#0a0d14"/>
-
-    <text x="44" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="800" fill="#f8fafc" letter-spacing="-0.3">skillmux <tspan font-weight="400" fill="#94a3b8">| Architecture &amp; Hybrid Retrieval Pipeline</tspan></text>
-    <text x="44" y="18" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="500" fill="#64748b">On-demand skill routing, zero-standing context overhead, and SHA-256 byte verification</text>
+  <g filter="url(#shadow)">
+    <rect x="390" y="116" width="420" height="170" rx="18" fill="url(#vault)" stroke="#93c5fd" stroke-opacity=".35"/>
+    <rect x="418" y="140" width="102" height="24" rx="12" fill="#0b1020" fill-opacity=".45"/>
+    <text x="469" y="157" text-anchor="middle" class="chip">SOURCE</text>
+    <text x="418" y="195" class="heading">Canonical skill vault</text>
+    <text x="418" y="222" class="mono">~/skills/&lt;skill-id&gt;/SKILL.md</text>
+    <text x="418" y="252" class="body">Install • scan • inspect • organize</text>
+    <text x="774" y="252" text-anchor="end" class="mono">skillmux.toml</text>
   </g>
 
-  <!-- ==================== COLUMN 1: AGENT & CLIENT SURFACES ==================== -->
-  <g transform="translate(30, 75)" filter="url(#drop-shadow)">
-    <!-- Main Card Body -->
-    <rect width="260" height="475" rx="12" fill="url(#card-bg)" stroke="#1e293b" stroke-width="1.5"/>
-    <!-- Card Header -->
-    <rect x="0" y="0" width="260" height="38" rx="12" fill="url(#header-bg)"/>
-    <path d="M 0 28 H 260" stroke="#334155" stroke-width="1"/>
-    <!-- Header Icon + Title -->
-    <circle cx="20" cy="19" r="6" fill="#38bdf8"/>
-    <text x="34" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="800" fill="#38bdf8" letter-spacing="0.5">1. AGENT &amp; CLIENT SURFACES</text>
+  <path d="M520 286 C520 330 318 322 318 364" fill="none" stroke="#34d399" stroke-width="4" marker-end="url(#arrow-green)"/>
+  <path d="M680 286 C680 330 882 322 882 364" fill="none" stroke="#f59e0b" stroke-width="4" marker-end="url(#arrow-amber)"/>
 
-    <!-- Sub-card: Calling Agents -->
-    <rect x="14" y="48" width="232" height="90" rx="8" fill="url(#inner-card-bg)" stroke="#1e293b" stroke-width="1"/>
-    <text x="24" y="68" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">Calling AI Agents</text>
-    <text x="24" y="86" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#94a3b8">• Goose / opencode / custom CLI</text>
-    <text x="24" y="102" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#94a3b8">• Stdio &amp; HTTP MCP Client interfaces</text>
-    <rect x="22" y="112" width="216" height="18" rx="4" fill="#0f172a"/>
-    <text x="28" y="125" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="600" fill="#38bdf8">⚡ Zero standing prompt context cost</text>
+  <g filter="url(#shadow)">
+    <rect x="70" y="370" width="500" height="192" rx="18" fill="#111c2c" stroke="#10b981" stroke-width="2"/>
+    <rect x="96" y="392" width="118" height="24" rx="12" fill="url(#native)"/>
+    <text x="155" y="409" text-anchor="middle" class="chip">NATIVE PATH</text>
+    <text x="96" y="451" class="subheading">Core and project skills</text>
+    <text x="96" y="477" class="body">Select a small set with tier policy, then sync managed symlinks.</text>
 
-    <!-- Sub-card: MCP Request Protocol -->
-    <rect x="14" y="148" width="232" height="142" rx="8" fill="url(#inner-card-bg)" stroke="#0284c7" stroke-dasharray="3,3" stroke-width="1.2"/>
-    <text x="24" y="168" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" fill="#38bdf8">MCP Tool Contract</text>
-    <text x="175" y="168" font-family="ui-monospace, monospace" font-size="9" fill="#64748b">schema.json</text>
-
-    <!-- Tool 1 Box -->
-    <rect x="22" y="178" width="216" height="44" rx="6" fill="#090d16" stroke="#1e293b" stroke-width="1"/>
-    <text x="30" y="194" font-family="ui-monospace, SFMono-Regular, monospace" font-size="10" font-weight="700" fill="#7ee787">resolve_skill("query")</text>
-    <text x="30" y="210" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94a3b8">Input: natural language task prompt</text>
-
-    <!-- Tool 2 Box -->
-    <rect x="22" y="228" width="216" height="44" rx="6" fill="#090d16" stroke="#1e293b" stroke-width="1"/>
-    <text x="30" y="244" font-family="ui-monospace, SFMono-Regular, monospace" font-size="10" font-weight="700" fill="#38bdf8">fetch_skill("skill_id")</text>
-    <text x="30" y="260" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#94a3b8">Input: exact candidate ID after ambiguous</text>
-
-    <!-- Sub-card: Pinned Tier (Static Symlinks) -->
-    <rect x="14" y="300" width="232" height="160" rx="8" fill="url(#inner-card-bg)" stroke="#1e293b" stroke-width="1"/>
-    <text x="24" y="320" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700" fill="#e2e8f0">Optional Pinned Tier</text>
-    <text x="180" y="320" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="700" fill="#fbbf24">sync</text>
-
-    <text x="24" y="338" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">Static symlinks for high-frequency skills:</text>
-
-    <rect x="22" y="348" width="216" height="42" rx="4" fill="#090d16"/>
-    <text x="28" y="364" font-family="ui-monospace, SFMono-Regular, monospace" font-size="8" fill="#fbbf24">~/.claude/skills/&lt;id&gt; -&gt; vault/&lt;id&gt;</text>
-    <text x="28" y="378" font-family="ui-monospace, SFMono-Regular, monospace" font-size="8" fill="#fbbf24">~/.agents/skills/&lt;id&gt; -&gt; vault/&lt;id&gt;</text>
-
-    <text x="24" y="405" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Managed by <tspan fill="#f1f5f9" font-weight="600">skillmux init / sync</tspan></text>
-    <text x="24" y="421" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Ownership marker: <tspan fill="#f1f5f9" font-weight="600">.skillmux</tspan></text>
-    <text x="24" y="437" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Core skill limit: <tspan fill="#f1f5f9" font-weight="600">max 25 skills</tspan></text>
+    <rect x="96" y="498" width="130" height="38" rx="8" fill="#0b1321" stroke="#28533f"/>
+    <text x="161" y="522" text-anchor="middle" class="mono">core ≤ 25</text>
+    <rect x="238" y="498" width="130" height="38" rx="8" fill="#0b1321" stroke="#28533f"/>
+    <text x="303" y="522" text-anchor="middle" class="mono">project groups</text>
+    <rect x="380" y="498" width="162" height="38" rx="8" fill="#0b1321" stroke="#28533f"/>
+    <text x="461" y="522" text-anchor="middle" class="mono">init • sync</text>
   </g>
 
-  <!-- Flow Connector Line 1 -> 2 -->
-  <path d="M 290 220 H 318" stroke="url(#flow-cyan)" stroke-width="2.5" marker-end="url(#arr-cyan)"/>
+  <g filter="url(#shadow)">
+    <rect x="630" y="370" width="500" height="192" rx="18" fill="#111c2c" stroke="#f59e0b" stroke-width="2"/>
+    <rect x="656" y="392" width="122" height="24" rx="12" fill="url(#route)"/>
+    <text x="717" y="409" text-anchor="middle" class="chip">ROUTED PATH</text>
+    <text x="656" y="451" class="subheading">On-demand MCP retrieval</text>
+    <text x="656" y="477" class="body">Search the long tail, return a shortlist, or deliver one verified skill.</text>
 
-  <!-- ==================== COLUMN 2: HYBRID ROUTING & SEARCH ENGINE ==================== -->
-  <g transform="translate(325, 75)" filter="url(#drop-shadow)">
-    <!-- Main Card Body -->
-    <rect width="380" height="475" rx="12" fill="url(#card-bg)" stroke="#1e293b" stroke-width="1.5"/>
-    <!-- Card Header -->
-    <rect x="0" y="0" width="380" height="38" rx="12" fill="url(#header-bg)"/>
-    <path d="M 0 28 H 380" stroke="#334155" stroke-width="1"/>
-    <!-- Header Icon + Title -->
-    <circle cx="20" cy="19" r="6" fill="#c084fc"/>
-    <text x="34" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="800" fill="#c084fc" letter-spacing="0.5">2. ROUTING &amp; HYBRID RETRIEVAL ENGINE</text>
-
-    <!-- Transports & Security Gate -->
-    <rect x="14" y="46" width="352" height="52" rx="8" fill="url(#inner-card-bg)" stroke="#1e293b" stroke-width="1"/>
-    <text x="24" y="65" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">Transports &amp; Security Gate</text>
-    <rect x="230" y="53" width="126" height="18" rx="4" fill="#064e3b" stroke="#059669" stroke-width="0.8"/>
-    <text x="236" y="66" font-family="ui-monospace, monospace" font-size="9" font-weight="700" fill="#34d399">skillmux scan</text>
-    <text x="24" y="85" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">Stdio / HTTP (Bearer Auth, CORS, Rate-limiting) • Injection &amp; Secret Scan</text>
-
-    <!-- Parallel Search Lanes Sub-card -->
-    <!-- Lane A: Lexical Search -->
-    <rect x="14" y="108" width="170" height="135" rx="8" fill="url(#inner-card-bg)" stroke="#0284c7" stroke-width="1.2"/>
-    <rect x="22" y="116" width="154" height="22" rx="4" fill="#0c2a4a"/>
-    <text x="28" y="131" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#38bdf8">Lexical Lane (BM25)</text>
-    <text x="24" y="153" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• SQLite FTS5 index</text>
-    <text x="24" y="169" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• <tspan font-weight="600" fill="#e2e8f0">k_lexical = 20</tspan> candidates</text>
-    <text x="24" y="185" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Exact token &amp; title match</text>
-    <rect x="22" y="200" width="154" height="28" rx="4" fill="#090d16"/>
-    <text x="28" y="218" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="600" fill="#34d399">✓ 100% Offline fallback</text>
-
-    <!-- Lane B: Vector Search -->
-    <rect x="196" y="108" width="170" height="135" rx="8" fill="url(#inner-card-bg)" stroke="#9333ea" stroke-width="1.2"/>
-    <rect x="204" y="116" width="154" height="22" rx="4" fill="#3b0764"/>
-    <text x="210" y="131" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#c084fc">Vector Lane (Cosine)</text>
-    <text x="206" y="153" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Local ONNX GTE-small (q8)</text>
-    <text x="206" y="169" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• or Remote OpenAI embeddings</text>
-    <text x="206" y="185" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• <tspan font-weight="600" fill="#e2e8f0">k_vector = 20</tspan> candidates</text>
-    <rect x="204" y="200" width="154" height="28" rx="4" fill="#090d16"/>
-    <text x="210" y="218" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="600" fill="#c084fc">Semantic similarity</text>
-
-    <!-- Reciprocal Rank Fusion & Reranking Box -->
-    <path d="M 99 243 V 252 M 281 243 V 252" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="2,2"/>
-    <rect x="14" y="252" width="352" height="92" rx="8" fill="url(#inner-card-bg)" stroke="#d97706" stroke-width="1.2"/>
-    <text x="24" y="272" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="800" fill="#fbbf24">Reciprocal-Rank Fusion (RRF) &amp; Reranker</text>
-    <rect x="264" y="260" width="92" height="18" rx="4" fill="#090d16"/>
-    <text x="270" y="272" font-family="ui-monospace, monospace" font-size="9" fill="#fbbf24">RRF Formula</text>
-    <text x="24" y="292" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Fusion score: <tspan font-family="ui-monospace, monospace" fill="#f1f5f9">RRF(d) = Σ 1 / (60 + r_i(d))</tspan> → Shortlist (max 5)</text>
-    <text x="24" y="308" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Optional Infinity Reranker applies match_score / match_margin policy</text>
-    <text x="24" y="324" font-family="system-ui, -apple-system, sans-serif" font-size="9" fill="#64748b">Calibrated via <tspan fill="#38bdf8" font-weight="600">skillmux calibrate</tspan> against synthetic/labeled query logs</text>
-
-    <!-- Vault Watcher & SHA-256 Verifier -->
-    <rect x="14" y="354" width="352" height="106" rx="8" fill="url(#inner-card-bg)" stroke="#1e293b" stroke-width="1"/>
-    <text x="24" y="374" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">Live Vault Watcher &amp; SHA-256 Verifier</text>
-    <rect x="250" y="362" width="106" height="18" rx="4" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
-    <text x="256" y="375" font-family="ui-monospace, monospace" font-size="9" fill="#38bdf8">skillmux doctor</text>
-
-    <text x="24" y="392" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">Vault Path: <tspan fill="#f1f5f9" font-family="ui-monospace, monospace">~/skills/*/SKILL.md</tspan> (Read-only)</text>
-    <text x="24" y="408" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">Auto re-indexes on file change without server restart</text>
-
-    <rect x="22" y="418" width="336" height="28" rx="4" fill="#090d16" stroke="#059669" stroke-width="0.8"/>
-    <text x="30" y="436" font-family="ui-monospace, SFMono-Regular, monospace" font-size="10" font-weight="600" fill="#34d399">sha256(body) == content_sha256 (Zero-loss delivery)</text>
+    <rect x="656" y="498" width="112" height="38" rx="8" fill="#0b1321" stroke="#674316"/>
+    <text x="712" y="522" text-anchor="middle" class="mono">FTS5</text>
+    <rect x="780" y="498" width="128" height="38" rx="8" fill="#0b1321" stroke="#674316"/>
+    <text x="844" y="522" text-anchor="middle" class="mono">embeddings</text>
+    <rect x="920" y="498" width="182" height="38" rx="8" fill="#0b1321" stroke="#674316"/>
+    <text x="1011" y="522" text-anchor="middle" class="mono">optional reranker</text>
   </g>
 
-  <!-- Flow Connector Line 2 -> 3 -->
-  <path d="M 705 220 H 733" stroke="url(#flow-emerald)" stroke-width="2.5" marker-end="url(#arr-emerald)"/>
-
-  <!-- ==================== COLUMN 3: OUTCOMES & AUDIT TELEMETRY ==================== -->
-  <g transform="translate(740, 75)" filter="url(#drop-shadow)">
-    <!-- Main Card Body -->
-    <rect width="230" height="475" rx="12" fill="url(#card-bg)" stroke="#1e293b" stroke-width="1.5"/>
-    <!-- Card Header -->
-    <rect x="0" y="0" width="230" height="38" rx="12" fill="url(#header-bg)"/>
-    <path d="M 0 28 H 230" stroke="#334155" stroke-width="1"/>
-    <!-- Header Icon + Title -->
-    <circle cx="20" cy="19" r="6" fill="#34d399"/>
-    <text x="34" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="800" fill="#34d399" letter-spacing="0.5">3. OUTCOMES &amp; TELEMETRY</text>
-
-    <!-- Outcome: Matched -->
-    <rect x="14" y="46" width="202" height="114" rx="8" fill="url(#inner-card-bg)" stroke="#059669" stroke-width="1.5"/>
-    <rect x="22" y="54" width="68" height="20" rx="4" fill="#064e3b"/>
-    <text x="56" y="68" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#34d399">MATCHED</text>
-    <text x="22" y="88" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" fill="#e2e8f0">Single skill winner</text>
-    <text x="22" y="104" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Full SKILL.md body delivered</text>
-    <text x="22" y="118" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">  inline in text content</text>
-    <text x="22" y="132" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Verified content_sha256</text>
-
-    <!-- Outcome: Ambiguous -->
-    <rect x="14" y="170" width="202" height="110" rx="8" fill="url(#inner-card-bg)" stroke="#d97706" stroke-width="1.5"/>
-    <rect x="22" y="178" width="80" height="20" rx="4" fill="#451a03"/>
-    <text x="62" y="192" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#fbbf24">AMBIGUOUS</text>
-    <text x="22" y="212" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" fill="#e2e8f0">Multiple candidates</text>
-    <text x="22" y="228" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Shortlist in structuredContent</text>
-    <text x="22" y="242" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• LLM picks and calls tool:</text>
-    <rect x="22" y="248" width="186" height="22" rx="4" fill="#090d16"/>
-    <text x="28" y="263" font-family="ui-monospace, monospace" font-size="9" fill="#fbbf24">fetch_skill(selected_id)</text>
-
-    <!-- Outcome: No Match -->
-    <rect x="14" y="290" width="202" height="72" rx="8" fill="url(#inner-card-bg)" stroke="#475569" stroke-width="1"/>
-    <rect x="22" y="298" width="72" height="18" rx="4" fill="#1e293b"/>
-    <text x="58" y="311" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="800" fill="#94a3b8">NO_MATCH</text>
-    <text x="22" y="330" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• No skill loaded</text>
-    <text x="22" y="344" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Agent uses standard workflow</text>
-
-    <!-- Audit Telemetry Sub-card -->
-    <rect x="14" y="372" width="202" height="88" rx="8" fill="url(#inner-card-bg)" stroke="#1e293b" stroke-width="1"/>
-    <text x="22" y="392" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="700" fill="#f8fafc">Audit &amp; Telemetry Log</text>
-    <text x="22" y="410" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• SQLite audit table in state_dir</text>
-    <text x="22" y="424" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Inspect with <tspan fill="#38bdf8" font-weight="600">skillmux report</tspan></text>
-    <text x="22" y="438" font-family="system-ui, -apple-system, sans-serif" font-size="10" fill="#94a3b8">• Prometheus <tspan fill="#38bdf8" font-weight="600">/metrics</tspan> endpoint</text>
+  <g>
+    <rect x="70" y="580" width="1060" height="2" fill="#243047"/>
+    <text x="70" y="603" class="body">Native clients: Claude Code • Codex • Gemini CLI • OpenCode • GitHub Copilot • Windsurf • custom targets</text>
+    <text x="1130" y="603" text-anchor="end" class="body">MCP: stdio or Streamable HTTP</text>
   </g>
 </svg>

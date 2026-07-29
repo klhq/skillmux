@@ -1,0 +1,205 @@
+# Managing skills
+
+Skillmux keeps skill content in a canonical vault and materializes selected
+skills into client directories. This guide covers the commands that change or
+inspect that state.
+
+## Install from Git
+
+`skillmux install` accepts a GitHub shorthand or a full Git URL:
+
+```sh
+skillmux install owner/repo
+skillmux install owner/repo/path/to/skill
+skillmux install https://git.example.com/team/skill.git
+```
+
+The repository root must contain `SKILL.md`. If a repository contains several
+skill directories, add the path for the one you want.
+
+Skillmux clones into a temporary directory, validates the selected skill,
+scans its text files, and copies it to `vault_path`. Existing skill IDs require
+`--force`.
+
+Preview the destination without copying:
+
+```sh
+skillmux install owner/repo --dry-run
+```
+
+Set a scan gate when you want findings to block installation:
+
+```sh
+skillmux install owner/repo --fail-on high
+```
+
+The scanner detects suspicious prompt-injection patterns, secrets, and risky
+instructions. Findings remain advisory unless you pass `--fail-on`.
+
+## Scan a vault or candidate
+
+```sh
+skillmux scan
+skillmux scan ~/skills/candidate
+skillmux scan --format json
+skillmux scan --fail-on medium
+```
+
+With no path, `scan` checks the configured vault. `--json` wraps the result in
+the standard CLI automation envelope, while `--format json` selects the
+scanner's raw JSON rendering.
+
+## Plan client delivery
+
+Use product names for common clients:
+
+```sh
+skillmux init --client claude-code --client codex --dry-run
+```
+
+Use a direct target when you need a known path:
+
+```sh
+skillmux init --target agent-skills --yes
+skillmux init --target custom --dir /srv/my-agent/skills --yes
+```
+
+Skillmux refuses to adopt a target that points to the whole vault because sync
+would reduce its visible skills. Review that migration first:
+
+```sh
+skillmux init --client claude-code --migrate-full-vault \
+  --core csv-formatter --dry-run
+skillmux init --client claude-code --migrate-full-vault \
+  --core csv-formatter --yes
+```
+
+## Manage core pins
+
+Core skills go to each configured target:
+
+```sh
+skillmux core pin csv-formatter --yes
+skillmux core pin code-context systematic-debugging --yes
+skillmux core unpin csv-formatter --yes
+```
+
+One command can change several skill IDs. Skillmux validates the complete
+change before writing, so a conflict prevents the whole operation. Core stays
+capped at 25 skills.
+
+Run `skillmux sync` after a direct pin or unpin command.
+
+## Manage project groups
+
+Create a group with the guided command:
+
+```sh
+skillmux project init
+```
+
+Maintain it with explicit commands:
+
+```sh
+skillmux project list
+skillmux project show my-project
+skillmux project add-path my-project ~/code/my-project --yes
+skillmux project pin my-project code-context --yes
+skillmux project attach my-project --client claude-code --client codex --yes
+skillmux project unpin my-project code-context --yes
+skillmux project detach my-project --target codex --yes
+skillmux project remove-path my-project ~/code/my-project --yes
+```
+
+Create the group with `project init` or `project add-path` before pinning.
+Project setup syncs by default. Direct maintenance commands update the
+manifest but leave materialization to the next `skillmux sync`.
+
+## Synchronize targets
+
+```sh
+skillmux sync --dry-run
+skillmux sync
+```
+
+Sync compares the manifest with entries recorded in each target's `.skillmux`
+marker. It creates missing symlinks and removes stale managed links.
+
+Install a vault Git hook when merges can change `skillmux.toml`:
+
+```sh
+skillmux sync --install-hook
+```
+
+The hook lives in the canonical vault and runs `skillmux sync` after a merge.
+
+## Inspect active state
+
+Find which vault root serves a skill:
+
+```sh
+skillmux skill which code-context
+```
+
+If a local overlay shadows the canonical copy, the output lists both paths.
+
+Inspect configuration and readiness:
+
+```sh
+skillmux config show
+skillmux config diff
+skillmux config status
+skillmux doctor
+```
+
+## Use routing data to tune tiers
+
+`resolve_skill` writes an audit row for each request. Summarize recent usage:
+
+```sh
+skillmux report --since 7d
+skillmux report --server http://host:3000 --since 7d
+```
+
+Repeatedly matched skills may belong in core or a project group. Repeated
+`no_match` queries point to missing skills or weak skill descriptions.
+
+`--since` accepts windows such as `1h`, `7d`, and `1m`, plus absolute dates and
+timestamps.
+
+## Target ownership and recovery
+
+`skillmux target remove <name> --yes` removes the manifest record and preserves
+the target directory, marker, and files. Cleanup stays under your control.
+
+Restore a managed target to one symlink that exposes the full vault:
+
+```sh
+skillmux sync --restore-monolith
+```
+
+This operation removes the target marker and per-skill links. It refuses to
+run when unmanaged content makes the replacement unsafe. Re-adopt the target
+with `skillmux init` before running managed sync again.
+
+Do not delete `.skillmux` markers by hand. The marker gives sync the ownership
+record it needs to preserve unrelated content.
+
+## Local overlays
+
+Configure machine-specific override roots:
+
+```toml
+vault_path = "~/skills"
+local_vault_paths = ["~/skills-local"]
+```
+
+Then record the relationship:
+
+```sh
+skillmux local-vault init ~/skills-local --yes
+skillmux skill which my-skill
+```
+
+Read [Configuration](configuration.md#local-vault-overlays) for precedence,
+pinning restrictions, and watcher behavior.

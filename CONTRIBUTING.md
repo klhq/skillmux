@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to `skillmux`! This document outlines our development workflows, coding standards, and repository conventions.
 
+Product and operator documentation starts at [`docs/README.md`](docs/README.md).
+
 ## Development Setup
 
 We use **Bun** for both runtime execution and package management.
@@ -80,7 +82,7 @@ docker build --target full -t skillmux:dev .
 To test the container locally:
 
 ```bash
-docker run --rm -v ~/.agents/skills:/vault:ro -p 3000:3000 skillmux:dev
+docker run --rm -v ~/skills:/vault:ro -p 3000:3000 skillmux:dev
 ```
 
 ## Contribution Workflow
