@@ -4,19 +4,20 @@ Choose a deployment from the client count and inference source:
 
 | Use case | Recommended package | Transport | Inference |
 | --- | --- | --- | --- |
-| Native skill management | Bun package or Linux binary | Filesystem | None required |
-| Local MCP retrieval | Bun package or Linux binary | stdio | Downloaded GTE-small |
+| Native skill management | Skillmux CLI | Filesystem | None required |
+| Local MCP retrieval | Skillmux CLI | stdio | Downloaded GTE-small |
 | Shared MCP with local inference | Full Docker image | Streamable HTTP | Bundled GTE-small |
-| Shared MCP with remote or lexical retrieval | Slim Docker image | Streamable HTTP | Remote endpoint or lexical fallback |
+| Shared MCP with remote or lexical retrieval | Slim Docker image (advanced) | Streamable HTTP | Remote endpoint or lexical fallback |
 
-The Bun package and Linux binary can serve HTTP. Docker can serve stdio. These
-options expose the same MCP tools, but the table shows the shortest operational
-path for each use case.
+Install the CLI with either the Bun package or standalone Linux executable;
+they expose the same commands and can also serve HTTP. Deploy the full Docker
+image for a shared service by default. Docker can serve stdio when a client
+requires a container command; use slim only for remote or lexical retrieval.
 
 “Local inference” means the model runs in the Skillmux process. It does not
 mean that the MCP client must run on the same machine.
 
-## CLI and Linux binary
+## Skillmux CLI
 
 Run stdio MCP beside one client:
 
@@ -42,9 +43,12 @@ Skillmux publishes Linux AMD64 and ARM64 images to GHCR and Docker Hub:
 | Variant | GHCR tag | Contents |
 | --- | --- | --- |
 | Full | `ghcr.io/klhq/skillmux:latest` | Runtime plus bundled GTE-small |
-| Slim | `ghcr.io/klhq/skillmux:latest-slim` | Runtime without model files |
+| Slim | `ghcr.io/klhq/skillmux:latest-slim` | Runtime without model files; remote or lexical retrieval |
 
 Docker Hub mirrors the same tags under `docker.io/klhq/skillmux`.
+
+Neither image bundles a local reranker. Configure a remote reranker when your
+retrieval policy needs one.
 
 Use the full image when the service should run embeddings itself:
 
@@ -66,8 +70,40 @@ The container sets:
 
 Mount the vault read-only for a retrieval-only service. Run `install`, `init`,
 `sync`, and other filesystem management commands on the host. Containerized
-native management requires writable host mounts for every managed client
-directory and is not the recommended setup.
+native management is intentionally rejected: agent directories belong to the
+host CLI, where their symlinks resolve correctly.
+
+## Container command contract
+
+The image separates its executable from its default command. Running an image
+without arguments starts Streamable HTTP MCP on port 3000:
+
+```sh
+docker run ghcr.io/klhq/skillmux:latest
+```
+
+Arguments after the image replace that default, so one-shot maintenance and
+stdio use the same image:
+
+```sh
+docker run --rm -v ~/skills:/vault:ro -v skillmux-data:/data \
+  ghcr.io/klhq/skillmux:latest doctor
+docker run --rm -v ~/skills:/vault:ro -v skillmux-data:/data \
+  ghcr.io/klhq/skillmux:latest index
+```
+
+Docker Compose `command:` and Kubernetes `args:` likewise replace only the
+default command, not the executable.
+
+The supported container commands are `serve`, `index`, `doctor`, `report`,
+`scan`, `skill which`, and read-only `config show`, `config get`,
+`config validate`, `config diff`, and `config status`.
+
+The image rejects host-management commands, including `init`, `sync`,
+`install`, `project`, `target`, `core`, `local-vault`, `models download`,
+context management, calibration, evaluation, and configuration initialization
+or mutation. Install the Skillmux CLI on the host when a command needs to
+manage a local vault or agent directory.
 
 ## Slim image
 
@@ -109,16 +145,18 @@ Start from [config.remote.example.toml](../config.remote.example.toml).
 Some local clients can launch a container as their stdio MCP command:
 
 ```sh
-docker run -i --rm \
+docker run --no-healthcheck -i --rm \
   -v ~/skills:/vault:ro \
+  -v skillmux-data:/data \
   ghcr.io/klhq/skillmux:latest serve --transport stdio
 ```
 
-The container must keep standard input open, so use `-i`.
+The container must keep standard input open, so use `-i`. Disable the baked
+HTTP health check for stdio because no HTTP listener is started.
 
 ## Expose HTTP safely
 
-The native CLI and Linux binary bind `127.0.0.1`. Docker binds `0.0.0.0` so
+The Skillmux CLI binds `127.0.0.1`. Docker binds `0.0.0.0` so
 port mapping works. Before exposing the port beyond a trusted host:
 
 ```toml
@@ -202,3 +240,11 @@ workflow.
 Treat the state database as sensitive because audit rows can contain raw user
 queries. Stop the process or use SQLite-safe backup tooling before copying a
 live database.
+
+## Native pins with shared retrieval
+
+For the combined topology, use one Git-backed vault source of truth: each
+machine that manages native skills keeps its own checkout and runs the CLI;
+the shared service mounts its own checkout for retrieval. Skillmux does not
+pull, push, replicate, or otherwise keep those vault checkouts fresh—Git and
+your deployment process own that responsibility.

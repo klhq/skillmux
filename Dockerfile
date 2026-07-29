@@ -25,7 +25,8 @@ EXPOSE 3000
 VOLUME ["/vault", "/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD bun -e 'const r=await fetch("http://127.0.0.1:3000/health/ready");process.exit(r.ok?0:1)'
-ENTRYPOINT ["bun", "run", "src/cli.ts", "serve", "--transport", "http"]
+ENTRYPOINT ["bun", "run", "src/cli.ts"]
+CMD ["serve", "--transport", "http"]
 
 # Stage 4: Full runtime (battery-included with models)
 FROM slim AS full

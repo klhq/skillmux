@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
   <title id="title">Three ways to use Skillmux</title>
-  <desc id="desc">One canonical skill vault supports native skill management, local MCP retrieval with cached embeddings, and a shared HTTP MCP service using the full or slim Docker image.</desc>
+  <desc id="desc">One canonical skill vault supports native skill management and local MCP retrieval through the Skillmux CLI, plus a shared HTTP MCP service through the full or slim Skillmux server image.</desc>
 
   <defs>
     <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
@@ -86,8 +86,8 @@
     <rect x="40" y="284" width="360" height="302" rx="18" fill="#ffffff" stroke="#99d5cc" stroke-width="2"/>
     <rect x="62" y="306" width="91" height="26" rx="13" fill="#ccfbf1"/>
     <text x="107.5" y="324" text-anchor="middle" class="chip" fill="#115e59">USE CASE 1</text>
-    <text x="62" y="365" class="card-title">Manage native skills</text>
-    <text x="62" y="390" class="body">Run Skillmux on the client machine.</text>
+    <text x="62" y="365" class="card-title">Skillmux CLI</text>
+    <text x="62" y="390" class="body">Manage native skills on the client machine.</text>
 
     <rect x="62" y="414" width="276" height="48" rx="10" fill="#f0fdfa" stroke="#99d5cc"/>
     <text x="200" y="444" text-anchor="middle" class="mono">skillmux init · sync</text>
@@ -97,10 +97,10 @@
     <text x="200" y="533" text-anchor="middle" class="body">managed core and project links</text>
 
     <text x="62" y="570" class="body">Install with</text>
-    <rect x="142" y="550" width="76" height="27" rx="8" fill="#0f172a"/>
-    <text x="180" y="568" text-anchor="middle" class="chip" fill="#ffffff">BUN CLI</text>
-    <rect x="226" y="550" width="112" height="27" rx="8" fill="#f1f5f9" stroke="#cbd5e1"/>
-    <text x="282" y="568" text-anchor="middle" class="chip" fill="#334155">LINUX BINARY</text>
+    <rect x="160" y="550" width="85" height="27" rx="8" fill="#0f172a"/>
+    <text x="202.5" y="568" text-anchor="middle" class="chip" style="font-size: 10px" fill="#ffffff">BUN PACKAGE</text>
+    <rect x="251" y="550" width="87" height="27" rx="8" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="294.5" y="561" text-anchor="middle" class="chip" style="font-size: 10px" fill="#334155"><tspan x="294.5">LINUX</tspan><tspan x="294.5" dy="11">EXECUTABLE</tspan></text>
   </g>
 
   <g filter="url(#shadow)">
@@ -121,7 +121,7 @@
     <text x="600" y="507" text-anchor="middle" class="label">FTS5 + local GTE-small</text>
     <text x="600" y="530" text-anchor="middle" class="body">downloaded and cached on this machine</text>
 
-    <text x="442" y="570" class="body">Install with Bun CLI or Linux binary</text>
+    <text x="442" y="570" class="body">Skillmux CLI: Bun package or Linux executable</text>
   </g>
 
   <g filter="url(#shadow)">
@@ -137,7 +137,7 @@
     <path d="M924 438H953" fill="none" stroke="#7c3aed" stroke-width="2.5" marker-end="url(#arrow-violet)"/>
     <text x="938" y="428" text-anchor="middle" class="body">HTTP</text>
     <rect x="959" y="414" width="179" height="48" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
-    <text x="1048.5" y="435" text-anchor="middle" class="label">Skillmux service</text>
+    <text x="1048.5" y="435" text-anchor="middle" class="label">Skillmux server</text>
     <text x="1048.5" y="453" text-anchor="middle" class="mono">POST /mcp</text>
 
     <rect x="822" y="484" width="148" height="58" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>

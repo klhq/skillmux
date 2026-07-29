@@ -1,8 +1,11 @@
 # CLI reference and automation
 
-The Bun package and Linux binary expose the same CLI. Commands can operate on
-the built-in `local` target or on a named shared server through its
-administrative API.
+The Bun package and standalone Linux executable expose the same CLI. Native
+management belongs on the machine that owns the client skill directories:
+use the built-in `local` target for `init`, `install`, pinning, and `sync`.
+Named remote contexts administer shared-server configuration through its
+administrative API only; they do not install, pin, or synchronize skills in
+client directories.
 
 In this guide, **local target** means the filesystem and process selected by
 the built-in CLI context. It does not describe local inference. A local target
@@ -58,7 +61,9 @@ skillmux context remove prod
 
 ## Configuration management (`skillmux config`)
 
-Local and remote targets share identical `config` subcommands.
+Local and remote targets share the server configuration read and status
+subcommands. `config init` is local-only because it creates machine
+configuration and selects a local vault.
 
 ```sh
 # Create the machine config after validating a populated vault
@@ -87,7 +92,9 @@ skillmux config status
 ```
 
 `config init` writes only `vault_path`. It leaves an existing config unchanged
-and does not add `local_vault_paths`.
+and does not add `local_vault_paths`. Remote contexts administer the deployed
+server configuration; they never administer client skill installation, pins,
+or sync.
 
 ---
 

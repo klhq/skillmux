@@ -47,7 +47,7 @@ mode = "local"
 
 The versioned `gte-small-v1` configuration uses normalized, mean-pooled
 `Xenova/gte-small` embeddings with 384 dimensions, quantized to q8 on CPU.
-CLI and Linux binary installations download the model when inference first
+Skillmux CLI installations download the model when inference first
 loads it and cache it in `~/.cache/skillmux/models`. The full Docker image
 already contains the model.
 

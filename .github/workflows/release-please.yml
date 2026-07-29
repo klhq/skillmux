@@ -191,8 +191,38 @@ jobs:
       - run: npm install --global npm@11
       - run: npm publish --provenance --access public
 
-  ghcr:
+  docker-release-smoke:
     needs: [release-metadata, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [slim, full]
+        architecture: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-metadata.outputs.sha }}
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.architecture }}
+          load: true
+          push: false
+          tags: skillmux:release-${{ matrix.target }}-${{ matrix.architecture }}
+          cache-from: type=gha,scope=release-smoke-${{ matrix.target }}-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=release-smoke-${{ matrix.target }}-${{ matrix.architecture }}
+      - name: Smoke-test ${{ matrix.target }} on linux/${{ matrix.architecture }}
+        run: bash tests/docker-smoke.sh skillmux:release-${{ matrix.target }}-${{ matrix.architecture }}
+
+  ghcr:
+    needs: [release-metadata, validate, docker-release-smoke]
     runs-on: ubuntu-latest
     environment: production-release
     timeout-minutes: 45

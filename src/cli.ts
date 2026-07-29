@@ -132,6 +132,31 @@ const KNOWN_COMMANDS = [
   "local-vault",
 ];
 
+const DOCKER_HOST_MANAGEMENT_GUIDANCE =
+  "This command manages local Skillmux or agent directories and is not supported inside the Docker image. Install the Skillmux CLI on the host using the Bun package or standalone Linux executable.";
+
+function isDockerHostManagementCommand(command: string, subCommand: string): boolean {
+  if (
+    [
+      "init",
+      "sync",
+      "install",
+      "project",
+      "target",
+      "core",
+      "local-vault",
+      "models",
+      "context",
+      "calibrate",
+      "eval",
+    ].includes(command)
+  ) {
+    return true;
+  }
+
+  return command === "config" && ["init", "set"].includes(subCommand);
+}
+
 async function main() {
   const rawArgv = Bun.argv.slice(2);
 
@@ -141,6 +166,8 @@ async function main() {
   let flagContext: string | undefined;
   let flagServer: string | undefined;
   let isDryRun = false;
+  const subCommand = rawArgv[1] ?? "";
+  const commandArgs = rawArgv.slice(2);
 
   const command = rawArgv[0];
   if (!command || command === "--help" || command === "-h") {
@@ -160,6 +187,18 @@ async function main() {
   }
 
   let resolvedTarget: ResolvedTarget = { type: "local", name: "local" };
+
+  if (
+    process.env.RUNNING_IN_DOCKER === "true" &&
+    isDockerHostManagementCommand(command, subCommand)
+  ) {
+    handleError(new Error(DOCKER_HOST_MANAGEMENT_GUIDANCE), {
+      target: resolvedTarget,
+      isJson,
+      isVerbose,
+    });
+    return;
+  }
 
   // Only resolve target if command is target-aware or context/config/calibrate
   const isLocalConfigInit = command === "config" && rawArgv[1] === "init";
@@ -181,8 +220,6 @@ async function main() {
   }
 
   const adapter = createTargetAdapter(resolvedTarget, { allowInsecure });
-  const subCommand = rawArgv[1] ?? "";
-  const commandArgs = rawArgv.slice(2);
 
   try {
     switch (command) {
