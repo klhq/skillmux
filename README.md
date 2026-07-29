@@ -13,31 +13,27 @@ Skillmux manages [`SKILL.md`](https://agentskills.io) collections across AI
 coding clients. Keep one canonical vault, pin a small set into native skill
 directories, and retrieve the rest through MCP.
 
-You can use Skillmux in three ways:
+The same Skillmux CLI manages native skills and can serve local stdio MCP.
+Choose a setup by the job:
 
-| Use case | What runs | How skills reach the client |
-| --- | --- | --- |
-| **Manage native skills** | The CLI or Linux binary on your machine | `init` and `sync` create managed links for core and project skills |
-| **Add local retrieval** | Skillmux beside one client | The client calls local stdio MCP; Skillmux searches the full vault |
-| **Run a shared service** | One Skillmux server for several clients | Clients call Streamable HTTP MCP |
+1. Need native skills or local MCP for one client? Install the **Skillmux CLI**.
+2. On Linux without Bun? Install the standalone Linux executable instead; it is
+   the same CLI.
+3. Need one shared HTTP MCP service? Deploy the **full Docker image**—the
+   self-contained default with GTE-small.
+4. Already have remote embeddings, or intentionally want lexical-only
+   retrieval? Use the **slim** image; see [Deployment](docs/deployment.md).
+5. Need native pins and shared retrieval? Run the CLI on the machines that own
+   client directories and one shared server for routed retrieval.
 
-The same installation can manage native skills and serve local MCP. A shared
-service focuses on routed retrieval; manage its mounted vault on the host.
+A shared service focuses on routed retrieval; manage its mounted vault on the
+host with the CLI.
 
-## Choose a setup
+## One vault, three ways to use it
 
 <p align="center">
   <img src="docs/assets/architecture.svg" alt="Three ways to use Skillmux: manage native skills, add local MCP retrieval, or run a shared MCP service" width="100%">
 </p>
-
-Pick an installation based on the job:
-
-| Installation | Native management | Local MCP | Shared HTTP MCP | Inference |
-| --- | --- | --- | --- | --- |
-| **Bun package** | Recommended | Recommended | Supported | Downloads and caches GTE-small |
-| **Linux binary** | Recommended | Recommended | Supported | Downloads and caches GTE-small |
-| **Full Docker image** | Manage on host | Supported | Recommended | GTE-small included |
-| **Slim Docker image** | Manage on host | Supported | Recommended | Remote embeddings or lexical fallback |
 
 “Local” describes where Skillmux runs. “Local inference” means the embedding
 model runs in the Skillmux process. Both stdio and HTTP expose the same

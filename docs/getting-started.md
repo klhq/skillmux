@@ -7,7 +7,7 @@ an installation.
 | --- | --- | --- |
 | [Manage native skills](#manage-native-skills) | Managed links in client skill directories | Bun package or Linux binary |
 | [Add local MCP retrieval](#add-local-mcp-retrieval) | Local stdio MCP | Bun package or Linux binary |
-| [Run a shared MCP service](#run-a-shared-mcp-service) | Streamable HTTP MCP | Full or slim Docker image |
+| [Run a shared MCP service](#run-a-shared-mcp-service) | Streamable HTTP MCP | Full Docker image |
 
 Native management and local MCP retrieval can run together. Complete both
 recipes if you want pinned skills plus on-demand access to the rest of the
@@ -196,20 +196,11 @@ docker run -d \
   ghcr.io/klhq/skillmux:latest
 ```
 
-The full image includes GTE-small. The slim image omits model files and starts
-in lexical mode:
-
-```sh
-docker run -d \
-  --name skillmux-slim \
-  -v ~/skills:/vault:ro \
-  -v skillmux-data:/data \
-  -p 3000:3000 \
-  ghcr.io/klhq/skillmux:latest-slim
-```
-
-Configure remote embeddings on the slim image when you need hybrid retrieval.
-Docker Hub publishes the same tags under `docker.io/klhq/skillmux`.
+The full image includes GTE-small and is the shared-service default. The slim
+image is an advanced option for configured remote embeddings or intentional
+lexical-only retrieval; it contains no model files. Neither image includes a
+local reranker. Configure remote embeddings on slim when you need hybrid
+retrieval. Docker Hub publishes the same tags under `docker.io/klhq/skillmux`.
 
 Check the service:
 
@@ -224,6 +215,20 @@ monitoring, and backups.
 
 Manage the mounted vault on the host. A retrieval-only container should mount
 it read-only.
+
+## Combine native pins with shared retrieval
+
+Use this topology when users need native core or project pins and also one
+shared MCP endpoint. Keep one Git-backed vault as the source of truth:
+
+- each machine that owns client skill directories keeps its own checkout and
+  runs the Skillmux CLI for `init`, pinning, and `sync`;
+- the shared server mounts its own checkout and serves routed retrieval over
+  HTTP;
+- MCP-only clients connect to the shared server and do not need the CLI.
+
+Skillmux does not pull, push, replicate, or make those checkouts fresh. Git
+and your deployment process own vault replication and freshness.
 
 ## Next steps
 

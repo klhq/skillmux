@@ -42,9 +42,12 @@ Skillmux publishes Linux AMD64 and ARM64 images to GHCR and Docker Hub:
 | Variant | GHCR tag | Contents |
 | --- | --- | --- |
 | Full | `ghcr.io/klhq/skillmux:latest` | Runtime plus bundled GTE-small |
-| Slim | `ghcr.io/klhq/skillmux:latest-slim` | Runtime without model files |
+| Slim | `ghcr.io/klhq/skillmux:latest-slim` | Runtime without model files; remote or lexical retrieval |
 
 Docker Hub mirrors the same tags under `docker.io/klhq/skillmux`.
+
+Neither image bundles a local reranker. Configure a remote reranker when your
+retrieval policy needs one.
 
 Use the full image when the service should run embeddings itself:
 

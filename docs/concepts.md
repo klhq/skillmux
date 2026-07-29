@@ -4,9 +4,12 @@ Skillmux separates three decisions:
 
 | Decision | Choices |
 | --- | --- |
-| How skills reach a client | Native core/project pins or routed MCP retrieval |
-| Where Skillmux runs | On the client machine or as a shared HTTP service |
-| How Skillmux searches | Lexical, hybrid, reranked, or exact retrieval |
+| Skill delivery | Native core/project pins or routed MCP retrieval |
+| Process location | On the client machine or as a shared HTTP service |
+| Packaging | Skillmux CLI installation or Skillmux server deployment |
+
+Retrieval capability is a fourth, independent concern: lexical, hybrid,
+reranked, or exact retrieval.
 
 These decisions are independent. A local CLI can manage native pins and serve
 stdio MCP at the same time. A shared service uses HTTP MCP and can run local or
@@ -60,14 +63,18 @@ vault over HTTP.
 | Local MCP | Beside one client | stdio | Bun package or Linux binary |
 | Shared MCP | Server or container host | Streamable HTTP | Full or slim Docker image |
 
-The Bun package and Linux binary can also serve HTTP. Docker can serve stdio
-for clients that support a container command. Those combinations use the same
-MCP tools; the table lists the shortest setup for each use case.
+The **Skillmux CLI** is available as either the Bun package or the standalone
+Linux executable; both expose the same commands. The **Skillmux server** is
+available as a full or slim Docker image. The Bun package and Linux executable
+can also serve HTTP. Docker can serve stdio for clients that support a
+container command. Those combinations use the same MCP tools; the table lists
+the shortest setup for each use case.
 
 The full Docker image bundles GTE-small. The slim image contains no model
 files, so it uses configured remote embeddings or lexical fallback. The Bun
 package and Linux binary download and cache GTE-small when local inference
-first loads it; `skillmux models download` prefetches it.
+first loads it; `skillmux models download` prefetches it. Neither Docker image
+bundles a local reranker; configure one remotely when needed.
 
 ## Clients and targets
 
