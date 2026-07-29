@@ -5,6 +5,9 @@ shortlist into `matched`, `ambiguous`, or `no_match`. It is an operator action,
 not background learning, and it currently runs only against a local Skillmux
 target.
 
+Read [MCP routing](mcp-routing.md#retrieval-pipeline) before calibrating a new
+retrieval deployment.
+
 ## Lifecycle
 
 The complete workflow is:
@@ -75,7 +78,9 @@ a new `run_id`; the active policy remains unchanged until one is applied.
 
 ## Local and remote targets
 
-Calibration is local-only in this release. Local commands operate on the
+Here, `local` and `remote` name CLI administration targets, not inference
+locations or MCP transports. Calibration is local-target-only in this release.
+Local commands operate on the
 configured local vault, index, inference endpoints, dataset path, evidence
 database, and TOML file. Human output always prints `Target: local`; JSON output
 uses `"target": "local"`.

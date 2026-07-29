@@ -1,0 +1,199 @@
+# Troubleshooting
+
+Start with:
+
+```sh
+skillmux doctor
+skillmux config show
+skillmux config validate
+```
+
+Add `--json` when you need machine-readable diagnostics.
+
+## Vault failures
+
+### Vault path does not exist
+
+Check the effective path and its source:
+
+```sh
+skillmux config show
+```
+
+Create the directory or initialize config against a populated vault:
+
+```sh
+skillmux config init --vault ~/skills --yes
+```
+
+`config init` requires at least one valid `SKILL.md`.
+
+### A skill does not appear
+
+Each skill must sit one directory below the vault:
+
+```text
+~/skills/<skill-id>/SKILL.md
+```
+
+Run:
+
+```sh
+skillmux scan ~/skills/<skill-id>
+skillmux index
+skillmux skill which <skill-id>
+```
+
+The scanner reports invalid frontmatter and unreadable content. `skill which`
+also reveals local-overlay shadowing.
+
+## Sync failures
+
+### Target has no ownership marker
+
+Skillmux will not change an existing unmarked directory. Adopt it first:
+
+```sh
+skillmux init --client claude-code --dry-run
+skillmux init --client claude-code --yes
+```
+
+### Target points to the full vault
+
+Review the smaller pinned set before converting:
+
+```sh
+skillmux init --client claude-code \
+  --migrate-full-vault \
+  --core code-context \
+  --dry-run
+```
+
+Apply the same command with `--yes` after checking the plan.
+
+### Unmanaged file collides with a pin
+
+Skillmux preserves unmanaged target content. Rename or remove the conflicting
+entry yourself, then rerun `skillmux sync`.
+
+### Target belongs to another host
+
+New targets include the current hostname. `sync` skips a target when its
+manifest `host` differs. Run `skillmux target show <name>` and add a separate
+target for the current machine instead of reusing the other machine's path.
+
+### A local-overlay skill cannot be pinned
+
+Core and project pins must exist in the canonical `vault_path`. Copy or commit
+the skill there before pinning it. Routed lookup can still serve the overlay.
+
+## Retrieval failures
+
+### `resolve_skill` returns `ambiguous`
+
+Ambiguity is the expected result without calibrated reranker thresholds. The
+calling model should select a candidate and call `fetch_skill`.
+
+Improve a weak shortlist by:
+
+- writing a concrete skill description with task vocabulary;
+- enabling embeddings;
+- increasing recall depth when the relevant skill falls outside the fused
+  candidate set.
+
+Use a labelled dataset and [Policy calibration](calibration.md) before enabling
+automatic matches.
+
+### Server reports lexical mode
+
+Lexical mode means Skillmux can query FTS5 but cannot use embeddings. The next
+step depends on the installation:
+
+| Installation | Expected action |
+| --- | --- |
+| Bun package or Linux binary with local inference | Download the local model and rebuild the index |
+| Full Docker image | Confirm the running tag is the full image and inspect `doctor` output |
+| Slim Docker image | Configure remote embeddings or keep lexical fallback |
+
+For a CLI or Linux binary installation, run:
+
+```sh
+skillmux doctor
+skillmux models download
+skillmux index
+```
+
+For remote inference, verify the endpoint, model, dimension, API-key
+environment variable, and network path. The slim image does not contain
+GTE-small, so `models download` is not its recovery path.
+
+### Reranker is unavailable
+
+Skillmux keeps the hybrid shortlist when a reranker probe or request fails.
+Check `inference.reranker.endpoint`, `adapter`, `model`, and the environment
+variable named by `api_key_env`.
+
+Use the complete request URL. Skillmux does not append `/rerank` or infer an
+adapter from the endpoint.
+
+### Delivered content changed after indexing
+
+Skillmux checks the file before delivery and refreshes stale metadata. If a
+skill cannot be parsed during a live edit, the index keeps the previous good
+metadata but does not serve stale body bytes. Finish the write with valid
+frontmatter and retry.
+
+## HTTP failures
+
+### Another machine cannot connect
+
+The CLI and Linux binary bind HTTP to `127.0.0.1`. Set `server.hostname` or
+`HTTP_HOSTNAME` to a reachable interface, then restart the server. Docker
+binds `0.0.0.0` inside the container, but the host still needs a published
+port. Enable authentication before exposing either deployment.
+
+### Browser receives `403`
+
+Add the browser origin to `server.allowed_origins`. The value must match the
+request's `Origin` header. Curl and server-to-server clients omit this header
+and do not use the CORS list.
+
+### Client receives `401`
+
+Confirm `server.auth_enabled = true`, export the environment variable named by
+`auth_token_env`, and send `Authorization: Bearer <token>`.
+
+An enabled server with an empty token environment variable returns a server
+configuration error rather than accepting an empty token.
+
+### Client receives `429`
+
+The rate limiter rejected the request. Read `Retry-After` and the
+`X-RateLimit-*` response headers. Increase `requests_per_minute` only after
+checking for a retry loop or shared-token traffic.
+
+## Configuration migration errors
+
+Skillmux rejects removed fields with migration guidance:
+
+- replace `[targets.<name>].project` with `project_groups = [...]`;
+- rename `[project.<group>].repos` to `paths`;
+- use `skillmux core pin|unpin` instead of removed `manifest pin|unpin`;
+- replace legacy reranker base-URL variables with
+  `SKILLMUX_RERANK_ENDPOINT` and `SKILLMUX_RERANK_ADAPTER`.
+
+Run `skillmux config validate` after editing TOML.
+
+## Collect diagnostics
+
+For a bug report, include:
+
+```sh
+skillmux --help
+skillmux config show
+skillmux doctor --json
+```
+
+Remove tokens, private endpoint credentials, local usernames, and raw audit
+queries before posting output. Open an issue at
+<https://github.com/klhq/skillmux/issues>.

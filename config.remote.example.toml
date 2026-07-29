@@ -1,5 +1,8 @@
-# Connect stronger inference endpoints. The reranker section is optional.
-vault_path = "~/.agents/skills"
+# Configure remote inference endpoints. This describes where inference runs,
+# not where Skillmux runs; local stdio and shared HTTP deployments can both use
+# this file. The reranker section is optional.
+# Keep the canonical vault separate from client skill directories.
+vault_path = "~/skills"
 
 [inference]
 mode = "remote"

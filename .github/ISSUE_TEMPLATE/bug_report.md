@@ -18,7 +18,9 @@ What you expected to happen instead.
 **Environment**
 - skillmux version/commit:
 - Bun version (`bun --version`):
-- Deployment: local binary / `bun run` / Docker `slim` / Docker `latest`
+- Installation: Bun package / Linux binary / Docker full / Docker slim
+- Topology: native management / local stdio MCP / shared HTTP MCP
+- Inference: local / remote / lexical fallback
 - OS:
 
 **Logs**

@@ -1,7 +1,7 @@
 {
   "name": "@klhapp/skillmux",
   "version": "1.2.0",
-  "description": "Local read-only MCP server routing natural-language task queries to skills in a SKILL.md vault, with zero-loss delivery",
+  "description": "Skill management and retrieval for AI agents: sync native skills across clients and route the long tail over MCP",
   "type": "module",
   "private": false,
   "author": "Lance Hsu <lance@klh.app>",
@@ -22,10 +22,7 @@
   },
   "files": [
     "src",
-    "docs/schema.json",
-    "docs/configuration.md",
-    "docs/calibration.md",
-    "docs/releasing.md",
+    "docs",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",

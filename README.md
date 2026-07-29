@@ -2,617 +2,255 @@
   <img src="https://raw.githubusercontent.com/klhq/skillmux/main/docs/assets/logo.png" alt="skillmux" width="400">
 </p>
 
-A local, read-only [MCP](https://modelcontextprotocol.io) stdio server that gives agents **on-demand skill discovery**: route a natural-language task description to the right skill in your vault and deliver its `SKILL.md` byte-for-byte, verified by SHA-256.
-
-Built for agents that lack native skill triggering (Goose recipe workers, opencode, and friends). Agents that already trigger skills natively (e.g. Claude Code) don't need it.
-
-- [How it works](#how-it-works)
-- [Tiers: routed vs. pinned](#tiers-routed-vs-pinned)
-- [Install](#install)
-- [Quick start](#quick-start) — the fastest path to seeing it respond
-- [Pinning skills across surfaces](#pinning-skills-across-surfaces) — optional: statically load a curated set across multiple agents
-- [Docker Usage](#docker-usage)
-- [Configuration](#configuration) — inference modes, security scanning, installing skills, env vars
-- [CLI & Automation](docs/cli.md) — context management, remote target resolution, policy calibration, JSON envelopes
-- [Policy Calibration](docs/calibration.md) — labelled datasets, certification, apply lifecycle, and reference profile
-- [Benchmarks & Evaluation](#benchmarks--evaluation)
-- [FAQ & Troubleshooting](#faq--troubleshooting)
-- [Guarantees](#guarantees)
-- [Development](#development)
-
-## How it works
-
 <p align="center">
-  <img src="docs/assets/architecture.svg" alt="skillmux Architecture &amp; Hybrid Routing Flow" width="100%">
+  <a href="https://github.com/klhq/skillmux/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/klhq/skillmux/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/klhq/skillmux/releases/latest"><img alt="GitHub release" src="https://img.shields.io/github/v/release/klhq/skillmux"></a>
+  <a href="https://www.npmjs.com/package/@klhapp/skillmux"><img alt="npm" src="https://img.shields.io/npm/v/@klhapp/skillmux"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-```
-resolve_skill("convert this spreadsheet to markdown")
-        │
-        ▼
-  hybrid recall: SQLite FTS5 (BM25)  ∪  embedding cosine (brute-force)
-        │
-        ▼
-  reciprocal-rank fusion → shortlist
-  optional reranker      → matched | ambiguous | no_match
-```
+Skillmux manages [`SKILL.md`](https://agentskills.io) collections across AI
+coding clients. Keep one canonical vault, pin a small set into native skill
+directories, and retrieve the rest through MCP.
 
-- **matched** — one skill clearly wins: full `SKILL.md` delivered inline, `sha256(body) == content_sha256 ==` hash of the file on disk at delivery time. Stale index? It re-indexes and delivers fresh bytes — never stale ones.
-- **ambiguous** — up to 5 candidates (id, title, description). The calling LLM picks and calls `fetch_skill`.
-- **no_match** — proceed under your normal workflow; don't load an unrelated skill.
+You can use Skillmux in three ways:
 
-If embeddings are unavailable, the router remains ready with FTS5 lexical retrieval. If an optional reranker is unavailable, it preserves the hybrid shortlist instead of failing.
+| Use case | What runs | How skills reach the client |
+| --- | --- | --- |
+| **Manage native skills** | The CLI or Linux binary on your machine | `init` and `sync` create managed links for core and project skills |
+| **Add local retrieval** | Skillmux beside one client | The client calls local stdio MCP; Skillmux searches the full vault |
+| **Run a shared service** | One Skillmux server for several clients | Clients call Streamable HTTP MCP |
 
-### Tools
+The same installation can manage native skills and serve local MCP. A shared
+service focuses on routed retrieval; manage its mounted vault on the host.
 
-| Tool            | Input      | Returns                                                                                                          |
-| --------------- | ---------- | ---------------------------------------------------------------------------------------------------------------- |
-| `resolve_skill` | `query`    | outcome + metadata in `structuredContent`; on match the verbatim body as text content (exactly once on the wire) |
-| `fetch_skill`   | `skill_id` | verbatim body, `content_sha256`, supporting-file paths                                                           |
+## Choose a setup
 
-The full contract lives in [`docs/schema.json`](docs/schema.json) (JSON Schema 2020-12, language-neutral).
+<p align="center">
+  <img src="docs/assets/architecture.svg" alt="Three ways to use Skillmux: manage native skills, add local MCP retrieval, or run a shared MCP service" width="100%">
+</p>
 
-## Tiers: routed vs. pinned
+Pick an installation based on the job:
 
-Skills live in one vault, but there are two ways an agent gets one:
+| Installation | Native management | Local MCP | Shared HTTP MCP | Inference |
+| --- | --- | --- | --- | --- |
+| **Bun package** | Recommended | Recommended | Supported | Downloads and caches GTE-small |
+| **Linux binary** | Recommended | Recommended | Supported | Downloads and caches GTE-small |
+| **Full Docker image** | Manage on host | Supported | Recommended | GTE-small included |
+| **Slim Docker image** | Manage on host | Supported | Recommended | Remote embeddings or lexical fallback |
 
-- **routed** — the default, described above. Nothing is loaded up front; the agent calls `resolve_skill` on demand and gets back exactly the skill that matches. This scales to hundreds of skills at zero standing cost.
-- **pinned** (`core` / `project`) — a small, hand-picked set of skills symlinked directly into an agent's own skill directory (e.g. `~/.claude/skills`), so they load the same way any other skill on that agent does — no MCP round-trip, no query. `core` pins apply everywhere; `project` pins apply only inside one repo.
+“Local” describes where Skillmux runs. “Local inference” means the embedding
+model runs in the Skillmux process. Both stdio and HTTP expose the same
+`resolve_skill` and `fetch_skill` MCP tools.
 
-Pinning is optional and orthogonal to serving: `skillmux init`/`sync` manage what's pinned; `skillmux serve` is what answers `resolve_skill` for everything else. Most single-agent setups never need pinning — reach for it once you're running the same small set of skills across multiple agent surfaces (Claude Code, opencode, ...) and don't want to maintain that list by hand in each one. See [Pinning skills across surfaces](#pinning-skills-across-surfaces).
+## Install the CLI
 
-## Install
-
-### Linux Binary
-
-Download the latest release for your architecture:
+The Bun package supports macOS, Linux, and Windows and requires
+[Bun 1.3 or newer](https://bun.sh/docs/installation):
 
 ```sh
-# AMD64
-gh release download --repo klhq/skillmux \
-  --pattern 'skillmux-linux-*'
+bun add -g @klhapp/skillmux
+skillmux --help
+```
 
-# Optional: verify build provenance
+Native target sync needs permission to create directory symlinks on Windows.
+
+On Linux, you can install a compiled AMD64 or ARM64 binary instead:
+
+```sh
+gh release download --repo klhq/skillmux --pattern 'skillmux-linux-*'
 gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
-
-# Install the binary matching your machine (amd64 or arm64)
 chmod +x skillmux-linux-amd64
 sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
-skillmux config show
 ```
 
-Release assets are also available at <https://github.com/klhq/skillmux/releases/latest>.
+Use `skillmux-linux-arm64` on ARM64. See [Deployment](docs/deployment.md) for
+the full and slim Docker images.
 
-Requirements at runtime:
+## Quick starts
 
-- A skill vault: one directory per skill with a `SKILL.md` in [agentskills.io](https://agentskills.io) format. Default: `~/skills`.
-- Optional remote OpenAI-compatible embeddings and Infinity-native reranking. The full binary uses local GTE-small embeddings by default.
+Skillmux uses `~/skills` as its default vault:
 
-## Quick start
-
-No config is required — the vault defaults to `~/skills`, and the full binary embeds its own local model, so there's nothing to download or provision first.
-
-### 1. Put a skill in your vault
-
-A skill is just a directory with a `SKILL.md`. Author one by hand to try against:
-
-```sh
-mkdir -p ~/skills/csv-formatter
-cat > ~/skills/csv-formatter/SKILL.md <<'EOF'
----
-name: CSV Formatter
-description: Converts CSV or spreadsheet data into clean, aligned Markdown tables. Use whenever the user asks to convert, format, or clean up tabular/CSV/spreadsheet data into Markdown.
----
-
-# CSV Formatter
-
-Given raw CSV input, emit a well-aligned Markdown table: infer column headers
-from the first row, right-align numeric columns, left-align text columns.
-EOF
+```text
+~/skills/
+└── csv-formatter/
+    └── SKILL.md
 ```
 
-(Or fetch an existing skill from a git repo instead — see [Installing skills](#installing-skills) below.)
+### Manage native skills
 
-### 2. Index and verify
+Run the setup planner, then verify its managed links:
 
 ```sh
-skillmux index
+skillmux init
+skillmux sync
 skillmux doctor
 ```
 
-`doctor` should report `routing capability: hybrid` and every check `ok`. If something's `fail`, the `detail` column names the exact path or setting to fix.
-
-### 3. Serve it
-
-```sh
-skillmux serve
-```
-
-Register with your MCP client directly, e.g.:
-
-```json
-{
-    "mcpServers": {
-        "skillmux": {
-            "command": "skillmux",
-            "args": ["serve"]
-        }
-    }
-}
-```
-
-### Try it without an MCP client
-
-To see `resolve_skill` respond without wiring up a client, run the HTTP transport instead (`skillmux serve --transport http`, default port `3000`) and speak MCP's Streamable HTTP protocol directly:
+The planner detects clients, asks which skills belong in the core tier, and
+shows every write before confirmation. Use explicit flags for automation:
 
 ```sh
-# 1. Initialize a session, capture the session id from the response header
-SESSION=$(curl -sS -D - -o /dev/null http://127.0.0.1:3000/mcp \
-  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"try-it","version":"1.0.0"}}}' \
-  | grep -i '^mcp-session-id:' | tr -d '\r' | cut -d' ' -f2)
+skillmux init \
+  --client claude-code \
+  --client codex \
+  --core csv-formatter \
+  --dry-run
 
-# 2. Complete the handshake
-curl -sS -o /dev/null -X POST http://127.0.0.1:3000/mcp \
-  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-  -H "mcp-session-id: $SESSION" \
-  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
-
-# 3. Call resolve_skill
-curl -sS -X POST http://127.0.0.1:3000/mcp \
-  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-  -H "mcp-session-id: $SESSION" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"resolve_skill","arguments":{"query":"convert this spreadsheet to markdown"}}}'
+skillmux init \
+  --client claude-code \
+  --client codex \
+  --core csv-formatter \
+  --yes
 ```
 
-Against the `csv-formatter` skill authored above, that returns a real match — trimmed here for length:
-
-```json
-{
-    "result": {
-        "structuredContent": {
-            "outcome": "ambiguous",
-            "retrieval": "hybrid",
-            "candidates": [
-                {
-                    "skill_id": "csv-formatter",
-                    "title": "CSV Formatter",
-                    "description": "Converts CSV or spreadsheet data..."
-                }
-            ]
-        }
-    }
-}
-```
-
-`outcome` is `"ambiguous"` here specifically because the vault only has one skill in it — with more skills installed, a clear top match returns `"matched"` with the full `SKILL.md` body inline instead of a candidate list.
-
-### Run from source instead
-
-```sh
-bun install --frozen-lockfile
-bun run src/cli.ts index
-bun run src/cli.ts serve
-```
-
-## Pinning skills across surfaces
-
-Optional — skip this if `resolve_skill` alone is enough (most setups). Use it once you want a small set of skills loaded _statically_ in every agent that reads from a given directory, instead of routed on demand — see [Tiers](#tiers-routed-vs-pinned).
-
-Run `skillmux init` with no arguments in a terminal for guided setup. It checks
-the vault, preselects clients with concrete filesystem evidence, asks for core
-skills, shows one review, and applies after one confirmation. The wizard uses
-line-oriented prompts and does not take over the terminal screen.
-
-### 1. Check the plan
-
-```sh
-skillmux init --client claude-code --client codex --core csv-formatter --dry-run
-```
-
-`--client` names the tool you use. Skillmux maps it to the correct user-level
-skill directory and merges clients that share one directory. Gemini CLI,
-OpenCode, GitHub Copilot, and Windsurf share `~/.agents/skills`. Claude Code
-uses `~/.claude/skills`; Codex uses `$CODEX_HOME/skills` or
-`~/.codex/skills`.
-
-Supported clients are `claude-code`, `codex`, `gemini-cli`, `opencode`,
-`github-copilot`, `windsurf`, `antigravity`, `goose`, `hermes`, and
-`skillmux-mcp`. Goose, Hermes, and Skillmux MCP report the manual registration
-work they need instead of inventing a target directory.
-
-The dry run prints target classification, config changes, instruction-file
-changes, readiness, and core pins. It does not prompt or write.
-
-### 2. Apply the plan
-
-```sh
-skillmux init --client claude-code --client codex --core csv-formatter --yes
-```
-
-Skillmux writes `skillmux.toml`, adds host-scoped targets, adopts each selected
-directory, and installs one managed discovery block for each client with a
-known safe durable instruction file. Other clients report manual setup.
-Existing manifest entries and instruction text stay intact.
-Explicit flags keep the command deterministic. Without `--yes`, an interactive
-terminal reviews the plan before applying; a pipe or CI job must pass `--yes`.
-Use `--no-instructions` to leave instruction files untouched or `--no-sync` to
-save setup for a later `skillmux sync`.
-
-Use direct targets when you want paths rather than clients:
-
-```sh
-skillmux init --target agent-skills --yes
-skillmux init --target claude-code --yes
-skillmux init --target codex --yes
-skillmux init --target custom --dir /srv/my-agent/skills --yes
-```
-
-The old `agents` and `claude` target names still work and print a deprecation
-warning. Skillmux keeps those names in an existing manifest.
-
-If a target points at the whole vault, Skillmux classifies it as `full-vault`
-and refuses managed-pin adoption. Review the visibility change before
-converting it:
-
-```sh
-skillmux init --client claude-code --migrate-full-vault \
-  --core csv-formatter --dry-run
-skillmux init --client claude-code --migrate-full-vault \
-  --core csv-formatter --yes
-```
-
-After conversion and `skillmux sync`, the client sees the selected core pins
-instead of every vault skill.
-
-### 3. Set up project-scoped skills
-
-From a project directory:
+Core pins apply to each configured target and stay capped at 25 skills. Add
+project-specific skills from a repository root:
 
 ```sh
 skillmux project init
 ```
 
-The guided flow detects the Git root, suggests a project-group name, asks which
-configured clients should receive the group, and accepts project skill IDs.
-For automation:
+### Add local MCP retrieval
+
+Prefetch the default GTE-small model, index the vault, and start stdio MCP:
 
 ```sh
-skillmux project init ~/code/skillmux --name skillmux \
-  --client claude-code --client codex \
-  --skill sdd-tdd --skill code-context --yes
+skillmux models download
+skillmux index
+skillmux doctor
+skillmux serve
 ```
 
-Re-running the command adds missing paths, skills, and target attachments
-without duplicating existing entries. Project setup runs `sync` unless
-`--no-sync` is supplied.
+The model cache lives at `~/.cache/skillmux/models`. If you skip the prefetch,
+Skillmux downloads the model when local inference first needs it.
 
-### 4. Add or remove pins later
+### Run a shared MCP service
 
-`--core` seeds only the skill IDs you name. Without it, `init` preserves
-existing core pins and makes no guesses. Add another pin with:
+The full image includes GTE-small and serves Streamable HTTP on `/mcp`:
 
 ```sh
-skillmux core pin csv-formatter --yes
-```
-
-Pin several skills to `[core]` in one atomic call by passing more than one `skill_id`:
-
-```sh
-skillmux core pin csv-formatter pdf-extractor terraform-plans --yes
-```
-
-Unpin the same way: `skillmux core unpin csv-formatter --yes` (or `skillmux core unpin csv-formatter pdf-extractor --yes` for several at once). `skillmux project pin <group> <skill_id>...` pins into an existing `[project.<group>]` tier instead — create the group first with `skillmux project add-path <group> <path> --yes` if it doesn't exist yet. Every pin is validated before writing — the skill must actually resolve from the vault, and `[core]` stays under its 25-skill cap. When multiple `skill_id`s are given, they're applied to a single in-memory manifest and written once: if any one of them is already pinned elsewhere (or already unpinned, for `unpin`), the whole call fails and nothing is written.
-
-Hand-editing `skillmux.toml` still works if you prefer it:
-
-```toml
-[core]
-skills = ["csv-formatter"]
-
-[targets.claude]
-dir = "/Users/you/.claude/skills"
-host = "workhorse" # optional; sync skips this target on every other hostname
-project_groups = []
-```
-
-Full manifest schema, including `[project.<group>]` pins scoped to one or more local paths and machine-local overlay vaults via `local_vault_paths`, is in [`docs/configuration.md`](docs/configuration.md#tiers-and-the-manifest).
-
-### 4. Materialize
-
-```sh
-skillmux sync
-# claude: +1 -0
-```
-
-Each pinned skill becomes a symlink from the target dir into the vault. Re-running `sync` is idempotent (`+0 -0` once nothing changed); removing a skill from `[core]` removes its symlink on the next sync.
-
-```sh
-skillmux sync --dry-run           # preview +added/-removed without touching disk
-skillmux sync --install-hook      # add a git post-merge hook in the vault that runs `skillmux sync` automatically
-skillmux sync --restore-monolith  # undo: replace a target dir with one symlink straight to the vault
-```
-
-`--restore-monolith` drops the `.skillmux` marker along with the per-skill symlinks — re-adopt with `skillmux init --target <name> --yes` before that target can be `sync`'d again.
-
-### 5. See what's actually getting used
-
-`skillmux report` reads the same audit log `resolve_skill` writes to (see [Guarantees](#guarantees)) — useful for deciding what belongs in `[core]` versus staying routed:
-
-```sh
-skillmux report --since 7d                              # local: reads state_dir's audit db
-skillmux report --server http://host:3000 --since 7d    # remote: hits a running server's /stats
-```
-
-```
-window: 2026-07-14T00:00:00Z .. 2026-07-21T00:00:00Z
-outcomes: matched=0 ambiguous=2 no_match=0 (ambiguous_rate=1.000)
-skills:
-  csv-formatter matched=0 candidate=2
-  pdf-extractor matched=0 candidate=2
-top no_match queries:
-  (none)
-```
-
-`--since` accepts a relative window (`1h`, `7d`, `1m`) or an absolute date/timestamp. A skill matched often but never pinned is a `[core]` candidate; a query that keeps showing up in `top_no_match_queries` means the vault is missing something.
-
-## Docker Usage
-
-The `skillmux` is packaged and distributed as a Docker image in two variants:
-
-1. **`skillmux:latest`**: Bundles the small quantized GTE embedding model for local hybrid retrieval.
-2. **`skillmux:latest-slim`**: Excludes model weights and supports configured remote embeddings or lexical fallback.
-
-Both tags are multi-architecture manifests for Linux AMD64 and ARM64; Docker selects the correct image automatically. Images are published to both [`ghcr.io/klhq/skillmux`](https://github.com/klhq/skillmux/pkgs/container/skillmux) and [`docker.io/klhq/skillmux`](https://hub.docker.com/r/klhq/skillmux) — either registry works, examples below use GHCR.
-
-### Running HTTP Server (Docker Default)
-
-To run as an HTTP MCP service (default in Docker):
-
-```sh
-# Battery-included (runs local in-process ONNX models)
 docker run -d \
   --name skillmux \
   -v ~/skills:/vault:ro \
   -v skillmux-data:/data \
   -p 3000:3000 \
   ghcr.io/klhq/skillmux:latest
-
-# Slim (configured remote embeddings, or lexical fallback)
-docker run -d \
-  --name skillmux-slim \
-  -v ~/skills:/vault:ro \
-  -v skillmux-data:/data \
-  -p 3000:3000 \
-  -e EMBED_ENDPOINT="http://embeddings-host:8080/v1/embeddings" \
-  ghcr.io/klhq/skillmux:latest-slim
 ```
 
-Connect your MCP client to the HTTP endpoint (e.g. standard Streamable HTTP transport):
+Use `ghcr.io/klhq/skillmux:latest-slim` when you want remote embeddings or
+lexical fallback instead of a bundled model. Docker Hub mirrors both variants
+under `docker.io/klhq/skillmux`.
 
-- POST messages to `http://localhost:3000/mcp`
+The [getting-started guide](docs/getting-started.md) provides complete recipes
+for all three setups.
 
-#### HTTP server: auth, CORS, rate limiting
+## Add and inspect skills
 
-All of the below is `[server]` config in `config.toml`, overridable by environment variable — see [Environment Variable Overrides](#environment-variable-overrides).
-
-- **Bind address** (`hostname`, default `127.0.0.1`) — HTTP transport binds loopback-only by default, so a zero-config `skillmux serve --transport http` isn't reachable from the network. Inside Docker (`RUNNING_IN_DOCKER=true`) this defaults to `0.0.0.0` instead, since the container's own loopback isn't reachable through port-mapping. Set `hostname` (or `HTTP_HOSTNAME`) explicitly to expose the server beyond localhost.
-- **Bearer token auth** (off by default) — set `auth_enabled = true` and the token via the env var named by `auth_token_env` (default `SKILLMUX_AUTH_TOKEN`). Requests need `Authorization: Bearer <token>`; missing/mismatched tokens get `401`, and a configured-but-empty token env var gets `500`.
-- **CORS** — `allowed_origins` (default `[]`, deny-by-default) is checked against the request's `Origin` header; disallowed origins get `403`. Requests with no `Origin` header (curl, MCP clients, server-to-server) are unaffected either way — only browser-issued cross-origin requests are gated. `/health` and `/metrics` are excluded from auth but still CORS-checked.
-- **Rate limiting** (off by default) — per-token (when auth is enabled) or per-IP (`server.requestIP`) token-bucket limiting. Enable with `rate_limit.enabled = true` and set `rate_limit.requests_per_minute` (default `60`). The `X-Forwarded-For` header is ignored unless `rate_limit.trust_proxy = true` — it's client-supplied and spoofable, so only opt in when a trusted reverse proxy sets it. Every response carries `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset`; over-limit requests get `429` plus `Retry-After`.
-- **`GET /health/live`** — lightweight liveness check. Legacy `GET /health` remains an alias.
-- **`GET /health/ready`** — readiness with active retrieval capability, skill count, index state, and inference status.
-- **`GET /metrics`** — Prometheus text exposition: `skill_router_requests_total`, `skill_router_resolve_outcomes_total`, `skill_router_resolve_latency_seconds` (histogram), `skill_router_errors_total`, `skill_router_rate_limits_exceeded_total`.
-
-### Running Stdio Server in Docker
-
-If your agent runs locally and expects a piped stdio process:
+Install a skill from a Git repository:
 
 ```sh
-docker run -i --rm \
-  -v ~/skills:/vault:ro \
-  ghcr.io/klhq/skillmux:latest serve --transport stdio
+skillmux install owner/repo
+skillmux install owner/repo/path/to/skill
 ```
 
-## Configuration
+Skillmux validates `SKILL.md` and scans candidate content before copying it into the vault. Use `--fail-on low|medium|high` to turn selected findings into an install gate.
 
-No config is required for the battery-included local ONNX mode. See [`config.example.toml`](config.example.toml) for the minimal local setup, [`config.remote.example.toml`](config.remote.example.toml) for bring-your-own endpoints, and [`docs/configuration.md`](docs/configuration.md) for advanced settings.
-
-### Inference Modes
-
-- The zero-config default combines SQLite FTS5 with the small `Xenova/gte-small` embedding model and returns an ordered shortlist.
-- Configured OpenAI-compatible embeddings replace the local embedder. An optional versioned reranker protocol adapter enables confident automatic matches without coupling configuration to a server product or URL shape.
-
-Run `skillmux doctor` to verify routing capability. Run `skillmux config show` to inspect effective configuration; it prints credential variable names, never values.
-
-### Security scanning
-
-`skillmux scan [<path>]` inspects skill content for prompt-injection and data-exfiltration risk indicators
-before it's served over MCP or HTTP. It's offline (no network call, no inference config needed),
-read-only, and advisory-only — it never blocks `skillmux index`/`sync`/`init`, which don't call it
-automatically.
+Useful management commands:
 
 ```sh
-skillmux scan                          # scan the configured vault_path
-skillmux scan ~/skills/some-skill      # scan a single candidate skill dir before adding it
-skillmux scan --format json            # machine-readable { scanned, findings } for CI
-skillmux scan --fail-on high           # exit 1 if any finding is high severity (for CI gating)
+skillmux scan ~/skills
+skillmux core pin csv-formatter --yes
+skillmux project pin my-project code-context --yes
+skillmux skill which csv-formatter
+skillmux report --since 7d
 ```
 
-The v1 rule set covers four categories, each attached to the finding as `rule_id` with a fixed
-`severity`:
+Read [Managing skills](docs/skill-management.md) for target ownership, project groups, local overrides, recovery, and reporting.
 
-| `rule_id`                 | `severity` | Flags                                                                                             |
-| ------------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
-| `prompt-injection-phrase` | `high`     | Known instruction-override phrases (e.g. "ignore previous instructions")                          |
-| `invisible-unicode`       | `high`     | Zero-width/invisible Unicode code points, including hidden tag-character payloads                 |
-| `secret-pattern`          | `high`     | Hardcoded-credential-shaped strings (AWS-style keys, PEM blocks, `api_key=`/`token=` assignments) |
-| `suspicious-url`          | `medium`   | Bare-IP-address URLs, or URLs paired with exfiltration-suggesting text                            |
+## MCP retrieval
 
-`skillmux scan` is unrelated to the `audit` SQLite table / `skillmux report` — that's query telemetry (what got
-routed where); `skillmux scan` is content security (what's in the vault).
+Register it with an MCP client:
 
-### Installing skills
-
-`skillmux install <repo>[/path]` fetches one skill from a git repo (GitHub shorthand, full HTTPS/SSH URL,
-or `file://`) into the configured `vault_path`, so onboarding doesn't require a second CLI just to
-pull a skill in. It's a convenience fetch, not a distribution system:
-
-```sh
-skillmux install owner/repo                             # repo root must itself be a skill
-skillmux install owner/repo/path/to/skill                # select one skill out of a multi-skill repo
-skillmux install owner/repo --dry-run                   # preview id, target path, and scan findings
-skillmux install owner/repo --force                     # overwrite an existing skill_id
-skillmux install owner/repo --fail-on high               # abort the install if scan findings meet the threshold
+```json
+{
+  "mcpServers": {
+    "skillmux": {
+      "command": "skillmux",
+      "args": ["serve"]
+    }
+  }
+}
 ```
 
-The fetched skill is validated the same way `skillmux scan` validates the vault — malformed `SKILL.md`
-aborts the install, and scan findings are printed before anything is written (advisory by default;
-`--fail-on` opts into blocking, matching `skillmux scan`'s severity levels). Materialization is a plain
-file copy, not a symlink — the temporary clone is deleted once the install completes.
+Skillmux exposes two tools:
 
-`skillmux install` intentionally does **not** handle updates, uninstalls, version pinning, or
-core/project/routed tier assignment (that's `skillmux sync`'s domain) — it only ever fetches one skill,
-once. Use `skillmux sync` afterward if the installed skill needs to be pinned into a tier.
+| Tool | Input | Result |
+| --- | --- | --- |
+| `resolve_skill` | Natural-language task description | A matched skill, an ordered shortlist, or no match |
+| `fetch_skill` | Exact `skill_id` | The current `SKILL.md` body, SHA-256 digest, and supporting-file paths |
 
-### Environment Variable Overrides
+Skillmux uses the best available capability:
 
-All core settings can be overridden via environment variables (handy for Docker):
+1. SQLite FTS5 provides lexical retrieval and offline fallback.
+2. Local or remote embeddings add semantic recall.
+3. An optional reranker orders candidates and can produce calibrated automatic matches.
 
-- `VAULT_PATH` — overrides `vault_path` (defaults to `/vault` inside Docker)
-- `STATE_DIR` — overrides `state_dir` (defaults to `/data` inside Docker)
-- `EMBED_ENDPOINT` / `SKILLMUX_EMBED_ENDPOINT` — overrides the complete remote `inference.embedding.endpoint`
-- `EMBED_MODEL` / `SKILLMUX_EMBED_MODEL` — overrides `embedding.model`
-- `EMBED_DIMENSION` / `SKILLMUX_EMBED_DIMENSION` — overrides `embedding.dimension`
-- `EMBED_DEVICE` / `EMBED_DTYPE` — overrides local `inference.embedding.device` / `inference.embedding.dtype`
-- `RERANK_ENDPOINT` / `SKILLMUX_RERANK_ENDPOINT` — overrides the complete remote `inference.reranker.endpoint`
-- `RERANK_ADAPTER` / `SKILLMUX_RERANK_ADAPTER` — overrides `inference.reranker.adapter`
-- `RERANK_MODEL` / `SKILLMUX_RERANK_MODEL` — overrides `inference.reranker.model`
-- `SKILLMUX_CONFIG` — path to custom `config.toml` (default `~/.config/skillmux/config.toml`)
-- `SKILLMUX_MODELS_DIR` — path to directory storing downloaded local models (default `~/.cache/skillmux/models`, `/models` inside Docker)
-- `PORT` — HTTP listen port (default `3000`, HTTP transport only)
-- `HTTP_HOSTNAME` — overrides `server.hostname` (default `127.0.0.1`, `0.0.0.0` inside Docker)
-- `HTTP_AUTH_ENABLED` — overrides `server.auth_enabled` (`"true"` to enable)
-- `HTTP_AUTH_TOKEN_ENV` — overrides `server.auth_token_env`
-- `HTTP_ALLOWED_ORIGINS` — comma-separated list, overrides `server.allowed_origins`
-- `HTTP_RATE_LIMIT_ENABLED` / `SKILLMUX_HTTP_RATE_LIMIT_ENABLED` — overrides `server.rate_limit.enabled` (`"true"` to enable)
-- `HTTP_RATE_LIMIT_RPM` / `SKILLMUX_HTTP_RATE_LIMIT_RPM` — overrides `server.rate_limit.requests_per_minute`
-- `HTTP_RATE_LIMIT_TRUST_PROXY` / `SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY` — overrides `server.rate_limit.trust_proxy` (`"true"` to trust `X-Forwarded-For`)
+Without calibrated reranker thresholds, Skillmux returns an ordered shortlist and lets the calling model choose. Endpoint failures degrade to a healthy lower retrieval mode instead of taking the MCP server down.
 
-Remote API keys are read independently from the environment variables named by
-`inference.embedding.api_key_env` and `inference.reranker.api_key_env`. Omit
-`api_key_env` for an intentionally unauthenticated endpoint. If it is present,
-the named variable must be non-empty before clients are created and is sent as
-a Bearer token. Secret values never live in the config file or diagnostics.
+Read [MCP routing](docs/mcp-routing.md) for transports, outcomes, client instructions, retrieval modes, and the wire contract.
 
-Rerankers use an exact endpoint plus an explicit adapter. `jina-v1` sends
-string documents; `bifrost-v1` sends Bifrost document objects. Skillmux never
-infers an adapter from the URL and never adds or removes path components.
+## Supported clients
 
-Embeddings likewise use an exact endpoint and the OpenAI-compatible
-`{ model, input }` contract. Skillmux never adds `/v1/embeddings` or rewrites
-the configured path or query string. Replace the removed `base_url` setting
-with the complete endpoint, for example `base_url = "http://host"` or
-`base_url = "http://host/v1"` becomes
-`endpoint = "http://host/v1/embeddings"`. The removed `EMBED_BASE_URL`,
-`SKILLMUX_EMBED_BASE_URL`, and `SKILL_ROUTER_EMBED_BASE_URL` variables are
-startup errors with migration guidance.
+| Client | Native skill delivery | MCP setup |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills` | Configure in the client |
+| Codex | `$CODEX_HOME/skills` or `~/.codex/skills` | Configure in the client |
+| Gemini CLI, OpenCode, GitHub Copilot, Windsurf | `~/.agents/skills` | Configure in the client |
+| Antigravity | `~/.gemini/config/skills` | Configure in the client |
+| Goose, Hermes | Manual full-vault setup | Manual registration |
+| Custom clients | Any directory through a custom target | Stdio or Streamable HTTP |
 
-> **Breaking reranker migration:** replace `provider = "infinity"` with
-> `adapter = "jina-v1"`, and replace `base_url` with the complete `endpoint`.
-> The old client appended `/rerank`. For example,
-> `base_url = "http://host/v1"` becomes
-> `endpoint = "http://host/v1/rerank"`; a bare `http://host` becomes
-> `http://host/rerank`. The removed `RERANK_BASE_URL`,
-> `SKILLMUX_RERANK_BASE_URL`, and `SKILL_ROUTER_RERANK_BASE_URL` variables are
-> startup errors with migration guidance.
-
-Verified reranker contracts:
-
-| Implementation      | Tested version | Endpoint             | Adapter      | Verification                                                      |
-| ------------------- | -------------: | -------------------- | ------------ | ----------------------------------------------------------------- |
-| Bifrost             |          1.6.6 | `/v1/rerank`         | `bifrost-v1` | Live end-to-end request and recorded contract fixture, 2026-07-28 |
-| Jina-style contract |        fixture | exact configured URL | `jina-v1`    | Automated request/response contract suite                         |
-
-## Benchmarks & Evaluation
-
-Skillmux includes a built-in evaluation framework to benchmark retrieval accuracy (lexical vs. hybrid vector search) against labeled intent datasets.
-
-Evaluate lexical and local hybrid retrieval against the checked-in labeled queries:
-
-```sh
-bun run src/cli.ts eval
-# holdout queries: 8
-# lexical recall@5: 1.000
-# hybrid recall@5:  1.000
-```
-
-Custom policy calibration can also be performed against reviewed,
-domain-specific query datasets using `skillmux calibrate`. See the
-[calibration guide](docs/calibration.md) for the full operator lifecycle and
-the [CLI reference](docs/cli.md#policy-calibration-skillmux-calibrate) for
-command syntax.
-
-## FAQ & Troubleshooting
-
-<details>
-<summary><b>Why did my query return <code>ambiguous</code> instead of <code>matched</code>?</b></summary>
-
-<br>
-
-The router returns `"outcome": "ambiguous"` when multiple candidate skills meet retrieval confidence thresholds, or when no single candidate dominates by a sufficient score margin. In this state, up to 5 candidate skill summaries (`skill_id`, `title`, `description`) are returned so the calling LLM can choose the exact skill and invoke `fetch_skill`.
-
-</details>
-
-<details>
-<summary><b>Does skillmux require an active internet connection?</b></summary>
-
-<br>
-
-No. In default local inference mode (`inference.mode = "local"`), skillmux operates 100% offline. The default GTE-small embedding model is quantized to q8 and bundled within the binary/Docker image.
-
-</details>
-
-<details>
-<summary><b>What happens when remote embedding or reranking endpoints fail?</b></summary>
-
-<br>
-
-Skillmux features automatic fallback degradation. If remote embedding APIs or rerankers become unreachable, the router gracefully falls back to SQLite FTS5 lexical search rather than throwing an error to the calling agent.
-
-</details>
-
-<details>
-<summary><b>When should I use routed skills vs. pinned skills?</b></summary>
-
-<br>
-
-- **Routed (Default)**: Best for expanding vaults with dozens or hundreds of skills. Skills are loaded dynamically on demand via `resolve_skill`, keeping the agent's initial context window clean.
-- **Pinned (`skillmux sync`)**: Best when running multiple agent surfaces (e.g. Claude Code, opencode) that all require the same core set of 2–5 skills loaded statically at agent startup.
-
-</details>
-
-<details>
-<summary><b>How do I verify server readiness and routing health?</b></summary>
-
-<br>
-
-Run `skillmux doctor` locally or hit the HTTP readiness endpoint (`GET /health/ready`). `doctor` checks vault accessibility, state directory permissions, ONNX runtime binding status, and active retrieval lane status.
-
-</details>
+Skillmux preserves existing instruction files and unmanaged target content. Run `skillmux init --dry-run` to inspect every planned filesystem change.
 
 ## Guarantees
 
-- **Read-only vault** — no code path writes under the vault; all state is confined to `state_dir`. Covered by tests.
-- **Zero-loss delivery** — delivered bytes always hash-match the file on disk at delivery time.
-- **Live index** — a running server folds vault changes (create/modify/delete) into the index within seconds; an unparseable write keeps the previous good entry rather than evicting the skill.
-- **Audit log** — every `resolve_skill` call is appended to a SQLite table in `state_dir` (timestamp, query, outcome, candidates with scores, latency).
+- **Controlled sources:** pins come from the canonical vault, while routed delivery follows the configured overlay order.
+- **Scoped writes:** management commands write only to documented config, vault, state, and adopted target paths.
+- **Managed ownership:** sync removes only entries recorded in the target's `.skillmux` marker.
+- **Current bytes:** MCP delivery hashes the file on disk and never serves a stale indexed body.
+- **Graceful retrieval:** embedding and reranker failures fall back without hiding the active capability.
+- **Auditable decisions:** each `resolve_skill` call records its outcome, candidates, scores, and latency in the state database.
+
+## Documentation
+
+Start with the [documentation hub](docs/README.md).
+
+| Guide | Covers |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | Native management, local MCP, and shared-service recipes |
+| [Concepts](docs/concepts.md) | Delivery tiers, deployment topologies, retrieval modes, and ownership |
+| [Managing skills](docs/skill-management.md) | Install, scan, pin, sync, report, overlays, and recovery |
+| [MCP routing](docs/mcp-routing.md) | Tools, outcomes, transports, retrieval, fallback, and integrity |
+| [Deployment](docs/deployment.md) | Docker, HTTP, auth, CORS, rate limits, health, and metrics |
+| [Configuration](docs/configuration.md) | Machine config, inference, manifests, and overlays |
+| [CLI reference](docs/cli.md) | Commands, contexts, automation, JSON output, and exit codes |
+| [Policy calibration](docs/calibration.md) | Labelled datasets, certification, and threshold application |
+| [Troubleshooting](docs/troubleshooting.md) | `doctor`, common failures, and migration notes |
+| [MCP schema](docs/schema.json) | JSON Schema 2020-12 tool contract |
 
 ## Development
 
+Skillmux uses Bun for development:
+
 ```sh
-bun test        # full suite (contract, hybrid recall, stdio e2e, watcher, eval)
-bun run build   # single-file binary via bun build --compile
+bun install --frozen-lockfile
+bun test
+bun run build
 ```
 
-Reference: [`docs/configuration.md`](docs/configuration.md) and [`docs/schema.json`](docs/schema.json).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+## License
+
+[MIT](LICENSE)

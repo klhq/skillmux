@@ -1,11 +1,23 @@
 # Configuration
 
-Skillmux defaults to FTS5 plus local GTE-small semantic retrieval. Most users need no config file.
+Skillmux manages one canonical vault and defaults to FTS5 plus GTE-small
+running in the Skillmux process. Most users need no config file.
 
-For detailed CLI command reference, target resolution, and automation
-envelopes, see [`docs/cli.md`](cli.md). For labelled datasets, threshold
-certification, reference values, and the apply lifecycle, see
-[`docs/calibration.md`](calibration.md).
+Deployment and inference use separate terms:
+
+- **local deployment**: Skillmux runs beside a client, usually over stdio;
+- **shared deployment**: Skillmux serves clients over HTTP;
+- **local inference**: the Skillmux process runs the embedding model;
+- **remote inference**: Skillmux calls configured inference endpoints.
+
+A shared HTTP deployment can use local inference. A local stdio deployment can
+use remote inference.
+
+Read [Concepts](concepts.md) for the vault and delivery model. For detailed CLI
+commands, target resolution, and automation envelopes, see
+[CLI reference](cli.md). For labelled datasets, threshold certification,
+reference values, and the apply lifecycle, see
+[Policy calibration](calibration.md).
 
 ## Machine config bootstrap
 
@@ -26,14 +38,21 @@ It validates that the path resolves to a directory with at least one
 `local_vault_paths` unset. `skillmux init --vault ~/skills --yes` uses the
 same bootstrap when the machine config does not exist.
 
-## Local mode
+## Local inference
 
 ```toml
 [inference]
 mode = "local"
 ```
 
-The versioned `gte-small-v1` bundle uses normalized, mean-pooled `Xenova/gte-small` embeddings (384 dimensions), quantized to q8 on CPU. Models are cached in `~/.cache/skillmux/models`. FTS5 and cosine result lists are combined with reciprocal-rank fusion; without a reranker the calling LLM selects from the ordered shortlist.
+The versioned `gte-small-v1` configuration uses normalized, mean-pooled
+`Xenova/gte-small` embeddings with 384 dimensions, quantized to q8 on CPU.
+CLI and Linux binary installations download the model when inference first
+loads it and cache it in `~/.cache/skillmux/models`. The full Docker image
+already contains the model.
+
+Skillmux combines FTS5 and cosine result lists with reciprocal-rank fusion.
+Without a reranker, the calling model selects from the ordered shortlist.
 
 Advanced local overrides:
 
@@ -50,9 +69,10 @@ dtype = "q8"
 
 ```
 
-Use `skillmux models download` to prefetch models and `skillmux doctor` to verify readiness.
+Use `skillmux models download` to prefetch the model and `skillmux doctor` to
+verify readiness.
 
-## Remote mode
+## Remote inference
 
 See [`config.remote.example.toml`](../config.remote.example.toml). Embeddings
 must implement the OpenAI-compatible `{ model, input }` contract. Configure the
@@ -137,7 +157,11 @@ Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, 
 
 ## Tiers and the manifest
 
-`skillmux init`/`sync` manage an optional second delivery path — pinning a subset of skills as real symlinks inside an agent's own skill directory, instead of routing every request through `resolve_skill`. See the README's [Tiers](../README.md#tiers-routed-vs-pinned) section for the concept and a walkthrough; this is the manifest reference.
+`skillmux init` and `skillmux sync` manage native delivery by pinning selected
+skills as symlinks inside an agent's skill directory. Routed skills remain
+available through `resolve_skill`. Read [Concepts](concepts.md#delivery-tiers)
+for the model and [Managing skills](skill-management.md) for the workflow.
+This section defines the manifest.
 
 ### `skillmux.toml`
 

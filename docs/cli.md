@@ -1,8 +1,17 @@
-# CLI Reference & Automation
+# CLI reference and automation
 
-Skillmux provides a unified local-or-remote CLI vocabulary for context resolution, configuration management, policy calibration, and shell discoverability.
+The Bun package and Linux binary expose the same CLI. Commands can operate on
+the built-in `local` target or on a named shared server through its
+administrative API.
 
-## Global Options & Target Resolution
+In this guide, **local target** means the filesystem and process selected by
+the built-in CLI context. It does not describe local inference. A local target
+can call remote inference endpoints.
+
+For task-oriented workflows, start with [Getting started](getting-started.md)
+or [Managing skills](skill-management.md).
+
+## Global options and target resolution
 
 Every target-aware command resolves its execution target deterministically in this order:
 
@@ -24,7 +33,7 @@ Every target-aware command resolves its execution target deterministically in th
 
 ---
 
-## Context Management (`skillmux context`)
+## Context management (`skillmux context`)
 
 Contexts store named server targets without embedding raw credentials. Token environment variable names (`token_env`) may be associated with a context.
 
@@ -47,7 +56,7 @@ skillmux context remove prod
 
 ---
 
-## Configuration Management (`skillmux config`)
+## Configuration management (`skillmux config`)
 
 Local and remote targets share identical `config` subcommands.
 
@@ -82,7 +91,7 @@ and does not add `local_vault_paths`.
 
 ---
 
-## Setup Planner (`skillmux init`)
+## Setup planner (`skillmux init`)
 
 Run `skillmux init` with no arguments in a terminal to start guided setup.
 Skillmux preselects clients it can detect from filesystem evidence, asks for
@@ -134,7 +143,7 @@ user-level convention reports manual setup.
 
 ---
 
-## Project Setup (`skillmux project init`)
+## Project setup (`skillmux project init`)
 
 Run the guided flow from a project directory:
 
@@ -185,7 +194,7 @@ maintenance commands to materialize the new state.
 
 ---
 
-## Advanced Targets (`skillmux target`)
+## Advanced targets (`skillmux target`)
 
 Most users should select products with `init --client`. Use `target` commands
 for custom delivery directories and manifest inspection:
@@ -204,7 +213,7 @@ command prints the preserved path so cleanup remains an explicit user action.
 
 ---
 
-## Core Skills (`skillmux core`)
+## Core skills (`skillmux core`)
 
 Pin or unpin skills into `[core]` — the tier every target receives by
 default, capped at 25 skills:
@@ -222,7 +231,7 @@ whole call fails and the manifest file is left untouched. To pin into a
 `[project.<group>]` tier instead, use `skillmux project pin` (see
 [Project Setup](#project-setup-skillmux-project-init)).
 
-### Reloadable vs. Restart-Required Keys
+### Reloadable and restart-required keys
 
 Config changes are categorized into live-reloadable and restart-required settings:
 
@@ -231,7 +240,7 @@ Config changes are categorized into live-reloadable and restart-required setting
 
 ---
 
-## Skill Introspection (`skillmux skill which`)
+## Skill introspection (`skillmux skill which`)
 
 Show which root actually serves a skill_id, and every root it shadows:
 
@@ -241,7 +250,7 @@ skillmux skill which csv-formatter
 
 ---
 
-## Policy Calibration (`skillmux calibrate`)
+## Policy calibration (`skillmux calibrate`)
 
 Calibrate decision thresholds (`match_score`, `match_margin`, `candidate_floor`) against synthetic or labeled query datasets.
 Calibration is local-only in this release. Remote targets advertise the
@@ -293,7 +302,7 @@ Requests require `Authorization: Bearer <token>` where `<token>` matches the env
 
 ---
 
-## Automation & JSON Output (`--json`)
+## Automation and JSON output (`--json`)
 
 When `--json` or `SKILLMUX_JSON=true` is set, all output is emitted to `stdout` in a stable envelope:
 
@@ -307,7 +316,7 @@ When `--json` or `SKILLMUX_JSON=true` is set, all output is emitted to `stdout` 
 }
 ```
 
-### Exit Codes
+### Exit codes
 
 | Code | Meaning | Examples |
 |------|---------|----------|
@@ -318,7 +327,7 @@ When `--json` or `SKILLMUX_JSON=true` is set, all output is emitted to `stdout` 
 
 ---
 
-## Shell Completions (`skillmux completions`)
+## Shell completions (`skillmux completions`)
 
 Generate tab-completions for `bash`, `zsh`, or `fish`:
 
