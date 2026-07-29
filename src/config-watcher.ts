@@ -1,4 +1,4 @@
-import { watch } from "node:fs";
+import { mkdirSync, watch } from "node:fs";
 import { dirname } from "node:path";
 import { loadConfig } from "./config";
 import type { Config } from "./types";
@@ -132,6 +132,10 @@ export class ConfigWatcher {
   ) {
     const dir = dirname(tomlPath);
     const filename = tomlPath.split(/[/\\]/).pop()!;
+
+    // A config file is optional. Ensure its parent exists so zero-config
+    // startup is safe and later config writes are still observed.
+    mkdirSync(dir, { recursive: true });
 
     this.watcher = watch(dir, { recursive: false }, (_event, changedName) => {
       if (this.stopped) return;

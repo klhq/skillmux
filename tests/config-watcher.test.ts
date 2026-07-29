@@ -92,6 +92,36 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("ConfigWatcher", () => {
+  test("should tolerate an absent optional config directory", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-cw-missing-dir-"));
+    dirs.push(root);
+    const tomlPath = join(root, "missing", "config.toml");
+
+    const watcher = await ConfigWatcher.start(tomlPath, {
+      onReload: () => {},
+      onError: () => {},
+    });
+    watcher.stop();
+  });
+
+  test("should reload when config is created after zero-config startup", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-cw-late-config-"));
+    dirs.push(root);
+    const tomlPath = join(root, "missing", "config.toml");
+    const received: Config[] = [];
+
+    const watcher = await ConfigWatcher.start(tomlPath, {
+      onReload: (config) => received.push(config),
+      onError: () => {},
+    });
+
+    writeToml(tomlPath, baseToml(10));
+    await waitFor(() => received.length > 0);
+    watcher.stop();
+
+    expect(received.at(-1)!.recall.k_lexical).toBe(10);
+  });
+
   test("should call onReload with new config when an allowlisted key changes", async () => {
     const root = mkdtempSync(join(tmpdir(), "skillmux-cw-"));
     dirs.push(root);

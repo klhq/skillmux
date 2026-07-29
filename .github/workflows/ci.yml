@@ -45,7 +45,11 @@ jobs:
         with:
           context: .
           target: slim
+          platforms: linux/amd64
           push: false
+          load: true
           tags: skillmux:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Smoke-test slim Docker runtime contract
+        run: bash tests/docker-smoke.sh skillmux:ci

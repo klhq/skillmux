@@ -4,19 +4,20 @@ Choose a deployment from the client count and inference source:
 
 | Use case | Recommended package | Transport | Inference |
 | --- | --- | --- | --- |
-| Native skill management | Bun package or Linux binary | Filesystem | None required |
-| Local MCP retrieval | Bun package or Linux binary | stdio | Downloaded GTE-small |
+| Native skill management | Skillmux CLI | Filesystem | None required |
+| Local MCP retrieval | Skillmux CLI | stdio | Downloaded GTE-small |
 | Shared MCP with local inference | Full Docker image | Streamable HTTP | Bundled GTE-small |
-| Shared MCP with remote or lexical retrieval | Slim Docker image | Streamable HTTP | Remote endpoint or lexical fallback |
+| Shared MCP with remote or lexical retrieval | Slim Docker image (advanced) | Streamable HTTP | Remote endpoint or lexical fallback |
 
-The Bun package and Linux binary can serve HTTP. Docker can serve stdio. These
-options expose the same MCP tools, but the table shows the shortest operational
-path for each use case.
+Install the CLI with either the Bun package or standalone Linux executable;
+they expose the same commands and can also serve HTTP. Deploy the full Docker
+image for a shared service by default. Docker can serve stdio when a client
+requires a container command; use slim only for remote or lexical retrieval.
 
 “Local inference” means the model runs in the Skillmux process. It does not
 mean that the MCP client must run on the same machine.
 
-## CLI and Linux binary
+## Skillmux CLI
 
 Run stdio MCP beside one client:
 
@@ -155,7 +156,7 @@ HTTP health check for stdio because no HTTP listener is started.
 
 ## Expose HTTP safely
 
-The native CLI and Linux binary bind `127.0.0.1`. Docker binds `0.0.0.0` so
+The Skillmux CLI binds `127.0.0.1`. Docker binds `0.0.0.0` so
 port mapping works. Before exposing the port beyond a trusted host:
 
 ```toml

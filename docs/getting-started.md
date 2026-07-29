@@ -5,8 +5,8 @@ an installation.
 
 | Goal | Skill delivery | Recommended installation |
 | --- | --- | --- |
-| [Manage native skills](#manage-native-skills) | Managed links in client skill directories | Bun package or Linux binary |
-| [Add local MCP retrieval](#add-local-mcp-retrieval) | Local stdio MCP | Bun package or Linux binary |
+| [Manage native skills](#manage-native-skills) | Managed links in client skill directories | Skillmux CLI |
+| [Add local MCP retrieval](#add-local-mcp-retrieval) | Local stdio MCP | Skillmux CLI |
 | [Run a shared MCP service](#run-a-shared-mcp-service) | Streamable HTTP MCP | Full Docker image |
 
 Native management and local MCP retrieval can run together. Complete both
@@ -25,7 +25,8 @@ skillmux --help
 
 Native target sync needs permission to create directory symlinks on Windows.
 
-Linux users can install a compiled AMD64 or ARM64 binary instead:
+Linux users without Bun can install the standalone AMD64 or ARM64 executable
+instead:
 
 ```sh
 gh release download --repo klhq/skillmux --pattern 'skillmux-linux-*'
@@ -34,8 +35,8 @@ chmod +x skillmux-linux-amd64
 sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
 ```
 
-Replace `amd64` with `arm64` on ARM64. The Bun package and Linux binary expose
-the same commands.
+Replace `amd64` with `arm64` on ARM64. The Bun package and standalone Linux
+executable expose the same Skillmux CLI commands.
 
 ## Prepare a vault
 
@@ -51,8 +52,8 @@ skill:
     └── references/
 ```
 
-Each `SKILL.md` needs valid Agent Skills frontmatter. If you installed the CLI
-or Linux binary, you can install a skill from Git:
+Each `SKILL.md` needs valid Agent Skills frontmatter. With the Skillmux CLI,
+you can install a skill from Git:
 
 ```sh
 skillmux install owner/repo

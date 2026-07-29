@@ -111,11 +111,11 @@ step depends on the installation:
 
 | Installation | Expected action |
 | --- | --- |
-| Bun package or Linux binary with local inference | Download the local model and rebuild the index |
+| Skillmux CLI with local inference | Download the local model and rebuild the index |
 | Full Docker image | Confirm the running tag is the full image and inspect `doctor` output |
 | Slim Docker image | Configure remote embeddings or keep lexical fallback |
 
-For a CLI or Linux binary installation, run:
+For a Skillmux CLI installation, run:
 
 ```sh
 skillmux doctor
@@ -147,7 +147,7 @@ frontmatter and retry.
 
 ### Another machine cannot connect
 
-The CLI and Linux binary bind HTTP to `127.0.0.1`. Set `server.hostname` or
+The Skillmux CLI binds HTTP to `127.0.0.1`. Set `server.hostname` or
 `HTTP_HOSTNAME` to a reachable interface, then restart the server. Docker
 binds `0.0.0.0` inside the container, but the host still needs a published
 port. Enable authentication before exposing either deployment.

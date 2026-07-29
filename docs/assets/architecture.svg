@@ -121,7 +121,7 @@
     <text x="600" y="507" text-anchor="middle" class="label">FTS5 + local GTE-small</text>
     <text x="600" y="530" text-anchor="middle" class="body">downloaded and cached on this machine</text>
 
-    <text x="442" y="570" class="body">Install with Bun CLI or Linux binary</text>
+    <text x="442" y="570" class="body">Skillmux CLI: Bun package or Linux executable</text>
   </g>
 
   <g filter="url(#shadow)">

@@ -7,12 +7,17 @@ need to appear and where Skillmux should run.
 
 | Goal | Start with | Recommended installation |
 | --- | --- | --- |
-| Put a small skill set in native client directories | [Manage native skills](getting-started.md#manage-native-skills) | Bun package or Linux binary |
-| Let one client search the full vault through MCP | [Add local MCP retrieval](getting-started.md#add-local-mcp-retrieval) | Bun package or Linux binary |
-| Serve the vault to several MCP clients | [Run a shared MCP service](getting-started.md#run-a-shared-mcp-service) | Full or slim Docker image |
+| Put a small skill set in native client directories | [Manage native skills](getting-started.md#manage-native-skills) | Skillmux CLI |
+| Let one client search the full vault through MCP | [Add local MCP retrieval](getting-started.md#add-local-mcp-retrieval) | Skillmux CLI |
+| Serve the vault to several MCP clients | [Run a shared MCP service](getting-started.md#run-a-shared-mcp-service) | Full Skillmux server image |
 
 You can combine native management and local MCP retrieval on one machine. The
 shared service uses the same MCP tools over HTTP.
+
+Install the CLI with the Bun package, or use the standalone Linux executable
+when Bun is unavailable. The full server image is the shared-service default;
+the slim image is an advanced choice for remote embeddings or lexical-only
+retrieval.
 
 ## Learn the model
 
@@ -27,8 +32,8 @@ shared service uses the same MCP tools over HTTP.
 
 ## Operate Skillmux
 
-- [Deployment](deployment.md): compare packages and Docker variants, expose
-  HTTP, and operate a shared service.
+- [Deployment](deployment.md): deploy the shared server, choose slim only when
+  needed, expose HTTP, and operate the service.
 - [Configuration reference](configuration.md): configure inference, manifests,
   server settings, and local overlays.
 - [CLI reference](cli.md): use commands, contexts, JSON output, and exit codes.
