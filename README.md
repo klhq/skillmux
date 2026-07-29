@@ -10,26 +10,33 @@
 </p>
 
 Skillmux manages [`SKILL.md`](https://agentskills.io) collections across AI
-coding clients. Keep one canonical vault, pin a small set into native skill
-directories, and retrieve the rest through MCP.
+coding clients. Keep one vault source of truth, pin a small set into native
+skill directories, and retrieve the rest through MCP. On one machine, the
+source and checkout can be the same directory. In a shared deployment, each
+machine that manages native skills and the server use their own checkout; Git
+or your deployment process keeps those checkouts current.
 
 The same Skillmux CLI manages native skills and can serve local stdio MCP.
+Most individual users need only the CLI. Add Docker when you need a shared or
+always-on HTTP service.
+
 Choose a setup by the job:
 
 1. Need native skills or local MCP for one client? Install the **Skillmux CLI**.
 2. On Linux without Bun? Install the standalone Linux executable instead; it is
    the same CLI.
-3. Need one shared HTTP MCP service? Deploy the **full Docker image**—the
+3. Need one shared HTTP MCP service? Deploy the **full Docker image**, the
    self-contained default with GTE-small.
 4. Already have remote embeddings, or intentionally want lexical-only
    retrieval? Use the **slim** image; see [Deployment](docs/deployment.md).
 5. Need native pins and shared retrieval? Run the CLI on the machines that own
-   client directories and one shared server for routed retrieval.
+   client directories and one shared server for routed retrieval. MCP-only
+   clients connect over HTTP and do not need the CLI.
 
-A shared service focuses on routed retrieval; manage its mounted vault on the
-host with the CLI.
+Manage the server's vault checkout outside the container. Use the CLI for
+Skillmux operations and Git or your deployment process for replication.
 
-## One vault, three ways to use it
+## One vault source of truth, three ways to use it
 
 <p align="center">
   <img src="docs/assets/architecture.svg" alt="Three ways to use Skillmux: manage native skills, add local MCP retrieval, or run a shared MCP service" width="100%">
@@ -51,7 +58,7 @@ skillmux --help
 
 Native target sync needs permission to create directory symlinks on Windows.
 
-On Linux, you can install a compiled AMD64 or ARM64 binary instead:
+On Linux, you can install a standalone AMD64 or ARM64 executable instead:
 
 ```sh
 gh release download --repo klhq/skillmux --pattern 'skillmux-linux-*'
@@ -211,7 +218,7 @@ Skillmux preserves existing instruction files and unmanaged target content. Run 
 
 ## Guarantees
 
-- **Controlled sources:** pins come from the canonical vault, while routed delivery follows the configured overlay order.
+- **Controlled sources:** pins come from the configured vault checkout, while routed delivery follows the configured overlay order.
 - **Scoped writes:** management commands write only to documented config, vault, state, and adopted target paths.
 - **Managed ownership:** sync removes only entries recorded in the target's `.skillmux` marker.
 - **Current bytes:** MCP delivery hashes the file on disk and never serves a stale indexed body.
