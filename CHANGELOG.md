@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/klhq/skillmux/compare/v1.2.0...v1.3.0) (2026-07-29)
+
+
+### Added
+
+* **docs:** clarify Skillmux use cases and deployment options ([#92](https://github.com/klhq/skillmux/issues/92)) ([c7faa09](https://github.com/klhq/skillmux/commit/c7faa0931b11180de7d2851d19cc96c3b04b930d))
+
+
+### Fixed
+
+* **packaging:** validate Docker deployment runtime ([#94](https://github.com/klhq/skillmux/issues/94)) ([a757b14](https://github.com/klhq/skillmux/commit/a757b14b925f0dd1c2875d4aae38464065066be8))
+
 ## [1.2.0](https://github.com/klhq/skillmux/compare/v1.1.0...v1.2.0) (2026-07-28)
 
 
