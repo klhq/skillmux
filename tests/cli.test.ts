@@ -221,6 +221,7 @@ describe("skillmux doctor CLI", () => {
     expect(Array.isArray(parsed.data.checks)).toBe(true);
     expect(typeof parsed.data.mode).toBe("string");
     expect(typeof parsed.data.capability).toBe("string");
+    expect(typeof parsed.data.retrieval_capability).toBe("string");
     expect(parsed.data).toMatchObject({
       version: packageJson.version,
       runtime: "host",
@@ -238,6 +239,7 @@ describe("skillmux doctor CLI", () => {
     expect(result.stdout).toContain(`version: ${packageJson.version}`);
     expect(result.stdout).toContain("runtime: host");
     expect(result.stdout).toContain("image variant: none");
+    expect(result.stdout).toContain("retrieval capability: lexical");
   });
 });
 

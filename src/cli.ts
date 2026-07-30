@@ -741,6 +741,7 @@ async function runDoctor(options: { isJson: boolean }): Promise<void> {
     console.log(`state directory: ${report.state_dir}`);
     console.log(`inference mode: ${report.mode}`);
     console.log(`routing capability: ${report.capability}`);
+    console.log(`retrieval capability: ${report.retrieval_capability}`);
     for (const check of report.checks)
       console.log(
         `${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`,
