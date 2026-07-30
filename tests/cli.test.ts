@@ -220,6 +220,16 @@ describe("skillmux calibrate run CLI", () => {
   });
 });
 
+describe("skillmux version CLI", () => {
+  test("--version prints the package version", async () => {
+    const result = await runCli("--version");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("1.3.0");
+    expect(result.stderr).toBe("");
+  });
+});
+
 describe("skillmux Docker command policy", () => {
   test("rejects native skill management with actionable host CLI guidance", async () => {
     const result = await runCliEnv(["init"], { RUNNING_IN_DOCKER: "true" });
