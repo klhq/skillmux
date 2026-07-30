@@ -219,7 +219,7 @@ jobs:
           cache-from: type=gha,scope=release-smoke-${{ matrix.target }}-${{ matrix.architecture }}
           cache-to: type=gha,mode=max,scope=release-smoke-${{ matrix.target }}-${{ matrix.architecture }}
       - name: Smoke-test ${{ matrix.target }} on linux/${{ matrix.architecture }}
-        run: bash tests/docker-smoke.sh skillmux:release-${{ matrix.target }}-${{ matrix.architecture }}
+        run: bash tests/docker-smoke.sh skillmux:release-${{ matrix.target }}-${{ matrix.architecture }} ${{ matrix.target }}
 
   ghcr:
     needs: [release-metadata, validate, docker-release-smoke]

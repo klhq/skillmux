@@ -2,6 +2,7 @@
 set -euo pipefail
 
 IMAGE="${1:-skillmux:docker-smoke}"
+EXPECTED_VARIANT="${2:-slim}"
 CONTAINER="skillmux-docker-smoke-$$"
 WORKDIR="$(mktemp -d)"
 VAULT="$WORKDIR/vault"
@@ -26,6 +27,22 @@ EOF
 # Arguments after the image replace CMD while retaining ENTRYPOINT.
 docker run --rm "$IMAGE" config show >/dev/null
 docker run --rm "$IMAGE" config validate >/dev/null
+
+# Doctor identifies the image variant and the retrieval lane it can actually
+# use. Slim stays healthy without a bundled model; full verifies GTE-small.
+docker run --rm \
+  -v "$VAULT:/vault:ro" \
+  -v "$DATA:/data" \
+  "$IMAGE" doctor --json >"$WORKDIR/doctor.json"
+EXPECTED_CAPABILITY="lexical"
+if [ "$EXPECTED_VARIANT" = "full" ]; then
+  EXPECTED_CAPABILITY="hybrid"
+fi
+jq -e \
+  --arg variant "$EXPECTED_VARIANT" \
+  --arg capability "$EXPECTED_CAPABILITY" \
+  '.ok == true and .data.image_variant == $variant and .data.retrieval_capability == $capability' \
+  "$WORKDIR/doctor.json" >/dev/null
 
 # Host-management operations must be rejected inside the image.
 if docker run --rm "$IMAGE" init >"$WORKDIR/init.out" 2>&1; then
