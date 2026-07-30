@@ -23,6 +23,9 @@ const server = Bun.serve({
     if (url.pathname === "/rerank-unavailable") {
       return new Response("secret response body", { status: 503 });
     }
+    if (url.pathname === "/v1/rerank") {
+      return Response.json({ results: [{ index: 0, relevance_score: 0.9 }] });
+    }
     return new Response("not found", { status: 404 });
   },
 });
@@ -71,6 +74,32 @@ describe("diagnose", () => {
       ok: true,
       detail: expect.stringContaining("Configure remote embeddings"),
     });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("reports configured working remote embeddings as hybrid retrieval", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-hybrid-vault-"));
+    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+
+    expect(report.retrieval_capability).toBe("hybrid");
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("reports a configured working remote reranker as reranked retrieval", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-reranked-vault-"));
+    const config = testConfig({ vault_path: vaultDir });
+    if (config.inference.mode !== "remote") throw new Error("expected remote inference");
+    config.inference.reranker = {
+      adapter: "jina-v1",
+      endpoint: `http://127.0.0.1:${server.port}/v1/rerank`,
+      model: "test-reranker",
+    };
+
+    const report = await diagnose(config);
+
+    expect(report.retrieval_capability).toBe("reranked");
 
     rmSync(vaultDir, { recursive: true, force: true });
   });
