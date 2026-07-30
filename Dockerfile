@@ -22,6 +22,7 @@ COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/package.json ./
 COPY src/ src/
 ENV RUNNING_IN_DOCKER=true \
+    SKILLMUX_IMAGE_VARIANT=slim \
     VAULT_PATH=/vault \
     STATE_DIR=/data \
     PORT=3000
