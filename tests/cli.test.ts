@@ -266,6 +266,18 @@ describe("skillmux version CLI", () => {
 });
 
 describe("skillmux Docker command policy", () => {
+  test("shows server-image help instead of host management commands", async () => {
+    const result = await runCliEnv(["--help"], { RUNNING_IN_DOCKER: "true" });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Skillmux server image");
+    expect(result.stdout).toContain("Default:\n  serve --transport http");
+    expect(result.stdout).toContain("serve, index, doctor, report, scan, skill which");
+    expect(result.stdout).toContain("config show|get|validate|diff|status");
+    expect(result.stdout).toContain("Install the Skillmux CLI on the host for init, install, pinning, and sync.");
+    expect(result.stdout).not.toContain("Setup:");
+  });
+
   test("rejects native skill management with a named host alternative", async () => {
     const result = await runCliEnv(["init"], { RUNNING_IN_DOCKER: "true" });
 

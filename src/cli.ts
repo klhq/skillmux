@@ -609,6 +609,23 @@ function handleError(
 }
 
 function printHelp(): void {
+  if (process.env.RUNNING_IN_DOCKER === "true") {
+    console.log(`Skillmux server image
+
+Default:
+  serve --transport http
+
+Supported commands:
+  serve, index, doctor, report, scan, skill which
+  config show|get|validate|diff|status
+
+Native skill management:
+  Install the Skillmux CLI on the host for init, install, pinning, and sync.
+
+See docs/deployment.md for server deployment examples.`);
+    return;
+  }
+
   console.log(`usage: skillmux <command> [options]
 
 Setup:
