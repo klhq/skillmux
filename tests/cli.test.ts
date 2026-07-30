@@ -222,7 +222,7 @@ describe("skillmux doctor CLI", () => {
     expect(typeof parsed.data.mode).toBe("string");
     expect(typeof parsed.data.capability).toBe("string");
     expect(parsed.data).toMatchObject({
-      version: "1.3.0",
+      version: packageJson.version,
       runtime: "host",
       image_variant: null,
       inference_mode: "remote",
@@ -235,7 +235,7 @@ describe("skillmux doctor CLI", () => {
   test("doctor text output identifies the running deployment", async () => {
     const result = await runCli("doctor");
 
-    expect(result.stdout).toContain("version: 1.3.0");
+    expect(result.stdout).toContain(`version: ${packageJson.version}`);
     expect(result.stdout).toContain("runtime: host");
     expect(result.stdout).toContain("image variant: none");
   });

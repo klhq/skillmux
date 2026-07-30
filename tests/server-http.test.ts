@@ -292,6 +292,11 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     expect(["starting", "ready", "not_ready", "stopping"]).toContain(String(payload.status));
     expect(payload).toHaveProperty("index_current");
     expect(payload).toHaveProperty("embedding");
+    expect(payload).toMatchObject({
+      version: "1.3.0",
+      runtime: "host",
+      image_variant: null,
+    });
   });
 
   test("GET /metrics returns 200 and prometheus metrics text", async () => {

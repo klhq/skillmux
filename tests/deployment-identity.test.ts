@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import packageJson from "../package.json" with { type: "json" };
 import { describeDeployment } from "../src/doctor";
 import type { Config } from "../src/types";
 
@@ -21,7 +22,7 @@ describe("deployment identity", () => {
       models_dir: "~/.cache/skillmux/models",
       embedding: { model: "Xenova/gte-small", dimension: 384 },
     }), {})).toMatchObject({
-      version: "1.3.0",
+      version: packageJson.version,
       runtime: "host",
       image_variant: null,
       vault_path: process.env.HOME + "/skills",

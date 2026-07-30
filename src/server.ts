@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { createClients } from "./clients";
 import { loadConfig, resolveConfigPath } from "./config";
+import { describeDeployment } from "./deployment";
 import { ConfigWatcher, type ReloadStatus } from "./config-watcher";
 import { RuntimeSnapshotManager } from "./snapshot";
 import {
@@ -276,10 +277,16 @@ export async function startServer(opts?: {
           }
           if (url.pathname === "/health/ready") {
             const readiness = readinessState.get();
+            const deployment = describeDeployment(config);
             const headers = new Headers({ "Content-Type": "application/json" });
             if (allowOriginHeader)
               headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-            return new Response(JSON.stringify(readiness), {
+            return new Response(JSON.stringify({
+              ...readiness,
+              version: deployment.version,
+              runtime: deployment.runtime,
+              image_variant: deployment.image_variant,
+            }), {
               status: readiness.status === "ready" ? 200 : 503,
               headers,
             });

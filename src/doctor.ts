@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync } from "node:fs";
-import packageJson from "../package.json" with { type: "json" };
 import { computeCorpusFingerprint, getCalibrationRun, openCalibrateDb } from "./calibrate";
 import { createClients, RemoteInferenceError } from "./clients";
 import { embeddingDimension, embeddingFingerprint, expandHome, rerankerFingerprint } from "./config";
+import { describeDeployment, type DeploymentIdentity } from "./deployment";
 import { openIndex } from "./db";
 import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
 import { readSkillmuxMarker } from "./sync";
@@ -19,15 +19,15 @@ export interface DoctorCheck {
 export interface DoctorReport {
   mode: Config["inference"]["mode"];
   capability: "hybrid" | "lexical-only" | "unavailable";
-  version: string;
-  runtime: "host" | "docker";
-  image_variant: "full" | "slim" | null;
-  vault_path: string;
-  state_dir: string;
-  inference_mode: Config["inference"]["mode"];
-  local_embedding_bundle: string | null;
-  remote_embedding_configured: boolean;
-  remote_reranker_configured: boolean;
+  version: DeploymentIdentity["version"];
+  runtime: DeploymentIdentity["runtime"];
+  image_variant: DeploymentIdentity["image_variant"];
+  vault_path: DeploymentIdentity["vault_path"];
+  state_dir: DeploymentIdentity["state_dir"];
+  inference_mode: DeploymentIdentity["inference_mode"];
+  local_embedding_bundle: DeploymentIdentity["local_embedding_bundle"];
+  remote_embedding_configured: DeploymentIdentity["remote_embedding_configured"];
+  remote_reranker_configured: DeploymentIdentity["remote_reranker_configured"];
   checks: DoctorCheck[];
 }
 
@@ -103,28 +103,7 @@ function checkCalibration(config: Config): DoctorCheck {
   return { name: "calibration", ok: true, detail: `thresholds from applied calibration run "${runId}"` };
 }
 
-export function describeDeployment(
-  config: Config,
-  environment: Record<string, string | undefined> = process.env,
-): Omit<DoctorReport, "mode" | "capability" | "checks"> {
-  const runtime = environment.RUNNING_IN_DOCKER === "true" ? "docker" : "host";
-  const variant = environment.SKILLMUX_IMAGE_VARIANT;
-  const imageVariant = runtime === "docker" && (variant === "full" || variant === "slim")
-    ? variant
-    : null;
-  return {
-    version: packageJson.version,
-    runtime,
-    image_variant: imageVariant,
-    vault_path: expandHome(config.vault_path),
-    state_dir: expandHome(config.state_dir),
-    inference_mode: config.inference.mode,
-    local_embedding_bundle: config.inference.mode === "local" ? config.inference.bundle : null,
-    remote_embedding_configured: config.inference.mode === "remote",
-    remote_reranker_configured:
-      config.inference.mode === "remote" && !!config.inference.reranker,
-  };
-}
+export { describeDeployment };
 
 export async function diagnose(config: Config): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];

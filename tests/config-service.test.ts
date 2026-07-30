@@ -95,6 +95,9 @@ describe("Config Service (AC4, AC5, AC6)", () => {
   it("reports local config status including hash and runtime=not_running when server inactive (AC6)", async () => {
     const status = await getLocalConfigStatus(CONFIG_FILE);
     expect(status.runtime).toBe("not_running");
+    expect(status.version).toBe("1.3.0");
+    expect(status.deployment_runtime).toBe("host");
+    expect(status.image_variant).toBeNull();
     expect(typeof status.desired_source_hash).toBe("string");
     expect(status.desired_source_hash.length).toBeGreaterThan(0);
   });
