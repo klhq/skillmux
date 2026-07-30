@@ -698,6 +698,11 @@ async function runEval(options: { isJson: boolean }): Promise<void> {
 async function runDoctor(options: { isJson: boolean }): Promise<void> {
   const report = await diagnose(await loadConfig());
   emitSuccess({ isJson: options.isJson }, report, () => {
+    console.log(`version: ${report.version}`);
+    console.log(`runtime: ${report.runtime}`);
+    console.log(`image variant: ${report.image_variant ?? "none"}`);
+    console.log(`vault path: ${report.vault_path}`);
+    console.log(`state directory: ${report.state_dir}`);
     console.log(`inference mode: ${report.mode}`);
     console.log(`routing capability: ${report.capability}`);
     for (const check of report.checks)

@@ -221,6 +221,23 @@ describe("skillmux doctor CLI", () => {
     expect(Array.isArray(parsed.data.checks)).toBe(true);
     expect(typeof parsed.data.mode).toBe("string");
     expect(typeof parsed.data.capability).toBe("string");
+    expect(parsed.data).toMatchObject({
+      version: "1.3.0",
+      runtime: "host",
+      image_variant: null,
+      inference_mode: "remote",
+      local_embedding_bundle: null,
+      remote_embedding_configured: true,
+      remote_reranker_configured: true,
+    });
+  });
+
+  test("doctor text output identifies the running deployment", async () => {
+    const result = await runCli("doctor");
+
+    expect(result.stdout).toContain("version: 1.3.0");
+    expect(result.stdout).toContain("runtime: host");
+    expect(result.stdout).toContain("image variant: none");
   });
 });
 

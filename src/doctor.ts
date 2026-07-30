@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
+import packageJson from "../package.json" with { type: "json" };
 import { computeCorpusFingerprint, getCalibrationRun, openCalibrateDb } from "./calibrate";
 import { createClients, RemoteInferenceError } from "./clients";
 import { embeddingDimension, embeddingFingerprint, expandHome, rerankerFingerprint } from "./config";
@@ -18,6 +19,15 @@ export interface DoctorCheck {
 export interface DoctorReport {
   mode: Config["inference"]["mode"];
   capability: "hybrid" | "lexical-only" | "unavailable";
+  version: string;
+  runtime: "host" | "docker";
+  image_variant: "full" | "slim" | null;
+  vault_path: string;
+  state_dir: string;
+  inference_mode: Config["inference"]["mode"];
+  local_embedding_bundle: string | null;
+  remote_embedding_configured: boolean;
+  remote_reranker_configured: boolean;
   checks: DoctorCheck[];
 }
 
@@ -91,6 +101,29 @@ function checkCalibration(config: Config): DoctorCheck {
   }
 
   return { name: "calibration", ok: true, detail: `thresholds from applied calibration run "${runId}"` };
+}
+
+export function describeDeployment(
+  config: Config,
+  environment: Record<string, string | undefined> = process.env,
+): Omit<DoctorReport, "mode" | "capability" | "checks"> {
+  const runtime = environment.RUNNING_IN_DOCKER === "true" ? "docker" : "host";
+  const variant = environment.SKILLMUX_IMAGE_VARIANT;
+  const imageVariant = runtime === "docker" && (variant === "full" || variant === "slim")
+    ? variant
+    : null;
+  return {
+    version: packageJson.version,
+    runtime,
+    image_variant: imageVariant,
+    vault_path: expandHome(config.vault_path),
+    state_dir: expandHome(config.state_dir),
+    inference_mode: config.inference.mode,
+    local_embedding_bundle: config.inference.mode === "local" ? config.inference.bundle : null,
+    remote_embedding_configured: config.inference.mode === "remote",
+    remote_reranker_configured:
+      config.inference.mode === "remote" && !!config.inference.reranker,
+  };
 }
 
 export async function diagnose(config: Config): Promise<DoctorReport> {
@@ -211,6 +244,7 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
   const coreReady = checks.some((check) => check.name === "vault" && check.ok)
     && checks.some((check) => check.name === "state" && check.ok);
   return {
+    ...describeDeployment(config),
     mode: config.inference.mode,
     capability: !coreReady ? "unavailable" : inferenceReady ? "hybrid" : "lexical-only",
     checks,
