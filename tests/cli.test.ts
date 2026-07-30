@@ -266,16 +266,33 @@ describe("skillmux version CLI", () => {
 });
 
 describe("skillmux Docker command policy", () => {
-  test("rejects native skill management with actionable host CLI guidance", async () => {
+  test("rejects native skill management with a named host alternative", async () => {
     const result = await runCliEnv(["init"], { RUNNING_IN_DOCKER: "true" });
 
-    expect(result.exitCode).not.toBe(0);
+    expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "This command manages local Skillmux or agent directories and is not supported inside the Docker image.",
+      "`skillmux init` manages host agent directories and cannot run in the Skillmux server image.",
     );
-    expect(result.stderr).toContain(
-      "Install the Skillmux CLI on the host using the Bun package or standalone Linux executable.",
-    );
+    expect(result.stderr).toContain("bun add -g @klhapp/skillmux");
+    expect(result.stderr).toContain("skillmux init");
+    expect(result.stderr).toContain("docs/deployment.md");
+  });
+
+  test("returns a stable JSON error for rejected container commands", async () => {
+    const result = await runCliEnv(["init", "--json"], { RUNNING_IN_DOCKER: "true" });
+
+    expect(result.exitCode).toBe(2);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONTAINER_COMMAND_UNSUPPORTED",
+        details: {
+          command: "init",
+          recommended_host_command: "skillmux init",
+          guide: "docs/deployment.md",
+        },
+      },
+    });
   });
 
   test("rejects configuration initialization while containerized", async () => {
@@ -287,7 +304,7 @@ describe("skillmux Docker command policy", () => {
     );
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("not supported inside the Docker image");
+    expect(result.stderr).toContain("cannot run in the Skillmux server image");
   });
 
   test("rejects the other host-management command families", async () => {
@@ -308,7 +325,7 @@ describe("skillmux Docker command policy", () => {
     for (const args of cases) {
       const result = await runCliEnv(args, { RUNNING_IN_DOCKER: "true" });
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("not supported inside the Docker image");
+      expect(result.stderr).toContain("cannot run in the Skillmux server image");
     }
   });
 

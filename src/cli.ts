@@ -97,6 +97,7 @@ import {
 import { createTargetAdapter, type TargetAdapter } from "./adapters";
 import {
   emitSuccess,
+  CliError,
   formatJsonEnvelope,
   isInteractive,
   mapExitCode,
@@ -133,9 +134,6 @@ const KNOWN_COMMANDS = [
   "local-vault",
 ];
 
-const DOCKER_HOST_MANAGEMENT_GUIDANCE =
-  "This command manages local Skillmux or agent directories and is not supported inside the Docker image. Install the Skillmux CLI on the host using the Bun package or standalone Linux executable.";
-
 function isDockerHostManagementCommand(command: string, subCommand: string): boolean {
   if (
     [
@@ -156,6 +154,23 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
   }
 
   return command === "config" && ["init", "set"].includes(subCommand);
+}
+
+function containerCommandUnsupported(command: string, subCommand: string): CliError {
+  const rejectedCommand = command === "config" ? `${command} ${subCommand}` : command;
+  const recommendedHostCommand = `skillmux ${rejectedCommand}`;
+  const guide = "docs/deployment.md";
+  return new CliError(
+    `\`skillmux ${rejectedCommand}\` manages host agent directories and cannot run in the Skillmux server image.\n\n` +
+      "Install the host CLI:\n" +
+      "  bun add -g @klhapp/skillmux\n\n" +
+      "Then run:\n" +
+      `  ${recommendedHostCommand}\n\n` +
+      `See ${guide} for server deployment examples.`,
+    2,
+    "CONTAINER_COMMAND_UNSUPPORTED",
+    { command: rejectedCommand, recommended_host_command: recommendedHostCommand, guide },
+  );
 }
 
 async function main() {
@@ -198,7 +213,7 @@ async function main() {
     process.env.RUNNING_IN_DOCKER === "true" &&
     isDockerHostManagementCommand(command, subCommand)
   ) {
-    handleError(new Error(DOCKER_HOST_MANAGEMENT_GUIDANCE), {
+    handleError(containerCommandUnsupported(command, subCommand), {
       target: resolvedTarget,
       isJson,
       isVerbose,
@@ -572,7 +587,11 @@ function handleError(
     const env = formatJsonEnvelope({
       ok: false,
       target: opts.target,
-      error: { code: `EXIT_${code}`, message: msg },
+      error: {
+        code: err instanceof CliError ? err.code : `EXIT_${code}`,
+        message: msg,
+        details: err instanceof CliError ? err.details : undefined,
+      },
     });
     console.log(JSON.stringify(env));
   } else {
