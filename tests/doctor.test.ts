@@ -50,6 +50,31 @@ function testConfig(overrides: Partial<Config> = {}): Config {
 }
 
 describe("diagnose", () => {
+  test("reports slim zero-config deployments as healthy lexical retrieval", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-slim-vault-"));
+    const report = await diagnose(testConfig({
+      vault_path: vaultDir,
+      inference: {
+        mode: "local",
+        bundle: "gte-small-v1",
+        models_dir: join(tmpdir(), "doctor-slim-models"),
+        embedding: { model: "Xenova/gte-small", dimension: 384 },
+      },
+    }), {
+      RUNNING_IN_DOCKER: "true",
+      SKILLMUX_IMAGE_VARIANT: "slim",
+    });
+
+    expect(report.retrieval_capability).toBe("lexical");
+    expect(report.checks.find((check) => check.name === "embedding")).toBeUndefined();
+    expect(report.checks.find((check) => check.name === "retrieval")).toMatchObject({
+      ok: true,
+      detail: expect.stringContaining("Configure remote embeddings"),
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
   test("reports the vault check as ok when vault_path exists", async () => {
     const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-"));
 
