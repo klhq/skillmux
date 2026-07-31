@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { applyCalibrationRun, getCalibrationRun, insertCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, summarizeDatasetProvenance, type CalibrationResult } from "./calibrate";
+import { applyCalibrationRun, computeCorpusFingerprint, getCalibrationRun, insertCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, summarizeDatasetProvenance, type CalibrationResult } from "./calibrate";
 import { createClients } from "./clients";
 import { DEFAULT_CONFIG_PATH, embeddingFingerprint, expandHome, loadConfig, rerankerFingerprint } from "./config";
 import { openIndex } from "./db";
@@ -141,10 +141,12 @@ export class LocalAdapter implements TargetAdapter {
     const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
     const indexDb = openIndex(expandHome(config.state_dir));
     let indexedSkills: Array<{ skill_id: string; content_sha256: string }>;
+    let corpusFingerprint: string;
     try {
       indexedSkills = indexDb
         .query("SELECT skill_id, content_sha256 FROM skills ORDER BY skill_id")
         .all() as Array<{ skill_id: string; content_sha256: string }>;
+      corpusFingerprint = computeCorpusFingerprint(indexDb);
     } finally {
       indexDb.close();
     }
@@ -180,9 +182,6 @@ export class LocalAdapter implements TargetAdapter {
       throw new Error("A configured remote reranker is required to record calibration.");
     }
     const datasetText = await Bun.file(datasetFile).text();
-    const corpusFingerprint =
-      "vault:" +
-      createHash("sha256").update(JSON.stringify(indexedSkills)).digest("hex");
     const runId = `run_${crypto.randomUUID()}`;
     const db = openCalibrateDb(expandHome(config.state_dir));
     try {
