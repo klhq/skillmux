@@ -446,7 +446,7 @@ async function handleCalibrateCommand(
       if (!Number.isFinite(value)) throw new Error(`${flag} must be a number`);
       return value;
     };
-    for (let i = 0; i < args.length; i++) {
+    for (let i = 1; i < args.length; i++) {
       const option = args[i];
       if (option === "--dataset") {
         datasetPath = args[++i];
