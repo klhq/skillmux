@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import packageJson from "../package.json" with { type: "json" };
 import {
   existsSync,
   lstatSync,
@@ -217,6 +218,16 @@ describe("skillmux calibrate run CLI", () => {
 
     expect(result.stderr).not.toContain("unknown calibrate run option: run");
     expect(result.stderr).toContain("ENOENT");
+  });
+});
+
+describe("skillmux version CLI", () => {
+  test("--version prints the package version", async () => {
+    const result = await runCli("--version");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe(packageJson.version);
+    expect(result.stderr).toBe("");
   });
 });
 

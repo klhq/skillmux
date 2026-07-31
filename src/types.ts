@@ -73,6 +73,7 @@ export interface RemoteInferenceConfig {
   embedding: RemoteEmbeddingConfig;
   reranker?: RemoteRerankerConfig;
   thresholds?: Required<Omit<Thresholds, "candidate_limit">>;
+  calibration?: { run_id: string };
 }
 
 export type InferenceConfig = LocalInferenceConfig | RemoteInferenceConfig;

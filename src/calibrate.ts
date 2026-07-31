@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
@@ -898,6 +899,18 @@ export interface CalibrationRunSummary {
   min_delivered_shortlist_recall_at_k: number;
   min_shortlist_recall_at_5: number;
   failed_reason?: CalibrationFailureReason;
+}
+
+/**
+ * Fingerprint the indexed vault content so calibration runs can detect
+ * corpus drift. Must match how `insertCalibrationRun` computes it at
+ * `calibrate run` time.
+ */
+export function computeCorpusFingerprint(indexDb: Database): string {
+  const indexedSkills = indexDb
+    .query("SELECT skill_id, content_sha256 FROM skills ORDER BY skill_id")
+    .all() as Array<{ skill_id: string; content_sha256: string }>;
+  return "vault:" + createHash("sha256").update(JSON.stringify(indexedSkills)).digest("hex");
 }
 
 /**

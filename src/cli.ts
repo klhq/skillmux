@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import packageJson from "../package.json" with { type: "json" };
 import { Database } from "bun:sqlite";
 import { existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { hostname } from "node:os";
@@ -170,6 +171,11 @@ async function main() {
   const commandArgs = rawArgv.slice(2);
 
   const command = rawArgv[0];
+  if (command === "--version" || command === "-V") {
+    console.log(packageJson.version);
+    return;
+  }
+
   if (!command || command === "--help" || command === "-h") {
     printHelp();
     return;
