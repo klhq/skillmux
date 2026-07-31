@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2](https://github.com/klhq/skillmux/compare/v1.3.1...v1.3.2) (2026-07-31)
+
+
+### Added
+
+* **doctor:** flag uncalibrated or stale inference thresholds ([#99](https://github.com/klhq/skillmux/issues/99)) ([c8f684b](https://github.com/klhq/skillmux/commit/c8f684b6aedf6788def4cdc0fe49fff233569844))
+
+
+### Chores
+
+* pin next release to 1.3.2 instead of 1.4.0 (take 2) ([#102](https://github.com/klhq/skillmux/issues/102)) ([bbbb7dd](https://github.com/klhq/skillmux/commit/bbbb7dd838d691735e797f39de7d4277b95f5187))
+
 ## [1.3.1](https://github.com/klhq/skillmux/compare/v1.3.0...v1.3.1) (2026-07-31)
 
 
