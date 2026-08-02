@@ -6,3 +6,6 @@ dist/
 *.bun-build
 .models/
 *.dataset.json
+
+# Internal planning docs — never published
+.agents/

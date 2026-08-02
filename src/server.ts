@@ -64,46 +64,7 @@ function safeTokenEquals(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
-export async function startServer(opts?: {
-  transport?: "stdio" | "http";
-  port?: number;
-  config?: Config;
-  clients?: Partial<Clients>;
-  configPath?: string;
-}): Promise<ServerHandle> {
-  const configPath = resolveConfigPath(opts?.configPath);
-  const config = opts?.config ?? (await loadConfig(configPath));
-  const initialClients = { ...createClients(config), ...opts?.clients };
-  const snapshots = RuntimeSnapshotManager.create(config, initialClients);
-  const inactiveReloadStatus: ReloadStatus = {
-    last_successful_reload_at: null,
-    last_reload_error: null,
-    restart_required_keys: [],
-  };
-  configure({ config, clients: initialClients });
-  // An injected config has no guaranteed file source. Watch it only when the
-  // caller explicitly supplies that source; normal server startup always watches.
-  const watcherPath =
-    opts?.configPath ?? (opts?.config ? undefined : configPath);
-  const configWatcher = watcherPath
-    ? await ConfigWatcher.start(watcherPath, {
-        onReload: (nextConfig) => {
-          const nextClients = {
-            ...createClients(nextConfig),
-            ...opts?.clients,
-          };
-          snapshots.replace(nextConfig, nextClients);
-          configure({ config: nextConfig, clients: nextClients });
-        },
-        onError: (error) =>
-          console.error("skillmux config reload error:", error),
-      })
-    : undefined;
-  const stopWatcher = await startVaultWatcher();
-  const initPromise = initializeRuntime(readinessState)
-    .then(() => metricsRegistry.setReadiness(readinessState.get()))
-    .catch((err) => console.error("skillmux runtime init error:", err));
-
+export function createMcpServer(): McpServer {
   const server = new McpServer({ name: "skillmux", version: "0.1.0" });
 
   // Transport rule from schema.json: the SKILL.md body appears exactly once on
@@ -165,6 +126,51 @@ export async function startServer(opts?: {
       }
     },
   );
+
+  return server;
+}
+
+export async function startServer(opts?: {
+  transport?: "stdio" | "http";
+  port?: number;
+  config?: Config;
+  clients?: Partial<Clients>;
+  configPath?: string;
+}): Promise<ServerHandle> {
+  const configPath = resolveConfigPath(opts?.configPath);
+  const config = opts?.config ?? (await loadConfig(configPath));
+  const initialClients = { ...createClients(config), ...opts?.clients };
+  const snapshots = RuntimeSnapshotManager.create(config, initialClients);
+  const inactiveReloadStatus: ReloadStatus = {
+    last_successful_reload_at: null,
+    last_reload_error: null,
+    restart_required_keys: [],
+  };
+  configure({ config, clients: initialClients });
+  // An injected config has no guaranteed file source. Watch it only when the
+  // caller explicitly supplies that source; normal server startup always watches.
+  const watcherPath =
+    opts?.configPath ?? (opts?.config ? undefined : configPath);
+  const configWatcher = watcherPath
+    ? await ConfigWatcher.start(watcherPath, {
+        onReload: (nextConfig) => {
+          const nextClients = {
+            ...createClients(nextConfig),
+            ...opts?.clients,
+          };
+          snapshots.replace(nextConfig, nextClients);
+          configure({ config: nextConfig, clients: nextClients });
+        },
+        onError: (error) =>
+          console.error("skillmux config reload error:", error),
+      })
+    : undefined;
+  const stopWatcher = await startVaultWatcher();
+  const initPromise = initializeRuntime(readinessState)
+    .then(() => metricsRegistry.setReadiness(readinessState.get()))
+    .catch((err) => console.error("skillmux runtime init error:", err));
+
+  const server = createMcpServer();
 
   const transportType = opts?.transport ?? "stdio";
   if (transportType === "http") {

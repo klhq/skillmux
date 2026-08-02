@@ -38,8 +38,7 @@
         "query": {
           "type": "string",
           "description": "Natural-language task description to route. Normalized (NFC) by the server; never semantically rewritten.",
-          "minLength": 1,
-          "maxLength": 8192
+          "minLength": 1
         }
       },
       "required": ["query"],

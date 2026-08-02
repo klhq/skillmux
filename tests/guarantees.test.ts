@@ -2,7 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { z } from "zod";
 import { configure, fetchSkill, getRuntime, rebuildIndex, resolveSkill } from "../src/router-core";
+import { createMcpServer } from "../src/server";
 import type { AuditRow, Config } from "../src/types";
 import { sha256Hex } from "../src/vault";
 
@@ -144,3 +146,85 @@ describe("audit log persistence (AC10)", () => {
     expect(candidates[0]!.score).toBe(0.97);
   });
 });
+
+// Tool inputSchemas are compiled into sampling grammars by constrained
+// decoders. llama.cpp caps repetition expansion at MAX_REPETITION_THRESHOLD
+// (2000, src/llama-grammar.cpp); a schema above it is rejected at sampler init
+// with an opaque "failed to parse grammar", taking down every tool in the
+// combined grammar, not just ours. 500 leaves deliberate headroom — other
+// decoders (vLLM, Ollama) have their own, undocumented limits.
+// See CONTRIBUTING.md, "MCP Tool Schemas (GBNF Safety)".
+const SAFE_GBNF_BOUND = 500;
+const BOUND_KEYS = ["maxLength", "maxItems", "maximum", "maxProperties"];
+
+/** The schema an MCP client actually receives — not the Zod object, which
+ *  exposes a different, version-dependent shape. */
+function wireSchemas(): [string, Record<string, unknown>][] {
+  const server = createMcpServer();
+  const registered = (server as any)._registeredTools as Record<string, any>;
+  return Object.entries(registered).map(([name, tool]) => [
+    name,
+    z.toJSONSchema(tool.inputSchema, { io: "input" }) as Record<string, unknown>,
+  ]);
+}
+
+/** Literal `{n}` / `{n,}` / `{n,m}` quantifiers in a regex `pattern`. These
+ *  compile through the same repetition path as maxLength. Both bounds matter:
+ *  llama.cpp checks min_times and max_times independently. */
+function quantifierBounds(pattern: string): number[] {
+  const out: number[] = [];
+  for (const m of pattern.matchAll(/\{(\d+)(?:,(\d*))?\}/g)) {
+    out.push(Number(m[1]));
+    if (m[2]) out.push(Number(m[2]));
+  }
+  return out;
+}
+
+describe("schema surface invariant (GBNF safety)", () => {
+  test("no tool's wire schema carries a numeric bound or regex quantifier above the safe threshold", () => {
+    const violations: string[] = [];
+
+    const walk = (node: unknown, path: string, tool: string) => {
+      if (node === null || typeof node !== "object") return;
+      for (const [k, v] of Object.entries(node)) {
+        if (BOUND_KEYS.includes(k) && typeof v === "number" && v > SAFE_GBNF_BOUND) {
+          violations.push(`${tool}: ${path}.${k} = ${v}`);
+        }
+        if (k === "pattern" && typeof v === "string") {
+          for (const n of quantifierBounds(v)) {
+            if (n > SAFE_GBNF_BOUND) violations.push(`${tool}: ${path}.pattern {${n}} in /${v}/`);
+          }
+        }
+        walk(v, `${path}.${k}`, tool);
+      }
+    };
+
+    for (const [name, schema] of wireSchemas()) walk(schema, "inputSchema", name);
+
+    expect(violations).toEqual([]);
+  });
+
+  // Without this, a change to how schemas serialize could leave the walker
+  // inspecting an empty or unrecognisable object — passing forever while
+  // checking nothing. A safety test that cannot fail is worse than none.
+  test("the invariant above is actually inspecting JSON Schema", () => {
+    const schemas = wireSchemas();
+    expect(schemas.length).toBeGreaterThan(0);
+
+    for (const [name, schema] of schemas) {
+      expect(schema.type, `${name} is not an object schema`).toBe("object");
+      expect(
+        Object.keys((schema.properties ?? {}) as object).length,
+        `${name} exposes no properties to inspect`,
+      ).toBeGreaterThan(0);
+    }
+
+    // fetch_skill's SKILL_ID_PATTERN is the only quantifier we ship; if the
+    // walker stops seeing it, pattern coverage has silently regressed.
+    const fetchSkill = schemas.find(([n]) => n === "fetch_skill")?.[1];
+    const pattern = (fetchSkill?.properties as any)?.skill_id?.pattern;
+    expect(pattern, "fetch_skill.skill_id lost its pattern").toBeTypeOf("string");
+    expect(quantifierBounds(pattern)).toEqual([1, 127]);
+  });
+});
+
