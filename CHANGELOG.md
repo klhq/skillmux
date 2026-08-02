@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4](https://github.com/klhq/skillmux/compare/v1.3.3...v1.3.4) (2026-08-02)
+
+
+### Fixed
+
+* **schema:** align published contract with server and guard GBNF bounds ([#104](https://github.com/klhq/skillmux/issues/104)) ([eb33613](https://github.com/klhq/skillmux/commit/eb336136a77c96fe5b660532dfbe191134e55ed3))
+
 ## [1.3.3](https://github.com/klhq/skillmux/compare/v1.3.2...v1.3.3) (2026-08-02)
 
 
