@@ -115,7 +115,7 @@ export async function startServer(opts?: {
         "Route a natural-language task description to the most relevant skill in the vault. " +
         "Returns outcome matched (skill delivered inline), ambiguous (shortlist — pick one, then call fetch_skill), " +
         "or no_match (proceed under your normal workflow).",
-      inputSchema: { query: z.string().min(1).max(8192) },
+      inputSchema: { query: z.string().min(1) },
     },
     async ({ query }) => {
       const startTime = performance.now();
