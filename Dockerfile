@@ -5,9 +5,13 @@ COPY package.json bun.lock ./
 RUN bun install --production --frozen-lockfile
 
 # Stage 2: Default local model bundle
+# Copies only the closed import set the prefetch needs (download-models.ts ->
+# config.ts -> types.ts, plus models.ts) rather than all of src/. Copying the
+# whole tree invalidates this layer — and re-downloads the 34MB bundle from
+# HuggingFace — on every unrelated source change, which is what made CI flaky.
 FROM base AS models
 COPY scripts/download-models.ts scripts/
-COPY src/ src/
+COPY src/config.ts src/models.ts src/types.ts src/
 ENV SKILLMUX_MODELS_DIR=/models
 RUN bun run scripts/download-models.ts
 
@@ -32,3 +36,9 @@ CMD ["serve", "--transport", "http"]
 FROM slim AS full
 COPY --from=models /models /models
 ENV SKILLMUX_MODELS_DIR=/models
+
+# Stage 5: Model export — filesystem-only target, not a runnable image.
+# CI builds this with the buildx GHA layer cache and exports it to disk, so the
+# test job gets the model bundle without touching the network mid-test.
+FROM scratch AS models-export
+COPY --from=models /models /models
