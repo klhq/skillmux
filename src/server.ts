@@ -402,6 +402,7 @@ export async function startServer(opts?: {
 
           if (req.method === "GET" && url.pathname === "/admin/v1/config") {
             const { effective, sources } = await getEffectiveConfig(configPath);
+            const deployment = describeDeployment(config);
             const desiredHash = computeHash(effective);
             const snapshot = snapshots.acquire();
             const activeRevision = computeHash(snapshot.snapshot.config);
@@ -424,6 +425,9 @@ export async function startServer(opts?: {
                   ...status,
                   readiness: readinessState.get(),
                   runtime: "running",
+                  version: deployment.version,
+                  deployment_runtime: deployment.runtime,
+                  image_variant: deployment.image_variant,
                 },
               }),
               { status: 200, headers },

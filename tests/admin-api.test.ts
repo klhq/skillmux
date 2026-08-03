@@ -123,6 +123,11 @@ describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
     expect(data.effective).toBeDefined();
     expect(data.sources).toBeDefined();
     expect(data.active_revision).toBeDefined();
+    expect(data.runtime).toMatchObject({
+      version: "1.3.0",
+      deployment_runtime: "host",
+      image_variant: null,
+    });
   });
 
   it("handles PATCH /admin/v1/config with If-Match (AC8)", async () => {
