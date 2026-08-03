@@ -257,6 +257,17 @@ describe("skillmux calibrate run CLI", () => {
   });
 });
 
+describe("skillmux config status CLI", () => {
+  test("text output identifies the host deployment without changing service runtime", async () => {
+    const result = await runCli("config", "status");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Runtime: not_running");
+    expect(result.stdout).toContain("Deployment runtime: host");
+    expect(result.stdout).toContain("Image variant: none");
+  });
+});
+
 describe("skillmux version CLI", () => {
   test("--version prints the package version", async () => {
     const result = await runCli("--version");

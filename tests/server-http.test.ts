@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import packageJson from "../package.json" with { type: "json" };
 import { startServer } from "../src/server";
 import { configure } from "../src/router-core";
 import { loadConfig } from "../src/config";
@@ -293,7 +294,7 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     expect(payload).toHaveProperty("index_current");
     expect(payload).toHaveProperty("embedding");
     expect(payload).toMatchObject({
-      version: "1.3.0",
+      version: packageJson.version,
       runtime: "host",
       image_variant: null,
     });
