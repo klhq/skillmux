@@ -80,8 +80,8 @@
 
   <path d="M520 224V252H410V277" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#arrow-teal)"/>
   <path d="M720 224V252H980V277" fill="none" stroke="#7c3aed" stroke-width="3" marker-end="url(#arrow-violet)"/>
-  <text x="410" y="270" text-anchor="middle" class="body">client checkout</text>
-  <text x="980" y="270" text-anchor="middle" class="body">server checkout</text>
+  <text x="394" y="270" text-anchor="end" class="body">client checkout</text>
+  <text x="996" y="270" text-anchor="start" class="body">server checkout</text>
 
   <g filter="url(#shadow)">
     <rect x="40" y="284" width="740" height="302" rx="18" fill="#ffffff" stroke="#99d5cc" stroke-width="2"/>
