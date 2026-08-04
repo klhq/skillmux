@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
   <title id="title">Three ways to use Skillmux</title>
-  <desc id="desc">One canonical skill vault supports native skill management and local MCP retrieval through the Skillmux CLI, plus a shared HTTP MCP service through the full or slim Skillmux server image.</desc>
+  <desc id="desc">One canonical skill vault supports two Skillmux CLI use cases: native skill management and local MCP retrieval. A Skillmux server provides shared HTTP MCP in a full or slim image.</desc>
 
   <defs>
     <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
@@ -83,51 +83,46 @@
   <path d="M720 224V252H980V277" fill="none" stroke="#7c3aed" stroke-width="3" marker-end="url(#arrow-violet)"/>
 
   <g filter="url(#shadow)">
-    <rect x="40" y="284" width="360" height="302" rx="18" fill="#ffffff" stroke="#99d5cc" stroke-width="2"/>
-    <rect x="62" y="306" width="91" height="26" rx="13" fill="#ccfbf1"/>
-    <text x="107.5" y="324" text-anchor="middle" class="chip" fill="#115e59">USE CASE 1</text>
+    <rect x="40" y="284" width="740" height="302" rx="18" fill="#ffffff" stroke="#99d5cc" stroke-width="2"/>
+    <rect x="62" y="306" width="124" height="26" rx="13" fill="#ccfbf1"/>
+    <text x="124" y="324" text-anchor="middle" class="chip" fill="#115e59">SKILLMUX CLI</text>
     <text x="62" y="365" class="card-title">Skillmux CLI</text>
-    <text x="62" y="390" class="body">Manage native skills on the client machine.</text>
+    <text x="62" y="390" class="body">Install once for native management or local MCP beside one client.</text>
 
     <rect x="62" y="414" width="276" height="48" rx="10" fill="#f0fdfa" stroke="#99d5cc"/>
-    <text x="200" y="444" text-anchor="middle" class="mono">skillmux init · sync</text>
+    <text x="200" y="435" text-anchor="middle" class="label">Native management</text>
+    <text x="200" y="453" text-anchor="middle" class="mono">skillmux init · sync</text>
     <path d="M200 462V487" fill="none" stroke="#0f766e" stroke-width="2.5" marker-end="url(#arrow-teal)"/>
     <rect x="62" y="493" width="276" height="49" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
     <text x="200" y="514" text-anchor="middle" class="label">Native skill directories</text>
     <text x="200" y="533" text-anchor="middle" class="body">managed core and project links</text>
 
-    <text x="62" y="570" class="body">Install with</text>
-    <rect x="160" y="550" width="85" height="27" rx="8" fill="#0f172a"/>
-    <text x="202.5" y="568" text-anchor="middle" class="chip" style="font-size: 10px" fill="#ffffff">BUN PACKAGE</text>
-    <rect x="251" y="550" width="87" height="27" rx="8" fill="#f1f5f9" stroke="#cbd5e1"/>
-    <text x="294.5" y="561" text-anchor="middle" class="chip" style="font-size: 10px" fill="#334155"><tspan x="294.5">LINUX</tspan><tspan x="294.5" dy="11">EXECUTABLE</tspan></text>
+    <text x="62" y="570" class="body">Install Skillmux CLI with</text>
+    <rect x="270" y="550" width="85" height="27" rx="8" fill="#0f172a"/>
+    <text x="312.5" y="568" text-anchor="middle" class="chip" style="font-size: 10px" fill="#ffffff">BUN PACKAGE</text>
+    <rect x="361" y="550" width="87" height="27" rx="8" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="404.5" y="561" text-anchor="middle" class="chip" style="font-size: 10px" fill="#334155"><tspan x="404.5">LINUX</tspan><tspan x="404.5" dy="11">EXECUTABLE</tspan></text>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="420" y="284" width="360" height="302" rx="18" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
-    <rect x="442" y="306" width="91" height="26" rx="13" fill="#dbeafe"/>
-    <text x="487.5" y="324" text-anchor="middle" class="chip" fill="#1d4ed8">USE CASE 2</text>
-    <text x="442" y="365" class="card-title">Add local MCP retrieval</text>
-    <text x="442" y="390" class="body">Run Skillmux beside one MCP client.</text>
+    <rect x="420" y="414" width="338" height="128" rx="10" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="442" y="441" class="label">Local MCP retrieval</text>
+    <text x="442" y="463" class="body">Skillmux CLI beside one MCP client.</text>
 
-    <rect x="442" y="414" width="102" height="48" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
-    <text x="493" y="444" text-anchor="middle" class="label">AI client</text>
-    <path d="M544 438H573" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
-    <text x="558" y="428" text-anchor="middle" class="body">stdio</text>
-    <rect x="579" y="414" width="179" height="48" rx="10" fill="#eff6ff" stroke="#93c5fd"/>
-    <text x="668.5" y="444" text-anchor="middle" class="label">Local Skillmux</text>
+    <rect x="442" y="475" width="102" height="48" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="493" y="505" text-anchor="middle" class="label">AI client</text>
+    <path d="M544 499H573" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+    <text x="558" y="489" text-anchor="middle" class="body">stdio</text>
+    <rect x="579" y="475" width="157" height="48" rx="10" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="657.5" y="496" text-anchor="middle" class="label">Skillmux CLI</text>
+    <text x="657.5" y="514" text-anchor="middle" class="body">FTS5 + local GTE-small</text>
 
-    <rect x="442" y="484" width="316" height="58" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
-    <text x="600" y="507" text-anchor="middle" class="label">FTS5 + local GTE-small</text>
-    <text x="600" y="530" text-anchor="middle" class="body">downloaded and cached on this machine</text>
-
-    <text x="442" y="570" class="body">Skillmux CLI: Bun package or Linux executable</text>
   </g>
 
   <g filter="url(#shadow)">
     <rect x="800" y="284" width="360" height="302" rx="18" fill="#ffffff" stroke="#c4b5fd" stroke-width="2"/>
-    <rect x="822" y="306" width="91" height="26" rx="13" fill="#ede9fe"/>
-    <text x="867.5" y="324" text-anchor="middle" class="chip" fill="#6d28d9">USE CASE 3</text>
+    <rect x="822" y="306" width="136" height="26" rx="13" fill="#ede9fe"/>
+    <text x="890" y="324" text-anchor="middle" class="chip" fill="#6d28d9">SKILLMUX SERVER</text>
     <text x="822" y="365" class="card-title">Run a shared MCP service</text>
     <text x="822" y="390" class="body">Serve several clients from one deployment.</text>
 

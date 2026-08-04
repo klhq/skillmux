@@ -3,21 +3,21 @@
 Skillmux manages one `SKILL.md` vault. Choose a workflow based on where skills
 need to appear and where Skillmux should run.
 
-## Choose a use case
+## Choose a setup
 
-| Goal | Start with | Recommended installation |
-| --- | --- | --- |
-| Put a small skill set in native client directories | [Manage native skills](getting-started.md#manage-native-skills) | Skillmux CLI |
-| Let one client search the full vault through MCP | [Add local MCP retrieval](getting-started.md#add-local-mcp-retrieval) | Skillmux CLI |
-| Serve the vault to several MCP clients | [Run a shared MCP service](getting-started.md#run-a-shared-mcp-service) | Full Skillmux server image |
+1. [Install the Skillmux CLI](getting-started.md#install-the-cli) for native
+   skills or one local MCP client.
+2. On Linux when Bun is undesirable, use the **standalone Linux executable**;
+   it is an installation method for Skillmux CLI.
+3. [Deploy the full image](getting-started.md#run-a-shared-mcp-service) for
+   shared HTTP through Skillmux server.
+4. Choose the **slim image** when using remote embeddings or lexical retrieval.
 
-You can combine native management and local MCP retrieval on one machine. The
-shared service uses the same MCP tools over HTTP.
-
-Install the CLI with the Bun package, or use the standalone Linux executable
-when Bun is unavailable. The full server image is the shared-service default;
-the slim image is an advanced choice for remote embeddings or lexical-only
-retrieval.
+You can combine native management and local MCP retrieval on one machine. For
+native pins plus shared retrieval, run Skillmux CLI on each machine that owns
+client directories and deploy Skillmux server for HTTP MCP. The Bun package is
+the cross-platform CLI installation method; the standalone Linux executable is
+its Linux alternative.
 
 ## Learn the model
 

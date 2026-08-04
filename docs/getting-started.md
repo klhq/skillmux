@@ -7,7 +7,7 @@ an installation.
 | --- | --- | --- |
 | [Manage native skills](#manage-native-skills) | Managed links in client skill directories | Skillmux CLI |
 | [Add local MCP retrieval](#add-local-mcp-retrieval) | Local stdio MCP | Skillmux CLI |
-| [Run a shared MCP service](#run-a-shared-mcp-service) | Streamable HTTP MCP | Full Docker image |
+| [Run a shared MCP service](#run-a-shared-mcp-service) | Streamable HTTP MCP | Skillmux server (full image) |
 
 Native management and local MCP retrieval can run together. Complete both
 recipes if you want pinned skills plus on-demand access to the rest of the

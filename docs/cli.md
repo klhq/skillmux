@@ -1,6 +1,6 @@
 # CLI reference and automation
 
-The Bun package and standalone Linux executable expose the same CLI. Native
+The Bun package and standalone Linux executable expose the same Skillmux CLI. Native
 management belongs on the machine that owns the client skill directories:
 use the built-in `local` target for `init`, `install`, pinning, and `sync`.
 Named remote contexts administer shared-server configuration through its

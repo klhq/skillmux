@@ -6,12 +6,12 @@ Choose a deployment from the client count and inference source:
 | --- | --- | --- | --- |
 | Native skill management | Skillmux CLI | Filesystem | None required |
 | Local MCP retrieval | Skillmux CLI | stdio | Downloaded GTE-small |
-| Shared MCP with local inference | Full Docker image | Streamable HTTP | Bundled GTE-small |
-| Shared MCP with remote or lexical retrieval | Slim Docker image (advanced) | Streamable HTTP | Remote endpoint or lexical fallback |
+| Shared MCP with local inference | Skillmux server (full image) | Streamable HTTP | Bundled GTE-small |
+| Shared MCP with remote or lexical retrieval | Skillmux server (slim image, advanced) | Streamable HTTP | Remote endpoint or lexical fallback |
 
 Install the CLI with either the Bun package or standalone Linux executable;
-they expose the same commands and can also serve HTTP. Deploy the full Docker
-image for a shared service by default. Docker can serve stdio when a client
+they expose the same commands and can also serve HTTP. Deploy the full image
+for a shared Skillmux server by default. Docker can serve stdio when a client
 requires a container command; use slim only for remote or lexical retrieval.
 
 “Local inference” means the model runs in the Skillmux process. It does not
@@ -36,7 +36,7 @@ skillmux serve --transport http --port 3000
 The native HTTP server binds `127.0.0.1` by default. Configure authentication
 and a reachable hostname before serving other machines.
 
-## Docker images
+## Skillmux server images
 
 Skillmux publishes Linux AMD64 and ARM64 images to GHCR and Docker Hub:
 

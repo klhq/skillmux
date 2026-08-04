@@ -6,7 +6,7 @@ transport based on where the process runs:
 | Topology | Transport | Typical package |
 | --- | --- | --- |
 | Skillmux beside one client | stdio | Skillmux CLI |
-| Shared Skillmux service | Streamable HTTP | Full Docker image by default; slim for remote or lexical retrieval |
+| Shared Skillmux server | Streamable HTTP | Full image by default; slim image for remote or lexical retrieval |
 
 Both transports expose the same `resolve_skill` and `fetch_skill` contract.
 Local native pinning is optional and can run beside stdio MCP.
@@ -115,7 +115,7 @@ Skillmux builds candidates in stages:
 
 The default local inference configuration uses FTS5 and quantized
 `Xenova/gte-small` embeddings. Skillmux CLI installations cache the
-downloaded model under `~/.cache/skillmux/models`; the full Docker image
+downloaded model under `~/.cache/skillmux/models`; the full image
 includes it. The slim image starts with lexical retrieval and can call an
 OpenAI-compatible embedding endpoint.
 

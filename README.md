@@ -23,15 +23,16 @@ always-on HTTP service.
 Choose a setup by the job:
 
 1. Need native skills or local MCP for one client? Install the **Skillmux CLI**.
-2. On Linux without Bun? Install the standalone Linux executable instead; it is
-   the same CLI.
-3. Need one shared HTTP MCP service? Deploy the **full Docker image**, the
+2. On Linux when Bun is undesirable? Use the **standalone Linux executable**;
+   it is the same Skillmux CLI.
+3. Need one shared HTTP MCP service? Deploy the **full image**, the
    self-contained default with GTE-small.
 4. Already have remote embeddings, or intentionally want lexical-only
-   retrieval? Use the **slim** image; see [Deployment](docs/deployment.md).
-5. Need native pins and shared retrieval? Run the CLI on the machines that own
+   retrieval? Use the **slim image**; see [Deployment](docs/deployment.md).
+
+For native pins and shared retrieval, run the Skillmux CLI on the machines that own
    client directories and one shared server for routed retrieval. MCP-only
-   clients connect over HTTP and do not need the CLI.
+clients connect over HTTP and do not need the Skillmux CLI.
 
 Manage the server's vault checkout outside the container. Use the CLI for
 Skillmux operations and Git or your deployment process for replication.
@@ -68,7 +69,7 @@ sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
 ```
 
 Use `skillmux-linux-arm64` on ARM64. See [Deployment](docs/deployment.md) for
-the full and slim Docker images.
+the full and slim images of Skillmux server.
 
 ## Quick starts
 

@@ -112,8 +112,8 @@ step depends on the installation:
 | Installation | Expected action |
 | --- | --- |
 | Skillmux CLI with local inference | Download the local model and rebuild the index |
-| Full Docker image | Confirm the running tag is the full image and inspect `doctor` output |
-| Slim Docker image | Configure remote embeddings or keep lexical fallback |
+| Skillmux server (full image) | Confirm the running tag is the full image and inspect `doctor` output |
+| Skillmux server (slim image) | Configure remote embeddings or keep lexical fallback |
 
 For a Skillmux CLI installation, run:
 

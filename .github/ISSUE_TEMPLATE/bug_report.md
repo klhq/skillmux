@@ -19,7 +19,7 @@ What you expected to happen instead.
 - skillmux version/commit:
 - Bun version (`bun --version`):
 - Product: Skillmux CLI / Skillmux server
-- Installation: Bun package / standalone Linux executable / full Docker image / slim Docker image
+- Installation: Skillmux CLI (Bun package / standalone Linux executable) / Skillmux server (full image / slim image)
 - Topology: native management / local stdio MCP / shared HTTP MCP
 - Inference: local / remote / lexical fallback
 - OS:
