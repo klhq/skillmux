@@ -5,9 +5,9 @@ import type { Config } from "../src/types";
 
 function config(inference: Config["inference"]): Config {
   return {
-    vault_path: "~/skills",
+    vault_path: "/test/vault",
     local_vault_paths: [],
-    state_dir: "~/.local/state/skillmux",
+    state_dir: "/test/state",
     recall: { k_lexical: 20, k_vector: 20 },
     thresholds: { candidate_limit: 5 },
     inference,
@@ -25,8 +25,8 @@ describe("deployment identity", () => {
       version: packageJson.version,
       runtime: "host",
       image_variant: null,
-      vault_path: process.env.HOME + "/skills",
-      state_dir: process.env.HOME + "/.local/state/skillmux",
+      vault_path: "/test/vault",
+      state_dir: "/test/state",
       inference_mode: "local",
       local_embedding_bundle: "gte-small-v1",
       remote_embedding_configured: false,
