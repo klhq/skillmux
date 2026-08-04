@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
-  <title id="title">Three ways to use Skillmux</title>
-  <desc id="desc">One canonical skill vault supports two Skillmux CLI use cases: native skill management and local MCP retrieval. A Skillmux server provides shared HTTP MCP in a full or slim image.</desc>
+  <title id="title">One vault source of truth, three ways to use Skillmux</title>
+  <desc id="desc">One Git-backed vault source of truth has physical vault checkouts for Skillmux CLI native management, local MCP retrieval, and Skillmux server shared HTTP MCP. Git and deployment own checkout replication and freshness.</desc>
 
   <defs>
     <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
@@ -64,16 +64,16 @@
   <rect width="1200" height="720" rx="24" fill="#f8fafc"/>
   <rect x="1" y="1" width="1198" height="718" rx="23" fill="none" stroke="#e2e8f0" stroke-width="2"/>
 
-  <text x="48" y="50" class="title">One vault, three ways to use Skillmux</text>
-  <text x="48" y="78" class="subtitle">Choose a local workflow or serve the same retrieval contract to several clients.</text>
+  <text x="48" y="50" class="title">One vault source of truth, three ways to use Skillmux</text>
+  <text x="48" y="78" class="subtitle">Git and deployment replicate checkouts; Skillmux uses each checkout where it runs.</text>
 
   <g filter="url(#shadow)">
     <rect x="330" y="106" width="540" height="118" rx="18" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
     <circle cx="374" cy="147" r="18" fill="#0f172a"/>
     <path d="M364 141H377L383 147L377 153H364M370 135V159" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="408" y="144" class="card-title">Canonical skill vault</text>
-    <text x="408" y="172" class="mono">~/skills/&lt;skill-id&gt;/SKILL.md</text>
-    <text x="408" y="200" class="body">Install · scan · pin · index · inspect usage</text>
+    <text x="408" y="144" class="card-title">Git-backed vault source of truth</text>
+    <text x="408" y="172" class="mono">logical SKILL.md collection</text>
+    <text x="408" y="200" class="body">Git + deployment own replication and freshness</text>
     <rect x="701" y="139" width="137" height="34" rx="9" fill="#f1f5f9" stroke="#cbd5e1"/>
     <text x="769.5" y="161" text-anchor="middle" class="mono">skillmux.toml</text>
   </g>
@@ -81,13 +81,16 @@
   <path d="M480 224V252H220V277" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#arrow-teal)"/>
   <path d="M600 224V277" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow-blue)"/>
   <path d="M720 224V252H980V277" fill="none" stroke="#7c3aed" stroke-width="3" marker-end="url(#arrow-violet)"/>
+  <text x="220" y="270" text-anchor="middle" class="body">vault checkout</text>
+  <text x="600" y="270" text-anchor="middle" class="body">vault checkout</text>
+  <text x="980" y="270" text-anchor="middle" class="body">vault checkout</text>
 
   <g filter="url(#shadow)">
     <rect x="40" y="284" width="740" height="302" rx="18" fill="#ffffff" stroke="#99d5cc" stroke-width="2"/>
     <rect x="62" y="306" width="124" height="26" rx="13" fill="#ccfbf1"/>
     <text x="124" y="324" text-anchor="middle" class="chip" fill="#115e59">SKILLMUX CLI</text>
     <text x="62" y="365" class="card-title">Skillmux CLI</text>
-    <text x="62" y="390" class="body">Install once for native management or local MCP beside one client.</text>
+    <text x="62" y="390" class="body">A client-machine checkout supports native management or local MCP.</text>
 
     <rect x="62" y="414" width="276" height="48" rx="10" fill="#f0fdfa" stroke="#99d5cc"/>
     <text x="200" y="435" text-anchor="middle" class="label">Native management</text>
@@ -124,7 +127,7 @@
     <rect x="822" y="306" width="136" height="26" rx="13" fill="#ede9fe"/>
     <text x="890" y="324" text-anchor="middle" class="chip" fill="#6d28d9">SKILLMUX SERVER</text>
     <text x="822" y="365" class="card-title">Run a shared MCP service</text>
-    <text x="822" y="390" class="body">Serve several clients from one deployment.</text>
+    <text x="822" y="390" class="body">Read a server checkout to serve several clients.</text>
 
     <rect x="822" y="414" width="102" height="48" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
     <text x="873" y="435" text-anchor="middle" class="label">AI clients</text>

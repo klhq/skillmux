@@ -1,7 +1,9 @@
 # Skillmux documentation
 
-Skillmux manages one `SKILL.md` vault. Choose a workflow based on where skills
-need to appear and where Skillmux should run.
+Skillmux manages one `SKILL.md` vault source of truth: the logical skill
+collection. A vault checkout is a physical copy used by a client machine or
+server. On one machine, `~/skills` can be both. Choose a workflow based on
+where skills need to appear and where Skillmux should run.
 
 ## Choose a setup
 
@@ -17,7 +19,9 @@ You can combine native management and local MCP retrieval on one machine. For
 native pins plus shared retrieval, run Skillmux CLI on each machine that owns
 client directories and deploy Skillmux server for HTTP MCP. The Bun package is
 the cross-platform CLI installation method; the standalone Linux executable is
-its Linux alternative.
+its Linux alternative. Git and the deployment process, not Skillmux, replicate
+vault checkouts and determine their freshness; see
+[Deployment](deployment.md#native-pins-with-shared-retrieval).
 
 ## Learn the model
 

@@ -234,8 +234,8 @@ Read [CLI reference](cli.md#administrative-http-api-adminv1) for routes and
 ## Persistent data and backups
 
 Persist `state_dir` to retain the index, audit log, and calibration evidence.
-Skill content remains in the vault and should use its own backup or Git
-workflow.
+Skill content remains in the server's vault checkout and should use its own
+backup or Git workflow.
 
 Treat the state database as sensitive because audit rows can contain raw user
 queries. Stop the process or use SQLite-safe backup tooling before copying a
@@ -243,8 +243,11 @@ live database.
 
 ## Native pins with shared retrieval
 
-For the combined topology, use one Git-backed vault source of truth: each
-machine that manages native skills keeps its own checkout and runs the CLI;
-the shared service mounts its own checkout for retrieval. Skillmux does not
-pull, push, replicate, or otherwise keep those vault checkouts fresh—Git and
-your deployment process own that responsibility.
+For the combined topology, use one Git-backed vault source of truth. A vault
+checkout is a physical copy: each machine that manages native skills keeps its
+own checkout and runs the Skillmux CLI; the shared service mounts its own
+checkout for retrieval. On one machine, `~/skills` can be both the source of
+truth and its checkout. Skillmux does not pull, push, replicate, or determine
+freshness between checkouts; Git and your deployment process own that
+responsibility. The server image reads its mounted checkout and does not manage
+host agent directories.

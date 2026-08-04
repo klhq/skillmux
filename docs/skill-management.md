@@ -1,12 +1,14 @@
 # Managing skills
 
-Skillmux keeps skill content in a canonical vault and materializes selected
-skills into client directories. This guide covers the commands that change or
-inspect that state.
+Skillmux keeps skill content in a vault checkout and materializes selected
+skills into client directories. The vault source of truth is the logical
+collection; a checkout is its physical copy. This guide covers the commands
+that change or inspect that state.
 
-Run these commands on the machine that owns the vault and client directories.
-For a retrieval-only Docker service, manage the mounted vault on the host and
-keep the container mount read-only.
+Run these commands on the machine that owns the vault checkout and client
+directories. For a retrieval-only Docker service, manage the mounted checkout
+on the host and keep the container mount read-only; the server image does not
+manage host agent directories.
 
 ## Install from Git
 
@@ -129,13 +131,15 @@ skillmux sync
 Sync compares the manifest with entries recorded in each target's `.skillmux`
 marker. It creates missing symlinks and removes stale managed links.
 
-Install a vault Git hook when merges can change `skillmux.toml`:
+Install a vault-checkout Git hook when merges can change `skillmux.toml`:
 
 ```sh
 skillmux sync --install-hook
 ```
 
-The hook lives in the canonical vault and runs `skillmux sync` after a merge.
+The hook lives in the configured vault checkout and runs `skillmux sync` after
+a merge. Git and your deployment process, not Skillmux, keep separate
+checkouts replicated and fresh.
 
 ## Inspect active state
 
@@ -145,7 +149,8 @@ Find which vault root serves a skill:
 skillmux skill which code-context
 ```
 
-If a local overlay shadows the canonical copy, the output lists both paths.
+If a local overlay shadows the configured checkout's copy, the output lists
+both paths.
 
 Inspect configuration and readiness:
 

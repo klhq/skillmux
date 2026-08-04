@@ -10,11 +10,17 @@
 </p>
 
 Skillmux manages [`SKILL.md`](https://agentskills.io) collections across AI
-coding clients. Keep one vault source of truth, pin a small set into native
-skill directories, and retrieve the rest through MCP. On one machine, the
-source and checkout can be the same directory. In a shared deployment, each
-machine that manages native skills and the server use their own checkout; Git
-or your deployment process keeps those checkouts current.
+coding clients. Keep one **vault source of truth**—the logical skill
+collection—pin a small set into native skill directories, and retrieve the
+rest through MCP. A **vault checkout** is a physical copy of that collection.
+On one machine, `~/skills` can be both the source of truth and its checkout.
+
+For a shared topology, the Git-backed vault source of truth has a checkout on
+each client machine, where the Skillmux CLI creates native pins, and a checkout
+on the server, where Skillmux server exposes HTTP MCP. Skillmux does not pull,
+push, replicate, or determine freshness between checkouts; Git and the
+deployment process own replication and freshness. See
+[native pins with shared retrieval](docs/deployment.md#native-pins-with-shared-retrieval).
 
 The same Skillmux CLI manages native skills and can serve local stdio MCP.
 Most individual users need only the CLI. Add Docker when you need a shared or
@@ -35,7 +41,8 @@ For native pins and shared retrieval, run the Skillmux CLI on the machines that 
 clients connect over HTTP and do not need the Skillmux CLI.
 
 Manage the server's vault checkout outside the container. Use the CLI for
-Skillmux operations and Git or your deployment process for replication.
+Skillmux operations and Git or your deployment process for replication and
+freshness; server images do not manage host agent directories.
 
 ## One vault source of truth, three ways to use it
 

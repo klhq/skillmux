@@ -1,7 +1,8 @@
 # MCP routing
 
-Skillmux exposes one vault through two Model Context Protocol tools. Choose a
-transport based on where the process runs:
+Skillmux exposes its configured vault checkout through two Model Context
+Protocol tools. A vault source of truth is the logical collection; a checkout
+is its physical copy. Choose a transport based on where the process runs:
 
 | Topology | Transport | Typical package |
 | --- | --- | --- |

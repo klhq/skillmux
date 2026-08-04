@@ -93,3 +93,7 @@ docker run --rm \
 
 curl --fail http://127.0.0.1:3000/health/ready
 ```
+
+The image reads this vault checkout for retrieval; it does not manage host
+agent directories. Git and the deployment process own replication and
+freshness across vault checkouts.

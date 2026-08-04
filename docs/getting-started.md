@@ -38,10 +38,10 @@ sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
 Replace `amd64` with `arm64` on ARM64. The Bun package and standalone Linux
 executable expose the same Skillmux CLI commands.
 
-## Prepare a vault
+## Prepare a vault checkout
 
-Skillmux defaults to `~/skills`. Each direct child directory represents one
-skill:
+Skillmux defaults to the `~/skills` vault checkout. Each direct child directory
+represents one skill:
 
 ```text
 ~/skills/
@@ -95,9 +95,9 @@ The planner:
 5. applies the plan after confirmation.
 
 Skillmux writes machine config under `~/.config/skillmux`, stores tier policy
-in `~/skills/skillmux.toml`, and records its entries in each target's
-`.skillmux` marker. It preserves unmanaged files and existing instruction
-text.
+in the configured vault checkout's `skillmux.toml`, and records its entries in
+each target's `.skillmux` marker. It preserves unmanaged files and existing
+instruction text.
 
 Use explicit flags for automation:
 
@@ -220,7 +220,8 @@ it read-only.
 ## Combine native pins with shared retrieval
 
 Use this topology when users need native core or project pins and also one
-shared MCP endpoint. Keep one Git-backed vault as the source of truth:
+shared MCP endpoint. Keep one Git-backed vault source of truth. A vault
+checkout is its physical copy; on one machine, `~/skills` can be both:
 
 - each machine that owns client skill directories keeps its own checkout and
   runs the Skillmux CLI for `init`, pinning, and `sync`;
@@ -228,8 +229,8 @@ shared MCP endpoint. Keep one Git-backed vault as the source of truth:
   HTTP;
 - MCP-only clients connect to the shared server and do not need the CLI.
 
-Skillmux does not pull, push, replicate, or make those checkouts fresh. Git
-and your deployment process own vault replication and freshness.
+Skillmux does not pull, push, replicate, or determine freshness between
+checkouts. Git and your deployment process own vault replication and freshness.
 
 ## Next steps
 

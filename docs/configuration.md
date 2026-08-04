@@ -1,7 +1,9 @@
 # Configuration
 
-Skillmux manages one canonical vault and defaults to FTS5 plus GTE-small
-running in the Skillmux process. Most users need no config file.
+Skillmux manages one configured vault checkout and defaults to FTS5 plus
+GTE-small running in the Skillmux process. The vault source of truth is the
+logical collection; a vault checkout is its physical copy. Most users need no
+config file.
 
 Deployment and inference use separate terms:
 
@@ -13,7 +15,8 @@ Deployment and inference use separate terms:
 A shared HTTP deployment can use local inference. A local stdio deployment can
 use remote inference.
 
-Read [Concepts](concepts.md) for the vault and delivery model. For detailed CLI
+Read [Concepts](concepts.md#vault-source-of-truth-and-checkouts) for vault
+terms and the delivery model. For detailed CLI
 commands, target resolution, and automation envelopes, see
 [CLI reference](cli.md). For labelled datasets, threshold certification,
 reference values, and the apply lifecycle, see
@@ -205,7 +208,12 @@ Both commands accept one or more `skill_id` arguments per call; all of them are 
 >
 > **Breaking change:** `[project.<group>].repos` has been renamed to `paths` — it was never required to be a git repository, just a local directory, and the old name collided in meaning with `skillmux install <repo>`'s unrelated git-source `repo` concept. A manifest still using `repos` fails to parse with an error pointing at `paths`; migrate by renaming the key (values are unchanged).
 
-Every `[core]`/`[project.*]` skill_id must resolve from the canonical `vault_path` — pinning a skill that only exists in a `local_vault_paths` entry (see below) fails `sync` with a distinct error, since the manifest is meant to be portable across machines and a machine-local override wouldn't exist elsewhere. `doctor` validates the manifest as part of its checks, surfacing any violation without writing anything back.
+Every `[core]`/`[project.*]` skill_id must resolve from the configured
+`vault_path` checkout — pinning a skill that only exists in a
+`local_vault_paths` entry (see below) fails `sync` with a distinct error, since
+the manifest is meant to be portable across machines and a machine-local
+override wouldn't exist elsewhere. `doctor` validates the manifest as part of
+its checks, surfacing any violation without writing anything back.
 
 ### Ownership marker
 
@@ -236,7 +244,7 @@ cannot be inferred.
 `local_vault_paths` (in `config.toml`, alongside `vault_path`) lets one machine layer override-only skills on top of the shared vault — a skill being authored locally, a machine-specific script, or a patched copy of an upstream skill — without touching `vault_path` itself:
 
 ```toml
-vault_path = "~/skills"                 # unchanged: canonical, owns skillmux.toml and the sync git hook
+vault_path = "~/skills"                 # configured checkout; owns skillmux.toml and the sync git hook
 local_vault_paths = ["~/skills-local"]   # optional, default []: override-only, checked first
 ```
 

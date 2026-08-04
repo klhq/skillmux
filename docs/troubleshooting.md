@@ -12,6 +12,13 @@ Add `--json` when you need machine-readable diagnostics.
 
 ## Vault failures
 
+### Checkouts are out of date
+
+Skillmux reads the configured vault checkout; it does not pull, push,
+replicate, or determine freshness between checkouts. Update the Git-backed
+vault source of truth and use your Git or deployment process to update the
+affected checkout, then rerun `skillmux index` or `skillmux sync` as needed.
+
 ### Vault path does not exist
 
 Check the effective path and its source:
@@ -84,8 +91,9 @@ target for the current machine instead of reusing the other machine's path.
 
 ### A local-overlay skill cannot be pinned
 
-Core and project pins must exist in the canonical `vault_path`. Copy or commit
-the skill there before pinning it. Routed lookup can still serve the overlay.
+Core and project pins must exist in the configured `vault_path` checkout. Copy
+or commit the skill there before pinning it. Routed lookup can still serve the
+overlay.
 
 ## Retrieval failures
 

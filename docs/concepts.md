@@ -15,15 +15,21 @@ These decisions are independent. A local CLI can manage native pins and serve
 stdio MCP at the same time. A shared service uses HTTP MCP and can run local or
 remote inference.
 
-## Canonical vault
+## Vault source of truth and checkouts
 
-The vault is the source collection for Skillmux. Each direct child directory
-represents one skill and contains a `SKILL.md`.
+A **vault source of truth** is the logical skill collection for Skillmux. Each
+direct child directory represents one skill and contains a `SKILL.md`. A
+**vault checkout** is a physical copy of that collection on a machine.
 
-The default path is `~/skills`. Set `vault_path` in
-`~/.config/skillmux/config.toml` when you keep the collection elsewhere.
+The default vault checkout path is `~/skills`. Set `vault_path` in
+`~/.config/skillmux/config.toml` when its checkout lives elsewhere. On one
+machine, `~/skills` can be both the vault source of truth and its checkout.
+In a shared topology, use a Git-backed vault source of truth, a checkout on
+each client machine for the Skillmux CLI, and a checkout on the server for
+Skillmux server. Skillmux does not pull, push, replicate, or determine
+freshness between checkouts; Git and the deployment process own those jobs.
 
-Skillmux commands interact with the vault in two ways:
+Skillmux commands interact with the configured vault checkout in two ways:
 
 - management commands such as `install` and explicit config operations write
   to documented paths;
@@ -35,7 +41,7 @@ MCP delivery reads the current file bytes. It does not copy an indexed
 
 ## Delivery tiers
 
-Skillmux applies three policies to one vault:
+Skillmux applies three policies to one vault checkout:
 
 | Tier | Scope | Delivery |
 | --- | --- | --- |
@@ -52,8 +58,8 @@ shared manifest prevents conflicting core and project assignments. Core stays
 capped at 25 skills to protect client startup context.
 
 Delivery tiers do not select a deployment. A local Skillmux process can serve
-routed skills over stdio, while a shared Skillmux process can serve the same
-vault over HTTP.
+routed skills over stdio, while a shared Skillmux process can serve its server
+checkout over HTTP.
 
 ## Deployment topologies
 
@@ -122,12 +128,13 @@ the current machine.
 
 ## Local vault overlays
 
-`local_vault_paths` layer machine-specific skill copies over the canonical
-vault. Skillmux checks overlay paths in order, then falls back to `vault_path`.
+`local_vault_paths` layer machine-specific skill copies over the configured
+vault checkout. Skillmux checks overlay paths in order, then falls back to
+`vault_path`.
 
 Use overlays for work in progress or machine-specific variants. Keep portable
-core and project pins in the canonical vault because another machine may not
-have the overlay.
+core and project pins in the configured vault checkout because another machine
+may not have the overlay.
 
 ## Inference and retrieval capabilities
 
