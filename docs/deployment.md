@@ -10,7 +10,11 @@ Choose a deployment from the client count and inference source:
 | Shared MCP with remote or lexical retrieval | Skillmux server (slim image, advanced) | Streamable HTTP | Remote endpoint or lexical fallback |
 
 Install the CLI with either the Bun package or standalone Linux executable;
-they expose the same commands and can also serve HTTP. Deploy the full image
+they expose the same commands and can also serve HTTP. The Linux executable
+has a [pinned, checksum-verified download](getting-started.md#install-the-cli)
+that defaults to `~/.local/bin`, plus an
+[attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
+Deploy the full image
 for a shared Skillmux server by default. Docker can serve stdio when a client
 requires a container command; use slim only for remote or lexical retrieval.
 

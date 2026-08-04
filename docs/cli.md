@@ -1,7 +1,10 @@
 # CLI reference and automation
 
-The Bun package and standalone Linux executable expose the same Skillmux CLI. Native
-management belongs on the machine that owns the client skill directories:
+The Bun package and standalone Linux executable expose the same Skillmux CLI.
+For Linux installation, use the [pinned checksum-verified download](getting-started.md#install-the-cli)
+or, when provenance verification is required, the
+[attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
+Native management belongs on the machine that owns the client skill directories:
 use the built-in `local` target for `init`, `install`, pinning, and `sync`.
 Named remote contexts administer shared-server configuration through its
 administrative API only; they do not install, pin, synchronize, or otherwise

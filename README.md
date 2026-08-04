@@ -66,17 +66,28 @@ skillmux --help
 
 Native target sync needs permission to create directory symlinks on Windows.
 
-On Linux, you can install a standalone AMD64 or ARM64 executable instead:
+On Linux, you can install a standalone executable instead. This path needs no
+GitHub CLI or package manager. It selects AMD64 or ARM64, downloads the pinned
+`v1.3.4` release, and verifies the SHA-256 digest published for that release:
 
 ```sh
-gh release download --repo klhq/skillmux --pattern 'skillmux-linux-*'
-gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
-chmod +x skillmux-linux-amd64
-sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
+version=v1.3.4
+case "$(uname -m)" in
+  x86_64|amd64) asset=skillmux-linux-amd64; sha256=0d0155475748a937ac9b5878c57e1fa14d8fe6957317cb43bbdafd710cbc1966 ;;
+  aarch64|arm64) asset=skillmux-linux-arm64; sha256=8cd186707221a8fefbb79eac46ef14d0c5fdae08a2d76e64a01af17a80af0e06 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+bin_dir="${SKILLMUX_BIN_DIR:-$HOME/.local/bin}"
+curl --fail --location --output "$asset" "https://github.com/klhq/skillmux/releases/download/$version/$asset"
+printf '%s  %s\n' "$sha256" "$asset" | sha256sum --check -
+install -Dm755 "$asset" "$bin_dir/skillmux"
 ```
 
-Use `skillmux-linux-arm64` on ARM64. See [Deployment](docs/deployment.md) for
-the full and slim images of Skillmux server.
+Ensure `~/.local/bin` is on `PATH`. To install system-wide, explicitly choose
+the target: `sudo install -Dm755 "$asset" /usr/local/bin/skillmux`. For GitHub
+build-provenance verification, use the [attested GitHub CLI procedure](docs/getting-started.md#install-with-github-cli-attestation).
+See [Deployment](docs/deployment.md) for the full and slim images of Skillmux
+server.
 
 ## Quick starts
 

@@ -9,8 +9,10 @@ where skills need to appear and where Skillmux should run.
 
 1. [Install the Skillmux CLI](getting-started.md#install-the-cli) for native
    skills or one local MCP client.
-2. On Linux when Bun is undesirable, use the **standalone Linux executable**;
-   it is an installation method for Skillmux CLI.
+2. On Linux, use the [standalone executable install](getting-started.md#install-the-cli)
+   when you want a pinned, checksum-verified CLI without `gh`; the
+   [GitHub CLI attestation path](getting-started.md#install-with-github-cli-attestation)
+   is also available for provenance verification.
 3. [Deploy the full image](getting-started.md#run-a-shared-mcp-service) for
    shared HTTP through Skillmux server.
 4. Choose the **slim image** when using remote embeddings or lexical retrieval.

@@ -10,6 +10,30 @@ skillmux config validate
 
 Add `--json` when you need machine-readable diagnostics.
 
+## Installation failures
+
+### Standalone executable checksum verification fails
+
+Do not install the downloaded file. Confirm that the command still uses the
+pinned release and that the detected architecture is correct:
+
+```sh
+uname -m
+sha256sum skillmux-linux-amd64
+```
+
+Download the file again with the [standalone installation procedure](getting-started.md#install-the-cli).
+For GitHub build-provenance verification instead of the published SHA-256
+digest, use the [GitHub CLI attestation procedure](getting-started.md#install-with-github-cli-attestation).
+
+### `skillmux: command not found` after installation
+
+The standalone installer defaults to `~/.local/bin`. Add it to the shell's
+`PATH`, restart the shell, then run `skillmux --version`. Alternatively,
+install to a user-writable directory already on `PATH` with
+`SKILLMUX_BIN_DIR=/path/on/PATH`; use `sudo install` only when you explicitly
+want a system-wide installation.
+
 ## Vault failures
 
 ### Checkouts are out of date

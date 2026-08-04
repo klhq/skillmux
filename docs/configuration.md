@@ -18,7 +18,10 @@ use remote inference.
 Read [Concepts](concepts.md#vault-source-of-truth-and-checkouts) for vault
 terms and the delivery model. For detailed CLI
 commands, target resolution, and automation envelopes, see
-[CLI reference](cli.md). For labelled datasets, threshold certification,
+[CLI reference](cli.md). For Linux CLI installation, see the
+[pinned checksum-verified download](getting-started.md#install-the-cli) or the
+[attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
+For labelled datasets, threshold certification,
 reference values, and the apply lifecycle, see
 [Policy calibration](calibration.md).
 

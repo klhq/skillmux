@@ -25,18 +25,49 @@ skillmux --help
 
 Native target sync needs permission to create directory symlinks on Windows.
 
-Linux users without Bun can install the standalone AMD64 or ARM64 executable
-instead:
+Linux users can install the standalone executable without the GitHub CLI or a
+package manager. This example selects AMD64 or ARM64, downloads the pinned
+`v1.3.4` release, verifies the SHA-256 digest published for that release, and
+installs to the user-writable default `~/.local/bin`:
 
 ```sh
-gh release download --repo klhq/skillmux --pattern 'skillmux-linux-*'
-gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
-chmod +x skillmux-linux-amd64
-sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
+version=v1.3.4
+case "$(uname -m)" in
+  x86_64|amd64) asset=skillmux-linux-amd64; sha256=0d0155475748a937ac9b5878c57e1fa14d8fe6957317cb43bbdafd710cbc1966 ;;
+  aarch64|arm64) asset=skillmux-linux-arm64; sha256=8cd186707221a8fefbb79eac46ef14d0c5fdae08a2d76e64a01af17a80af0e06 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+bin_dir="${SKILLMUX_BIN_DIR:-$HOME/.local/bin}"
+curl --fail --location --output "$asset" "https://github.com/klhq/skillmux/releases/download/$version/$asset"
+printf '%s  %s\n' "$sha256" "$asset" | sha256sum --check -
+install -Dm755 "$asset" "$bin_dir/skillmux"
 ```
 
-Replace `amd64` with `arm64` on ARM64. The Bun package and standalone Linux
-executable expose the same Skillmux CLI commands.
+Ensure `~/.local/bin` is on `PATH`. To use another user-writable location, set
+`SKILLMUX_BIN_DIR` before the command. A system-wide installation is an
+explicit choice: `sudo install -Dm755 "$asset" /usr/local/bin/skillmux`.
+
+### Install with GitHub CLI attestation
+
+If you want GitHub build-provenance verification, use the GitHub CLI instead.
+This keeps the same pinned release and user-writable install location:
+
+```sh
+version=v1.3.4
+case "$(uname -m)" in
+  x86_64|amd64) asset=skillmux-linux-amd64 ;;
+  aarch64|arm64) asset=skillmux-linux-arm64 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+bin_dir="${SKILLMUX_BIN_DIR:-$HOME/.local/bin}"
+mkdir -p "$bin_dir"
+gh release download "$version" --repo klhq/skillmux --pattern "$asset" --dir "$bin_dir"
+gh attestation verify "$bin_dir/$asset" --repo klhq/skillmux
+install -m755 "$bin_dir/$asset" "$bin_dir/skillmux"
+```
+
+The Bun package and standalone Linux executable expose the same Skillmux CLI
+commands.
 
 ## Prepare a vault checkout
 
