@@ -166,7 +166,7 @@ jobs:
             dist/skillmux-linux-amd64
             dist/skillmux-linux-arm64
 
-  npm:
+  npmjs:
     needs: [release-metadata, validate]
     if: needs.release-metadata.outputs.publish_npm == 'true'
     runs-on: ubuntu-latest
