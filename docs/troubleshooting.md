@@ -20,6 +20,24 @@ optional config parent disables live reload until the next server start. For a
 malformed watched config, check the reported reload error—the running server
 continues with its last known good configuration.
 
+## Docker rejected a CLI command
+
+The server image can inspect and serve a mounted vault, but it cannot manage
+agent directories or mutate host configuration. Its help lists the supported
+server commands. For `init`, `sync`, install or pin management, model
+downloads, contexts, calibration, evaluation, project/target/local-vault
+management, or `config init`/`config set`, install and use the host CLI:
+
+```sh
+bun add -g @klhapp/skillmux
+skillmux <the-command Docker rejected>
+```
+
+The rejection exits 2. With `--json`, check
+`error.code == "CONTAINER_COMMAND_UNSUPPORTED"`, then use
+`error.details.recommended_host_command`; see the
+[container command contract](deployment.md#container-command-contract).
+
 ## Installation failures
 
 ### Standalone executable checksum verification fails

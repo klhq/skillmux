@@ -157,9 +157,11 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
 }
 
 function containerCommandUnsupported(command: string, subCommand: string): CliError {
-  const rejectedCommand = command === "config" ? `${command} ${subCommand}` : command;
+  const rejectedCommand = [command, subCommand].filter(Boolean).join(" ");
   const recommendedHostCommand = `skillmux ${rejectedCommand}`;
   const guide = "docs/deployment.md";
+  const documentation =
+    "https://github.com/klhq/skillmux/blob/main/docs/deployment.md#container-command-contract";
   return new CliError(
     `\`skillmux ${rejectedCommand}\` manages host agent directories and cannot run in the Skillmux server image.\n\n` +
       "Install the host CLI:\n" +
@@ -169,7 +171,15 @@ function containerCommandUnsupported(command: string, subCommand: string): CliEr
       `See ${guide} for server deployment examples.`,
     2,
     "CONTAINER_COMMAND_UNSUPPORTED",
-    { command: rejectedCommand, recommended_host_command: recommendedHostCommand, guide },
+    {
+      // `command` remains for automation written against the first Docker
+      // boundary release. `rejected_command` is the explicit contract name.
+      command: rejectedCommand,
+      rejected_command: rejectedCommand,
+      recommended_host_command: recommendedHostCommand,
+      guide,
+      documentation,
+    },
   );
 }
 
@@ -182,7 +192,10 @@ async function main() {
   let flagContext: string | undefined;
   let flagServer: string | undefined;
   let isDryRun = false;
-  const subCommand = rawArgv[1] ?? "";
+  // Global flags do not form part of the command identity reported to users.
+  // In particular, `init --json` should recommend `skillmux init`, not a
+  // redundant JSON-only host command.
+  const subCommand = rawArgv[1]?.startsWith("-") ? "" : rawArgv[1] ?? "";
   const commandArgs = rawArgv.slice(2);
 
   const command = rawArgv[0];

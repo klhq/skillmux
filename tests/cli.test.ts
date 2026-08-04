@@ -289,6 +289,8 @@ describe("skillmux Docker command policy", () => {
     expect(result.stdout).toContain("config show|get|validate|diff|status");
     expect(result.stdout).toContain("Install the Skillmux CLI on the host for init, install, pinning, and sync.");
     expect(result.stdout).not.toContain("Setup:");
+    expect(result.stdout).not.toContain("project, target, core");
+    expect(result.stdout).not.toContain("models, calibrate, context");
   });
 
   test("rejects native skill management with a named host alternative", async () => {
@@ -313,8 +315,10 @@ describe("skillmux Docker command policy", () => {
         code: "CONTAINER_COMMAND_UNSUPPORTED",
         details: {
           command: "init",
+          rejected_command: "init",
           recommended_host_command: "skillmux init",
           guide: "docs/deployment.md",
+          documentation: "https://github.com/klhq/skillmux/blob/main/docs/deployment.md#container-command-contract",
         },
       },
     });
@@ -352,6 +356,30 @@ describe("skillmux Docker command policy", () => {
       expect(result.exitCode).not.toBe(0);
       expect(result.stderr).toContain("cannot run in the Skillmux server image");
     }
+  });
+
+  test("preserves the rejected subcommand in text and JSON guidance", async () => {
+    const textResult = await runCliEnv(["models", "download"], {
+      RUNNING_IN_DOCKER: "true",
+    });
+    expect(textResult.exitCode).toBe(2);
+    expect(textResult.stderr).toContain("`skillmux models download`");
+    expect(textResult.stderr).toContain("  skillmux models download");
+
+    const jsonResult = await runCliEnv(
+      ["config", "set", "recall.k_lexical", "10", "--json"],
+      { RUNNING_IN_DOCKER: "true" },
+    );
+    expect(jsonResult.exitCode).toBe(2);
+    expect(JSON.parse(jsonResult.stdout)).toMatchObject({
+      error: {
+        code: "CONTAINER_COMMAND_UNSUPPORTED",
+        details: {
+          rejected_command: "config set",
+          recommended_host_command: "skillmux config set",
+        },
+      },
+    });
   });
 
   test("allows read-only configuration inspection while containerized", async () => {

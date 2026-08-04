@@ -17,6 +17,20 @@ can call remote inference endpoints.
 For task-oriented workflows, start with [Getting started](getting-started.md)
 or [Managing skills](skill-management.md).
 
+## Running inside the Skillmux server image
+
+The Docker image is a shared-server runtime, not a replacement for the host
+CLI. Its `skillmux --help` surface is intentionally limited to `serve`,
+`index`, `doctor`, `report`, `scan`, `skill which`, and read-only `config`
+inspection (`show`, `get`, `validate`, `diff`, and `status`). Run `init`,
+`install`, pinning, `sync`, project or target management, model downloads,
+contexts, calibration, evaluation, and configuration changes on the host.
+
+When the image rejects one of those commands, it exits with code 2. JSON mode
+uses `CONTAINER_COMMAND_UNSUPPORTED` and includes `rejected_command`,
+`recommended_host_command`, and a deployment-guide URL. See [the container
+command contract](deployment.md#container-command-contract) for examples.
+
 ## Global options and target resolution
 
 Every target-aware command resolves its execution target deterministically in this order:

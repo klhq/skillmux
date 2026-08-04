@@ -191,6 +191,10 @@ token authorizes the other surface. Named CLI contexts use the administrative
 token to inspect or update the deployed server configuration only; they cannot
 install, pin, synchronize, or otherwise manage remote client skill directories.
 Docker images likewise do not manage host agent directories.
+Inside the server image, only read-only `config show`, `get`, `validate`,
+`diff`, and `status` are available. Run `config init` or `config set` with the
+host CLI; the image returns `CONTAINER_COMMAND_UNSUPPORTED` with the exact host
+command to run. See [Deployment](deployment.md#container-command-contract).
 
 ## Tiers and the manifest
 

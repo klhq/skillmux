@@ -55,12 +55,13 @@ deployed server only, never remote client skill directories. See
 ## Operate Skillmux
 
 - [Deployment](deployment.md): deploy the shared server, choose slim only when
-  needed, separate MCP from administrative HTTP, compare deployment identity
-  across CLI, health, and metrics, and operate the service.
+  needed, understand its container command boundary, separate MCP from
+  administrative HTTP, compare deployment identity across CLI, health, and
+  metrics, and operate the service.
 - [Configuration reference](configuration.md): configure inference, manifests,
-  server settings, and local overlays.
-- [CLI reference](cli.md): use commands, administrative contexts, JSON output,
-  and exit codes.
+  server settings, local overlays, and container read-only configuration.
+- [CLI reference](cli.md): use host and container command surfaces,
+  administrative contexts, JSON output, and exit codes.
 - [Policy calibration](calibration.md): create labelled datasets and certify
   reranker thresholds.
 - [Troubleshooting](troubleshooting.md): diagnose vault, sync, model, and server

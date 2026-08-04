@@ -117,6 +117,13 @@ context management, calibration, evaluation, and configuration initialization
 or mutation. Install the Skillmux CLI on the host when a command needs to
 manage a local vault or agent directory.
 
+A rejected command exits with code 2 and tells you the exact host command to
+run. In `--json` mode, the error code is
+`CONTAINER_COMMAND_UNSUPPORTED`; `error.details.rejected_command`,
+`recommended_host_command`, and `documentation` are stable automation fields.
+For example, `docker run --rm ghcr.io/klhq/skillmux:latest models download
+--json` recommends `skillmux models download` on the host.
+
 ## Slim image
 
 The slim image stays ready in lexical mode without an inference endpoint.
