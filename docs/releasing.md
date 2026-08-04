@@ -35,6 +35,8 @@ accidentally republish an existing npm version.
 
 The release workflow publishes:
 
+- `@klhapp/skillmux` to the public npm registry
+- `@klhq/skillmux` to GitHub Packages, linked to this repository
 - `skillmux-linux-amd64`
 - `skillmux-linux-arm64`
 - SHA-256 digests for the Linux binaries in the GitHub Release asset metadata
@@ -70,8 +72,13 @@ The `production-release` GitHub environment provides the
 `DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret. The npm job also
 uses this environment as its Trusted Publisher identity; configure npm with
 workflow `release-please.yml` and environment `production-release`. No
-long-lived npm token is required. GitHub Packages uses the workflow's scoped
-`GITHUB_TOKEN`.
+long-lived npm token is required. The GitHub Packages job uses the workflow's
+scoped `GITHUB_TOKEN` and changes only its runner-local package name to
+`@klhq/skillmux`; the source package remains `@klhapp/skillmux` for npmjs.
+
+GitHub initially creates npm packages with private visibility. After the first
+release, open the `@klhq/skillmux` package settings and make it public if it
+should be visible outside the organization.
 Private repositories still publish BuildKit SBOM/provenance with container
 images, but GitHub artifact attestations are skipped because GitHub does not
 support them for user-owned private repositories.
