@@ -1,4 +1,10 @@
 import type { ReadinessSnapshot } from "./readiness";
+import type { DeploymentIdentity } from "./deployment";
+
+type MetricsDeploymentIdentity = Pick<
+  DeploymentIdentity,
+  "version" | "runtime" | "image_variant"
+>;
 
 export class MetricsRegistry {
   private requests = new Map<string, number>();
@@ -13,9 +19,14 @@ export class MetricsRegistry {
   private errors = 0;
   private rateLimitsExceeded = 0;
   private readiness: ReadinessSnapshot | null = null;
+  private deployment: MetricsDeploymentIdentity | null = null;
 
   setReadiness(readiness: ReadinessSnapshot) {
     this.readiness = readiness;
+  }
+
+  setDeployment(deployment: MetricsDeploymentIdentity) {
+    this.deployment = deployment;
   }
 
   recordRequest(method: string) {
@@ -94,6 +105,13 @@ export class MetricsRegistry {
     lines.push("# TYPE skill_router_retrieval_capability gauge");
     for (const capability of ["exact", "reranked", "hybrid", "lexical"]) {
       lines.push(`skill_router_retrieval_capability{capability="${capability}"} ${this.readiness?.retrieval === capability ? 1 : 0}`);
+    }
+
+    if (this.deployment) {
+      const imageVariant = this.deployment.image_variant ?? "none";
+      lines.push("# HELP skill_router_deployment_info Immutable deployment identity for operator comparison.");
+      lines.push("# TYPE skill_router_deployment_info gauge");
+      lines.push(`skill_router_deployment_info{version="${this.deployment.version}",runtime="${this.deployment.runtime}",image_variant="${imageVariant}"} 1`);
     }
 
     return lines.join("\n") + "\n";

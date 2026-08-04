@@ -15,6 +15,12 @@ Deployment and inference use separate terms:
 A shared HTTP deployment can use local inference. A local stdio deployment can
 use remote inference.
 
+Published server images set `SKILLMUX_IMAGE_VARIANT=full` or
+`SKILLMUX_IMAGE_VARIANT=slim` themselves. It is an operational identity value,
+not an inference setting; use `doctor`, `config status`, `/health/ready`, or
+the deployment-info metric to inspect it. Do not put credentials or token
+values in any of those outputs.
+
 Read [Concepts](concepts.md#vault-source-of-truth-and-checkouts) for vault
 terms and the delivery model. For detailed CLI
 commands, target resolution, and automation envelopes, see

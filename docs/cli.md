@@ -93,9 +93,14 @@ skillmux config set recall.k_lexical 30
 # Perform dry-run validation without writing or activating changes
 skillmux config set recall.k_lexical 30 --dry-run
 
-# Inspect runtime status, revision hashes, and readiness
+# Inspect runtime status, deployment identity, revision hashes, and readiness
 skillmux config status
 ```
+
+`config status` reports the service runtime separately from the deployment
+identity: `runtime` says whether the target is running, while
+`deployment_runtime` and `image_variant` match `doctor` and `/health/ready`.
+The JSON response contains no credential, API-key, or token values.
 
 `config init` writes only `vault_path`. It leaves an existing config unchanged
 and does not add `local_vault_paths`. Remote contexts administer the deployed

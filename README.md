@@ -268,11 +268,11 @@ Start with the [documentation hub](docs/README.md).
 | [Concepts](docs/concepts.md) | Delivery tiers, deployment topologies, retrieval modes, and ownership |
 | [Managing skills](docs/skill-management.md) | Install, scan, pin, sync, report, overlays, and recovery |
 | [MCP routing](docs/mcp-routing.md) | Tools, outcomes, transports, retrieval, fallback, and integrity |
-| [Deployment](docs/deployment.md) | Docker, HTTP surfaces and auth, CORS, rate limits, health, and metrics |
+| [Deployment](docs/deployment.md) | Docker, HTTP surfaces and auth, CORS, rate limits, and comparable CLI, health, and metrics status |
 | [Configuration](docs/configuration.md) | Machine config, inference, HTTP surfaces, manifests, and overlays |
 | [CLI reference](docs/cli.md) | Commands, administrative contexts, automation, JSON output, and exit codes |
 | [Policy calibration](docs/calibration.md) | Labelled datasets, certification, and threshold application |
-| [Troubleshooting](docs/troubleshooting.md) | `doctor`, common failures, and migration notes |
+| [Troubleshooting](docs/troubleshooting.md) | `doctor`, deployment identity, common failures, and migration notes |
 | [MCP schema](docs/schema.json) | JSON Schema 2020-12 tool contract |
 
 ## Development

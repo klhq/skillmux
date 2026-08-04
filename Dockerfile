@@ -36,7 +36,8 @@ CMD ["serve", "--transport", "http"]
 # Stage 4: Full runtime (battery-included with models)
 FROM slim AS full
 COPY --from=models /models /models
-ENV SKILLMUX_MODELS_DIR=/models
+ENV SKILLMUX_IMAGE_VARIANT=full \
+    SKILLMUX_MODELS_DIR=/models
 
 # Stage 5: Model export — filesystem-only target, not a runnable image.
 # CI builds this with the buildx GHA layer cache and exports it to disk, so the

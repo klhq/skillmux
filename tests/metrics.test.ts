@@ -34,6 +34,24 @@ describe("MetricsRegistry", () => {
     expect(output).toContain('skill_router_retrieval_capability{capability="lexical"} 0');
   });
 
+  test("renders deployment identity without configuration or credential values", () => {
+    const registry = new MetricsRegistry();
+
+    registry.setDeployment({
+      version: "1.2.0",
+      runtime: "docker",
+      image_variant: "slim",
+    });
+
+    const output = registry.render();
+
+    expect(output).toContain("# HELP skill_router_deployment_info Immutable deployment identity for operator comparison.");
+    expect(output).toContain("# TYPE skill_router_deployment_info gauge");
+    expect(output).toContain('skill_router_deployment_info{version="1.2.0",runtime="docker",image_variant="slim"} 1');
+    expect(output).not.toContain("api_key");
+    expect(output).not.toContain("token");
+  });
+
   test("increments request counter by MCP method label", () => {
     const metrics = new MetricsRegistry();
 

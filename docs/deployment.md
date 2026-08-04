@@ -224,7 +224,7 @@ The HTTP server provides:
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /health/live` | Process liveness |
-| `GET /health/ready` | Vault, index, inference, and active capability |
+| `GET /health/ready` | Vault, index, inference, active capability, version, runtime, and image variant |
 | `GET /health` | Compatibility alias for liveness |
 | `GET /metrics` | Prometheus text exposition |
 | `GET /stats` | Aggregated routing outcomes for `skillmux report` |
@@ -233,9 +233,13 @@ The HTTP server provides:
 
 The Docker health check calls `/health/ready`.
 
-Prometheus metrics cover request totals, resolve outcomes, latency, errors, and
-rate-limit rejections. Health and metrics do not require bearer authentication,
-but `/stats` does when server authentication is enabled. CORS still applies to
+Prometheus metrics cover request totals, resolve outcomes, latency, errors,
+rate-limit rejections, and a `skill_router_deployment_info` gauge labelled with
+`version`, `runtime`, and `image_variant`. The values match `skillmux doctor`,
+`skillmux config status`, and `/health/ready`; use `image_variant="none"` for
+a host runtime. These operational outputs never include credentials, API keys,
+or token values. Health and metrics do not require bearer authentication, but
+`/stats` does when server authentication is enabled. CORS still applies to
 browser requests.
 
 ## Remote administration

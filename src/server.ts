@@ -148,6 +148,7 @@ export async function startServer(opts?: {
     restart_required_keys: [],
   };
   configure({ config, clients: initialClients });
+  metricsRegistry.setDeployment(describeDeployment(config));
   // An injected config has no guaranteed file source. Watch it only when the
   // caller explicitly supplies that source; normal server startup always watches.
   const watcherPath =

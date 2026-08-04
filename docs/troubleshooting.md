@@ -144,7 +144,7 @@ step depends on the installation:
 | Installation | Expected action |
 | --- | --- |
 | Skillmux CLI with local inference | Download the local model and rebuild the index |
-| Skillmux server (full image) | Confirm the running tag is the full image and inspect `doctor` output |
+| Skillmux server (full image) | Inspect `doctor`, `/health/ready`, or `skill_router_deployment_info` for `image_variant=full`; do not infer it from the tag |
 | Skillmux server (slim image) | Configure remote embeddings or keep lexical fallback |
 
 For a Skillmux CLI installation, run:

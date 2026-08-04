@@ -71,6 +71,12 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 curl --fail --silent "http://127.0.0.1:$PORT/health/ready" >/dev/null
+curl --fail --silent "http://127.0.0.1:$PORT/health/ready" | jq -e \
+  --arg variant "$EXPECTED_VARIANT" \
+  '.runtime == "docker" and .image_variant == $variant' >/dev/null
+curl --fail --silent "http://127.0.0.1:$PORT/metrics" | grep -F \
+  "skill_router_deployment_info{" | grep -F \
+  "runtime=\"docker\",image_variant=\"$EXPECTED_VARIANT\"" >/dev/null
 
 # SIGTERM is the normal container stop signal and must exit cleanly.
 docker kill --signal=TERM "$CONTAINER" >/dev/null
