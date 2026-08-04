@@ -447,7 +447,7 @@ export async function startServer(opts?: {
 
             const ifMatch = req.headers.get("if-match") || "";
             const cleanIfMatch = ifMatch.replace(/^"|"$/g, "");
-            const { effective } = await getEffectiveConfig();
+            const { effective } = await getEffectiveConfig(configPath);
             const currentHash = computeHash(effective);
 
             if (!ifMatch || cleanIfMatch !== currentHash) {
