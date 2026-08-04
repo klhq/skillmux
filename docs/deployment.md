@@ -40,6 +40,10 @@ skillmux serve --transport http --port 3000
 The native HTTP server binds `127.0.0.1` by default. Configure authentication
 and a reachable hostname before serving other machines.
 
+Neither native command needs a config file or an existing `~/.config/skillmux`
+directory. They use safe defaults until you add a config for a vault checkout,
+remote inference, or server policy.
+
 ## Skillmux server images
 
 Skillmux publishes Linux AMD64 and ARM64 images to GHCR and Docker Hub:
@@ -85,6 +89,10 @@ without arguments starts Streamable HTTP MCP on port 3000:
 ```sh
 docker run ghcr.io/klhq/skillmux:latest
 ```
+
+This default works without mounting or creating a config path. The image uses
+`/vault` and `/data`; mount them when you need a persistent vault checkout or
+index state.
 
 Arguments after the image replace that default, so one-shot maintenance and
 stdio use the same image:

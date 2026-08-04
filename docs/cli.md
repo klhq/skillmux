@@ -256,6 +256,11 @@ Config changes are categorized into live-reloadable and restart-required setting
 - **Reloadable**: `vault_path`, `recall.*`, `thresholds.*`, `inference.embedding.*`, `server.rate_limit.*`
 - **Restart Required**: `server.hostname`, `server.auth_enabled`, `server.auth_token_env`, `server.admin.enabled`, `server.admin.token_env`, `inference.mode`, `state_dir`
 
+The config file is optional. `skillmux serve` starts with defaults if its
+config path or parent directory is absent. In that case reload is inactive
+until a restart finds a watchable parent directory; malformed updates to an
+active watched config are reported without replacing the last known good values.
+
 ---
 
 ## Skill introspection (`skillmux skill which`)

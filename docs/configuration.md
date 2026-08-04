@@ -33,6 +33,12 @@ reference values, and the apply lifecycle, see
 
 ## Machine config bootstrap
 
+Configuration is optional: `skillmux serve` and `skillmux serve --transport
+http` start with defaults even when `~/.config/skillmux` does not exist. The
+optional config watcher does not create that directory; reload stays inactive
+until the server starts with a watchable config parent. Once active, malformed
+updates are reported and the last known good configuration remains in use.
+
 Create `~/.config/skillmux/config.toml` from a populated vault:
 
 ```sh

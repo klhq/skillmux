@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   renameSync,
@@ -101,10 +102,11 @@ describe("ConfigWatcher", () => {
       onReload: () => {},
       onError: () => {},
     });
+    expect(existsSync(join(root, "missing"))).toBeFalse();
     watcher.stop();
   });
 
-  test("should reload when config is created after zero-config startup", async () => {
+  test("should safely keep reload disabled when its optional parent is absent", async () => {
     const root = mkdtempSync(join(tmpdir(), "skillmux-cw-late-config-"));
     dirs.push(root);
     const tomlPath = join(root, "missing", "config.toml");
@@ -115,11 +117,12 @@ describe("ConfigWatcher", () => {
       onError: () => {},
     });
 
+    mkdirSync(join(root, "missing"));
     writeToml(tomlPath, baseToml(10));
-    await waitFor(() => received.length > 0);
+    await assertRemainsFalse(() => received.length > 0);
     watcher.stop();
 
-    expect(received.at(-1)!.recall.k_lexical).toBe(10);
+    expect(received).toEqual([]);
   });
 
   test("should call onReload with new config when an allowlisted key changes", async () => {

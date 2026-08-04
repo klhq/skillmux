@@ -26,6 +26,12 @@ The same Skillmux CLI manages native skills and can serve local stdio MCP.
 Most individual users need only the CLI. Add Docker when you need a shared or
 always-on HTTP service.
 
+`skillmux serve` starts local stdio without a config file. `skillmux serve
+--transport http` likewise starts on loopback with safe defaults; create a
+config only when you need to customize the vault, inference, or server policy.
+See [Configuration](docs/configuration.md#machine-config-bootstrap) and
+[Deployment](docs/deployment.md) for those next steps.
+
 Choose a setup by the job:
 
 1. Need native skills or local MCP for one client? Install the **Skillmux CLI**.

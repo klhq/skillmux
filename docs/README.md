@@ -25,6 +25,10 @@ its Linux alternative. Git and the deployment process, not Skillmux, replicate
 vault checkouts and determine their freshness; see
 [Deployment](deployment.md#native-pins-with-shared-retrieval).
 
+Both `skillmux serve` (stdio) and `skillmux serve --transport http` start with
+safe defaults when no config file or config directory exists. Add a config only
+to customize behavior; see [Configuration](configuration.md#machine-config-bootstrap).
+
 ## HTTP surfaces
 
 | Surface | User | Purpose | CLI required |

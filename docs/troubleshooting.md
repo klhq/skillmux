@@ -10,6 +10,16 @@ skillmux config validate
 
 Add `--json` when you need machine-readable diagnostics.
 
+## Startup without configuration
+
+`skillmux serve` and `skillmux serve --transport http` do not require a config
+file or an existing `~/.config/skillmux` directory. If you need a specific
+vault, remote inference, or HTTP policy, create a config with `skillmux config
+init --vault ~/skills --yes`; otherwise the server uses its defaults. A missing
+optional config parent disables live reload until the next server start. For a
+malformed watched config, check the reported reload error—the running server
+continues with its last known good configuration.
+
 ## Installation failures
 
 ### Standalone executable checksum verification fails
