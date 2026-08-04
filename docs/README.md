@@ -23,6 +23,18 @@ its Linux alternative. Git and the deployment process, not Skillmux, replicate
 vault checkouts and determine their freshness; see
 [Deployment](deployment.md#native-pins-with-shared-retrieval).
 
+## HTTP surfaces
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+The MCP and administrative surfaces use separate bearer tokens; possession of
+one does not grant access to the other. A named CLI context administers the
+deployed server only, never remote client skill directories. See
+[Deployment](deployment.md#http-surfaces) for authentication and examples.
+
 ## Learn the model
 
 - [Getting started](getting-started.md): choose an installation, prepare a
@@ -37,10 +49,11 @@ vault checkouts and determine their freshness; see
 ## Operate Skillmux
 
 - [Deployment](deployment.md): deploy the shared server, choose slim only when
-  needed, expose HTTP, and operate the service.
+  needed, separate MCP from administrative HTTP, and operate the service.
 - [Configuration reference](configuration.md): configure inference, manifests,
   server settings, and local overlays.
-- [CLI reference](cli.md): use commands, contexts, JSON output, and exit codes.
+- [CLI reference](cli.md): use commands, administrative contexts, JSON output,
+  and exit codes.
 - [Policy calibration](calibration.md): create labelled datasets and certify
   reranker thresholds.
 - [Troubleshooting](troubleshooting.md): diagnose vault, sync, model, and server

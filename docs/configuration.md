@@ -141,6 +141,13 @@ clearly-scoped BGE reference profile for smoke tests.
 
 ## HTTP server
 
+The HTTP server provides separate MCP and administrative surfaces:
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
 ```toml
 [server]
 hostname = "127.0.0.1"
@@ -152,11 +159,23 @@ allowed_origins = []
 enabled = false
 requests_per_minute = 60
 trust_proxy = false
+
+[server.admin]
+enabled = false
+token_env = "SKILLMUX_ADMIN_TOKEN"
 ```
 
 Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`) — a zero-config `skillmux serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
 
 Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, `auth_enabled = true` with a token, and populate `allowed_origins` with the specific origins that need browser access. `rate_limit.trust_proxy` should stay `false` unless a trusted reverse proxy sets `X-Forwarded-For` — it's otherwise a client-controlled, spoofable header and trusting it defeats per-client rate limiting.
+
+`server.auth_token_env` names the MCP token for AI clients calling `/mcp`.
+`server.admin.token_env` names a distinct administrative token for operators
+calling `/admin/v1/*` when that API is enabled. Do not reuse or imply either
+token authorizes the other surface. Named CLI contexts use the administrative
+token to inspect or update the deployed server configuration only; they cannot
+install, pin, synchronize, or otherwise manage remote client skill directories.
+Docker images likewise do not manage host agent directories.
 
 ## Tiers and the manifest
 

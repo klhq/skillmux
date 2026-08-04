@@ -154,6 +154,19 @@ docker run --no-healthcheck -i --rm \
 The container must keep standard input open, so use `-i`. Disable the baked
 HTTP health check for stdio because no HTTP listener is started.
 
+## HTTP surfaces
+
+The shared server exposes two distinct HTTP surfaces:
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+Configure and distribute separate bearer tokens. An MCP token authenticates an
+AI client to `/mcp` only; an administrative token authenticates an operator to
+`/admin/v1/*` only. Neither token grants access to the other surface.
+
 ## Expose HTTP safely
 
 The Skillmux CLI binds `127.0.0.1`. Docker binds `0.0.0.0` so
@@ -170,23 +183,31 @@ allowed_origins = []
 enabled = true
 requests_per_minute = 60
 trust_proxy = false
+
+[server.admin]
+enabled = true
+token_env = "SKILLMUX_ADMIN_TOKEN"
 ```
 
 Set the token in the process environment:
 
 ```sh
-export SKILLMUX_AUTH_TOKEN="replace-with-a-long-random-token"
+export SKILLMUX_AUTH_TOKEN="replace-with-an-mcp-token"
+export SKILLMUX_ADMIN_TOKEN="replace-with-a-separate-admin-token"
 skillmux serve --transport http
 ```
 
 Clients send:
 
 ```text
-Authorization: Bearer replace-with-a-long-random-token
+Authorization: Bearer replace-with-an-mcp-token
 ```
 
 `allowed_origins` controls browser CORS requests. Requests without an `Origin`
 header, including MCP clients and curl, do not need a CORS entry.
+
+The `Authorization` example above is for an MCP client calling `/mcp`.
+Administrative requests instead use the token named by `server.admin.token_env`.
 
 Keep `trust_proxy = false` unless a trusted reverse proxy overwrites
 `X-Forwarded-For`. A client can spoof that header when it reaches Skillmux
@@ -204,6 +225,7 @@ The HTTP server provides:
 | `GET /metrics` | Prometheus text exposition |
 | `GET /stats` | Aggregated routing outcomes for `skillmux report` |
 | `POST /mcp` | Streamable HTTP MCP transport |
+| `/admin/v1/*` | Administrative configuration API (when enabled) |
 
 The Docker health check calls `/health/ready`.
 
@@ -214,7 +236,7 @@ browser requests.
 
 ## Remote administration
 
-Name a deployed server without storing its token:
+Name a deployed server without storing its **administrative** token:
 
 ```sh
 skillmux context add prod \
@@ -225,11 +247,19 @@ skillmux config status
 ```
 
 The context stores the token environment variable name. Export its value in
-the shell before running admin commands.
+the shell before running admin commands. This token is separate from the MCP
+token configured with `server.auth_token_env`; it does not authenticate MCP
+clients.
 
 Enable the admin API and use a separate admin token in server configuration.
 Read [CLI reference](cli.md#administrative-http-api-adminv1) for routes and
 [Configuration](configuration.md#http-server) for reload behavior.
+
+Named contexts administer the deployed server configuration only. They do not
+install, pin, synchronize, or otherwise manage skill directories on remote
+client machines. Run those filesystem-management commands through Skillmux CLI
+on the machine that owns the directories. The full and slim server images read
+their mounted vault checkout and do not manage host agent directories.
 
 ## Persistent data and backups
 

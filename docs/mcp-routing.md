@@ -56,6 +56,12 @@ The default host accepts loopback connections only. Configure authentication
 and network exposure before serving other machines. See
 [Deployment](deployment.md#expose-http-safely).
 
+This is the MCP surface for AI clients. Its bearer token applies only to
+`/mcp`; server configuration uses the separate operator surface at
+`/admin/v1/*`. AI clients do not need the CLI to use `/mcp`; named CLI contexts
+are for administering the deployed server, not remote client skill directories.
+See [Deployment](deployment.md#http-surfaces).
+
 ## Tool contract
 
 ### `resolve_skill`

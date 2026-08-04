@@ -166,13 +166,33 @@ Add the browser origin to `server.allowed_origins`. The value must match the
 request's `Origin` header. Curl and server-to-server clients omit this header
 and do not use the CORS list.
 
-### Client receives `401`
+### MCP client receives `401`
 
 Confirm `server.auth_enabled = true`, export the environment variable named by
 `auth_token_env`, and send `Authorization: Bearer <token>`.
 
 An enabled server with an empty token environment variable returns a server
 configuration error rather than accepting an empty token.
+
+### Operator receives `401` from `/admin/v1/*`
+
+Administrative authentication is separate from MCP authentication. Confirm
+`server.admin.enabled = true`, export the environment variable named by
+`server.admin.token_env`, and configure the named CLI context with that same
+environment-variable name:
+
+```sh
+export SKILLMUX_PROD_ADMIN_TOKEN="replace-with-admin-token"
+skillmux context add prod \
+  --server https://skillmux.example.com \
+  --token-env SKILLMUX_PROD_ADMIN_TOKEN
+skillmux --context prod config status
+```
+
+An MCP token for `/mcp` cannot authenticate this request, and the administrative
+token cannot authenticate an MCP client. A named context administers the
+deployed server configuration only; use Skillmux CLI on the machine that owns
+client directories for `install`, pinning, or `sync`.
 
 ### Client receives `429`
 

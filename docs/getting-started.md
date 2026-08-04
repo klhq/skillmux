@@ -214,6 +214,18 @@ authentication before exposing the service beyond a trusted host. Continue
 with [Deployment](deployment.md) for remote inference, network policy,
 monitoring, and backups.
 
+The server keeps its two HTTP surfaces separate:
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+Configure separate MCP and administrative bearer tokens; one never grants
+access to the other. Named CLI contexts can administer this deployed server,
+but cannot install, pin, synchronize, or otherwise manage skill directories on
+remote client machines. See [Deployment](deployment.md#http-surfaces).
+
 Manage the mounted vault on the host. A retrieval-only container should mount
 it read-only.
 

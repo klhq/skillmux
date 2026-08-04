@@ -77,6 +77,22 @@ retrieval. The CLI can also serve HTTP, and Docker can serve stdio for clients
 that support a container command. Those combinations use the same MCP tools;
 the table lists the shortest setup for each use case.
 
+### HTTP surfaces
+
+An HTTP server has two separate surfaces:
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+MCP authentication protects `/mcp`; administrative authentication protects
+`/admin/v1/*`. Their bearer tokens are distinct and do not grant access across
+surfaces. A named CLI context is an operator connection to the deployed server,
+not a way to manage skill directories on remote client machines. The server
+and its full/slim images never manage host agent directories. See
+[Deployment](deployment.md#http-surfaces).
+
 The full image bundles GTE-small. The slim image contains no model
 files, so it uses configured remote embeddings or lexical fallback. The Bun
 package downloads and caches GTE-small when local inference first loads it;

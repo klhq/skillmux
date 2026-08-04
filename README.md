@@ -156,6 +156,20 @@ under `docker.io/klhq/skillmux`.
 The [getting-started guide](docs/getting-started.md) provides complete recipes
 for all three setups.
 
+### HTTP surfaces
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+MCP clients authenticate only to `/mcp` with the MCP bearer token. Operators
+use a separate administrative bearer token for `/admin/v1/*`; neither token
+authorizes the other surface. Named CLI contexts administer the deployed server
+only. They never install, pin, synchronize, or otherwise manage skill
+directories on remote client machines. See [Deployment](docs/deployment.md#http-surfaces)
+for configuration and examples.
+
 ## Add and inspect skills
 
 Install a skill from a Git repository:
@@ -243,9 +257,9 @@ Start with the [documentation hub](docs/README.md).
 | [Concepts](docs/concepts.md) | Delivery tiers, deployment topologies, retrieval modes, and ownership |
 | [Managing skills](docs/skill-management.md) | Install, scan, pin, sync, report, overlays, and recovery |
 | [MCP routing](docs/mcp-routing.md) | Tools, outcomes, transports, retrieval, fallback, and integrity |
-| [Deployment](docs/deployment.md) | Docker, HTTP, auth, CORS, rate limits, health, and metrics |
-| [Configuration](docs/configuration.md) | Machine config, inference, manifests, and overlays |
-| [CLI reference](docs/cli.md) | Commands, contexts, automation, JSON output, and exit codes |
+| [Deployment](docs/deployment.md) | Docker, HTTP surfaces and auth, CORS, rate limits, health, and metrics |
+| [Configuration](docs/configuration.md) | Machine config, inference, HTTP surfaces, manifests, and overlays |
+| [CLI reference](docs/cli.md) | Commands, administrative contexts, automation, JSON output, and exit codes |
 | [Policy calibration](docs/calibration.md) | Labelled datasets, certification, and threshold application |
 | [Troubleshooting](docs/troubleshooting.md) | `doctor`, common failures, and migration notes |
 | [MCP schema](docs/schema.json) | JSON Schema 2020-12 tool contract |

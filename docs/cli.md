@@ -4,8 +4,8 @@ The Bun package and standalone Linux executable expose the same Skillmux CLI. Na
 management belongs on the machine that owns the client skill directories:
 use the built-in `local` target for `init`, `install`, pinning, and `sync`.
 Named remote contexts administer shared-server configuration through its
-administrative API only; they do not install, pin, or synchronize skills in
-client directories.
+administrative API only; they do not install, pin, synchronize, or otherwise
+manage skill directories on remote client machines.
 
 In this guide, **local target** means the filesystem and process selected by
 the built-in CLI context. It does not describe local inference. A local target
@@ -38,7 +38,10 @@ Every target-aware command resolves its execution target deterministically in th
 
 ## Context management (`skillmux context`)
 
-Contexts store named server targets without embedding raw credentials. Token environment variable names (`token_env`) may be associated with a context.
+Contexts store named deployed-server targets without embedding raw credentials.
+An associated token environment variable name (`token_env`) supplies only the
+administrative bearer token; it is not an MCP token and cannot authenticate an
+AI client to `/mcp`.
 
 ```sh
 # List all configured contexts (includes reserved 'local' context)
@@ -94,7 +97,7 @@ skillmux config status
 `config init` writes only `vault_path`. It leaves an existing config unchanged
 and does not add `local_vault_paths`. Remote contexts administer the deployed
 server configuration; they never administer client skill installation, pins,
-or sync.
+sync, or any other remote-client directory operation.
 
 ---
 
@@ -287,6 +290,18 @@ skillmux calibrate generate-dataset --out ./eval/queries.json
 ---
 
 ## Administrative HTTP API (`/admin/v1/*`)
+
+The HTTP server has two separate surfaces:
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+The MCP bearer token applies only to `/mcp`. The administrative bearer token
+below applies only to `/admin/v1/*`; neither credential grants access to the
+other surface. Named contexts use the latter to administer the deployed server,
+not any remote client skill directory.
 
 Remote servers expose administrative control endpoints under `/admin/v1/*` when enabled in configuration:
 
