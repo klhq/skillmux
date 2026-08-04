@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
   <title id="title">One vault source of truth, three ways to use Skillmux</title>
-  <desc id="desc">One Git-backed vault source of truth has physical vault checkouts for Skillmux CLI native management, local MCP retrieval, and Skillmux server shared HTTP MCP. Git and deployment own checkout replication and freshness.</desc>
+  <desc id="desc">One Git-backed vault source of truth has a client checkout for Skillmux CLI native management and local MCP retrieval, plus a server checkout for shared Streamable HTTP MCP. Resolve uses retrieval, fusion, and optional reranking; fetch returns the current SKILL.md directly. Git and deployment own checkout replication and freshness.</desc>
 
   <defs>
     <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
@@ -78,19 +78,17 @@
     <text x="769.5" y="161" text-anchor="middle" class="mono">skillmux.toml</text>
   </g>
 
-  <path d="M480 224V252H220V277" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#arrow-teal)"/>
-  <path d="M600 224V277" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <path d="M520 224V252H410V277" fill="none" stroke="#0f766e" stroke-width="3" marker-end="url(#arrow-teal)"/>
   <path d="M720 224V252H980V277" fill="none" stroke="#7c3aed" stroke-width="3" marker-end="url(#arrow-violet)"/>
-  <text x="220" y="270" text-anchor="middle" class="body">vault checkout</text>
-  <text x="600" y="270" text-anchor="middle" class="body">vault checkout</text>
-  <text x="980" y="270" text-anchor="middle" class="body">vault checkout</text>
+  <text x="410" y="270" text-anchor="middle" class="body">client checkout</text>
+  <text x="980" y="270" text-anchor="middle" class="body">server checkout</text>
 
   <g filter="url(#shadow)">
     <rect x="40" y="284" width="740" height="302" rx="18" fill="#ffffff" stroke="#99d5cc" stroke-width="2"/>
     <rect x="62" y="306" width="124" height="26" rx="13" fill="#ccfbf1"/>
     <text x="124" y="324" text-anchor="middle" class="chip" fill="#115e59">SKILLMUX CLI</text>
     <text x="62" y="365" class="card-title">Skillmux CLI</text>
-    <text x="62" y="390" class="body">A client-machine checkout supports native management or local MCP.</text>
+    <text x="62" y="390" class="body">A client-machine checkout supports native management and/or local MCP.</text>
 
     <rect x="62" y="414" width="276" height="48" rx="10" fill="#f0fdfa" stroke="#99d5cc"/>
     <text x="200" y="435" text-anchor="middle" class="label">Native management</text>
@@ -116,9 +114,10 @@
     <text x="493" y="505" text-anchor="middle" class="label">AI client</text>
     <path d="M544 499H573" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
     <text x="558" y="489" text-anchor="middle" class="body">stdio</text>
-    <rect x="579" y="475" width="157" height="48" rx="10" fill="#ffffff" stroke="#93c5fd"/>
-    <text x="657.5" y="496" text-anchor="middle" class="label">Skillmux CLI</text>
-    <text x="657.5" y="514" text-anchor="middle" class="body">FTS5 + local GTE-small</text>
+    <rect x="579" y="470" width="157" height="62" rx="10" fill="#ffffff" stroke="#93c5fd"/>
+    <text x="657.5" y="492" text-anchor="middle" class="label">Skillmux CLI</text>
+    <text x="657.5" y="511" text-anchor="middle" class="body">default: FTS5 +</text>
+    <text x="657.5" y="527" text-anchor="middle" class="body">local GTE-small</text>
 
   </g>
 
@@ -136,7 +135,7 @@
     <text x="938" y="428" text-anchor="middle" class="body">HTTP</text>
     <rect x="959" y="414" width="179" height="48" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
     <text x="1048.5" y="435" text-anchor="middle" class="label">Skillmux server</text>
-    <text x="1048.5" y="453" text-anchor="middle" class="mono">POST /mcp</text>
+    <text x="1048.5" y="453" text-anchor="middle" class="body" style="font-size: 13px">Streamable HTTP /mcp</text>
 
     <rect x="822" y="484" width="148" height="58" rx="10" fill="#f5f3ff" stroke="#c4b5fd"/>
     <text x="896" y="507" text-anchor="middle" class="label">Full image</text>
@@ -148,7 +147,8 @@
     <text x="822" y="570" class="body">Recommended for a shared HTTP deployment</text>
   </g>
 
-  <rect x="420" y="616" width="740" height="66" rx="14" fill="#0f172a"/>
-  <text x="444" y="643" class="chip" fill="#cbd5e1">SHARED MCP CONTRACT</text>
-  <text x="444" y="667" class="mono mono-light">retrieve → rerank → resolve_skill / fetch_skill → verified SKILL.md</text>
+  <rect x="420" y="608" width="740" height="82" rx="14" fill="#0f172a"/>
+  <text x="444" y="633" class="chip" fill="#cbd5e1">MCP TOOL CONTRACT · STDIO + HTTP</text>
+  <text x="444" y="655" class="mono mono-light" style="font-size: 12px">resolve_skill → retrieve + fuse → optional rerank → matched / ambiguous / no_match</text>
+  <text x="444" y="677" class="mono mono-light" style="font-size: 12px">fetch_skill → exact current SKILL.md + SHA-256</text>
 </svg>
