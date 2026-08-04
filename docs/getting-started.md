@@ -7,7 +7,7 @@ an installation.
 | --- | --- | --- |
 | [Manage native skills](#manage-native-skills) | Managed links in client skill directories | Skillmux CLI |
 | [Add local MCP retrieval](#add-local-mcp-retrieval) | Local stdio MCP | Skillmux CLI |
-| [Run a shared MCP service](#run-a-shared-mcp-service) | Streamable HTTP MCP | Full Docker image |
+| [Run a shared MCP service](#run-a-shared-mcp-service) | Streamable HTTP MCP | Skillmux server (full image) |
 
 Native management and local MCP retrieval can run together. Complete both
 recipes if you want pinned skills plus on-demand access to the rest of the
@@ -25,23 +25,54 @@ skillmux --help
 
 Native target sync needs permission to create directory symlinks on Windows.
 
-Linux users without Bun can install the standalone AMD64 or ARM64 executable
-instead:
+Linux users can install the standalone executable without the GitHub CLI or a
+package manager. This example selects AMD64 or ARM64, downloads the pinned
+`v1.3.4` release, verifies the SHA-256 digest published for that release, and
+installs to the user-writable default `~/.local/bin`:
 
 ```sh
-gh release download --repo klhq/skillmux --pattern 'skillmux-linux-*'
-gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
-chmod +x skillmux-linux-amd64
-sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
+version=v1.3.4
+case "$(uname -m)" in
+  x86_64|amd64) asset=skillmux-linux-amd64; sha256=0d0155475748a937ac9b5878c57e1fa14d8fe6957317cb43bbdafd710cbc1966 ;;
+  aarch64|arm64) asset=skillmux-linux-arm64; sha256=8cd186707221a8fefbb79eac46ef14d0c5fdae08a2d76e64a01af17a80af0e06 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+bin_dir="${SKILLMUX_BIN_DIR:-$HOME/.local/bin}"
+curl --fail --location --output "$asset" "https://github.com/klhq/skillmux/releases/download/$version/$asset"
+printf '%s  %s\n' "$sha256" "$asset" | sha256sum --check -
+install -Dm755 "$asset" "$bin_dir/skillmux"
 ```
 
-Replace `amd64` with `arm64` on ARM64. The Bun package and standalone Linux
-executable expose the same Skillmux CLI commands.
+Ensure `~/.local/bin` is on `PATH`. To use another user-writable location, set
+`SKILLMUX_BIN_DIR` before the command. A system-wide installation is an
+explicit choice: `sudo install -Dm755 "$asset" /usr/local/bin/skillmux`.
 
-## Prepare a vault
+### Install with GitHub CLI attestation
 
-Skillmux defaults to `~/skills`. Each direct child directory represents one
-skill:
+If you want GitHub build-provenance verification, use the GitHub CLI instead.
+This keeps the same pinned release and user-writable install location:
+
+```sh
+version=v1.3.4
+case "$(uname -m)" in
+  x86_64|amd64) asset=skillmux-linux-amd64 ;;
+  aarch64|arm64) asset=skillmux-linux-arm64 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+bin_dir="${SKILLMUX_BIN_DIR:-$HOME/.local/bin}"
+mkdir -p "$bin_dir"
+gh release download "$version" --repo klhq/skillmux --pattern "$asset" --dir "$bin_dir"
+gh attestation verify "$bin_dir/$asset" --repo klhq/skillmux
+install -m755 "$bin_dir/$asset" "$bin_dir/skillmux"
+```
+
+The Bun package and standalone Linux executable expose the same Skillmux CLI
+commands.
+
+## Prepare a vault checkout
+
+Skillmux defaults to the `~/skills` vault checkout. Each direct child directory
+represents one skill:
 
 ```text
 ~/skills/
@@ -95,9 +126,9 @@ The planner:
 5. applies the plan after confirmation.
 
 Skillmux writes machine config under `~/.config/skillmux`, stores tier policy
-in `~/skills/skillmux.toml`, and records its entries in each target's
-`.skillmux` marker. It preserves unmanaged files and existing instruction
-text.
+in the configured vault checkout's `skillmux.toml`, and records its entries in
+each target's `.skillmux` marker. It preserves unmanaged files and existing
+instruction text.
 
 Use explicit flags for automation:
 
@@ -214,13 +245,26 @@ authentication before exposing the service beyond a trusted host. Continue
 with [Deployment](deployment.md) for remote inference, network policy,
 monitoring, and backups.
 
+The server keeps its two HTTP surfaces separate:
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+Configure separate MCP and administrative bearer tokens; one never grants
+access to the other. Named CLI contexts can administer this deployed server,
+but cannot install, pin, synchronize, or otherwise manage skill directories on
+remote client machines. See [Deployment](deployment.md#http-surfaces).
+
 Manage the mounted vault on the host. A retrieval-only container should mount
 it read-only.
 
 ## Combine native pins with shared retrieval
 
 Use this topology when users need native core or project pins and also one
-shared MCP endpoint. Keep one Git-backed vault as the source of truth:
+shared MCP endpoint. Keep one Git-backed vault source of truth. A vault
+checkout is its physical copy; on one machine, `~/skills` can be both:
 
 - each machine that owns client skill directories keeps its own checkout and
   runs the Skillmux CLI for `init`, pinning, and `sync`;
@@ -228,8 +272,8 @@ shared MCP endpoint. Keep one Git-backed vault as the source of truth:
   HTTP;
 - MCP-only clients connect to the shared server and do not need the CLI.
 
-Skillmux does not pull, push, replicate, or make those checkouts fresh. Git
-and your deployment process own vault replication and freshness.
+Skillmux does not pull, push, replicate, or determine freshness between
+checkouts. Git and your deployment process own vault replication and freshness.
 
 ## Next steps
 

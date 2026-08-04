@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { createClients } from "./clients";
 import { loadConfig, resolveConfigPath } from "./config";
+import { describeDeployment } from "./deployment";
 import { ConfigWatcher, type ReloadStatus } from "./config-watcher";
 import { RuntimeSnapshotManager } from "./snapshot";
 import {
@@ -147,6 +148,7 @@ export async function startServer(opts?: {
     restart_required_keys: [],
   };
   configure({ config, clients: initialClients });
+  metricsRegistry.setDeployment(describeDeployment(config));
   // An injected config has no guaranteed file source. Watch it only when the
   // caller explicitly supplies that source; normal server startup always watches.
   const watcherPath =
@@ -276,10 +278,16 @@ export async function startServer(opts?: {
           }
           if (url.pathname === "/health/ready") {
             const readiness = readinessState.get();
+            const deployment = describeDeployment(config);
             const headers = new Headers({ "Content-Type": "application/json" });
             if (allowOriginHeader)
               headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-            return new Response(JSON.stringify(readiness), {
+            return new Response(JSON.stringify({
+              ...readiness,
+              version: deployment.version,
+              runtime: deployment.runtime,
+              image_variant: deployment.image_variant,
+            }), {
               status: readiness.status === "ready" ? 200 : 503,
               headers,
             });
@@ -395,6 +403,7 @@ export async function startServer(opts?: {
 
           if (req.method === "GET" && url.pathname === "/admin/v1/config") {
             const { effective, sources } = await getEffectiveConfig(configPath);
+            const deployment = describeDeployment(config);
             const desiredHash = computeHash(effective);
             const snapshot = snapshots.acquire();
             const activeRevision = computeHash(snapshot.snapshot.config);
@@ -417,6 +426,9 @@ export async function startServer(opts?: {
                   ...status,
                   readiness: readinessState.get(),
                   runtime: "running",
+                  version: deployment.version,
+                  deployment_runtime: deployment.runtime,
+                  image_variant: deployment.image_variant,
                 },
               }),
               { status: 200, headers },
@@ -436,7 +448,7 @@ export async function startServer(opts?: {
 
             const ifMatch = req.headers.get("if-match") || "";
             const cleanIfMatch = ifMatch.replace(/^"|"$/g, "");
-            const { effective } = await getEffectiveConfig();
+            const { effective } = await getEffectiveConfig(configPath);
             const currentHash = computeHash(effective);
 
             if (!ifMatch || cleanIfMatch !== currentHash) {

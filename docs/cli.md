@@ -1,11 +1,14 @@
 # CLI reference and automation
 
-The Bun package and standalone Linux executable expose the same CLI. Native
-management belongs on the machine that owns the client skill directories:
+The Bun package and standalone Linux executable expose the same Skillmux CLI.
+For Linux installation, use the [pinned checksum-verified download](getting-started.md#install-the-cli)
+or, when provenance verification is required, the
+[attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
+Native management belongs on the machine that owns the client skill directories:
 use the built-in `local` target for `init`, `install`, pinning, and `sync`.
 Named remote contexts administer shared-server configuration through its
-administrative API only; they do not install, pin, or synchronize skills in
-client directories.
+administrative API only; they do not install, pin, synchronize, or otherwise
+manage skill directories on remote client machines.
 
 In this guide, **local target** means the filesystem and process selected by
 the built-in CLI context. It does not describe local inference. A local target
@@ -13,6 +16,20 @@ can call remote inference endpoints.
 
 For task-oriented workflows, start with [Getting started](getting-started.md)
 or [Managing skills](skill-management.md).
+
+## Running inside the Skillmux server image
+
+The Docker image is a shared-server runtime, not a replacement for the host
+CLI. Its `skillmux --help` surface is intentionally limited to `serve`,
+`index`, `doctor`, `report`, `scan`, `skill which`, and read-only `config`
+inspection (`show`, `get`, `validate`, `diff`, and `status`). Run `init`,
+`install`, pinning, `sync`, project or target management, model downloads,
+contexts, calibration, evaluation, and configuration changes on the host.
+
+When the image rejects one of those commands, it exits with code 2. JSON mode
+uses `CONTAINER_COMMAND_UNSUPPORTED` and includes `rejected_command`,
+`recommended_host_command`, and a deployment-guide URL. See [the container
+command contract](deployment.md#container-command-contract) for examples.
 
 ## Global options and target resolution
 
@@ -38,7 +55,10 @@ Every target-aware command resolves its execution target deterministically in th
 
 ## Context management (`skillmux context`)
 
-Contexts store named server targets without embedding raw credentials. Token environment variable names (`token_env`) may be associated with a context.
+Contexts store named deployed-server targets without embedding raw credentials.
+An associated token environment variable name (`token_env`) supplies only the
+administrative bearer token; it is not an MCP token and cannot authenticate an
+AI client to `/mcp`.
 
 ```sh
 # List all configured contexts (includes reserved 'local' context)
@@ -87,14 +107,19 @@ skillmux config set recall.k_lexical 30
 # Perform dry-run validation without writing or activating changes
 skillmux config set recall.k_lexical 30 --dry-run
 
-# Inspect runtime status, revision hashes, and readiness
+# Inspect runtime status, deployment identity, revision hashes, and readiness
 skillmux config status
 ```
+
+`config status` reports the service runtime separately from the deployment
+identity: `runtime` says whether the target is running, while
+`deployment_runtime` and `image_variant` match `doctor` and `/health/ready`.
+The JSON response contains no credential, API-key, or token values.
 
 `config init` writes only `vault_path`. It leaves an existing config unchanged
 and does not add `local_vault_paths`. Remote contexts administer the deployed
 server configuration; they never administer client skill installation, pins,
-or sync.
+sync, or any other remote-client directory operation.
 
 ---
 
@@ -245,6 +270,11 @@ Config changes are categorized into live-reloadable and restart-required setting
 - **Reloadable**: `vault_path`, `recall.*`, `thresholds.*`, `inference.embedding.*`, `server.rate_limit.*`
 - **Restart Required**: `server.hostname`, `server.auth_enabled`, `server.auth_token_env`, `server.admin.enabled`, `server.admin.token_env`, `inference.mode`, `state_dir`
 
+The config file is optional. `skillmux serve` starts with defaults if its
+config path or parent directory is absent. In that case reload is inactive
+until a restart finds a watchable parent directory; malformed updates to an
+active watched config are reported without replacing the last known good values.
+
 ---
 
 ## Skill introspection (`skillmux skill which`)
@@ -287,6 +317,18 @@ skillmux calibrate generate-dataset --out ./eval/queries.json
 ---
 
 ## Administrative HTTP API (`/admin/v1/*`)
+
+The HTTP server has two separate surfaces:
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+The MCP bearer token applies only to `/mcp`. The administrative bearer token
+below applies only to `/admin/v1/*`; neither credential grants access to the
+other surface. Named contexts use the latter to administer the deployed server,
+not any remote client skill directory.
 
 Remote servers expose administrative control endpoints under `/admin/v1/*` when enabled in configuration:
 

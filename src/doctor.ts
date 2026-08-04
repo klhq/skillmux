@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { computeCorpusFingerprint, getCalibrationRun, openCalibrateDb } from "./calibrate";
 import { createClients, RemoteInferenceError } from "./clients";
 import { embeddingDimension, embeddingFingerprint, expandHome, rerankerFingerprint } from "./config";
+import { describeDeployment, type DeploymentIdentity } from "./deployment";
 import { openIndex } from "./db";
 import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
 import { readSkillmuxMarker } from "./sync";
@@ -18,6 +19,16 @@ export interface DoctorCheck {
 export interface DoctorReport {
   mode: Config["inference"]["mode"];
   capability: "hybrid" | "lexical-only" | "unavailable";
+  retrieval_capability: "lexical" | "hybrid" | "reranked";
+  version: DeploymentIdentity["version"];
+  runtime: DeploymentIdentity["runtime"];
+  image_variant: DeploymentIdentity["image_variant"];
+  vault_path: DeploymentIdentity["vault_path"];
+  state_dir: DeploymentIdentity["state_dir"];
+  inference_mode: DeploymentIdentity["inference_mode"];
+  local_embedding_bundle: DeploymentIdentity["local_embedding_bundle"];
+  remote_embedding_configured: DeploymentIdentity["remote_embedding_configured"];
+  remote_reranker_configured: DeploymentIdentity["remote_reranker_configured"];
   checks: DoctorCheck[];
 }
 
@@ -93,7 +104,12 @@ function checkCalibration(config: Config): DoctorCheck {
   return { name: "calibration", ok: true, detail: `thresholds from applied calibration run "${runId}"` };
 }
 
-export async function diagnose(config: Config): Promise<DoctorReport> {
+export { describeDeployment };
+
+export async function diagnose(
+  config: Config,
+  environment: Record<string, string | undefined> = process.env,
+): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
   checks.push({ name: "vault", ok: existsSync(expandHome(config.vault_path)), detail: expandHome(config.vault_path) });
 
@@ -179,27 +195,37 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
       ? { detail: error.message, failure_kind: error.kind }
       : { detail: "unexpected inference failure", failure_kind: "unexpected" };
 
-  const clients = createClients(config);
-  try {
-    const vectors = await clients.embed(["skill router diagnostic"]);
-    const actualDimension = vectors[0]?.length ?? 0;
+  const deployment = describeDeployment(config, environment);
+  const lexicalOnlySlim = deployment.image_variant === "slim" && config.inference.mode === "local";
+  if (lexicalOnlySlim) {
     checks.push({
-      name: "embedding",
-      ok: actualDimension === embeddingDimension(config),
-      detail: `dimension ${actualDimension}`,
+      name: "retrieval",
+      ok: true,
+      detail: "lexical retrieval; Configure remote embeddings for hybrid retrieval",
     });
-  } catch (error) {
-    checks.push({ name: "embedding", ok: false, ...inferenceFailure(error) });
-  }
-
-  if (clients.rerank) {
+  } else {
+    const clients = createClients(config);
     try {
-      const scores = await clients.rerank("skill router diagnostic", [
-        { skill_id: "doctor", text: "Routes a task to an appropriate skill." },
-      ]);
-      checks.push({ name: "reranker", ok: scores.length === 1 && Number.isFinite(scores[0]), detail: "one finite score" });
+      const vectors = await clients.embed(["skill router diagnostic"]);
+      const actualDimension = vectors[0]?.length ?? 0;
+      checks.push({
+        name: "embedding",
+        ok: actualDimension === embeddingDimension(config),
+        detail: `dimension ${actualDimension}`,
+      });
     } catch (error) {
-      checks.push({ name: "reranker", ok: false, ...inferenceFailure(error) });
+      checks.push({ name: "embedding", ok: false, ...inferenceFailure(error) });
+    }
+
+    if (clients.rerank) {
+      try {
+        const scores = await clients.rerank("skill router diagnostic", [
+          { skill_id: "doctor", text: "Routes a task to an appropriate skill." },
+        ]);
+        checks.push({ name: "reranker", ok: scores.length === 1 && Number.isFinite(scores[0]), detail: "one finite score" });
+      } catch (error) {
+        checks.push({ name: "reranker", ok: false, ...inferenceFailure(error) });
+      }
     }
   }
 
@@ -208,11 +234,14 @@ export async function diagnose(config: Config): Promise<DoctorReport> {
   }
 
   const inferenceReady = checks.some((check) => check.name === "embedding" && check.ok);
+  const rerankerReady = checks.some((check) => check.name === "reranker" && check.ok);
   const coreReady = checks.some((check) => check.name === "vault" && check.ok)
     && checks.some((check) => check.name === "state" && check.ok);
   return {
+    ...deployment,
     mode: config.inference.mode,
     capability: !coreReady ? "unavailable" : inferenceReady ? "hybrid" : "lexical-only",
+    retrieval_capability: rerankerReady ? "reranked" : inferenceReady ? "hybrid" : "lexical",
     checks,
   };
 }

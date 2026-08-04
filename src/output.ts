@@ -38,11 +38,15 @@ export function formatJsonEnvelope<T>(opts: {
 
 export class CliError extends Error {
   exitCode: number;
+  code: string;
+  details?: unknown;
 
-  constructor(message: string, exitCode: number) {
+  constructor(message: string, exitCode: number, code = `EXIT_${exitCode}`, details?: unknown) {
     super(message);
     this.name = "CliError";
     this.exitCode = exitCode;
+    this.code = code;
+    this.details = details;
   }
 }
 

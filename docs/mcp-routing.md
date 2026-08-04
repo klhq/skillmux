@@ -1,12 +1,13 @@
 # MCP routing
 
-Skillmux exposes one vault through two Model Context Protocol tools. Choose a
-transport based on where the process runs:
+Skillmux exposes its configured vault checkout through two Model Context
+Protocol tools. A vault source of truth is the logical collection; a checkout
+is its physical copy. Choose a transport based on where the process runs:
 
 | Topology | Transport | Typical package |
 | --- | --- | --- |
 | Skillmux beside one client | stdio | Skillmux CLI |
-| Shared Skillmux service | Streamable HTTP | Full Docker image by default; slim for remote or lexical retrieval |
+| Shared Skillmux server | Streamable HTTP | Full image by default; slim image for remote or lexical retrieval |
 
 Both transports expose the same `resolve_skill` and `fetch_skill` contract.
 Local native pinning is optional and can run beside stdio MCP.
@@ -54,6 +55,12 @@ http://127.0.0.1:3000/mcp
 The default host accepts loopback connections only. Configure authentication
 and network exposure before serving other machines. See
 [Deployment](deployment.md#expose-http-safely).
+
+This is the MCP surface for AI clients. Its bearer token applies only to
+`/mcp`; server configuration uses the separate operator surface at
+`/admin/v1/*`. AI clients do not need the CLI to use `/mcp`; named CLI contexts
+are for administering the deployed server, not remote client skill directories.
+See [Deployment](deployment.md#http-surfaces).
 
 ## Tool contract
 
@@ -115,7 +122,7 @@ Skillmux builds candidates in stages:
 
 The default local inference configuration uses FTS5 and quantized
 `Xenova/gte-small` embeddings. Skillmux CLI installations cache the
-downloaded model under `~/.cache/skillmux/models`; the full Docker image
+downloaded model under `~/.cache/skillmux/models`; the full image
 includes it. The slim image starts with lexical retrieval and can call an
 OpenAI-compatible embedding endpoint.
 

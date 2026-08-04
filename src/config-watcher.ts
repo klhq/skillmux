@@ -1,4 +1,4 @@
-import { mkdirSync, watch } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import { dirname } from "node:path";
 import { loadConfig } from "./config";
 import type { Config } from "./types";
@@ -123,7 +123,7 @@ export class ConfigWatcher {
   };
   private stopped = false;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private watcher: ReturnType<typeof watch>;
+  private watcher: ReturnType<typeof watch> | undefined;
 
   private constructor(
     private readonly tomlPath: string,
@@ -133,11 +133,13 @@ export class ConfigWatcher {
     const dir = dirname(tomlPath);
     const filename = tomlPath.split(/[/\\]/).pop()!;
 
-    // A config file is optional. Ensure its parent exists so zero-config
-    // startup is safe and later config writes are still observed.
-    mkdirSync(dir, { recursive: true });
+    // A config file is optional. Do not create its parent just to enable
+    // reloads: a native zero-config server must also work with a read-only or
+    // entirely absent config location. Reloads stay inactive until a future
+    // server start finds a watchable parent directory.
+    if (!existsSync(dir)) return;
 
-    this.watcher = watch(dir, { recursive: false }, (_event, changedName) => {
+    const watcher = watch(dir, { recursive: false }, (_event, changedName) => {
       if (this.stopped) return;
       // Fire for: the config file itself, or any .tmp variant of it (handles
       // pid-numbered atomics: config.toml.12345.tmp → rename → config.toml).
@@ -151,8 +153,9 @@ export class ConfigWatcher {
       }
       this.scheduleReload();
     });
+    this.watcher = watcher;
 
-    this.watcher.on("error", (err) => {
+    watcher.on("error", (err) => {
       if (!this.stopped) {
         this.status = { ...this.status, last_reload_error: String(err) };
         this.opts.onError(err);
@@ -243,7 +246,7 @@ export class ConfigWatcher {
       this.debounceTimer = null;
     }
     try {
-      this.watcher.close();
+      this.watcher?.close();
     } catch {
       // already closed
     }

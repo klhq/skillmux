@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
+import packageJson from "../package.json" with { type: "json" };
 import { startServer, type ServerHandle } from "../src/server";
 import { loadConfig } from "../src/config";
 import type { Config } from "../src/types";
@@ -123,6 +124,11 @@ describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
     expect(data.effective).toBeDefined();
     expect(data.sources).toBeDefined();
     expect(data.active_revision).toBeDefined();
+    expect(data.runtime).toMatchObject({
+      version: packageJson.version,
+      deployment_runtime: "host",
+      image_variant: null,
+    });
   });
 
   it("handles PATCH /admin/v1/config with If-Match (AC8)", async () => {

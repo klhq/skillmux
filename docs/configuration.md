@@ -1,7 +1,9 @@
 # Configuration
 
-Skillmux manages one canonical vault and defaults to FTS5 plus GTE-small
-running in the Skillmux process. Most users need no config file.
+Skillmux manages one configured vault checkout and defaults to FTS5 plus
+GTE-small running in the Skillmux process. The vault source of truth is the
+logical collection; a vault checkout is its physical copy. Most users need no
+config file.
 
 Deployment and inference use separate terms:
 
@@ -13,13 +15,29 @@ Deployment and inference use separate terms:
 A shared HTTP deployment can use local inference. A local stdio deployment can
 use remote inference.
 
-Read [Concepts](concepts.md) for the vault and delivery model. For detailed CLI
+Published server images set `SKILLMUX_IMAGE_VARIANT=full` or
+`SKILLMUX_IMAGE_VARIANT=slim` themselves. It is an operational identity value,
+not an inference setting; use `doctor`, `config status`, `/health/ready`, or
+the deployment-info metric to inspect it. Do not put credentials or token
+values in any of those outputs.
+
+Read [Concepts](concepts.md#vault-source-of-truth-and-checkouts) for vault
+terms and the delivery model. For detailed CLI
 commands, target resolution, and automation envelopes, see
-[CLI reference](cli.md). For labelled datasets, threshold certification,
+[CLI reference](cli.md). For Linux CLI installation, see the
+[pinned checksum-verified download](getting-started.md#install-the-cli) or the
+[attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
+For labelled datasets, threshold certification,
 reference values, and the apply lifecycle, see
 [Policy calibration](calibration.md).
 
 ## Machine config bootstrap
+
+Configuration is optional: `skillmux serve` and `skillmux serve --transport
+http` start with defaults even when `~/.config/skillmux` does not exist. The
+optional config watcher does not create that directory; reload stays inactive
+until the server starts with a watchable config parent. Once active, malformed
+updates are reported and the last known good configuration remains in use.
 
 Create `~/.config/skillmux/config.toml` from a populated vault:
 
@@ -48,7 +66,7 @@ mode = "local"
 The versioned `gte-small-v1` configuration uses normalized, mean-pooled
 `Xenova/gte-small` embeddings with 384 dimensions, quantized to q8 on CPU.
 Skillmux CLI installations download the model when inference first
-loads it and cache it in `~/.cache/skillmux/models`. The full Docker image
+loads it and cache it in `~/.cache/skillmux/models`. The full image
 already contains the model.
 
 Skillmux combines FTS5 and cosine result lists with reciprocal-rank fusion.
@@ -138,6 +156,13 @@ clearly-scoped BGE reference profile for smoke tests.
 
 ## HTTP server
 
+The HTTP server provides separate MCP and administrative surfaces:
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
 ```toml
 [server]
 hostname = "127.0.0.1"
@@ -149,11 +174,27 @@ allowed_origins = []
 enabled = false
 requests_per_minute = 60
 trust_proxy = false
+
+[server.admin]
+enabled = false
+token_env = "SKILLMUX_ADMIN_TOKEN"
 ```
 
 Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`) — a zero-config `skillmux serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
 
 Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, `auth_enabled = true` with a token, and populate `allowed_origins` with the specific origins that need browser access. `rate_limit.trust_proxy` should stay `false` unless a trusted reverse proxy sets `X-Forwarded-For` — it's otherwise a client-controlled, spoofable header and trusting it defeats per-client rate limiting.
+
+`server.auth_token_env` names the MCP token for AI clients calling `/mcp`.
+`server.admin.token_env` names a distinct administrative token for operators
+calling `/admin/v1/*` when that API is enabled. Do not reuse or imply either
+token authorizes the other surface. Named CLI contexts use the administrative
+token to inspect or update the deployed server configuration only; they cannot
+install, pin, synchronize, or otherwise manage remote client skill directories.
+Docker images likewise do not manage host agent directories.
+Inside the server image, only read-only `config show`, `get`, `validate`,
+`diff`, and `status` are available. Run `config init` or `config set` with the
+host CLI; the image returns `CONTAINER_COMMAND_UNSUPPORTED` with the exact host
+command to run. See [Deployment](deployment.md#container-command-contract).
 
 ## Tiers and the manifest
 
@@ -205,7 +246,12 @@ Both commands accept one or more `skill_id` arguments per call; all of them are 
 >
 > **Breaking change:** `[project.<group>].repos` has been renamed to `paths` — it was never required to be a git repository, just a local directory, and the old name collided in meaning with `skillmux install <repo>`'s unrelated git-source `repo` concept. A manifest still using `repos` fails to parse with an error pointing at `paths`; migrate by renaming the key (values are unchanged).
 
-Every `[core]`/`[project.*]` skill_id must resolve from the canonical `vault_path` — pinning a skill that only exists in a `local_vault_paths` entry (see below) fails `sync` with a distinct error, since the manifest is meant to be portable across machines and a machine-local override wouldn't exist elsewhere. `doctor` validates the manifest as part of its checks, surfacing any violation without writing anything back.
+Every `[core]`/`[project.*]` skill_id must resolve from the configured
+`vault_path` checkout — pinning a skill that only exists in a
+`local_vault_paths` entry (see below) fails `sync` with a distinct error, since
+the manifest is meant to be portable across machines and a machine-local
+override wouldn't exist elsewhere. `doctor` validates the manifest as part of
+its checks, surfacing any violation without writing anything back.
 
 ### Ownership marker
 
@@ -236,7 +282,7 @@ cannot be inferred.
 `local_vault_paths` (in `config.toml`, alongside `vault_path`) lets one machine layer override-only skills on top of the shared vault — a skill being authored locally, a machine-specific script, or a patched copy of an upstream skill — without touching `vault_path` itself:
 
 ```toml
-vault_path = "~/skills"                 # unchanged: canonical, owns skillmux.toml and the sync git hook
+vault_path = "~/skills"                 # configured checkout; owns skillmux.toml and the sync git hook
 local_vault_paths = ["~/skills-local"]   # optional, default []: override-only, checked first
 ```
 

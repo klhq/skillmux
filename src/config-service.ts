@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DEFAULT_CONFIG_PATH, expandHome, loadConfig } from "./config";
+import { describeDeployment } from "./deployment";
 import type { Config } from "./types";
 
 export type ConfigSource = "default" | "toml" | "environment";
@@ -32,6 +33,9 @@ export interface ConfigStatusResponse {
   readiness: { status: "ready" | "degraded" | "not_ready" | "stopping"; capability: string };
   restart_required_keys: string[];
   runtime: "running" | "not_running";
+  version: string;
+  deployment_runtime: "host" | "docker";
+  image_variant: "full" | "slim" | null;
 }
 
 export const RESTART_REQUIRED_KEYS = [
@@ -409,6 +413,7 @@ function formatTomlVal(v: unknown): string {
 export async function getLocalConfigStatus(configPath?: string): Promise<ConfigStatusResponse> {
   const { effective } = await getEffectiveConfig(configPath);
   const hash = computeHash(effective);
+  const deployment = describeDeployment(effective);
 
   return {
     target: "local",
@@ -421,5 +426,8 @@ export async function getLocalConfigStatus(configPath?: string): Promise<ConfigS
     readiness: { status: "ready", capability: "hybrid" },
     restart_required_keys: [],
     runtime: "not_running",
+    version: deployment.version,
+    deployment_runtime: deployment.runtime,
+    image_variant: deployment.image_variant,
   };
 }

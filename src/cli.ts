@@ -97,6 +97,7 @@ import {
 import { createTargetAdapter, type TargetAdapter } from "./adapters";
 import {
   emitSuccess,
+  CliError,
   formatJsonEnvelope,
   isInteractive,
   mapExitCode,
@@ -133,9 +134,6 @@ const KNOWN_COMMANDS = [
   "local-vault",
 ];
 
-const DOCKER_HOST_MANAGEMENT_GUIDANCE =
-  "This command manages local Skillmux or agent directories and is not supported inside the Docker image. Install the Skillmux CLI on the host using the Bun package or standalone Linux executable.";
-
 function isDockerHostManagementCommand(command: string, subCommand: string): boolean {
   if (
     [
@@ -158,6 +156,33 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
   return command === "config" && ["init", "set"].includes(subCommand);
 }
 
+function containerCommandUnsupported(command: string, subCommand: string): CliError {
+  const rejectedCommand = [command, subCommand].filter(Boolean).join(" ");
+  const recommendedHostCommand = `skillmux ${rejectedCommand}`;
+  const guide = "docs/deployment.md";
+  const documentation =
+    "https://github.com/klhq/skillmux/blob/main/docs/deployment.md#container-command-contract";
+  return new CliError(
+    `\`skillmux ${rejectedCommand}\` manages host agent directories and cannot run in the Skillmux server image.\n\n` +
+      "Install the host CLI:\n" +
+      "  bun add -g @klhapp/skillmux\n\n" +
+      "Then run:\n" +
+      `  ${recommendedHostCommand}\n\n` +
+      `See ${guide} for server deployment examples.`,
+    2,
+    "CONTAINER_COMMAND_UNSUPPORTED",
+    {
+      // `command` remains for automation written against the first Docker
+      // boundary release. `rejected_command` is the explicit contract name.
+      command: rejectedCommand,
+      rejected_command: rejectedCommand,
+      recommended_host_command: recommendedHostCommand,
+      guide,
+      documentation,
+    },
+  );
+}
+
 async function main() {
   const rawArgv = Bun.argv.slice(2);
 
@@ -167,7 +192,10 @@ async function main() {
   let flagContext: string | undefined;
   let flagServer: string | undefined;
   let isDryRun = false;
-  const subCommand = rawArgv[1] ?? "";
+  // Global flags do not form part of the command identity reported to users.
+  // In particular, `init --json` should recommend `skillmux init`, not a
+  // redundant JSON-only host command.
+  const subCommand = rawArgv[1]?.startsWith("-") ? "" : rawArgv[1] ?? "";
   const commandArgs = rawArgv.slice(2);
 
   const command = rawArgv[0];
@@ -198,7 +226,7 @@ async function main() {
     process.env.RUNNING_IN_DOCKER === "true" &&
     isDockerHostManagementCommand(command, subCommand)
   ) {
-    handleError(new Error(DOCKER_HOST_MANAGEMENT_GUIDANCE), {
+    handleError(containerCommandUnsupported(command, subCommand), {
       target: resolvedTarget,
       isJson,
       isVerbose,
@@ -572,7 +600,11 @@ function handleError(
     const env = formatJsonEnvelope({
       ok: false,
       target: opts.target,
-      error: { code: `EXIT_${code}`, message: msg },
+      error: {
+        code: err instanceof CliError ? err.code : `EXIT_${code}`,
+        message: msg,
+        details: err instanceof CliError ? err.details : undefined,
+      },
     });
     console.log(JSON.stringify(env));
   } else {
@@ -590,6 +622,23 @@ function handleError(
 }
 
 function printHelp(): void {
+  if (process.env.RUNNING_IN_DOCKER === "true") {
+    console.log(`Skillmux server image
+
+Default:
+  serve --transport http
+
+Supported commands:
+  serve, index, doctor, report, scan, skill which
+  config show|get|validate|diff|status
+
+Native skill management:
+  Install the Skillmux CLI on the host for init, install, pinning, and sync.
+
+See docs/deployment.md for server deployment examples.`);
+    return;
+  }
+
   console.log(`usage: skillmux <command> [options]
 
 Setup:
@@ -698,8 +747,14 @@ async function runEval(options: { isJson: boolean }): Promise<void> {
 async function runDoctor(options: { isJson: boolean }): Promise<void> {
   const report = await diagnose(await loadConfig());
   emitSuccess({ isJson: options.isJson }, report, () => {
+    console.log(`version: ${report.version}`);
+    console.log(`runtime: ${report.runtime}`);
+    console.log(`image variant: ${report.image_variant ?? "none"}`);
+    console.log(`vault path: ${report.vault_path}`);
+    console.log(`state directory: ${report.state_dir}`);
     console.log(`inference mode: ${report.mode}`);
     console.log(`routing capability: ${report.capability}`);
+    console.log(`retrieval capability: ${report.retrieval_capability}`);
     for (const check of report.checks)
       console.log(
         `${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`,

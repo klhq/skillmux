@@ -37,10 +37,11 @@ The release workflow publishes:
 
 - `skillmux-linux-amd64`
 - `skillmux-linux-arm64`
+- SHA-256 digests for the Linux binaries in the GitHub Release asset metadata
 - GitHub build provenance attestations when the repository is public
-- Full image to GHCR and Docker Hub: `:<version>`, `:<major>.<minor>`,
+- Skillmux server full image to GHCR and Docker Hub: `:<version>`, `:<major>.<minor>`,
   and `:latest`; this variant includes GTE-small
-- Slim image to GHCR and Docker Hub: `:<version>-slim`,
+- Skillmux server slim image to GHCR and Docker Hub: `:<version>-slim`,
   `:<major>.<minor>-slim`, and `:latest-slim`; this variant contains no model
   files and uses remote embeddings or lexical fallback
 - Multi-architecture `linux/amd64` and `linux/arm64` images with SBOM and
@@ -75,10 +76,12 @@ Private repositories still publish BuildKit SBOM/provenance with container
 images, but GitHub artifact attestations are skipped because GitHub does not
 support them for user-owned private repositories.
 
-Verify downloaded binaries with build provenance attestation:
+Verify a downloaded binary with its published SHA-256 digest, or use GitHub
+CLI build-provenance attestation. Keep the release tag pinned:
 
 ```bash
-gh release download v0.1.1 --repo klhq/skillmux --pattern 'skillmux-linux-*'
+version=v1.3.4
+gh release download "$version" --repo klhq/skillmux --pattern skillmux-linux-amd64
 gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
 ./skillmux-linux-amd64 config show
 ```
@@ -93,3 +96,7 @@ docker run --rm \
 
 curl --fail http://127.0.0.1:3000/health/ready
 ```
+
+The image reads this vault checkout for retrieval; it does not manage host
+agent directories. Git and the deployment process own replication and
+freshness across vault checkouts.

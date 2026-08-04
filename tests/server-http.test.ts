@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import packageJson from "../package.json" with { type: "json" };
 import { startServer } from "../src/server";
 import { configure } from "../src/router-core";
 import { loadConfig } from "../src/config";
@@ -292,6 +293,11 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     expect(["starting", "ready", "not_ready", "stopping"]).toContain(String(payload.status));
     expect(payload).toHaveProperty("index_current");
     expect(payload).toHaveProperty("embedding");
+    expect(payload).toMatchObject({
+      version: packageJson.version,
+      runtime: "host",
+      image_variant: null,
+    });
   });
 
   test("GET /metrics returns 200 and prometheus metrics text", async () => {
@@ -301,5 +307,9 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     const text = await res.text();
     expect(text).toContain("# HELP skill_router_requests_total");
     expect(text).toContain("# TYPE skill_router_requests_total");
+    expect(text).toContain(`# HELP skill_router_deployment_info Immutable deployment identity for operator comparison.`);
+    expect(text).toContain(`skill_router_deployment_info{version="${packageJson.version}",runtime="host",image_variant="none"} 1`);
+    expect(text).not.toContain("api_key");
+    expect(text).not.toContain("token");
   });
 });

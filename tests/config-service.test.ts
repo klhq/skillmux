@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import packageJson from "../package.json" with { type: "json" };
 import {
   getDottedKey,
   getEffectiveConfig,
@@ -95,6 +96,9 @@ describe("Config Service (AC4, AC5, AC6)", () => {
   it("reports local config status including hash and runtime=not_running when server inactive (AC6)", async () => {
     const status = await getLocalConfigStatus(CONFIG_FILE);
     expect(status.runtime).toBe("not_running");
+    expect(status.version).toBe(packageJson.version);
+    expect(status.deployment_runtime).toBe("host");
+    expect(status.image_variant).toBeNull();
     expect(typeof status.desired_source_hash).toBe("string");
     expect(status.desired_source_hash.length).toBeGreaterThan(0);
   });

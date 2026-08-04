@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { watch } from "node:fs";
+import { existsSync, watch } from "node:fs";
 import { join } from "node:path";
 import { buildAuditRow } from "./audit";
 import { embeddingDimension, embeddingFingerprint, expandHome, loadConfig } from "./config";
@@ -333,6 +333,11 @@ export async function startVaultWatcher(): Promise<() => void> {
   const { config, db } = await getEnv();
   const vaultPath = expandHome(config.vault_path);
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  // A fresh installation may not have a vault checkout yet. Serving an empty
+  // vault is valid; leave live indexing inactive until the next server start
+  // finds a checkout rather than failing startup with ENOENT.
+  if (!existsSync(vaultPath)) return () => {};
 
   const watcher = watch(vaultPath, { recursive: true }, (_event, filename) => {
     const skillId = filename?.split(/[\\/]/)[0];

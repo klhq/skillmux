@@ -10,31 +10,47 @@
 </p>
 
 Skillmux manages [`SKILL.md`](https://agentskills.io) collections across AI
-coding clients. Keep one vault source of truth, pin a small set into native
-skill directories, and retrieve the rest through MCP. On one machine, the
-source and checkout can be the same directory. In a shared deployment, each
-machine that manages native skills and the server use their own checkout; Git
-or your deployment process keeps those checkouts current.
+coding clients. Keep one **vault source of truth**—the logical skill
+collection—pin a small set into native skill directories, and retrieve the
+rest through MCP. A **vault checkout** is a physical copy of that collection.
+On one machine, `~/skills` can be both the source of truth and its checkout.
+
+For a shared topology, the Git-backed vault source of truth has a checkout on
+each client machine, where the Skillmux CLI creates native pins, and a checkout
+on the server, where Skillmux server exposes HTTP MCP. Skillmux does not pull,
+push, replicate, or determine freshness between checkouts; Git and the
+deployment process own replication and freshness. See
+[native pins with shared retrieval](docs/deployment.md#native-pins-with-shared-retrieval).
 
 The same Skillmux CLI manages native skills and can serve local stdio MCP.
 Most individual users need only the CLI. Add Docker when you need a shared or
 always-on HTTP service.
 
+`skillmux serve` starts local stdio without a config file. `skillmux serve
+--transport http` likewise starts on loopback with safe defaults; create a
+config only when you need to customize the vault, inference, or server policy.
+See [Configuration](docs/configuration.md#machine-config-bootstrap) and
+[Deployment](docs/deployment.md) for those next steps.
+
 Choose a setup by the job:
 
 1. Need native skills or local MCP for one client? Install the **Skillmux CLI**.
-2. On Linux without Bun? Install the standalone Linux executable instead; it is
-   the same CLI.
-3. Need one shared HTTP MCP service? Deploy the **full Docker image**, the
+2. On Linux when Bun is undesirable? Use the **standalone Linux executable**;
+   it is the same Skillmux CLI.
+3. Need one shared HTTP MCP service? Deploy the **full image**, the
    self-contained default with GTE-small.
 4. Already have remote embeddings, or intentionally want lexical-only
-   retrieval? Use the **slim** image; see [Deployment](docs/deployment.md).
-5. Need native pins and shared retrieval? Run the CLI on the machines that own
+   retrieval? Use the **slim image**; see [Deployment](docs/deployment.md).
+
+For native pins and shared retrieval, run the Skillmux CLI on the machines that own
    client directories and one shared server for routed retrieval. MCP-only
-   clients connect over HTTP and do not need the CLI.
+clients connect over HTTP and do not need the Skillmux CLI.
 
 Manage the server's vault checkout outside the container. Use the CLI for
-Skillmux operations and Git or your deployment process for replication.
+Skillmux operations and Git or your deployment process for replication and
+freshness; server images do not manage host agent directories.
+If a server image rejects a management command, its error names the host CLI
+command to run; see the [container command contract](docs/deployment.md#container-command-contract).
 
 ## One vault source of truth, three ways to use it
 
@@ -58,17 +74,28 @@ skillmux --help
 
 Native target sync needs permission to create directory symlinks on Windows.
 
-On Linux, you can install a standalone AMD64 or ARM64 executable instead:
+On Linux, you can install a standalone executable instead. This path needs no
+GitHub CLI or package manager. It selects AMD64 or ARM64, downloads the pinned
+`v1.3.4` release, and verifies the SHA-256 digest published for that release:
 
 ```sh
-gh release download --repo klhq/skillmux --pattern 'skillmux-linux-*'
-gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
-chmod +x skillmux-linux-amd64
-sudo install skillmux-linux-amd64 /usr/local/bin/skillmux
+version=v1.3.4
+case "$(uname -m)" in
+  x86_64|amd64) asset=skillmux-linux-amd64; sha256=0d0155475748a937ac9b5878c57e1fa14d8fe6957317cb43bbdafd710cbc1966 ;;
+  aarch64|arm64) asset=skillmux-linux-arm64; sha256=8cd186707221a8fefbb79eac46ef14d0c5fdae08a2d76e64a01af17a80af0e06 ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+bin_dir="${SKILLMUX_BIN_DIR:-$HOME/.local/bin}"
+curl --fail --location --output "$asset" "https://github.com/klhq/skillmux/releases/download/$version/$asset"
+printf '%s  %s\n' "$sha256" "$asset" | sha256sum --check -
+install -Dm755 "$asset" "$bin_dir/skillmux"
 ```
 
-Use `skillmux-linux-arm64` on ARM64. See [Deployment](docs/deployment.md) for
-the full and slim Docker images.
+Ensure `~/.local/bin` is on `PATH`. To install system-wide, explicitly choose
+the target: `sudo install -Dm755 "$asset" /usr/local/bin/skillmux`. For GitHub
+build-provenance verification, use the [attested GitHub CLI procedure](docs/getting-started.md#install-with-github-cli-attestation).
+See [Deployment](docs/deployment.md) for the full and slim images of Skillmux
+server.
 
 ## Quick starts
 
@@ -147,6 +174,20 @@ under `docker.io/klhq/skillmux`.
 
 The [getting-started guide](docs/getting-started.md) provides complete recipes
 for all three setups.
+
+### HTTP surfaces
+
+| Surface | User | Purpose | CLI required |
+| --- | --- | --- | --- |
+| `/mcp` | AI clients | Resolve and fetch skills | No |
+| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+
+MCP clients authenticate only to `/mcp` with the MCP bearer token. Operators
+use a separate administrative bearer token for `/admin/v1/*`; neither token
+authorizes the other surface. Named CLI contexts administer the deployed server
+only. They never install, pin, synchronize, or otherwise manage skill
+directories on remote client machines. See [Deployment](docs/deployment.md#http-surfaces)
+for configuration and examples.
 
 ## Add and inspect skills
 
@@ -235,11 +276,11 @@ Start with the [documentation hub](docs/README.md).
 | [Concepts](docs/concepts.md) | Delivery tiers, deployment topologies, retrieval modes, and ownership |
 | [Managing skills](docs/skill-management.md) | Install, scan, pin, sync, report, overlays, and recovery |
 | [MCP routing](docs/mcp-routing.md) | Tools, outcomes, transports, retrieval, fallback, and integrity |
-| [Deployment](docs/deployment.md) | Docker, HTTP, auth, CORS, rate limits, health, and metrics |
-| [Configuration](docs/configuration.md) | Machine config, inference, manifests, and overlays |
-| [CLI reference](docs/cli.md) | Commands, contexts, automation, JSON output, and exit codes |
+| [Deployment](docs/deployment.md) | Docker, container command boundaries, HTTP surfaces and auth, CORS, rate limits, and comparable CLI, health, and metrics status |
+| [Configuration](docs/configuration.md) | Machine config, inference, HTTP surfaces, manifests, overlays, and container read-only configuration |
+| [CLI reference](docs/cli.md) | Host and container command surfaces, administrative contexts, automation, JSON output, and exit codes |
 | [Policy calibration](docs/calibration.md) | Labelled datasets, certification, and threshold application |
-| [Troubleshooting](docs/troubleshooting.md) | `doctor`, common failures, and migration notes |
+| [Troubleshooting](docs/troubleshooting.md) | `doctor`, deployment identity, common failures, and migration notes |
 | [MCP schema](docs/schema.json) | JSON Schema 2020-12 tool contract |
 
 ## Development

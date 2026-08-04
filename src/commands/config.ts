@@ -192,6 +192,8 @@ export async function handleConfigCommand(
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
       console.log(`Runtime: ${res.runtime}`);
+      console.log(`Deployment runtime: ${res.deployment_runtime}`);
+      console.log(`Image variant: ${res.image_variant ?? "none"}`);
       console.log(`Active revision: ${res.active_revision}`);
       console.log(`Readiness: ${res.readiness.status}`);
     });
