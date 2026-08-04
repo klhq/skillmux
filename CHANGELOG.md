@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1](https://github.com/klhq/skillmux/compare/v1.4.0...v1.4.1) (2026-08-04)
+
+
+### Fixed
+
+* **ci:** publish npm package to GitHub Packages ([#110](https://github.com/klhq/skillmux/issues/110)) ([5de37f2](https://github.com/klhq/skillmux/commit/5de37f22a658187cd270743b24237844513c1e54))
+
 ## [1.4.0](https://github.com/klhq/skillmux/compare/v1.3.4...v1.4.0) (2026-08-04)
 
 
