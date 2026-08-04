@@ -69,7 +69,7 @@ Container images are published to:
 - `${DOCKERHUB_USERNAME}/skillmux` on Docker Hub
 
 The `production-release` GitHub environment provides the
-`DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret. The npm job also
+`DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret. The npmjs job also
 uses this environment as its Trusted Publisher identity; configure npm with
 workflow `release-please.yml` and environment `production-release`. No
 long-lived npm token is required. The GitHub Packages job uses the workflow's
