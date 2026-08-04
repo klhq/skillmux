@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0](https://github.com/klhq/skillmux/compare/v1.3.4...v1.4.0) (2026-08-04)
+
+
+### Added
+
+* **cli:** add version flag ([a5ca750](https://github.com/klhq/skillmux/commit/a5ca7508b6818764eeeaff4000115ac91769d6c0))
+* **cli:** clarify Docker command guidance ([3fc61b0](https://github.com/klhq/skillmux/commit/3fc61b0d262a20237f38df0a63eca2982aec382d))
+* **cli:** guide unsupported container commands ([9857098](https://github.com/klhq/skillmux/commit/9857098f5ce1ae0436afc23cfec5aba7e0069d8c))
+* **cli:** improve Docker command guidance ([cb1f4b7](https://github.com/klhq/skillmux/commit/cb1f4b707feca49cb7b6a627182bbbab889b8361))
+* **cli:** show Docker-specific help ([b6a7495](https://github.com/klhq/skillmux/commit/b6a74955539aef6613781949df65ffd9c01aade7))
+* **config:** show deployment identity in status ([40b355f](https://github.com/klhq/skillmux/commit/40b355fdea40e78b090faee87d349c364892d956))
+* **docker:** label image variants ([d2db3f5](https://github.com/klhq/skillmux/commit/d2db3f53c16506af65dd89a39b2d05de8f4d905a))
+* **doctor:** report deployment identity ([2db45d6](https://github.com/klhq/skillmux/commit/2db45d62da1be0985d2e8faa7abfa65c2a45f1c9))
+* **doctor:** report healthy slim lexical retrieval ([9cac7e0](https://github.com/klhq/skillmux/commit/9cac7e0f603b07075daf202db19712c0400539a8))
+* **doctor:** show retrieval capability ([5a344e7](https://github.com/klhq/skillmux/commit/5a344e71ebe65ba85353d28207ba3887432d3eff))
+* **ops:** expose deployment identity in metrics ([81f761e](https://github.com/klhq/skillmux/commit/81f761e9ff735c512395b68479f33eb2c3db0352))
+* **status:** expose deployment identity ([d83d22a](https://github.com/klhq/skillmux/commit/d83d22ad84beb39a993b0ade48ebee7e60d87145))
+* **status:** expose remote deployment identity ([e7be736](https://github.com/klhq/skillmux/commit/e7be73656a833057d55146b09f8bfd6d6c3f6a60))
+
+
+### Fixed
+
+* pass configPath to getEffectiveConfig in PATCH /admin/v1/config handler ([f46b7e2](https://github.com/klhq/skillmux/commit/f46b7e2f97167d4c8bb02a56973d6e5325dd55a8))
+* **startup:** allow serving without config paths ([ee98959](https://github.com/klhq/skillmux/commit/ee989596ed569d964eb37303b52b1538f62be39a))
+
 ## [1.3.4](https://github.com/klhq/skillmux/compare/v1.3.3...v1.3.4) (2026-08-02)
 
 
