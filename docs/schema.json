@@ -21,6 +21,18 @@
       "minLength": 1,
       "maxLength": 512
     },
+    "DegradationReason": {
+      "type": "string",
+      "description": "Safe stable reason code describing why a higher-capability retrieval lane fell back.",
+      "enum": [
+        "embedding_timeout",
+        "embedding_unavailable",
+        "embedding_protocol_error",
+        "reranker_timeout",
+        "reranker_unavailable",
+        "reranker_protocol_error"
+      ]
+    },
     "Candidate": {
       "type": "object",
       "description": "One shortlist entry in an ambiguous result.",
@@ -50,6 +62,8 @@
       "properties": {
         "outcome": { "const": "matched" },
         "retrieval": { "enum": ["exact", "reranked"] },
+        "degraded_from": { "enum": ["reranked", "hybrid"] },
+        "degradation_reason": { "$ref": "#/$defs/DegradationReason" },
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 512 },
         "content_sha256": { "$ref": "#/$defs/Sha256Hex" },
@@ -83,6 +97,8 @@
       "properties": {
         "outcome": { "const": "ambiguous" },
         "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
+        "degraded_from": { "enum": ["reranked", "hybrid"] },
+        "degradation_reason": { "$ref": "#/$defs/DegradationReason" },
         "candidates": {
           "type": "array",
           "items": { "$ref": "#/$defs/Candidate" },
@@ -99,6 +115,8 @@
       "properties": {
         "outcome": { "const": "no_match" },
         "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
+        "degraded_from": { "enum": ["reranked", "hybrid"] },
+        "degradation_reason": { "$ref": "#/$defs/DegradationReason" },
         "message": {
           "type": "string",
           "description": "Fixed guidance string telling the caller to proceed normally.",
@@ -151,10 +169,26 @@
       "type": "object",
       "description": "config.toml, validated at startup. Local ONNX is the default; remote inference is explicit.",
       "properties": {
+        "config": {
+          "type": "object",
+          "properties": {
+            "environment_overrides": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether environment variables override TOML values at runtime."
+            }
+          },
+          "additionalProperties": false
+        },
         "vault_path": {
           "type": "string",
-          "description": "Skill vault root. Default: ~/.agents/skills",
-          "default": "~/.agents/skills"
+          "description": "Skill vault root. Default: ~/skills",
+          "default": "~/skills"
+        },
+        "local_vault_paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
         },
         "state_dir": {
           "type": "string",
@@ -165,7 +199,8 @@
           "type": "object",
           "properties": {
             "k_lexical": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
-            "k_vector": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+            "k_vector": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
+            "k_rerank": { "type": "integer", "minimum": 1, "maximum": 200, "default": 10 }
           },
           "required": ["k_lexical", "k_vector"],
           "additionalProperties": false
@@ -295,6 +330,12 @@
         "query": { "type": "string" },
         "outcome": { "type": "string", "enum": ["matched", "ambiguous", "no_match"] },
         "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
+        "degraded_from": {
+          "oneOf": [{ "enum": ["reranked", "hybrid"] }, { "type": "null" }]
+        },
+        "degradation_reason": {
+          "oneOf": [{ "$ref": "#/$defs/DegradationReason" }, { "type": "null" }]
+        },
         "candidates": {
           "type": "array",
           "description": "skill_id + score of every reranked (or FTS5-ranked) candidate considered, best first.",

@@ -124,35 +124,59 @@ Reranker adapter and model form the calibration identity. Moving an unchanged
 deployment to another endpoint does not invalidate calibration; changing the
 adapter or model does.
 
+## Configuration authority
+
+By default, Skillmux allows namespaced environment variables (`SKILLMUX_*`) to override values from `config.toml`. When deploying in strict environments where the TOML configuration must be authoritative against runtime container environment drift:
+
+```toml
+[config]
+environment_overrides = false
+```
+
+When `config.environment_overrides = false`:
+- Behavioral environment overrides (e.g. `SKILLMUX_VAULT_PATH`, `SKILLMUX_RECALL_K_RERANK`, `EMBED_MODEL`) are ignored and logged as masked by TOML policy.
+- `SKILLMUX_CONFIG` (config path pointer), CLI flags (`--vault`, `--config`), and named secret variables referenced via `api_key_env` / `token_env` remain fully authoritative.
+- Generic un-namespaced variables (`EMBED_*`, `RERANK_*`, `HTTP_*`, `VAULT_PATH`) are deprecated in 1.x and trigger warnings encouraging the preferred `SKILLMUX_*` namespace.
+
+Inspect provenance and active policy with `skillmux config show --sources` or `skillmux doctor`.
+
 ## Advanced retrieval
 
-Candidate-generation depth and agent-context delivery are separate controls:
+Candidate-generation depth, reranking candidate budgets, and agent-context delivery are separate controls:
 
 ```toml
 [recall]
 k_lexical = 20
 k_vector = 20
+k_rerank = 10
 
 [thresholds]
 candidate_limit = 5
 ```
 
-`recall.k_lexical` and `recall.k_vector` control retrieval depth and cost. The
-reranker receives the fused union from both retrieval lanes. Increasing these
-values can improve retrieval recall, but costs more work.
+- `recall.k_lexical` and `recall.k_vector` control initial candidate generation depth.
+- `recall.k_rerank` bounds the candidate shortlist sent to the reranker adapter (defaults to `10`, cannot exceed `k_lexical + k_vector`).
+- `thresholds.candidate_limit` controls agent context: it caps the ambiguous candidate list returned to the calling LLM after retrieval, reranking, and threshold filtering.
 
-`thresholds.candidate_limit` controls agent context: it caps the ambiguous
-candidate list returned to the calling LLM after retrieval, reranking, and
-threshold filtering. It does not change retrieval depth or the matched,
-ambiguous, or no-match classification.
+### Failure visibility and degraded retrieval
 
-Reranker thresholds have no universal default because score distributions are
-model-specific. Without `inference.thresholds`, Skillmux still uses the
-reranker to order candidates but keeps outcomes ambiguous rather than
-auto-matching. Use `skillmux calibrate run` to select
-`match_score`, `match_margin`, and `candidate_floor`, then explicitly apply the
-certified run. The [calibration guide](calibration.md) also publishes a
-clearly-scoped BGE reference profile for smoke tests.
+When remote embedding or reranking fails or times out, Skillmux gracefully falls back to the strongest surviving retrieval lane (`hybrid` or `lexical`). The response carries structured degradation metadata:
+
+```json
+{
+  "outcome": "ambiguous",
+  "retrieval": "hybrid",
+  "degraded_from": "reranked",
+  "degradation_reason": "reranker_timeout",
+  "candidates": [...]
+}
+```
+
+Stable degradation reason codes:
+- `embedding_timeout`, `embedding_unavailable`, `embedding_protocol_error`
+- `reranker_timeout`, `reranker_unavailable`, `reranker_protocol_error`
+
+These safe reason codes are exposed via MCP and recorded in the audit database without logging credentials or raw upstream response bodies. Degraded retrieval count metrics are tracked under `skill_router_degraded_retrieval_total{stage,reason}`.
 
 ## HTTP server
 
