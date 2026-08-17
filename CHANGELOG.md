@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/klhq/skillmux/compare/v1.4.1...v1.5.0) (2026-08-17)
+
+
+### Added
+
+* **config:** add configuration authority, bounded reranking, and degradation resilience ([2626709](https://github.com/klhq/skillmux/commit/262670983b2a7d3674dd02fa5ef90a4a3ebe26c6))
+* **config:** add degradation-aware reranking controls ([1a87ee9](https://github.com/klhq/skillmux/commit/1a87ee90601dc632c127298ebb39be5e8bd12e66))
+* **config:** add output.ambiguous_candidate_limit and evaluation report case details ([7194b28](https://github.com/klhq/skillmux/commit/7194b2874faeebfd89d047063369499ace06785d))
+
+
+### Fixed
+
+* **config:** satisfy effective config type checks ([b12693c](https://github.com/klhq/skillmux/commit/b12693ca1ba30d51351d8e5439822ff2f23350df))
+* **routing:** align evaluation with runtime ranking ([ca6e6ca](https://github.com/klhq/skillmux/commit/ca6e6ca847a0604be190e63ac0a177e6e593e817))
+
 ## [1.4.1](https://github.com/klhq/skillmux/compare/v1.4.0...v1.4.1) (2026-08-04)
 
 
