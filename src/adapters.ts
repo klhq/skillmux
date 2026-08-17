@@ -35,7 +35,7 @@ import {
   type SetConfigResult,
 } from "./config-service";
 import type { ResolvedTarget } from "./context";
-import { configure, retrieveAndRerank } from "./router-core";
+import { configure, retrieveAndRerankSnapshot, syncVaultIfNeeded } from "./router-core";
 import type { Clients, Config } from "./types";
 
 export interface Capabilities {
@@ -164,6 +164,10 @@ export class LocalAdapter implements TargetAdapter {
     onProgress?: (completed: number, total: number) => void;
   }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     const config = await loadConfig(this.configPath);
+    const clients = this.clients ?? createClients(config);
+    configure({ config, clients });
+    await syncVaultIfNeeded();
+
     const candidateLimit =
       config.output?.ambiguous_candidate_limit ?? config.thresholds?.candidate_limit ?? 5;
     const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
@@ -280,9 +284,6 @@ export class LocalAdapter implements TargetAdapter {
         });
       }
 
-      const clients = this.clients ?? createClients(config);
-      configure({ config, clients });
-
       const onProgress = opts?.onProgress ?? ((completed, total) => {
         process.stderr.write(`Calibration observations: ${completed}/${total}\n`);
       });
@@ -290,7 +291,7 @@ export class LocalAdapter implements TargetAdapter {
       const result = await runCalibration({
         cases,
         getRankedCandidates: async (query: string) => {
-          const res = await retrieveAndRerank({ query, forceLexical: false });
+          const res = await retrieveAndRerankSnapshot({ query, forceLexical: false });
           if (res.retrieval !== "reranked") {
             throw new Error(
               "Calibration requires successful hybrid retrieval and reranking for every query.",

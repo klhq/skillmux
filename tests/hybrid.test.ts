@@ -7,6 +7,7 @@ import {
   configure,
   resolveSkill,
   retrieveAndRerank,
+  retrieveAndRerankSnapshot,
 } from "../src/router-core";
 import type { Config } from "../src/types";
 
@@ -324,5 +325,27 @@ describe("hybrid recall (AC6)", () => {
     expect(events).toEqual(["embed:start", "embed:finish", "rerank:start"]);
     expect(res.retrieval).toBe("reranked");
     expect(res.candidates.length).toBeGreaterThan(0);
+  });
+
+  test("ordinary retrieveAndRerank() synchronizes vault changes by default while snapshot retrieval does not", async () => {
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => texts.map(vectorFor),
+        rerank: async (_query, docs) => docs.map(() => 0.95),
+      },
+    });
+
+    writeSkill("late-added-hybrid-skill", "Dynamic handler for late-added capability.");
+
+    // retrieveAndRerank without prior manual sync should automatically discover and index the new skill
+    const res = await retrieveAndRerank({ query: "late-added-hybrid-skill" });
+    expect(res.candidates.some((c) => c.skill_id === "late-added-hybrid-skill")).toBe(true);
+
+    // Write another skill
+    writeSkill("unsynced-snapshot-skill", "Dynamic handler not visible to snapshot.");
+    // retrieveAndRerankSnapshot should query the existing index snapshot without triggering syncVaultIfNeeded()
+    const snapshotRes = await retrieveAndRerankSnapshot({ query: "unsynced-snapshot-skill" });
+    expect(snapshotRes.candidates.some((c) => c.skill_id === "unsynced-snapshot-skill")).toBe(false);
   });
 });

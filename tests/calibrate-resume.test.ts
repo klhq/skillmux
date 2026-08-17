@@ -10,8 +10,8 @@ import {
   getCalibrationRun,
   getCalibrationObservations,
 } from "../src/calibrate";
-import { openIndex, toSkillRow, replaceSkills } from "../src/db";
-import { configure } from "../src/router-core";
+import { openIndex, toSkillRow, replaceSkills, getSkillRow } from "../src/db";
+import { configure, retrieveAndRerank } from "../src/router-core";
 import type { Config } from "../src/types";
 
 describe("calibrate run incremental persistence and resume", () => {
@@ -485,6 +485,65 @@ model = "mock-rerank"
       expect(fullStderr).not.toContain("secret");
     } finally {
       process.stderr.write = originalStderrWrite;
+    }
+  });
+
+  test("synchronizes the vault exactly once before the run and uses a frozen retrieval snapshot during calibration", async () => {
+    let executedQueries = 0;
+    const fakeClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async (query: string, docs: Array<{ skill_id: string; text: string }>) => {
+        executedQueries++;
+        if (executedQueries === 1) {
+          // Mutate the vault directory on disk mid-run
+          mkdirSync(join(vaultDir, "mid-run-skill"), { recursive: true });
+          writeFileSync(
+            join(vaultDir, "mid-run-skill", "SKILL.md"),
+            `---\nname: mid run skill\ndescription: created mid calibration run\naliases: [mrs]\n---\n# mid run skill\n`,
+          );
+        }
+        return docs.map((d) => {
+          if (query.includes("match 1") && d.skill_id === "skill-1") return 0.95;
+          if (query.includes("match 2") && d.skill_id === "skill-2") return 0.95;
+          if (query.includes("ambiguous")) return 0.8;
+          return 0.1;
+        });
+      },
+    };
+
+    const adapter = new LocalAdapter({ configPath, clients: fakeClients });
+    const runRes = await adapter.calibrateRun({
+      datasetPath,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.1,
+      minDeliveredShortlistRecallAtK: 0.1,
+      minAutoMatchCount: 1,
+    });
+
+    expect(runRes.run_id).toBeDefined();
+    expect(runRes.result?.status).toBe("completed");
+    expect(executedQueries).toBe(dataset.length);
+
+    // During the entire calibration run across all queries, syncVaultIfNeeded was not re-executed,
+    // so mid-run-skill was NOT indexed in the database.
+    const indexDb = openIndex(stateDir);
+    try {
+      expect(getSkillRow(indexDb, "mid-run-skill")).toBeNull();
+      expect(getSkillRow(indexDb, "skill-1")).not.toBeNull();
+      expect(getSkillRow(indexDb, "skill-2")).not.toBeNull();
+    } finally {
+      indexDb.close();
+    }
+
+    // Calling normal retrieveAndRerank now triggers synchronization and discovers the new skill.
+    const res = await retrieveAndRerank({ query: "mid-run-skill" });
+    expect(res.candidates.some((c) => c.skill_id === "mid-run-skill")).toBe(true);
+
+    const indexDbAfter = openIndex(stateDir);
+    try {
+      expect(getSkillRow(indexDbAfter, "mid-run-skill")).not.toBeNull();
+    } finally {
+      indexDbAfter.close();
     }
   });
 });
