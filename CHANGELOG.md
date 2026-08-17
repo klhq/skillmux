@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2](https://github.com/klhq/skillmux/compare/v1.5.1...v1.5.2) (2026-08-17)
+
+
+### Changed
+
+* **calibration:** parallelize resumable evaluations ([#115](https://github.com/klhq/skillmux/issues/115)) ([49b3fba](https://github.com/klhq/skillmux/commit/49b3fba43961aa7a6648eda89c5c08d994c7433a))
+* **calibration:** report aggregate stage timings ([#119](https://github.com/klhq/skillmux/issues/119)) ([086128f](https://github.com/klhq/skillmux/commit/086128fdba8ded82ccf6a51d2e0117a18c2eea17))
+* **calibration:** reuse synchronized retrieval snapshot ([#117](https://github.com/klhq/skillmux/issues/117)) ([1fcf295](https://github.com/klhq/skillmux/commit/1fcf2959123b4f9ca6841a2978a3fa5552c23122))
+* **retrieval:** expose opt-in stage timings ([#118](https://github.com/klhq/skillmux/issues/118)) ([f459c90](https://github.com/klhq/skillmux/commit/f459c90f440834cea2ee008300bad3e15771949e))
+
 ## [1.5.1](https://github.com/klhq/skillmux/compare/v1.5.0...v1.5.1) (2026-08-17)
 
 
