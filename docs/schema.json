@@ -205,25 +205,37 @@
           "required": ["k_lexical", "k_vector"],
           "additionalProperties": false
         },
+        "output": {
+          "type": "object",
+          "properties": {
+            "ambiguous_candidate_limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 5,
+              "description": "Maximum number of candidates returned on ambiguous outcomes."
+            }
+          },
+          "additionalProperties": false
+        },
         "thresholds": {
           "type": "object",
-          "description": "Caller-facing shortlist policy. Reranker thresholds live under inference.thresholds.",
+          "description": "Caller-facing shortlist policy (deprecated in favor of output.ambiguous_candidate_limit). Reranker thresholds live under inference.thresholds.",
           "properties": {
             "candidate_limit": {
               "type": "integer",
               "minimum": 1,
               "maximum": 50,
               "default": 5,
-              "description": "Maximum number of candidates returned on ambiguous outcomes (top-k limit)."
+              "description": "Deprecated: use output.ambiguous_candidate_limit instead."
             }
           },
-          "required": ["candidate_limit"],
           "additionalProperties": false
         },
         "inference": { "$ref": "#/$defs/InferenceConfig" },
         "server": { "$ref": "#/$defs/ServerConfig" }
       },
-      "required": ["vault_path", "state_dir", "recall", "thresholds", "inference"],
+      "required": ["vault_path", "state_dir", "recall", "inference"],
       "additionalProperties": false
     },
     "InferenceConfig": {

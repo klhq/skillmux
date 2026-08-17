@@ -150,13 +150,13 @@ k_lexical = 20
 k_vector = 20
 k_rerank = 10
 
-[thresholds]
-candidate_limit = 5
+[output]
+ambiguous_candidate_limit = 5
 ```
 
 - `recall.k_lexical` and `recall.k_vector` control initial candidate generation depth.
 - `recall.k_rerank` bounds the candidate shortlist sent to the reranker adapter (defaults to `10`, cannot exceed `k_lexical + k_vector`).
-- `thresholds.candidate_limit` controls agent context: it caps the ambiguous candidate list returned to the calling LLM after retrieval, reranking, and threshold filtering.
+- `output.ambiguous_candidate_limit` controls agent context: it caps the ambiguous candidate list returned to the calling LLM after retrieval, reranking, and threshold filtering (`thresholds.candidate_limit` is deprecated in 1.x).
 
 ### Failure visibility and degraded retrieval
 
