@@ -751,6 +751,40 @@ function selectThresholds(
 // Public API — runCalibration (AC2, AC3, AC4)
 // ---------------------------------------------------------------------------
 
+async function processWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  processItem: (item: T) => Promise<void>,
+): Promise<void> {
+  let nextItemPosition = 0;
+  let firstError: unknown;
+
+  const claimNextPosition = (): number | undefined => {
+    if (firstError !== undefined || nextItemPosition >= items.length) return undefined;
+    return nextItemPosition++;
+  };
+
+  const workerCount = Math.min(concurrency, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    for (
+      let itemPosition = claimNextPosition();
+      itemPosition !== undefined;
+      itemPosition = claimNextPosition()
+    ) {
+      try {
+        await processItem(items[itemPosition]!);
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+  });
+
+  // Drain work already in flight before propagating an error. Callers may close
+  // resources after rejection, so no worker may still be checkpointing then.
+  await Promise.all(workers);
+  if (firstError !== undefined) throw firstError;
+}
+
 /**
  * Run an in-memory calibration:
  *  1. Require a configured reranker (AC2)
@@ -810,49 +844,34 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
     if (!obsMap.has(i)) pendingIndices.push(i);
   }
 
-  if (pendingIndices.length > 0) {
-    let nextWorkIdx = 0;
-    let firstError: unknown;
-    const workerCount = Math.min(concurrency, pendingIndices.length);
-    const workers = Array.from({ length: workerCount }, async () => {
-      while (nextWorkIdx < pendingIndices.length && firstError === undefined) {
-        const itemIdx = nextWorkIdx++;
-        const caseIndex = pendingIndices[itemIdx]!;
-        const c = cases[caseIndex]!;
-        try {
-          let ranked: Array<{ skill_id: string; score: number }>;
-          if (getRankedCandidates) {
-            ranked = await getRankedCandidates(c.query);
-          } else {
-            const docs = await getCandidates!(c.query);
-            const scores = await reranker!(c.query, docs);
-            ranked = docs
-              .map((d, i) => ({ skill_id: d.skill_id, score: scores[i] ?? 0 }))
-              .sort((a, b) => b.score - a.score);
-          }
-          const obs: QueryObservation = {
-            query: c.query,
-            split: c.split,
-            expected_outcome: c.expected_outcome,
-            relevant_skill_ids: c.relevant_skill_ids,
-            ranked,
-          };
-          obsMap.set(caseIndex, obs);
-          if (onObservation) {
-            await onObservation(obs, caseIndex, completedCount + 1, cases.length);
-          }
-          const progressCount = ++completedCount;
-          if (onProgress) {
-            onProgress(progressCount, cases.length);
-          }
-        } catch (error) {
-          firstError ??= error;
-        }
-      }
-    });
-    await Promise.all(workers);
-    if (firstError !== undefined) throw firstError;
-  }
+  await processWithConcurrency(pendingIndices, concurrency, async (caseIndex) => {
+    const c = cases[caseIndex]!;
+    let ranked: Array<{ skill_id: string; score: number }>;
+    if (getRankedCandidates) {
+      ranked = await getRankedCandidates(c.query);
+    } else {
+      const docs = await getCandidates!(c.query);
+      const scores = await reranker!(c.query, docs);
+      ranked = docs
+        .map((d, i) => ({ skill_id: d.skill_id, score: scores[i] ?? 0 }))
+        .sort((a, b) => b.score - a.score);
+    }
+    const obs: QueryObservation = {
+      query: c.query,
+      split: c.split,
+      expected_outcome: c.expected_outcome,
+      relevant_skill_ids: c.relevant_skill_ids,
+      ranked,
+    };
+    obsMap.set(caseIndex, obs);
+    if (onObservation) {
+      await onObservation(obs, caseIndex, completedCount + 1, cases.length);
+    }
+    const progressCount = ++completedCount;
+    if (onProgress) {
+      onProgress(progressCount, cases.length);
+    }
+  });
 
   const observations: QueryObservation[] = cases.map((_, i) => obsMap.get(i)!);
 
