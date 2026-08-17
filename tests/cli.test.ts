@@ -273,6 +273,136 @@ describe("skillmux calibrate run CLI", () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("--resume requires a run_id value");
   });
+
+  test("accepts --json after run options, returning a single JSON envelope on stdout and timing on stderr", async () => {
+    const mockServer = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/v1/embeddings") {
+          const body = (await req.json()) as { input: string | string[] };
+          const inputs = Array.isArray(body.input) ? body.input : [body.input];
+          return Response.json({
+            data: inputs.map((_, i) => ({ index: i, embedding: [1, 0, 0] })),
+          });
+        }
+        if (url.pathname === "/rerank") {
+          const body = (await req.json()) as { documents: any[] };
+          return Response.json({
+            results: body.documents.map((_: any, i: number) => ({ index: i, relevance_score: 0.9 })),
+          });
+        }
+        return new Response("Not Found", { status: 404 });
+      },
+    });
+
+    const datasetFile = join(tmp, "cli-calibrate-test-queries.json");
+    const testConfig = join(tmp, "cli-calibrate-test-config.toml");
+    writeFileSync(
+      datasetFile,
+      JSON.stringify([
+        { query: "first-skill", split: "tune", expected_outcome: "matched", relevant_skill_ids: ["first-skill"] },
+        { query: "second-skill", split: "tune", expected_outcome: "matched", relevant_skill_ids: ["second-skill"] },
+        { query: "ambig", split: "tune", expected_outcome: "ambiguous", relevant_skill_ids: ["first-skill", "second-skill"] },
+        { query: "nomatch", split: "tune", expected_outcome: "no_match", relevant_skill_ids: [] },
+        { query: "first-skill test", split: "test", expected_outcome: "matched", relevant_skill_ids: ["first-skill"] },
+        { query: "second-skill test", split: "test", expected_outcome: "matched", relevant_skill_ids: ["second-skill"] },
+        { query: "ambig test", split: "test", expected_outcome: "ambiguous", relevant_skill_ids: ["first-skill", "second-skill"] },
+        { query: "nomatch test", split: "test", expected_outcome: "no_match", relevant_skill_ids: [] },
+      ]),
+    );
+    writeFileSync(
+      testConfig,
+      [
+        `vault_path = "${vaultDir}"`,
+        `state_dir = "${stateDir}"`,
+        `[recall]`,
+        `k_lexical = 15`,
+        `k_vector = 15`,
+        `[output]`,
+        `ambiguous_candidate_limit = 5`,
+        `[inference]`,
+        `mode = "remote"`,
+        `timeout_ms = 2000`,
+        `[inference.embedding]`,
+        `provider = "openai"`,
+        `endpoint = "http://127.0.0.1:${mockServer.port}/v1/embeddings"`,
+        `model = "microsoft/harrier-oss-v1-0.6b"`,
+        `dimension = 3`,
+        `[inference.reranker]`,
+        `adapter = "jina-v1"`,
+        `endpoint = "http://127.0.0.1:${mockServer.port}/rerank"`,
+        `model = "BAAI/bge-reranker-v2-m3"`,
+      ].join("\n"),
+    );
+
+    try {
+      // Rebuild index so vectors are backfilled before calibration run
+      await runCliEnv(["index"], { SKILLMUX_CONFIG: testConfig });
+
+      // 1. Run with --json after run options and with --timing
+      const result = await runCliEnv(
+        [
+          "calibrate",
+          "run",
+          "--dataset",
+          datasetFile,
+          "--min-auto-match-precision",
+          "0.1",
+          "--min-retrieval-recall-at-k",
+          "0.1",
+          "--min-delivered-shortlist-recall-at-k",
+          "0.1",
+          "--min-auto-match-count",
+          "1",
+          "--timing",
+          "--json",
+        ],
+        { SKILLMUX_CONFIG: testConfig },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).not.toContain("unknown calibrate run option: --json");
+      expect(result.stderr).toContain("Calibration observations:");
+      expect(result.stderr).toContain("--- calibrate run timing ---");
+
+      // stdout must be exactly one valid JSON document
+      const lines = result.stdout.trim().split("\n");
+      expect(lines.length).toBe(1);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.schema_version).toBe(1);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.target).toBe("local");
+      expect(parsed.data.run_id).toBeDefined();
+
+      // 2. Non-JSON output stays unchanged when --json is omitted
+      const nonJsonResult = await runCliEnv(
+        [
+          "calibrate",
+          "run",
+          "--dataset",
+          datasetFile,
+          "--min-auto-match-precision",
+          "0.1",
+          "--min-retrieval-recall-at-k",
+          "0.1",
+          "--min-delivered-shortlist-recall-at-k",
+          "0.1",
+          "--min-auto-match-count",
+          "1",
+          "--timing",
+        ],
+        { SKILLMUX_CONFIG: testConfig },
+      );
+
+      expect(nonJsonResult.exitCode).toBe(0);
+      expect(nonJsonResult.stdout).toContain("Target: local");
+      expect(nonJsonResult.stdout).toContain("Calibration run complete.");
+      expect(nonJsonResult.stderr).toContain("--- calibrate run timing ---");
+    } finally {
+      mockServer.stop(true);
+    }
+  });
 });
 
 describe("skillmux config status CLI", () => {

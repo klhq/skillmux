@@ -513,6 +513,8 @@ async function handleCalibrateCommand(
         if (!resumeRunId) throw new Error("--resume requires a run_id value");
       } else if (option === "--timing") {
         timing = true;
+      } else if (option === "--json") {
+        // Global flag accepted in the documented subcommand position
       } else {
         throw new Error(`unknown calibrate run option: ${option}`);
       }
