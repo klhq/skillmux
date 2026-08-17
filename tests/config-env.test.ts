@@ -497,8 +497,9 @@ describe("Shim 2: legacy environment variable fallbacks", () => {
   });
 
   test("SKILLMUX_CONFIG primary var works without warning", async () => {
-    const configPath = await configFile("[recall]\nk_lexical = 10\n");
+    const configPath = await configFile("[config]\nenvironment_overrides = false\n[recall]\nk_lexical = 10\n");
     process.env.SKILLMUX_CONFIG = configPath;
+    process.env.SKILLMUX_RECALL_K_LEXICAL = "99";
     
     const config = await loadConfig();
     expect(config.recall.k_lexical).toBe(10);
@@ -743,7 +744,6 @@ ambiguous_candidate_limit = 3
     expect(config.output.ambiguous_candidate_limit).toBe(9);
   });
 });
-
 
 
 

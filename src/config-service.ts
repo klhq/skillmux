@@ -171,6 +171,7 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
     "inference.timeout_ms",
     "server.auth_enabled",
     "server.auth_token_env",
+    "server.allowed_origins",
     "server.admin.enabled",
     "server.admin.token_env",
     "server.hostname",

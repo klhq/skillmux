@@ -47,6 +47,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
 
   it("local adapter's configSet throws a CliError with exitCode 4 when externally managed", async () => {
     process.env.SKILLMUX_CONFIG_READONLY = "true";
+    writeFileSync(CONFIG_FILE, `[config]\nenvironment_overrides = false\nvault_path = "${TEST_VAULT}"\nstate_dir = "${TEST_STATE}"\n`, "utf-8");
     const adapter = createTargetAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
 
     let caught: unknown;
@@ -77,6 +78,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
   it("remote adapter's configSet throws a CliError with exitCode 4 when externally managed", async () => {
     process.env.SKILLMUX_CONFIG_READONLY = "true";
     const config = await loadConfig();
+    config.config = { environment_overrides: false };
     config.vault_path = TEST_VAULT;
     config.state_dir = TEST_STATE;
     config.server = {

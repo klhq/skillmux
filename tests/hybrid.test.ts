@@ -222,6 +222,30 @@ describe("hybrid recall (AC6)", () => {
     expect(result.degradation_reason).toBe("embedding_timeout");
   });
 
+  test("does not write the raw query to degradation logs", async () => {
+    const secretQuery = "deploy with token secret-123";
+    const logLines: string[] = [];
+    const originalConsoleError = console.error;
+    configure({
+      config,
+      clients: {
+        embed: async () => {
+          throw new Error("embedding endpoint unreachable");
+        },
+        rerank: async (_query, docs) => docs.map(() => 0.99),
+      },
+    });
+    console.error = (...args: unknown[]) => logLines.push(args.map(String).join(" "));
+
+    try {
+      await resolveSkill({ query: secretQuery });
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    expect(logLines.join("\n")).not.toContain(secretQuery);
+  });
+
   test("returns degradation_reason reranker_timeout and falls back to hybrid when reranker times out", async () => {
     const timeoutErr = new Error("reranker request timed out");
     timeoutErr.name = "TimeoutError";
@@ -260,4 +284,3 @@ describe("hybrid recall (AC6)", () => {
     expect(result.degradation_reason).toBe("reranker_unavailable");
   });
 });
-

@@ -60,6 +60,34 @@ describe("local labeled evaluation", () => {
   });
 
   test("records case details including fused rank, outcome, latency, recall settings, and degradation state", async () => {
+    const remoteConfig: Config = {
+      ...config,
+      recall: { k_lexical: 5, k_vector: 5, k_rerank: 2 },
+      inference: {
+        mode: "remote",
+        timeout_ms: 2000,
+        embedding: {
+          provider: "openai",
+          endpoint: "http://127.0.0.1:9/v1/embeddings",
+          model: "test-embedding",
+          dimension: 3,
+        },
+        reranker: {
+          adapter: "jina-v1",
+          endpoint: "http://127.0.0.1:9/rerank",
+          model: "test-reranker",
+        },
+        thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
+      },
+    };
+    configure({
+      config: remoteConfig,
+      clients: {
+        embed: async (texts) => texts.map(vector),
+        rerank: async (_query, docs) => docs.map((doc) => doc.skill_id === "docker-manager" ? 0.99 : 0.1),
+      },
+    });
+
     const report = await evalVault([{ query: "why did my container stop", expected: ["docker-manager"] }]);
     expect(report.cases).toBeDefined();
     expect(report.cases!.length).toBe(1);
@@ -67,9 +95,13 @@ describe("local labeled evaluation", () => {
     expect(c.query).toBe("why did my container stop");
     expect(c.recall_settings.k_lexical).toBe(5);
     expect(c.recall_settings.k_vector).toBe(5);
-    expect(c.recall_settings.k_rerank).toBeDefined();
+    expect(c.recall_settings.k_rerank).toBe(2);
     expect(c.candidates.length).toBeGreaterThan(0);
     expect(c.candidates[0]!.fused_rank).toBe(1);
+    expect(c.candidates[0]!.reranked_rank).toBe(1);
+    expect(c.outcome).toBe("matched");
+    expect(c.retrieval).toBe("reranked");
+
+    configure({ config, clients: { embed: async (texts) => texts.map(vector) } });
   });
 });
-

@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { SkillRow } from "./db";
-import { ftsSearch, vectorTopK } from "./db";
-import { reciprocalRankFusion } from "./rrf";
-import { backfillEmbeddings, getRuntime } from "./router-core";
+import {
+  backfillEmbeddings,
+  decideRetrievalResult,
+  getRuntime,
+  retrieveAndRerank,
+} from "./router-core";
 
 export interface EvalCase {
   query: string;
@@ -28,7 +30,8 @@ export interface EvalMetrics {
 
 export interface CandidateEvalDetail {
   skill_id: string;
-  fused_rank: number;
+  lexical_rank: number | null;
+  fused_rank: number | null;
   reranked_rank?: number | null;
 }
 
@@ -93,8 +96,7 @@ export function loadEvalCases(path = join(import.meta.dir, "..", "eval", "querie
 
 
 export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
-  const { config, db, clients } = await getRuntime();
-  if (config.inference.mode !== "local") throw new Error('Default evaluation requires inference.mode = "local".');
+  const { config } = await getRuntime();
   await backfillEmbeddings();
 
   const lexicalRankings: string[][] = [];
@@ -104,27 +106,31 @@ export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
 
   for (const evalCase of cases) {
     const start = performance.now();
-    const lexical = ftsSearch(db, evalCase.query, config.recall.k_lexical);
-    const vector = (await clients.embed([evalCase.query]))[0];
-    if (!vector) throw new Error("Embedding client returned no query vector.");
-    const semantic = vectorTopK(db, vector, config.recall.k_vector);
-    const fused = reciprocalRankFusion<SkillRow>(lexical, semantic);
-    const candidateShortlist = fused.slice(0, kRerank);
+    const retrievalResult = await retrieveAndRerank({ query: evalCase.query });
+    const decision = decideRetrievalResult(config, retrievalResult);
+    const fusedRanking = retrievalResult.trace
+      .filter((candidate) => candidate.fused_rank !== null)
+      .sort((a, b) => a.fused_rank! - b.fused_rank!)
+      .map((candidate) => candidate.skill_id);
 
-    lexicalRankings.push(lexical.map((row) => row.skill_id));
-    hybridRankings.push(fused.map((row) => row.skill_id));
+    lexicalRankings.push(retrievalResult.trace
+      .filter((candidate) => candidate.lexical_rank !== null)
+      .sort((a, b) => a.lexical_rank! - b.lexical_rank!)
+      .map((candidate) => candidate.skill_id));
+    hybridRankings.push(fusedRanking.length > 0
+      ? fusedRanking
+      : retrievalResult.candidates.map((candidate) => candidate.skill_id));
 
     const latency_ms = Math.round(performance.now() - start);
-    const candidateDetails: CandidateEvalDetail[] = candidateShortlist.map((row, idx) => ({
-      skill_id: row.skill_id,
-      fused_rank: idx + 1,
-    }));
+    const candidateDetails: CandidateEvalDetail[] = retrievalResult.trace;
 
     caseResults.push({
       query: evalCase.query,
       expected: evalCase.expected,
-      outcome: "ambiguous",
-      retrieval: "hybrid",
+      outcome: decision.outcome,
+      retrieval: retrievalResult.retrieval,
+      degraded_from: retrievalResult.degraded_from ?? null,
+      degradation_reason: retrievalResult.degradation_reason ?? null,
       latency_ms,
       recall_settings: {
         k_lexical: config.recall.k_lexical,

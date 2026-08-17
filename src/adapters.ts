@@ -194,6 +194,11 @@ export class LocalAdapter implements TargetAdapter {
         corpus_fingerprint: corpusFingerprint,
         dataset_hash: createHash("sha256").update(datasetText).digest("hex"),
         dataset_provenance: summarizeDatasetProvenance(cases),
+        recall_settings: {
+          k_lexical: config.recall.k_lexical,
+          k_vector: config.recall.k_vector,
+          k_rerank: config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector),
+        },
         candidate_limit: config.thresholds.candidate_limit,
         min_auto_match_precision: opts?.minAutoMatchPrecision ?? 0.99,
         min_auto_match_count: opts?.minAutoMatchCount ?? 30,

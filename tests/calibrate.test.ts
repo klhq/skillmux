@@ -734,6 +734,7 @@ describe("calibration SQLite store", () => {
     embedding_fingerprint: "model/embed-v1@sha256:cafebabe",
     corpus_fingerprint: "vault@sha256:feedface",
     dataset_hash: "dataset@sha256:12345678",
+    recall_settings: { k_lexical: 15, k_vector: 15, k_rerank: 5 },
     candidate_limit: 5,
     min_auto_match_precision: 0.8,
     min_auto_match_count: 1,
@@ -841,6 +842,7 @@ describe("calibration SQLite store", () => {
     expect(retrieved!.status).toBe("completed");
     expect(retrieved!.reranker_fingerprint).toBe("model/reranker-v1@sha256:deadbeef");
     expect(retrieved!.dataset_hash).toBe("dataset@sha256:12345678");
+    expect(retrieved!.recall_settings).toEqual({ k_lexical: 15, k_vector: 15, k_rerank: 5 });
   });
 
   test("persists human-labelled provenance counts in run detail and list output", () => {
