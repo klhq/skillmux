@@ -27,6 +27,7 @@ function freshFixture(): { tmp: string; vaultDir: string; localVaultDir: string;
     state_dir: join(tmp, "state"),
     recall: { k_lexical: 15, k_vector: 15 },
     thresholds: { candidate_limit: 5 },
+    output: { ambiguous_candidate_limit: 5 },
     inference: {
       mode: "remote",
       timeout_ms: 2000,

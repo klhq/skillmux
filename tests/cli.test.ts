@@ -1637,6 +1637,7 @@ describe("skillmux report CLI", () => {
         state_dir: join(root, "state"),
         recall: { k_lexical: 20, k_vector: 20 },
         thresholds: { candidate_limit: 10 },
+        output: { ambiguous_candidate_limit: 10 },
         inference: {
           mode: "local",
           bundle: "gte-small-v1",

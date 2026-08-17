@@ -10,6 +10,7 @@ function config(inference: Config["inference"]): Config {
     state_dir: "/test/state",
     recall: { k_lexical: 20, k_vector: 20 },
     thresholds: { candidate_limit: 5 },
+    output: { ambiguous_candidate_limit: 5 },
     inference,
   };
 }

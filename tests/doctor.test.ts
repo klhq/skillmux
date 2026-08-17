@@ -43,6 +43,7 @@ function testConfig(overrides: Partial<Config> = {}): Config {
     state_dir: mkdtempSync(join(tmpdir(), "doctor-state-")),
     recall: { k_lexical: 15, k_vector: 15 },
     thresholds: { candidate_limit: 5 },
+    output: { ambiguous_candidate_limit: 5 },
     inference: {
       mode: "remote",
       timeout_ms: 2000,

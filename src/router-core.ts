@@ -29,6 +29,7 @@ import type {
   RetrievalCapability,
   Clients,
   Config,
+  DegradationReason,
   FetchSkillInput,
   FetchSkillResult,
   ResolveResult,
@@ -502,7 +503,6 @@ export function classifyInferenceError(
   const isTimeout =
     (error as { name?: string })?.name === "TimeoutError" ||
     (error as { name?: string })?.name === "AbortError" ||
-    (error instanceof RemoteInferenceError && error.kind === "timeout") ||
     String(error).toLowerCase().includes("timeout") ||
     String(error).toLowerCase().includes("aborted");
 

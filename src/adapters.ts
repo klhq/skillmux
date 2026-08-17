@@ -138,6 +138,8 @@ export class LocalAdapter implements TargetAdapter {
     minAutoMatchCount?: number;
   }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     const config = await loadConfig(this.configPath);
+    const candidateLimit =
+      config.output?.ambiguous_candidate_limit ?? config.thresholds.candidate_limit ?? 5;
     const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
     const indexDb = openIndex(expandHome(config.state_dir));
     let indexedSkills: Array<{ skill_id: string; content_sha256: string }>;
@@ -171,7 +173,7 @@ export class LocalAdapter implements TargetAdapter {
         }));
       },
       reranker: clients.rerank,
-      candidateLimit: config.thresholds.candidate_limit,
+      candidateLimit,
       minAutoMatchPrecision: opts?.minAutoMatchPrecision,
       minRetrievalRecallAtK: opts?.minRetrievalRecallAtK,
       minDeliveredShortlistRecallAtK: opts?.minDeliveredShortlistRecallAtK,
@@ -199,7 +201,7 @@ export class LocalAdapter implements TargetAdapter {
           k_vector: config.recall.k_vector,
           k_rerank: config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector),
         },
-        candidate_limit: config.thresholds.candidate_limit,
+        candidate_limit: candidateLimit,
         min_auto_match_precision: opts?.minAutoMatchPrecision ?? 0.99,
         min_auto_match_count: opts?.minAutoMatchCount ?? 30,
         min_delivered_shortlist_recall_at_k:

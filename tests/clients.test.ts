@@ -151,6 +151,7 @@ function testConfig(
       candidate_floor: 0.4,
       candidate_limit: 5,
     },
+    output: { ambiguous_candidate_limit: 5 },
     inference: {
       mode: "remote",
       timeout_ms: 2000,
