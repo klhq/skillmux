@@ -532,14 +532,24 @@ export function classifyInferenceError(
 
 /**
  * Retrieve the full fused candidate set and rerank it once without applying
- * decision thresholds. Calibration uses this to avoid observing the policy it
- * is trying to replace.
+ * decision thresholds, synchronizing the vault before reading the index.
  */
 export async function retrieveAndRerank(
   input: ResolveSkillInput,
 ): Promise<RetrievalResult> {
-  const { config, db } = await getEnv();
   await syncVaultIfNeeded();
+  return retrieveAndRerankSnapshot(input);
+}
+
+/**
+ * Retrieve candidates against an already-synchronized index snapshot without
+ * triggering syncVaultIfNeeded(). Calibration uses this to avoid observing the
+ * policy it is trying to replace while keeping one corpus for the whole run.
+ */
+export async function retrieveAndRerankSnapshot(
+  input: ResolveSkillInput,
+): Promise<RetrievalResult> {
+  const { config, db } = await getEnv();
   const clients = getClients();
 
   const embedPromise =
