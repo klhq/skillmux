@@ -36,12 +36,32 @@ import {
 } from "./config-service";
 import type { ResolvedTarget } from "./context";
 import {
+  classifyInferenceError,
   configure,
   retrieveAndRerankSnapshot,
   syncVaultIfNeeded,
   type StageTiming,
 } from "./router-core";
 import type { Clients, Config } from "./types";
+
+/**
+ * Maximum retry attempts for transient reranker availability errors during calibration.
+ *
+ * Single-capacity remote reranker endpoints can suffer isolated blips (e.g. transient
+ * connection reset or momentary 503) during long multi-case calibration runs.
+ * A small bounded budget of 2 retries (3 attempts total) allows calibration to ride out
+ * transient blips without stalling on hard failures.
+ */
+export const CALIBRATION_RERANK_MAX_RETRIES = 2;
+
+/**
+ * Base backoff delay (ms) between reranker retries during calibration.
+ *
+ * A conservative nonzero delay gives recovering remote endpoints time to settle.
+ * Because reranker admission is strictly FIFO serialized, waiting workers remain
+ * queued rather than creating synchronized retry storms.
+ */
+export const CALIBRATION_RERANK_RETRY_BACKOFF_MS = 250;
 
 export interface Capabilities {
   config_read: boolean;
@@ -215,7 +235,47 @@ export class LocalAdapter implements TargetAdapter {
     const wallStart = collectTiming ? performance.now() : 0;
 
     const config = await loadConfig(this.configPath);
-    const clients = this.clients ?? createClients(config);
+    const baseClients = this.clients ?? createClients(config);
+
+    // Bounded admission at the calibration reranker boundary: serialize rerank calls
+    // so concurrent case retrieval (embedding, lexical, vector) does not overwhelm
+    // a single-capacity remote reranker endpoint.
+    //
+    // If an admitted request encounters a transient reranker_unavailable error,
+    // retry with conservative backoff up to CALIBRATION_RERANK_MAX_RETRIES.
+    // Non-availability errors (protocol, timeouts) and permanent failures fail closed.
+    let rerankQueue = Promise.resolve() as Promise<any>;
+    const serializedRerank: typeof baseClients.rerank = baseClients.rerank
+      ? (query, docs) => {
+          const run = async () => {
+            let attempt = 0;
+            while (true) {
+              try {
+                return await baseClients.rerank!(query, docs);
+              } catch (err) {
+                attempt++;
+                const degradationReason = classifyInferenceError("reranker", err);
+                if (
+                  degradationReason === "reranker_unavailable" &&
+                  attempt <= CALIBRATION_RERANK_MAX_RETRIES
+                ) {
+                  await Bun.sleep(CALIBRATION_RERANK_RETRY_BACKOFF_MS * attempt);
+                  continue;
+                }
+                throw err;
+              }
+            }
+          };
+          const next = rerankQueue.then(run, run);
+          rerankQueue = next.catch(() => {});
+          return next;
+        }
+      : undefined;
+
+    const clients: Clients = {
+      ...baseClients,
+      rerank: serializedRerank,
+    };
     configure({ config, clients });
 
     // Measure vault synchronization

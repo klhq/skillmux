@@ -302,7 +302,8 @@ model = "mock-rerank"
 
     // Second run should only have executed the remaining 4 cases!
     expect(executedInSecondRun).toHaveLength(4);
-    expect(executedInFirstRun.length + executedInSecondRun.length).toBe(dataset.length + 1); // 4 + 1 failed + 4 resumed
+    expect(new Set(executedInFirstRun).size + executedInSecondRun.length).toBe(dataset.length + 1); // 4 completed + 1 attempted/failed + 4 resumed
+    expect(executedInFirstRun).toHaveLength(7); // 4 completed + 3 attempts (1 initial + 2 retries) for failed case
 
     // Uninterrupted clean run on fresh state to compare deterministic result
     const adapterUninterrupted = new LocalAdapter({ configPath, clients: clients2 });
@@ -545,5 +546,229 @@ model = "mock-rerank"
     } finally {
       indexDbAfter.close();
     }
+  });
+
+  test("serializes reranker admission at calibration boundary so capacity-limited reranker succeeds under concurrency", async () => {
+    let activeReranks = 0;
+    let maxObservedActiveReranks = 0;
+    let totalRerankCalls = 0;
+
+    const capacityLimitedClients = {
+      embed: async (texts: string[]) => {
+        // Embeddings run in parallel
+        await Bun.sleep(5);
+        return texts.map(() => Float32Array.from([1, 0, 0]));
+      },
+      rerank: async (query: string, docs: Array<{ skill_id: string; text: string }>) => {
+        totalRerankCalls++;
+        activeReranks++;
+        maxObservedActiveReranks = Math.max(maxObservedActiveReranks, activeReranks);
+        if (activeReranks > 1) {
+          activeReranks--;
+          throw new Error("503 Service Unavailable (Capacity Exceeded)");
+        }
+        // Nonzero service latency to expose overlapping requests
+        await Bun.sleep(20);
+        activeReranks--;
+        return docs.map((d) => {
+          if (query.includes("match 1") && d.skill_id === "skill-1") return 0.95;
+          if (query.includes("match 2") && d.skill_id === "skill-2") return 0.95;
+          if (query.includes("ambiguous")) return 0.8;
+          return 0.1;
+        });
+      },
+    };
+
+    const adapter = new LocalAdapter({ configPath, clients: capacityLimitedClients });
+    const runRes = await adapter.calibrateRun({
+      datasetPath,
+      concurrency: 4,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.1,
+      minDeliveredShortlistRecallAtK: 0.1,
+      minAutoMatchCount: 1,
+    });
+
+    expect(runRes.run_id).toBeDefined();
+    expect(runRes.result?.status).toBe("completed");
+    expect(totalRerankCalls).toBe(dataset.length);
+    expect(maxObservedActiveReranks).toBe(1);
+
+    // Verify all observations are non-degraded and in deterministic order
+    const db = openCalibrateDb(stateDir);
+    try {
+      const obsMap = getCalibrationObservations(db, runRes.run_id!);
+      expect(obsMap.size).toBe(dataset.length);
+      for (let i = 0; i < dataset.length; i++) {
+        const obs = obsMap.get(i);
+        expect(obs).toBeDefined();
+        expect(obs!.query).toBe(dataset[i]!.query);
+        expect(obs!.ranked.length).toBeGreaterThan(0);
+        expect(obs!.ranked[0]!.score).toBeGreaterThan(0);
+      }
+    } finally {
+      db.close();
+    }
+
+    // Live resolution behavior remains untouched (no serialization wrapper globally injected)
+    let liveActiveReranks = 0;
+    let liveMaxActiveReranks = 0;
+    const liveClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async () => {
+        liveActiveReranks++;
+        liveMaxActiveReranks = Math.max(liveMaxActiveReranks, liveActiveReranks);
+        await Bun.sleep(10);
+        liveActiveReranks--;
+        throw new Error("503 Service Unavailable");
+      },
+    };
+    configure({ config: await adapter.getConfigShow().then((s) => s.effective as any), clients: liveClients });
+    const [res1, res2] = await Promise.all([
+      retrieveAndRerank({ query: "tune match 1" }),
+      retrieveAndRerank({ query: "tune match 2" }),
+    ]);
+    expect(liveRes1Degraded(res1)).toBe(true);
+    expect(liveRes1Degraded(res2)).toBe(true);
+    expect(liveMaxActiveReranks).toBe(2);
+
+    function liveRes1Degraded(res: any) {
+      return res.retrieval === "hybrid" && res.degradation_reason === "reranker_unavailable";
+    }
+  });
+
+  test("retries transient reranker_unavailable after admission for single-capacity reranker under concurrency", async () => {
+    let activeReranks = 0;
+    let maxObservedActiveReranks = 0;
+    let totalRerankAttempts = 0;
+    let transientBlipTriggered = false;
+
+    const capacityLimitedTransientClients = {
+      embed: async (texts: string[]) => {
+        await Bun.sleep(5);
+        return texts.map(() => Float32Array.from([1, 0, 0]));
+      },
+      rerank: async (query: string, docs: Array<{ skill_id: string; text: string }>) => {
+        totalRerankAttempts++;
+        activeReranks++;
+        maxObservedActiveReranks = Math.max(maxObservedActiveReranks, activeReranks);
+        if (activeReranks > 1) {
+          activeReranks--;
+          throw new Error("503 Service Unavailable (Capacity Exceeded)");
+        }
+
+        // Simulate an isolated remote endpoint transient blip on a later case (e.g. 5th overall rerank attempt)
+        if (totalRerankAttempts === 5 && !transientBlipTriggered) {
+          transientBlipTriggered = true;
+          activeReranks--;
+          throw new Error("503 Service Unavailable: upstream connection reset");
+        }
+
+        await Bun.sleep(20);
+        activeReranks--;
+        return docs.map((d) => {
+          if (query.includes("match 1") && d.skill_id === "skill-1") return 0.95;
+          if (query.includes("match 2") && d.skill_id === "skill-2") return 0.95;
+          if (query.includes("ambiguous")) return 0.8;
+          return 0.1;
+        });
+      },
+    };
+
+    const adapter = new LocalAdapter({ configPath, clients: capacityLimitedTransientClients });
+    const runRes = await adapter.calibrateRun({
+      datasetPath,
+      concurrency: 4,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.1,
+      minDeliveredShortlistRecallAtK: 0.1,
+      minAutoMatchCount: 1,
+    });
+
+    expect(runRes.run_id).toBeDefined();
+    expect(runRes.result?.status).toBe("completed");
+    expect(transientBlipTriggered).toBe(true);
+    // 8 dataset items + 1 retry = 9 attempts
+    expect(totalRerankAttempts).toBe(dataset.length + 1);
+    expect(maxObservedActiveReranks).toBe(1);
+
+    const db = openCalibrateDb(stateDir);
+    try {
+      const obsMap = getCalibrationObservations(db, runRes.run_id!);
+      expect(obsMap.size).toBe(dataset.length);
+      for (let i = 0; i < dataset.length; i++) {
+        const obs = obsMap.get(i);
+        expect(obs).toBeDefined();
+        expect(obs!.query).toBe(dataset[i]!.query);
+        expect(obs!.ranked.length).toBeGreaterThan(0);
+        expect(obs!.ranked[0]!.score).toBeGreaterThan(0);
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  test("does not retry protocol errors or timeouts and fails closed after budget exceeded", async () => {
+    // 1. Protocol error should not be retried
+    let protocolAttempts = 0;
+    const protocolClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async () => {
+        protocolAttempts++;
+        throw new Error("Invalid JSON response (malformed protocol)");
+      },
+    };
+    const adapter1 = new LocalAdapter({ configPath, clients: protocolClients });
+    expect(
+      adapter1.calibrateRun({
+        datasetPath,
+        concurrency: 2,
+        minAutoMatchPrecision: 0.1,
+        minRetrievalRecallAtK: 0.1,
+        minDeliveredShortlistRecallAtK: 0.1,
+        minAutoMatchCount: 1,
+      }),
+    ).rejects.toThrow("Calibration requires successful hybrid retrieval and reranking for every query.");
+    // Should fail without burning multiple retries per case
+    expect(protocolAttempts).toBeLessThanOrEqual(2);
+
+    // 2. Timeout should not be retried
+    let timeoutAttempts = 0;
+    const timeoutClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async () => {
+        timeoutAttempts++;
+        const err = new Error("Request timeout after 2000ms");
+        err.name = "TimeoutError";
+        throw err;
+      },
+    };
+    const adapter2 = new LocalAdapter({ configPath, clients: timeoutClients });
+    expect(
+      adapter2.calibrateRun({
+        datasetPath,
+        concurrency: 2,
+        minAutoMatchPrecision: 0.1,
+        minRetrievalRecallAtK: 0.1,
+        minDeliveredShortlistRecallAtK: 0.1,
+        minAutoMatchCount: 1,
+      }),
+    ).rejects.toThrow("Calibration requires successful hybrid retrieval and reranking for every query.");
+    expect(timeoutAttempts).toBeLessThanOrEqual(2);
+
+    // 3. Live resolution does not inherit calibration retries
+    let liveAttempts = 0;
+    const liveClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async () => {
+        liveAttempts++;
+        throw new Error("503 Service Unavailable");
+      },
+    };
+    configure({ config: await adapter1.getConfigShow().then((s) => s.effective as any), clients: liveClients });
+    const liveRes = await retrieveAndRerank({ query: "tune match 1" });
+    expect(liveRes.retrieval).toBe("hybrid");
+    expect(liveRes.degradation_reason).toBe("reranker_unavailable");
+    expect(liveAttempts).toBe(1);
   });
 });
