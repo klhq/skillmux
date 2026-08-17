@@ -368,11 +368,256 @@ describe("runCalibration — in-memory calibration run", () => {
     await expect(
       runCalibration({
         cases,
-        getCandidates: async (query) => candidatesByQuery[query]!.map((id) => ({ skill_id: id, text: id })),
-        reranker: undefined,
         candidateLimit: 5,
+        reranker: undefined,
       }),
-    ).rejects.toThrow(/reranker/i);
+    ).rejects.toThrow(/reranker is required/i);
+  });
+
+  test("concurrency bounds: default concurrency is 4 and in-flight cases never exceed limit", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    let currentInFlight = 0;
+    let maxInFlight = 0;
+    const deferreds: Array<() => void> = [];
+
+    const getRankedCandidates = async (query: string) => {
+      currentInFlight++;
+      maxInFlight = Math.max(maxInFlight, currentInFlight);
+      await new Promise<void>((resolve) => {
+        deferreds.push(resolve);
+      });
+      currentInFlight--;
+      return [{ skill_id: "skill-a", score: 0.9 }];
+    };
+
+    const calibrationPromise = runCalibration({
+      cases,
+      candidateLimit: 5,
+      reranker: async () => [0.9],
+      getRankedCandidates,
+      ...permissiveCertification,
+    });
+
+    // Allow event loop to spawn initial batch
+    await new Promise((r) => setTimeout(r, 10));
+    expect(maxInFlight).toBe(4);
+    expect(currentInFlight).toBe(4);
+
+    // Release workers one by one
+    while (deferreds.length > 0) {
+      const next = deferreds.shift()!;
+      next();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(currentInFlight).toBeLessThanOrEqual(4);
+    }
+
+    const result = await calibrationPromise;
+    expect(maxInFlight).toBe(4);
+    expect(result.observations).toHaveLength(cases.length);
+  });
+
+  test("concurrency bounds: respects explicit concurrency limit", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    let currentInFlight = 0;
+    let maxInFlight = 0;
+    const deferreds: Array<() => void> = [];
+
+    const getRankedCandidates = async () => {
+      currentInFlight++;
+      maxInFlight = Math.max(maxInFlight, currentInFlight);
+      await new Promise<void>((resolve) => {
+        deferreds.push(resolve);
+      });
+      currentInFlight--;
+      return [{ skill_id: "skill-a", score: 0.9 }];
+    };
+
+    const calibrationPromise = runCalibration({
+      cases,
+      candidateLimit: 5,
+      concurrency: 2,
+      reranker: async () => [0.9],
+      getRankedCandidates,
+      ...permissiveCertification,
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(maxInFlight).toBe(2);
+    expect(currentInFlight).toBe(2);
+
+    while (deferreds.length > 0) {
+      const next = deferreds.shift()!;
+      next();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(currentInFlight).toBeLessThanOrEqual(2);
+    }
+
+    await calibrationPromise;
+    expect(maxInFlight).toBe(2);
+  });
+
+  test("waits for in-flight workers to checkpoint before rejecting a concurrent failure", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    let releaseFailure!: () => void;
+    let releaseSuccess!: () => void;
+    let notifyBothStarted!: () => void;
+    const failureGate = new Promise<void>((resolve) => {
+      releaseFailure = resolve;
+    });
+    const successGate = new Promise<void>((resolve) => {
+      releaseSuccess = resolve;
+    });
+    const bothStarted = new Promise<void>((resolve) => {
+      notifyBothStarted = resolve;
+    });
+    let started = 0;
+    let settled = false;
+    const checkpointed: number[] = [];
+
+    const runPromise = runCalibration({
+      cases: cases.slice(0, 2),
+      candidateLimit: 5,
+      concurrency: 2,
+      reranker: async () => [0.9],
+      getRankedCandidates: async (query) => {
+        started++;
+        if (started === 2) notifyBothStarted();
+        if (query === cases[0]!.query) {
+          await failureGate;
+          throw new Error("first worker failed");
+        }
+        await successGate;
+        return [{ skill_id: "skill-b", score: 0.9 }];
+      },
+      onObservation: (_observation, caseIndex) => {
+        checkpointed.push(caseIndex);
+      },
+      ...permissiveCertification,
+    });
+    const captured = runPromise.then(
+      () => ({ error: null as Error | null }),
+      (error: Error) => ({ error }),
+    ).finally(() => {
+      settled = true;
+    });
+
+    await bothStarted;
+    releaseFailure();
+    const stateBeforeSuccess = await Promise.race([
+      captured.then(() => "settled" as const),
+      new Promise<"waiting">((resolve) => setTimeout(() => resolve("waiting"), 0)),
+    ]);
+
+    expect(stateBeforeSuccess).toBe("waiting");
+    expect(settled).toBe(false);
+    releaseSuccess();
+
+    const result = await captured;
+    expect(result.error?.message).toBe("first worker failed");
+    expect(checkpointed).toEqual([1]);
+  });
+
+  test("rejects invalid concurrency values", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    for (const bad of [0, -1, -5, 1.5, NaN]) {
+      await expect(
+        runCalibration({
+          cases,
+          candidateLimit: 5,
+          concurrency: bad,
+          reranker: async () => [0.9],
+          ...permissiveCertification,
+        }),
+      ).rejects.toThrow(/concurrency must be a positive integer/i);
+    }
+  });
+
+  test("preserves dataset order and determinism when cases complete out of order", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    const resolvers = new Map<string, () => void>();
+
+    const getRankedCandidates = async (query: string) => {
+      await new Promise<void>((resolve) => {
+        resolvers.set(query, resolve);
+      });
+      const skill = query.includes("match-2") ? "skill-b" : "skill-a";
+      return [
+        { skill_id: skill, score: 0.95 },
+        { skill_id: "skill-other", score: 0.1 },
+      ];
+    };
+
+    const progressUpdates: Array<{ completed: number; total: number }> = [];
+
+    const runPromise = runCalibration({
+      cases,
+      candidateLimit: 5,
+      concurrency: 8,
+      reranker: async () => [0.95, 0.1],
+      getRankedCandidates,
+      onProgress: (completed, total) => progressUpdates.push({ completed, total }),
+      ...permissiveCertification,
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Complete cases in reverse order
+    const reverseQueries = [...cases].reverse().map((c) => c.query);
+    for (const q of reverseQueries) {
+      const resolve = resolvers.get(q);
+      if (resolve) resolve();
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    const result = await runPromise;
+    expect(result.observations).toHaveLength(cases.length);
+    // Stored observations must exactly match original cases order
+    for (let i = 0; i < cases.length; i++) {
+      expect(result.observations[i]!.query).toBe(cases[i]!.query);
+    }
+
+    // Progress updates reach N/N
+    expect(progressUpdates.length).toBeGreaterThan(0);
+    expect(progressUpdates[progressUpdates.length - 1]).toEqual({
+      completed: cases.length,
+      total: cases.length,
+    });
+  });
+
+  test("reports each concurrent checkpoint completion exactly once", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    const checkpointResolvers = new Map<number, () => void>();
+    let notifyAllCheckpointing!: () => void;
+    const allCheckpointing = new Promise<void>((resolve) => {
+      notifyAllCheckpointing = resolve;
+    });
+    const progress: number[] = [];
+
+    const runPromise = runCalibration({
+      cases: cases.slice(0, 4),
+      candidateLimit: 5,
+      concurrency: 4,
+      reranker: async () => [0.9],
+      getRankedCandidates: async () => [{ skill_id: "skill-a", score: 0.9 }],
+      onObservation: async (_observation, caseIndex) => {
+        await new Promise<void>((resolve) => {
+          checkpointResolvers.set(caseIndex, resolve);
+          if (checkpointResolvers.size === 4) notifyAllCheckpointing();
+        });
+      },
+      onProgress: (completed) => {
+        progress.push(completed);
+      },
+      ...permissiveCertification,
+    });
+
+    await allCheckpointing;
+    for (const caseIndex of [3, 2, 1, 0]) {
+      checkpointResolvers.get(caseIndex)!();
+    }
+    await runPromise;
+
+    expect(progress).toEqual([1, 2, 3, 4]);
   });
 
   test("should return status 'completed' with selected thresholds when gates are met", async () => {
@@ -833,6 +1078,90 @@ describe("calibration SQLite store", () => {
       rmSync(legacyDir, { recursive: true, force: true });
     }
   });
+
+  test("migrates legacy database with strict check constraint to allow 'running' status and observation table", () => {
+    const legacyDir = mkdtempSync(join(tmpdir(), "skillmux-cal-check-"));
+    const legacyDb = new Database(join(legacyDir, "calibrate.sqlite3"), { create: true });
+    legacyDb.run(`CREATE TABLE calibration_runs (
+      run_id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('completed', 'failed_gates')),
+      reranker_fingerprint TEXT NOT NULL,
+      embedding_fingerprint TEXT NOT NULL,
+      corpus_fingerprint TEXT NOT NULL,
+      dataset_hash TEXT NOT NULL,
+      min_auto_match_precision REAL NOT NULL,
+      min_shortlist_recall_at_5 REAL NOT NULL,
+      selected_thresholds TEXT,
+      tune_metrics TEXT,
+      test_metrics TEXT,
+      observations TEXT NOT NULL
+    )`);
+    legacyDb.run(
+      `INSERT INTO calibration_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "legacy-check",
+        "2026-07-21T00:00:00Z",
+        "completed",
+        "r",
+        "e",
+        "c",
+        "d",
+        0.99,
+        0.95,
+        null,
+        null,
+        null,
+        "[]",
+      ],
+    );
+    legacyDb.close();
+
+    const migratedDb = openCalibrateDb(legacyDir);
+    try {
+      const { createInitialCalibrationRun, saveCalibrationObservation, getCalibrationObservations } =
+        require("../src/calibrate");
+      // Must be able to create a running record in migrated db
+      createInitialCalibrationRun(migratedDb, {
+        run_id: "run-in-progress",
+        created_at: new Date().toISOString(),
+        status: "running",
+        reranker_fingerprint: "r",
+        embedding_fingerprint: "e",
+        corpus_fingerprint: "c",
+        dataset_hash: "d",
+        candidate_limit: 5,
+        min_auto_match_precision: 0.99,
+        min_shortlist_recall_at_5: 0.95,
+      });
+
+      const runningRun = getCalibrationRun(migratedDb, "run-in-progress");
+      expect(runningRun).not.toBeNull();
+      expect(runningRun!.status).toBe("running");
+
+      // Save incremental observation
+      const sampleObs = {
+        query: "sample query",
+        split: "tune" as const,
+        expected_outcome: "matched" as const,
+        relevant_skill_ids: ["skill-a"],
+        ranked: [{ skill_id: "skill-a", score: 0.95 }],
+      };
+      saveCalibrationObservation(migratedDb, "run-in-progress", 0, sampleObs);
+
+      const savedMap = getCalibrationObservations(migratedDb, "run-in-progress");
+      expect(savedMap.get(0)).toEqual(sampleObs);
+
+      // Legacy run must still be present and unmodified
+      const legacyRun = getCalibrationRun(migratedDb, "legacy-check");
+      expect(legacyRun).not.toBeNull();
+      expect(legacyRun!.status).toBe("completed");
+    } finally {
+      migratedDb.close();
+      rmSync(legacyDir, { recursive: true, force: true });
+    }
+  });
+
 
   test("should insert a completed calibration run and retrieve it by run_id", () => {
     insertCalibrationRun(db, baseRun);

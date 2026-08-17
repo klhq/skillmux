@@ -284,4 +284,45 @@ describe("hybrid recall (AC6)", () => {
     expect(result.degraded_from).toBe("reranked");
     expect(result.degradation_reason).toBe("reranker_unavailable");
   });
+
+  test("starts embedding request concurrently before local lexical search completes and waits for candidate fusion before reranking", async () => {
+    const events: string[] = [];
+
+    // Controllable deferred promise for embed
+    let resolveEmbed!: (val: Float32Array[]) => void;
+    const embedPromise = new Promise<Float32Array[]>((resolve) => {
+      resolveEmbed = resolve;
+    });
+
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => {
+          events.push("embed:start");
+          const res = await embedPromise;
+          events.push("embed:finish");
+          return res;
+        },
+        rerank: async (_query, docs) => {
+          events.push("rerank:start");
+          expect(events).toContain("embed:finish");
+          return docs.map(() => 0.95);
+        },
+      },
+    });
+
+    const retrievalPromise = retrieveAndRerank({ query: "quantum flux routing" });
+
+    // Yield to let the event loop run: embed:start should have been triggered before lexical/vector completion
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["embed:start"]);
+
+    // Now resolve embedding
+    resolveEmbed([vectorFor("quantum flux routing")]);
+    const res = await retrievalPromise;
+
+    expect(events).toEqual(["embed:start", "embed:finish", "rerank:start"]);
+    expect(res.retrieval).toBe("reranked");
+    expect(res.candidates.length).toBeGreaterThan(0);
+  });
 });

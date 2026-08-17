@@ -475,6 +475,8 @@ async function handleCalibrateCommand(
     let minRetrievalRecallAtK: number | undefined;
     let minDeliveredShortlistRecallAtK: number | undefined;
     let minAutoMatchCount: number | undefined;
+    let concurrency: number | undefined;
+    let resumeRunId: string | undefined;
     const readNumber = (flag: string, raw: string | undefined): number => {
       if (raw === undefined) throw new Error(`${flag} requires a value`);
       const value = Number(raw);
@@ -497,6 +499,17 @@ async function handleCalibrateCommand(
         if (!Number.isInteger(minAutoMatchCount) || minAutoMatchCount < 1) {
           throw new Error("--min-auto-match-count must be a positive integer");
         }
+      } else if (option === "--concurrency") {
+        const raw = args[++i];
+        if (raw === undefined) throw new Error("--concurrency requires a value");
+        const val = Number(raw);
+        if (!Number.isInteger(val) || val < 1) {
+          throw new Error("--concurrency must be a positive integer");
+        }
+        concurrency = val;
+      } else if (option === "--resume") {
+        resumeRunId = args[++i];
+        if (!resumeRunId) throw new Error("--resume requires a run_id value");
       } else {
         throw new Error(`unknown calibrate run option: ${option}`);
       }
@@ -516,6 +529,8 @@ async function handleCalibrateCommand(
       minRetrievalRecallAtK,
       minDeliveredShortlistRecallAtK,
       minAutoMatchCount,
+      concurrency,
+      resumeRunId,
     });
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderCalibrationTarget(ctx.target);

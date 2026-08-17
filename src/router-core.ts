@@ -541,6 +541,14 @@ export async function retrieveAndRerank(
   const { config, db } = await getEnv();
   await syncVaultIfNeeded();
   const clients = getClients();
+
+  const embedPromise =
+    !input.forceLexical && clients.embed
+      ? clients.embed([input.query]).catch((err) => {
+          return { error: err };
+        })
+      : null;
+
   const lexical = ftsSearch(db, input.query, config.recall.k_lexical);
   const lexicalRanks = new Map(lexical.map((row, index) => [row.skill_id, index + 1]));
 
@@ -550,18 +558,12 @@ export async function retrieveAndRerank(
   let rows = lexical;
   let fusedRows: SkillRow[] | null = null;
 
-  if (!input.forceLexical) {
-    try {
-      const queryVec = (await clients.embed([input.query]))[0];
-      if (!queryVec) throw new Error("Embedding client returned no query vector.");
-      const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
-      rows = reciprocalRankFusion(lexical, nearest);
-      fusedRows = rows;
-      retrieval = "hybrid";
-    } catch (embedError) {
+  if (embedPromise) {
+    const embedRes = await embedPromise;
+    if (embedRes && typeof embedRes === "object" && "error" in embedRes) {
       retrieval = "lexical";
       degraded_from = clients.rerank ? "reranked" : "hybrid";
-      degradation_reason = classifyInferenceError("embedding", embedError);
+      degradation_reason = classifyInferenceError("embedding", embedRes.error);
       console.error(
         JSON.stringify({
           level: "warn",
@@ -570,6 +572,27 @@ export async function retrieveAndRerank(
           reason: degradation_reason,
         }),
       );
+    } else {
+      try {
+        const queryVec = (embedRes as Float32Array[])[0];
+        if (!queryVec) throw new Error("Embedding client returned no query vector.");
+        const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
+        rows = reciprocalRankFusion(lexical, nearest);
+        fusedRows = rows;
+        retrieval = "hybrid";
+      } catch (embedError) {
+        retrieval = "lexical";
+        degraded_from = clients.rerank ? "reranked" : "hybrid";
+        degradation_reason = classifyInferenceError("embedding", embedError);
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            stage: "embedding",
+            degraded_from,
+            reason: degradation_reason,
+          }),
+        );
+      }
     }
   }
 

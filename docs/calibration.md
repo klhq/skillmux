@@ -30,9 +30,23 @@ skillmux calibrate apply RUN_ID
 ```
 
 Skillmux retrieves candidates and reranks exactly once for each evaluation
-query. It caches those observations, searches thresholds on the `tune` split,
-then certifies the selected policy on the frozen `test` split. Calibration
-starts only when an operator invokes `calibrate run`.
+query. It runs four queries at a time by default. Set a different positive
+worker limit with `--concurrency N`. The CLI writes completed-case progress to
+stderr without exposing query text.
+
+Skillmux checkpoints each observation in the calibration evidence database.
+If inference fails or you interrupt the process, find the `running` run with
+`calibrate list` and resume it with the same dataset and certification flags:
+
+```sh
+skillmux calibrate run --dataset ./eval/queries.json --resume RUN_ID
+```
+
+Resume rejects changes to the dataset, corpus, inference models, recall
+settings, candidate limit, or certification gates. After all observations
+exist, Skillmux searches thresholds on the `tune` split and certifies the
+selected policy on the frozen `test` split. Calibration starts only when an
+operator invokes `calibrate run`.
 
 The operator owns the labels: supply or review the cases, start the run,
 inspect its evidence, and explicitly apply an acceptable result. A successful

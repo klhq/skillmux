@@ -298,8 +298,14 @@ certification gates, run evidence, reference values, and the complete operator
 lifecycle.
 
 ```sh
-# Run calibration on a dataset
+# Run calibration on a dataset with the default four workers
 skillmux calibrate run --dataset ./eval/queries.json
+
+# Set the bounded worker count
+skillmux calibrate run --dataset ./eval/queries.json --concurrency 6
+
+# Resume a running or interrupted attempt with the same inputs and gates
+skillmux calibrate run --dataset ./eval/queries.json --resume <run_id>
 
 # List stored calibration runs in the evidence store
 skillmux calibrate list

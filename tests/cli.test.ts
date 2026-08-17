@@ -252,6 +252,20 @@ describe("skillmux calibrate run CLI", () => {
     expect(result.stderr).not.toContain("unknown calibrate run option: run");
     expect(result.stderr).toContain("ENOENT");
   });
+
+  test("rejects invalid --concurrency values", async () => {
+    for (const bad of ["0", "-1", "-4", "2.5", "abc"]) {
+      const result = await runCli("calibrate", "run", "--concurrency", bad);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("--concurrency must be a positive integer");
+    }
+  });
+
+  test("rejects --resume without a run_id value", async () => {
+    const result = await runCli("calibrate", "run", "--resume");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--resume requires a run_id value");
+  });
 });
 
 describe("skillmux config status CLI", () => {
