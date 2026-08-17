@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1](https://github.com/klhq/skillmux/compare/v1.5.0...v1.5.1) (2026-08-17)
+
+
+### Fixed
+
+* **cli:** honor configured config path ([435298d](https://github.com/klhq/skillmux/commit/435298d1ec054c28d918d128bb4e3232f8d05a1f))
+
 ## [1.5.0](https://github.com/klhq/skillmux/compare/v1.4.1...v1.5.0) (2026-08-17)
 
 
