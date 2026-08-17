@@ -403,9 +403,10 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
   const retrievalResult = await retrieveAndRerank(input);
   const { retrieval, candidates: rankedCandidates } = retrievalResult;
 
+  const candidateLimit = config.output?.ambiguous_candidate_limit ?? config.thresholds?.candidate_limit ?? 5;
   const decisionThresholds = retrieval === "reranked" && config.inference.mode === "remote"
-    ? { candidate_limit: config.thresholds.candidate_limit, ...config.inference.thresholds }
-    : config.thresholds;
+    ? { candidate_limit: candidateLimit, ...config.inference.thresholds }
+    : { ...config.thresholds, candidate_limit: candidateLimit };
   const decision = decideResolveOutcome({
     reranked: retrieval === "reranked",
     candidates: rankedCandidates,

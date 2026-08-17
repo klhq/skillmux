@@ -690,4 +690,60 @@ k_rerank = 0
   });
 });
 
+describe("output.ambiguous_candidate_limit configuration", () => {
+  let consoleErrorSpy: string[];
+  const originalConsoleError = console.error;
+
+  beforeEach(() => {
+    warnedEnv.clear();
+    consoleErrorSpy = [];
+    console.error = (...args: any[]) => {
+      consoleErrorSpy.push(args.join(" "));
+    };
+  });
+
+  afterEach(() => {
+    console.error = originalConsoleError;
+  });
+
+  test("defaults output.ambiguous_candidate_limit to 5", async () => {
+    const path = await configFile(`
+vault_path = "~/skills"
+`);
+    const config = await loadConfig(path);
+    expect(config.output.ambiguous_candidate_limit).toBe(5);
+  });
+
+  test("loads output.ambiguous_candidate_limit from TOML", async () => {
+    const path = await configFile(`
+[output]
+ambiguous_candidate_limit = 8
+`);
+    const config = await loadConfig(path);
+    expect(config.output.ambiguous_candidate_limit).toBe(8);
+  });
+
+  test("warns when legacy thresholds.candidate_limit is used in TOML and uses it as fallback", async () => {
+    const path = await configFile(`
+[thresholds]
+candidate_limit = 7
+`);
+    const config = await loadConfig(path);
+    expect(config.output.ambiguous_candidate_limit).toBe(7);
+    expect(consoleErrorSpy.some((msg) => msg.includes("thresholds.candidate_limit is deprecated"))).toBe(true);
+  });
+
+  test("SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT environment variable overrides TOML", async () => {
+    const path = await configFile(`
+[output]
+ambiguous_candidate_limit = 3
+`);
+    process.env.SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT = "9";
+    const config = await loadConfig(path);
+    expect(config.output.ambiguous_candidate_limit).toBe(9);
+  });
+});
+
+
+
 

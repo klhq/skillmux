@@ -60,6 +60,7 @@ export const RELOADABLE_KEYS = [
   "recall.k_lexical",
   "recall.k_vector",
   "recall.k_rerank",
+  "output.ambiguous_candidate_limit",
   "thresholds.candidate_limit",
   "thresholds.match_score",
   "thresholds.match_margin",
@@ -149,6 +150,7 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
     "recall.k_lexical",
     "recall.k_vector",
     "recall.k_rerank",
+    "output.ambiguous_candidate_limit",
     "thresholds.candidate_limit",
     "thresholds.match_score",
     "thresholds.match_margin",
@@ -197,6 +199,15 @@ export function isEnvMasked(key: string, allowEnvOverrides: boolean = true): boo
   if (key === "recall.k_lexical" && (process.env.SKILLMUX_RECALL_K_LEXICAL || process.env.RECALL_K_LEXICAL)) return true;
   if (key === "recall.k_vector" && (process.env.SKILLMUX_RECALL_K_VECTOR || process.env.RECALL_K_VECTOR)) return true;
   if (key === "recall.k_rerank" && (process.env.SKILLMUX_RECALL_K_RERANK || process.env.RECALL_K_RERANK)) return true;
+  if (
+    (key === "output.ambiguous_candidate_limit" || key === "thresholds.candidate_limit") &&
+    (process.env.SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT ||
+      process.env.AMBIGUOUS_CANDIDATE_LIMIT ||
+      process.env.SKILLMUX_CANDIDATE_LIMIT ||
+      process.env.CANDIDATE_LIMIT)
+  ) {
+    return true;
+  }
   if (key === "inference.models_dir" && (process.env.SKILLMUX_MODELS_DIR || process.env.SKILL_ROUTER_MODELS_DIR)) return true;
   if (key === "inference.embedding.device" && (process.env.SKILLMUX_EMBED_DEVICE || process.env.EMBED_DEVICE)) return true;
   if (key === "inference.embedding.dtype" && (process.env.SKILLMUX_EMBED_DTYPE || process.env.EMBED_DTYPE)) return true;
@@ -224,6 +235,7 @@ export function validateDottedKey(key: string): void {
     "recall.k_lexical",
     "recall.k_vector",
     "recall.k_rerank",
+    "output.ambiguous_candidate_limit",
     "thresholds.candidate_limit",
     "thresholds.match_score",
     "thresholds.match_margin",
@@ -266,6 +278,7 @@ export function parseDottedValue(key: string, valueStr: string): unknown {
     "recall.k_lexical",
     "recall.k_vector",
     "recall.k_rerank",
+    "output.ambiguous_candidate_limit",
     "thresholds.candidate_limit",
     "thresholds.match_score",
     "thresholds.match_margin",

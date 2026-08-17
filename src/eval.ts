@@ -26,10 +26,33 @@ export interface EvalMetrics {
   mrr: number;
 }
 
+export interface CandidateEvalDetail {
+  skill_id: string;
+  fused_rank: number;
+  reranked_rank?: number | null;
+}
+
+export interface EvalCaseResult {
+  query: string;
+  expected: string[];
+  outcome: "matched" | "ambiguous" | "no_match";
+  retrieval: string;
+  degraded_from?: string | null;
+  degradation_reason?: string | null;
+  latency_ms: number;
+  recall_settings: {
+    k_lexical: number;
+    k_vector: number;
+    k_rerank: number;
+  };
+  candidates: CandidateEvalDetail[];
+}
+
 export interface EvalReport {
   queries: number;
   lexical: EvalMetrics;
   hybrid: EvalMetrics;
+  cases?: EvalCaseResult[];
 }
 
 function metrics(rankings: string[][], cases: EvalCase[]): EvalMetrics {
@@ -76,18 +99,46 @@ export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
 
   const lexicalRankings: string[][] = [];
   const hybridRankings: string[][] = [];
+  const caseResults: EvalCaseResult[] = [];
+  const kRerank = config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector);
+
   for (const evalCase of cases) {
+    const start = performance.now();
     const lexical = ftsSearch(db, evalCase.query, config.recall.k_lexical);
     const vector = (await clients.embed([evalCase.query]))[0];
     if (!vector) throw new Error("Embedding client returned no query vector.");
     const semantic = vectorTopK(db, vector, config.recall.k_vector);
+    const fused = reciprocalRankFusion<SkillRow>(lexical, semantic);
+    const candidateShortlist = fused.slice(0, kRerank);
+
     lexicalRankings.push(lexical.map((row) => row.skill_id));
-    hybridRankings.push(reciprocalRankFusion<SkillRow>(lexical, semantic).map((row) => row.skill_id));
+    hybridRankings.push(fused.map((row) => row.skill_id));
+
+    const latency_ms = Math.round(performance.now() - start);
+    const candidateDetails: CandidateEvalDetail[] = candidateShortlist.map((row, idx) => ({
+      skill_id: row.skill_id,
+      fused_rank: idx + 1,
+    }));
+
+    caseResults.push({
+      query: evalCase.query,
+      expected: evalCase.expected,
+      outcome: "ambiguous",
+      retrieval: "hybrid",
+      latency_ms,
+      recall_settings: {
+        k_lexical: config.recall.k_lexical,
+        k_vector: config.recall.k_vector,
+        k_rerank: kRerank,
+      },
+      candidates: candidateDetails,
+    });
   }
 
   return {
     queries: cases.length,
     lexical: metrics(lexicalRankings, cases),
     hybrid: metrics(hybridRankings, cases),
+    cases: caseResults,
   };
 }

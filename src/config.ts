@@ -42,12 +42,15 @@ const configSchema = z.object({
   })).refine((r) => r.k_rerank <= r.k_lexical + r.k_vector, {
     message: "recall.k_rerank cannot exceed k_lexical + k_vector",
   }),
+  output: z.object({
+    ambiguous_candidate_limit: z.number().int().positive().default(5),
+  }).strict().optional(),
   thresholds: z.object({
-    candidate_limit: z.number().int().positive(),
+    candidate_limit: z.number().int().positive().optional(),
     match_score: z.number().optional(),
     match_margin: z.number().nonnegative().optional(),
     candidate_floor: z.number().optional(),
-  }).strict(),
+  }).strict().optional(),
   inference: z.discriminatedUnion("mode", [
     z.object({
       mode: z.literal("local"),
@@ -105,6 +108,7 @@ const DEFAULTS: Config = {
   state_dir: "~/.local/state/skillmux",
   recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
   thresholds: { candidate_limit: 5 },
+  output: { ambiguous_candidate_limit: 5 },
   inference: {
     mode: "local",
     bundle: LOCAL_BUNDLE_ID,
@@ -274,15 +278,52 @@ export async function loadConfig(path?: string): Promise<Config> {
       if (!isPlainObject(parsed.inference.embedding)) {
         throw new Error("Remote inference requires an inference.embedding section.");
       }
-      const withoutInference = { ...parsed };
-      delete withoutInference.inference;
-      merged = {
-        ...deepMerge(baseConfig, withoutInference),
-        inference: configSchema.shape.inference.parse(parsed.inference),
-      };
+    }
+    if (parsed.thresholds && typeof parsed.thresholds === "object" && (parsed.thresholds as Record<string, unknown>).candidate_limit !== undefined) {
+      console.error("skillmux: thresholds.candidate_limit is deprecated, use output.ambiguous_candidate_limit instead");
+      if (!parsed.output || (parsed.output as Record<string, unknown>).ambiguous_candidate_limit === undefined) {
+        parsed.output = {
+          ...(typeof parsed.output === "object" && parsed.output !== null ? parsed.output : {}),
+          ambiguous_candidate_limit: (parsed.thresholds as Record<string, unknown>).candidate_limit,
+        };
+      }
+    }
+
+    if (parsed.inference && typeof parsed.inference === "object" && "mode" in parsed.inference) {
+      if (parsed.inference.mode === "remote") {
+        if ("thresholds" in parsed.inference) {
+          const rawRemoteThresholds = (parsed.inference as Record<string, unknown>).thresholds;
+          if (
+            typeof rawRemoteThresholds === "object" &&
+            rawRemoteThresholds !== null &&
+            !("match_score" in rawRemoteThresholds) &&
+            !("match_margin" in rawRemoteThresholds) &&
+            !("candidate_floor" in rawRemoteThresholds)
+          ) {
+            throw new Error("Invalid inference.thresholds in config.toml: must specify at least one threshold.");
+          }
+        }
+        const withoutInference = { ...parsed };
+        delete withoutInference.inference;
+        merged = {
+          ...deepMerge(baseConfig, withoutInference),
+          inference: configSchema.shape.inference.parse(parsed.inference),
+        };
+      } else {
+        merged = deepMerge(baseConfig, parsed);
+      }
     } else {
       merged = deepMerge(baseConfig, parsed);
     }
+  }
+
+  if (!merged.output) {
+    merged.output = { ambiguous_candidate_limit: merged.thresholds?.candidate_limit ?? 5 };
+  }
+  if (!merged.thresholds) {
+    merged.thresholds = { candidate_limit: merged.output.ambiguous_candidate_limit };
+  } else if (merged.thresholds.candidate_limit === undefined) {
+    merged.thresholds.candidate_limit = merged.output.ambiguous_candidate_limit;
   }
 
   // Warn about deprecated generic environment variables regardless of override policy
@@ -292,6 +333,8 @@ export async function loadConfig(path?: string): Promise<Config> {
     RECALL_K_LEXICAL: "SKILLMUX_RECALL_K_LEXICAL",
     RECALL_K_VECTOR: "SKILLMUX_RECALL_K_VECTOR",
     RECALL_K_RERANK: "SKILLMUX_RECALL_K_RERANK",
+    AMBIGUOUS_CANDIDATE_LIMIT: "SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT",
+    CANDIDATE_LIMIT: "SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT",
     EMBED_MODEL: "SKILLMUX_EMBED_MODEL",
     EMBED_ENDPOINT: "SKILLMUX_EMBED_ENDPOINT",
     EMBED_DIMENSION: "SKILLMUX_EMBED_DIMENSION",
@@ -354,6 +397,15 @@ export async function loadConfig(path?: string): Promise<Config> {
       const k = Number(kRerankStr);
       if (!Number.isInteger(k) || k < 1) throw new Error(`Invalid recall.k_rerank: ${kRerankStr}`);
       merged.recall.k_rerank = k;
+    }
+    const ambiguousLimitStr =
+      getEnv("SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT", "AMBIGUOUS_CANDIDATE_LIMIT") ??
+      getEnv("SKILLMUX_CANDIDATE_LIMIT", "CANDIDATE_LIMIT");
+    if (ambiguousLimitStr) {
+      const lim = Number(ambiguousLimitStr);
+      if (!Number.isInteger(lim) || lim < 1) throw new Error(`Invalid output.ambiguous_candidate_limit: ${ambiguousLimitStr}`);
+      merged.output.ambiguous_candidate_limit = lim;
+      merged.thresholds.candidate_limit = lim;
     }
   }
 

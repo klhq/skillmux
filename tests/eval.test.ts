@@ -58,4 +58,18 @@ describe("local labeled evaluation", () => {
     expect(report.hybrid.recall_at_5).toBe(1);
     expect(report.hybrid.mrr).toBe(1);
   });
+
+  test("records case details including fused rank, outcome, latency, recall settings, and degradation state", async () => {
+    const report = await evalVault([{ query: "why did my container stop", expected: ["docker-manager"] }]);
+    expect(report.cases).toBeDefined();
+    expect(report.cases!.length).toBe(1);
+    const c = report.cases![0]!;
+    expect(c.query).toBe("why did my container stop");
+    expect(c.recall_settings.k_lexical).toBe(5);
+    expect(c.recall_settings.k_vector).toBe(5);
+    expect(c.recall_settings.k_rerank).toBeDefined();
+    expect(c.candidates.length).toBeGreaterThan(0);
+    expect(c.candidates[0]!.fused_rank).toBe(1);
+  });
 });
+

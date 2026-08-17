@@ -4,8 +4,13 @@ export interface RecallConfig {
   k_rerank?: number;
 }
 
+export interface OutputConfig {
+  ambiguous_candidate_limit: number;
+}
+
 export interface Thresholds {
-  candidate_limit: number;
+  /** @deprecated Use output.ambiguous_candidate_limit instead */
+  candidate_limit?: number;
   match_score?: number;
   match_margin?: number;
   candidate_floor?: number;
@@ -110,6 +115,7 @@ export interface Config {
   state_dir: string;
   recall: RecallConfig;
   thresholds: Thresholds;
+  output: OutputConfig;
   inference: InferenceConfig;
   server?: ServerConfig;
 }
