@@ -88,11 +88,8 @@ beforeAll(() => {
       `k_lexical = 15`,
       `k_vector = 15`,
       ``,
-      `[thresholds]`,
-      `match_score = 0.9`,
-      `match_margin = 0.2`,
-      `candidate_floor = 0.4`,
-      `candidate_limit = 5`,
+      `[output]`,
+      `ambiguous_candidate_limit = 5`,
       ``,
       `[inference]`,
       `mode = "remote"`,
@@ -258,6 +255,13 @@ describe("skillmux calibrate run CLI", () => {
 });
 
 describe("skillmux config status CLI", () => {
+  test("config show reads the path selected by SKILLMUX_CONFIG", async () => {
+    const result = await runCli("config", "show", "--json");
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).data.effective.vault_path).toBe(vaultDir);
+  });
+
   test("text output identifies the host deployment without changing service runtime", async () => {
     const result = await runCli("config", "status");
 

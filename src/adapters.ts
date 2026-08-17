@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { applyCalibrationRun, computeCorpusFingerprint, getCalibrationRun, insertCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, summarizeDatasetProvenance, type CalibrationResult } from "./calibrate";
 import { createClients } from "./clients";
-import { DEFAULT_CONFIG_PATH, embeddingFingerprint, expandHome, loadConfig, rerankerFingerprint } from "./config";
+import { embeddingFingerprint, expandHome, loadConfig, rerankerFingerprint, resolveConfigPath } from "./config";
 import { openIndex } from "./db";
 import { CliError } from "./output";
 import {
@@ -70,7 +70,7 @@ export class LocalAdapter implements TargetAdapter {
   private configPath: string;
 
   constructor(opts?: TargetAdapterOptions) {
-    this.configPath = opts?.configPath ?? DEFAULT_CONFIG_PATH;
+    this.configPath = resolveConfigPath(opts?.configPath);
   }
 
   async getCapabilities(): Promise<Capabilities> {
