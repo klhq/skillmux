@@ -1,6 +1,22 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { applyCalibrationRun, computeCorpusFingerprint, getCalibrationRun, insertCalibrationRun, listCalibrationRuns, loadDecisionCasesFromFile, openCalibrateDb, runCalibration, summarizeDatasetProvenance, type CalibrationResult } from "./calibrate";
+import {
+  applyCalibrationRun,
+  computeCorpusFingerprint,
+  createInitialCalibrationRun,
+  finalizeCalibrationRun,
+  getCalibrationObservations,
+  getCalibrationRun,
+  insertCalibrationRun,
+  listCalibrationRuns,
+  loadDecisionCasesFromFile,
+  openCalibrateDb,
+  runCalibration,
+  saveCalibrationObservation,
+  summarizeDatasetProvenance,
+  type CalibrationResult,
+  type QueryObservation,
+} from "./calibrate";
 import { createClients } from "./clients";
 import { embeddingFingerprint, expandHome, loadConfig, rerankerFingerprint, resolveConfigPath } from "./config";
 import { openIndex } from "./db";
@@ -20,7 +36,7 @@ import {
 } from "./config-service";
 import type { ResolvedTarget } from "./context";
 import { configure, retrieveAndRerank } from "./router-core";
-import type { Config } from "./types";
+import type { Clients, Config } from "./types";
 
 export interface Capabilities {
   config_read: boolean;
@@ -34,6 +50,7 @@ export interface Capabilities {
 export interface TargetAdapterOptions {
   configPath?: string;
   allowInsecure?: boolean;
+  clients?: Clients;
 }
 
 export interface TargetAdapter {
@@ -50,6 +67,9 @@ export interface TargetAdapter {
     minRetrievalRecallAtK?: number;
     minDeliveredShortlistRecallAtK?: number;
     minAutoMatchCount?: number;
+    concurrency?: number;
+    resumeRunId?: string;
+    onProgress?: (completed: number, total: number) => void;
   }): Promise<{ run_id?: string; result?: CalibrationResult }>;
   calibrateList(): Promise<any[]>;
   calibrateShow(runId: string): Promise<any>;
@@ -68,9 +88,11 @@ export function isLoopbackHost(hostname: string): boolean {
 
 export class LocalAdapter implements TargetAdapter {
   private configPath: string;
+  private clients?: Clients;
 
   constructor(opts?: TargetAdapterOptions) {
     this.configPath = resolveConfigPath(opts?.configPath);
+    this.clients = opts?.clients;
   }
 
   async getCapabilities(): Promise<Capabilities> {
@@ -119,6 +141,7 @@ export class LocalAdapter implements TargetAdapter {
     if (caps.persistence === "externally_managed") {
       throw new CliError("Configuration is externally managed and cannot be modified", 4);
     }
+    validateDottedKey(key);
     return setDottedKey(key, rawValStr, {
       configPath: this.configPath,
       dryRun: opts?.dryRun,
@@ -136,10 +159,13 @@ export class LocalAdapter implements TargetAdapter {
     minRetrievalRecallAtK?: number;
     minDeliveredShortlistRecallAtK?: number;
     minAutoMatchCount?: number;
+    concurrency?: number;
+    resumeRunId?: string;
+    onProgress?: (completed: number, total: number) => void;
   }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     const config = await loadConfig(this.configPath);
     const candidateLimit =
-      config.output?.ambiguous_candidate_limit ?? config.thresholds.candidate_limit ?? 5;
+      config.output?.ambiguous_candidate_limit ?? config.thresholds?.candidate_limit ?? 5;
     const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
     const indexDb = openIndex(expandHome(config.state_dir));
     let indexedSkills: Array<{ skill_id: string; content_sha256: string }>;
@@ -156,69 +182,153 @@ export class LocalAdapter implements TargetAdapter {
       datasetFile,
       indexedSkills.map((skill) => skill.skill_id),
     );
-    const clients = createClients(config);
-    configure({ config, clients });
-    const result = await runCalibration({
-      cases,
-      getRankedCandidates: async (query: string) => {
-        const result = await retrieveAndRerank({ query, forceLexical: false });
-        if (result.retrieval !== "reranked") {
-          throw new Error(
-            "Calibration requires successful hybrid retrieval and reranking for every query.",
-          );
-        }
-        return result.candidates.map((candidate) => ({
-          skill_id: candidate.skill_id,
-          score: candidate.score ?? 0,
-        }));
-      },
-      reranker: clients.rerank,
-      candidateLimit,
-      minAutoMatchPrecision: opts?.minAutoMatchPrecision,
-      minRetrievalRecallAtK: opts?.minRetrievalRecallAtK,
-      minDeliveredShortlistRecallAtK: opts?.minDeliveredShortlistRecallAtK,
-      minAutoMatchCount: opts?.minAutoMatchCount,
-    });
     const fingerprint = rerankerFingerprint(config);
     if (!fingerprint) {
       throw new Error("A configured remote reranker is required to record calibration.");
     }
     const datasetText = await Bun.file(datasetFile).text();
-    const runId = `run_${crypto.randomUUID()}`;
+    const datasetHash = createHash("sha256").update(datasetText).digest("hex");
+    const embedFp = embeddingFingerprint(config);
+    const recallSettings = {
+      k_lexical: config.recall.k_lexical,
+      k_vector: config.recall.k_vector,
+      k_rerank: config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector),
+    };
+    const minAutoMatchPrecision = opts?.minAutoMatchPrecision ?? 0.99;
+    const minAutoMatchCount = opts?.minAutoMatchCount ?? 30;
+    const minDeliveredShortlistRecallAtK =
+      opts?.minDeliveredShortlistRecallAtK ??
+      opts?.minRetrievalRecallAtK ??
+      0.95;
+    const minShortlistRecallAt5 = opts?.minRetrievalRecallAtK ?? 0.95;
+    const concurrency = opts?.concurrency ?? 4;
+
     const db = openCalibrateDb(expandHome(config.state_dir));
+    let runId: string;
+    let initialObservations: Map<number, QueryObservation> | undefined = undefined;
+
     try {
-      insertCalibrationRun(db, {
-        run_id: runId,
-        created_at: new Date().toISOString(),
-        status: result.status,
-        reranker_fingerprint: fingerprint,
-        embedding_fingerprint: embeddingFingerprint(config),
-        corpus_fingerprint: corpusFingerprint,
-        dataset_hash: createHash("sha256").update(datasetText).digest("hex"),
-        dataset_provenance: summarizeDatasetProvenance(cases),
-        recall_settings: {
-          k_lexical: config.recall.k_lexical,
-          k_vector: config.recall.k_vector,
-          k_rerank: config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector),
+      if (opts?.resumeRunId) {
+        runId = opts.resumeRunId;
+        const existingRun = getCalibrationRun(db, runId);
+        if (!existingRun) {
+          throw new Error(`Calibration run "${runId}" not found`);
+        }
+        if (existingRun.status !== "running") {
+          throw new Error(`Cannot resume completed calibration run "${runId}"`);
+        }
+        if (existingRun.dataset_hash !== datasetHash) {
+          throw new Error("Dataset hash mismatch: cannot resume run with a different dataset");
+        }
+        if (existingRun.corpus_fingerprint !== corpusFingerprint) {
+          throw new Error("Corpus fingerprint mismatch: cannot resume run with modified vault skills");
+        }
+        if (existingRun.embedding_fingerprint !== embedFp) {
+          throw new Error("Embedding fingerprint mismatch: cannot resume run with different embedding configuration");
+        }
+        if (existingRun.reranker_fingerprint !== fingerprint) {
+          throw new Error("Reranker fingerprint mismatch: cannot resume run with different reranker configuration");
+        }
+        if (existingRun.candidate_limit !== candidateLimit) {
+          throw new Error("Candidate limit mismatch: cannot resume run with different candidate limit");
+        }
+        if (
+          existingRun.recall_settings &&
+          JSON.stringify(existingRun.recall_settings) !== JSON.stringify(recallSettings)
+        ) {
+          throw new Error("Recall settings mismatch: cannot resume run with different recall parameters");
+        }
+        if (existingRun.min_auto_match_precision !== minAutoMatchPrecision) {
+          throw new Error("Certification gate mismatch: min_auto_match_precision differs from original run");
+        }
+        if ((existingRun.min_auto_match_count ?? 1) !== minAutoMatchCount) {
+          throw new Error("Certification gate mismatch: min_auto_match_count differs from original run");
+        }
+        if (
+          (existingRun.min_delivered_shortlist_recall_at_k ?? existingRun.min_shortlist_recall_at_5) !==
+          minDeliveredShortlistRecallAtK
+        ) {
+          throw new Error(
+            "Certification gate mismatch: min_delivered_shortlist_recall_at_k differs from original run",
+          );
+        }
+        if (existingRun.min_shortlist_recall_at_5 !== minShortlistRecallAt5) {
+          throw new Error("Certification gate mismatch: min_retrieval_recall_at_k differs from original run");
+        }
+
+        initialObservations = getCalibrationObservations(db, runId);
+        if (initialObservations.size === 0 && existingRun.observations && existingRun.observations.length > 0) {
+          existingRun.observations.forEach((obs, idx) => initialObservations!.set(idx, obs));
+        }
+      } else {
+        runId = `run_${crypto.randomUUID()}`;
+        createInitialCalibrationRun(db, {
+          run_id: runId,
+          created_at: new Date().toISOString(),
+          status: "running",
+          reranker_fingerprint: fingerprint,
+          embedding_fingerprint: embedFp,
+          corpus_fingerprint: corpusFingerprint,
+          dataset_hash: datasetHash,
+          dataset_provenance: summarizeDatasetProvenance(cases),
+          recall_settings: recallSettings,
+          candidate_limit: candidateLimit,
+          min_auto_match_precision: minAutoMatchPrecision,
+          min_auto_match_count: minAutoMatchCount,
+          min_delivered_shortlist_recall_at_k: minDeliveredShortlistRecallAtK,
+          min_shortlist_recall_at_5: minShortlistRecallAt5,
+        });
+      }
+
+      const clients = this.clients ?? createClients(config);
+      configure({ config, clients });
+
+      const onProgress = opts?.onProgress ?? ((completed, total) => {
+        process.stderr.write(`Calibration observations: ${completed}/${total}\n`);
+      });
+
+      const result = await runCalibration({
+        cases,
+        getRankedCandidates: async (query: string) => {
+          const res = await retrieveAndRerank({ query, forceLexical: false });
+          if (res.retrieval !== "reranked") {
+            throw new Error(
+              "Calibration requires successful hybrid retrieval and reranking for every query.",
+            );
+          }
+          return res.candidates.map((candidate) => ({
+            skill_id: candidate.skill_id,
+            score: candidate.score ?? 0,
+          }));
         },
-        candidate_limit: candidateLimit,
-        min_auto_match_precision: opts?.minAutoMatchPrecision ?? 0.99,
-        min_auto_match_count: opts?.minAutoMatchCount ?? 30,
-        min_delivered_shortlist_recall_at_k:
-          opts?.minDeliveredShortlistRecallAtK ??
-          opts?.minRetrievalRecallAtK ??
-          0.95,
-        min_shortlist_recall_at_5: opts?.minRetrievalRecallAtK ?? 0.95,
+        reranker: clients.rerank,
+        candidateLimit,
+        minAutoMatchPrecision,
+        minRetrievalRecallAtK: minShortlistRecallAt5,
+        minDeliveredShortlistRecallAtK,
+        minAutoMatchCount,
+        concurrency,
+        initialObservations,
+        onProgress,
+        onObservation: (obs, caseIdx) => {
+          saveCalibrationObservation(db, runId, caseIdx, obs);
+        },
+      });
+
+      finalizeCalibrationRun(db, {
+        run_id: runId,
+        status: result.status,
         failed_reason: result.failed_reason,
         selected_thresholds: result.selected_thresholds,
         tune_metrics: result.tune_metrics,
         test_metrics: result.test_metrics,
         observations: result.observations,
       });
+
+      return { run_id: runId, result };
     } finally {
       db.close();
     }
-    return { run_id: runId, result };
   }
 
   async calibrateList(): Promise<any[]> {
@@ -429,6 +539,9 @@ export class RemoteAdapter implements TargetAdapter {
     minRetrievalRecallAtK?: number;
     minDeliveredShortlistRecallAtK?: number;
     minAutoMatchCount?: number;
+    concurrency?: number;
+    resumeRunId?: string;
+    onProgress?: (completed: number, total: number) => void;
   }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     void opts;
     throw this.remoteCalibrationNotImplemented();

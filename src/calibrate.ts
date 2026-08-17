@@ -322,7 +322,7 @@ export interface CalibrationTestMetrics extends CalibrationMetrics {
   confusion_matrix: ConfusionMatrix;
 }
 
-export type CalibrationStatus = "completed" | "failed_gates";
+export type CalibrationStatus = "running" | "completed" | "failed_gates";
 export type CalibrationFailureReason =
   | "recall_precondition_failed"
   | "precision_floor_unreachable"
@@ -358,6 +358,16 @@ export interface RunCalibrationOptions {
   /** Default: 30 */
   minAutoMatchCount?: number;
   candidateLimit: number;
+  /** Default: 4 */
+  concurrency?: number;
+  initialObservations?: Map<number, QueryObservation> | QueryObservation[];
+  onProgress?: (completed: number, total: number) => void;
+  onObservation?: (
+    observation: QueryObservation,
+    caseIndex: number,
+    completedCount: number,
+    totalCount: number,
+  ) => void | Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -741,6 +751,40 @@ function selectThresholds(
 // Public API — runCalibration (AC2, AC3, AC4)
 // ---------------------------------------------------------------------------
 
+async function processWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  processItem: (item: T) => Promise<void>,
+): Promise<void> {
+  let nextItemPosition = 0;
+  let firstError: unknown;
+
+  const claimNextPosition = (): number | undefined => {
+    if (firstError !== undefined || nextItemPosition >= items.length) return undefined;
+    return nextItemPosition++;
+  };
+
+  const workerCount = Math.min(concurrency, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    for (
+      let itemPosition = claimNextPosition();
+      itemPosition !== undefined;
+      itemPosition = claimNextPosition()
+    ) {
+      try {
+        await processItem(items[itemPosition]!);
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+  });
+
+  // Drain work already in flight before propagating an error. Callers may close
+  // resources after rejection, so no worker may still be checkpointing then.
+  await Promise.all(workers);
+  if (firstError !== undefined) throw firstError;
+}
+
 /**
  * Run an in-memory calibration:
  *  1. Require a configured reranker (AC2)
@@ -759,7 +803,15 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
     minDeliveredShortlistRecallAtK = minRetrievalRecallAtK,
     minAutoMatchCount = 30,
     candidateLimit,
+    concurrency = 4,
+    initialObservations,
+    onProgress,
+    onObservation,
   } = opts;
+
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error("concurrency must be a positive integer");
+  }
 
   if (!getRankedCandidates && (!getCandidates || !reranker)) {
     throw new Error(
@@ -769,8 +821,31 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
   }
 
   // --- Step 1: Cache observations (reranker called exactly once per query) ---
-  const observations: QueryObservation[] = [];
-  for (const c of cases) {
+  const obsMap = new Map<number, QueryObservation>();
+  if (initialObservations) {
+    if (Array.isArray(initialObservations)) {
+      initialObservations.forEach((obs, idx) => {
+        if (obs) obsMap.set(idx, obs);
+      });
+    } else {
+      for (const [idx, obs] of initialObservations.entries()) {
+        obsMap.set(idx, obs);
+      }
+    }
+  }
+
+  let completedCount = obsMap.size;
+  if (onProgress && completedCount > 0) {
+    onProgress(completedCount, cases.length);
+  }
+
+  const pendingIndices: number[] = [];
+  for (let i = 0; i < cases.length; i++) {
+    if (!obsMap.has(i)) pendingIndices.push(i);
+  }
+
+  await processWithConcurrency(pendingIndices, concurrency, async (caseIndex) => {
+    const c = cases[caseIndex]!;
     let ranked: Array<{ skill_id: string; score: number }>;
     if (getRankedCandidates) {
       ranked = await getRankedCandidates(c.query);
@@ -781,14 +856,24 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
         .map((d, i) => ({ skill_id: d.skill_id, score: scores[i] ?? 0 }))
         .sort((a, b) => b.score - a.score);
     }
-    observations.push({
+    const obs: QueryObservation = {
       query: c.query,
       split: c.split,
       expected_outcome: c.expected_outcome,
       relevant_skill_ids: c.relevant_skill_ids,
       ranked,
-    });
-  }
+    };
+    obsMap.set(caseIndex, obs);
+    if (onObservation) {
+      await onObservation(obs, caseIndex, completedCount + 1, cases.length);
+    }
+    const progressCount = ++completedCount;
+    if (onProgress) {
+      onProgress(progressCount, cases.length);
+    }
+  });
+
+  const observations: QueryObservation[] = cases.map((_, i) => obsMap.get(i)!);
 
   // --- Step 2: Select thresholds from tune split only ---
   const tuneObs = observations.filter((o) => o.split === "tune");
@@ -928,10 +1013,58 @@ export function openCalibrateDb(stateDir: string): Database {
   const db = new Database(join(stateDir, "calibrate.sqlite3"), { create: true });
   db.run("PRAGMA journal_mode = WAL");
   db.run("PRAGMA busy_timeout = 2000");
+
+  const tableDef = db
+    .query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'calibration_runs'")
+    .get() as { sql: string } | null;
+
+  if (
+    tableDef &&
+    tableDef.sql &&
+    tableDef.sql.includes("CHECK") &&
+    !tableDef.sql.includes("'running'")
+  ) {
+    const cols = db.query("PRAGMA table_info(calibration_runs)").all() as Array<{ name: string }>;
+    const colNames = cols.map((c) => c.name);
+    const selectCols = colNames.join(", ");
+
+    db.transaction(() => {
+      db.run(`CREATE TABLE calibration_runs_new (
+        run_id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed_gates')),
+        reranker_fingerprint TEXT NOT NULL,
+        embedding_fingerprint TEXT NOT NULL,
+        corpus_fingerprint TEXT NOT NULL,
+        dataset_hash TEXT NOT NULL,
+        min_auto_match_precision REAL NOT NULL,
+        min_shortlist_recall_at_5 REAL NOT NULL,
+        selected_thresholds TEXT,
+        tune_metrics TEXT,
+        test_metrics TEXT,
+        observations TEXT NOT NULL,
+        candidate_limit INTEGER NOT NULL DEFAULT 5,
+        attempt_count INTEGER NOT NULL DEFAULT 1,
+        min_auto_match_count INTEGER NOT NULL DEFAULT 1,
+        min_delivered_shortlist_recall_at_k REAL NOT NULL DEFAULT 0.95,
+        failed_reason TEXT,
+        dataset_provenance TEXT NOT NULL DEFAULT '{}',
+        human_labelled_case_count INTEGER NOT NULL DEFAULT 0,
+        imported_labelled_case_count INTEGER NOT NULL DEFAULT 0,
+        recall_settings TEXT NOT NULL DEFAULT '{}'
+      )`);
+      db.run(
+        `INSERT INTO calibration_runs_new (${selectCols}) SELECT ${selectCols} FROM calibration_runs`,
+      );
+      db.run("DROP TABLE calibration_runs");
+      db.run("ALTER TABLE calibration_runs_new RENAME TO calibration_runs");
+    })();
+  }
+
   db.run(`CREATE TABLE IF NOT EXISTS calibration_runs (
     run_id TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('completed', 'failed_gates')),
+    status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed_gates')),
     reranker_fingerprint TEXT NOT NULL,
     embedding_fingerprint TEXT NOT NULL,
     corpus_fingerprint TEXT NOT NULL,
@@ -971,11 +1104,48 @@ export function openCalibrateDb(stateDir: string): Database {
   if (!columns.some((column) => column.name === "recall_settings")) {
     db.run("ALTER TABLE calibration_runs ADD COLUMN recall_settings TEXT NOT NULL DEFAULT '{}'");
   }
+
+  db.run(`CREATE TABLE IF NOT EXISTS calibration_observations (
+    run_id TEXT NOT NULL,
+    case_index INTEGER NOT NULL,
+    query TEXT NOT NULL,
+    split TEXT NOT NULL,
+    expected_outcome TEXT NOT NULL,
+    relevant_skill_ids TEXT NOT NULL,
+    ranked TEXT NOT NULL,
+    PRIMARY KEY (run_id, case_index),
+    FOREIGN KEY (run_id) REFERENCES calibration_runs(run_id) ON DELETE CASCADE
+  )`);
+
   return db;
 }
 
-/** Persist a calibration run (all fields) to the evidence store. */
-export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): void {
+export interface CreateInitialCalibrationRunOptions {
+  run_id: string;
+  created_at: string;
+  status: "running";
+  reranker_fingerprint: string;
+  embedding_fingerprint: string;
+  corpus_fingerprint: string;
+  dataset_hash: string;
+  candidate_limit: number;
+  min_auto_match_precision: number;
+  min_auto_match_count?: number;
+  min_delivered_shortlist_recall_at_k?: number;
+  min_shortlist_recall_at_5: number;
+  dataset_provenance?: DatasetProvenanceSummary;
+  recall_settings?: {
+    k_lexical: number;
+    k_vector: number;
+    k_rerank: number;
+  };
+}
+
+/** Create an initial calibration run record with 'running' status before inference starts. */
+export function createInitialCalibrationRun(
+  db: Database,
+  run: CreateInitialCalibrationRunOptions,
+): void {
   const attemptCount = (
     db.query("SELECT COUNT(*) AS count FROM calibration_runs WHERE dataset_hash = ?")
       .get(run.dataset_hash) as { count: number }
@@ -1005,17 +1175,159 @@ export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): v
       run.min_auto_match_count ?? 1,
       run.min_delivered_shortlist_recall_at_k ?? run.min_shortlist_recall_at_5,
       run.min_shortlist_recall_at_5,
-      run.failed_reason ?? null,
-      run.selected_thresholds != null ? JSON.stringify(run.selected_thresholds) : null,
-      run.tune_metrics != null ? JSON.stringify(run.tune_metrics) : null,
-      run.test_metrics != null ? JSON.stringify(run.test_metrics) : null,
-      JSON.stringify(run.observations),
+      null,
+      null,
+      null,
+      null,
+      "[]",
       JSON.stringify(run.dataset_provenance ?? {}),
       run.dataset_provenance?.human_labelled_case_count ?? 0,
       run.dataset_provenance?.imported_labelled_case_count ?? 0,
       JSON.stringify(run.recall_settings ?? {}),
     ],
   );
+}
+
+/** Save a single case observation incrementally. */
+export function saveCalibrationObservation(
+  db: Database,
+  runId: string,
+  caseIndex: number,
+  observation: QueryObservation,
+): void {
+  db.run(
+    `INSERT OR REPLACE INTO calibration_observations (
+      run_id, case_index, query, split, expected_outcome, relevant_skill_ids, ranked
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      runId,
+      caseIndex,
+      observation.query,
+      observation.split,
+      observation.expected_outcome,
+      JSON.stringify(observation.relevant_skill_ids),
+      JSON.stringify(observation.ranked),
+    ],
+  );
+}
+
+/** Retrieve all completed observations for a run_id, keyed by case index. */
+export function getCalibrationObservations(
+  db: Database,
+  runId: string,
+): Map<number, QueryObservation> {
+  const rows = db
+    .query(
+      `SELECT case_index, query, split, expected_outcome, relevant_skill_ids, ranked
+       FROM calibration_observations WHERE run_id = ? ORDER BY case_index ASC`,
+    )
+    .all(runId) as Array<{
+      case_index: number;
+      query: string;
+      split: DecisionSplit;
+      expected_outcome: DecisionOutcome;
+      relevant_skill_ids: string;
+      ranked: string;
+    }>;
+  const map = new Map<number, QueryObservation>();
+  for (const r of rows) {
+    map.set(r.case_index, {
+      query: r.query,
+      split: r.split,
+      expected_outcome: r.expected_outcome,
+      relevant_skill_ids: JSON.parse(r.relevant_skill_ids) as string[],
+      ranked: JSON.parse(r.ranked) as Array<{ skill_id: string; score: number }>,
+    });
+  }
+  return map;
+}
+
+export interface FinalizeCalibrationRunOptions {
+  run_id: string;
+  status: CalibrationStatus;
+  failed_reason?: CalibrationFailureReason;
+  selected_thresholds?: SelectedThresholds;
+  tune_metrics?: CalibrationMetrics;
+  test_metrics?: CalibrationTestMetrics;
+  observations: QueryObservation[];
+}
+
+/** Finalize a calibration run record with its completion/failure status, metrics, and thresholds. */
+export function finalizeCalibrationRun(
+  db: Database,
+  run: FinalizeCalibrationRunOptions,
+): void {
+  db.run(
+    `UPDATE calibration_runs SET
+      status = ?,
+      failed_reason = ?,
+      selected_thresholds = ?,
+      tune_metrics = ?,
+      test_metrics = ?,
+      observations = ?
+     WHERE run_id = ?`,
+    [
+      run.status,
+      run.failed_reason ?? null,
+      run.selected_thresholds != null ? JSON.stringify(run.selected_thresholds) : null,
+      run.tune_metrics != null ? JSON.stringify(run.tune_metrics) : null,
+      run.test_metrics != null ? JSON.stringify(run.test_metrics) : null,
+      JSON.stringify(run.observations),
+      run.run_id,
+    ],
+  );
+}
+
+/** Persist a calibration run (all fields) to the evidence store. */
+export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): void {
+  const attemptCount = (
+    db.query("SELECT COUNT(*) AS count FROM calibration_runs WHERE dataset_hash = ?")
+      .get(run.dataset_hash) as { count: number }
+  ).count + 1;
+  db.transaction(() => {
+    db.run(
+      `INSERT OR REPLACE INTO calibration_runs (
+        run_id, created_at, status,
+        reranker_fingerprint, embedding_fingerprint, corpus_fingerprint, dataset_hash,
+        candidate_limit,
+        attempt_count, min_auto_match_precision, min_auto_match_count,
+        min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason,
+        selected_thresholds, tune_metrics, test_metrics, observations,
+        dataset_provenance, human_labelled_case_count, imported_labelled_case_count,
+        recall_settings
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        run.run_id,
+        run.created_at,
+        run.status,
+        run.reranker_fingerprint,
+        run.embedding_fingerprint,
+        run.corpus_fingerprint,
+        run.dataset_hash,
+        run.candidate_limit,
+        attemptCount,
+        run.min_auto_match_precision,
+        run.min_auto_match_count ?? 1,
+        run.min_delivered_shortlist_recall_at_k ?? run.min_shortlist_recall_at_5,
+        run.min_shortlist_recall_at_5,
+        run.failed_reason ?? null,
+        run.selected_thresholds != null ? JSON.stringify(run.selected_thresholds) : null,
+        run.tune_metrics != null ? JSON.stringify(run.tune_metrics) : null,
+        run.test_metrics != null ? JSON.stringify(run.test_metrics) : null,
+        JSON.stringify(run.observations),
+        JSON.stringify(run.dataset_provenance ?? {}),
+        run.dataset_provenance?.human_labelled_case_count ?? 0,
+        run.dataset_provenance?.imported_labelled_case_count ?? 0,
+        JSON.stringify(run.recall_settings ?? {}),
+      ],
+    );
+    if (run.observations && run.observations.length > 0) {
+      for (let i = 0; i < run.observations.length; i++) {
+        const obs = run.observations[i]!;
+        saveCalibrationObservation(db, run.run_id, i, obs);
+      }
+    }
+  })();
 }
 
 interface RawCalibrationRow {
@@ -1111,7 +1423,16 @@ export function getCalibrationRun(db: Database, runId: string): CalibrationRunRe
   const row = db
     .query("SELECT * FROM calibration_runs WHERE run_id = ?")
     .get(runId) as RawCalibrationRow | null;
-  return row ? rowToRecord(row) : null;
+  if (!row) return null;
+  const record = rowToRecord(row);
+  if (record.observations.length === 0) {
+    const obsMap = getCalibrationObservations(db, runId);
+    if (obsMap.size > 0) {
+      const sortedIndices = Array.from(obsMap.keys()).sort((a, b) => a - b);
+      record.observations = sortedIndices.map((idx) => obsMap.get(idx)!);
+    }
+  }
+  return record;
 }
 
 /** List all runs ordered by created_at descending (excludes observations blob). */

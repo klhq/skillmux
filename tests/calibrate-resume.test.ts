@@ -1,0 +1,490 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { LocalAdapter } from "../src/adapters";
+import {
+  openCalibrateDb,
+  getCalibrationRun,
+  getCalibrationObservations,
+} from "../src/calibrate";
+import { openIndex, toSkillRow, replaceSkills } from "../src/db";
+import { configure } from "../src/router-core";
+import type { Config } from "../src/types";
+
+describe("calibrate run incremental persistence and resume", () => {
+  let tmp: string;
+  let vaultDir: string;
+  let stateDir: string;
+  let configPath: string;
+  let datasetPath: string;
+  let config: Config;
+
+  const dataset = [
+    {
+      query: "tune match 1",
+      split: "tune" as const,
+      expected_outcome: "matched" as const,
+      relevant_skill_ids: ["skill-1"],
+    },
+    {
+      query: "tune match 2",
+      split: "tune" as const,
+      expected_outcome: "matched" as const,
+      relevant_skill_ids: ["skill-2"],
+    },
+    {
+      query: "tune ambiguous",
+      split: "tune" as const,
+      expected_outcome: "ambiguous" as const,
+      relevant_skill_ids: ["skill-1", "skill-2"],
+    },
+    {
+      query: "tune no match",
+      split: "tune" as const,
+      expected_outcome: "no_match" as const,
+      relevant_skill_ids: [],
+    },
+    {
+      query: "test match 1",
+      split: "test" as const,
+      expected_outcome: "matched" as const,
+      relevant_skill_ids: ["skill-1"],
+    },
+    {
+      query: "test match 2",
+      split: "test" as const,
+      expected_outcome: "matched" as const,
+      relevant_skill_ids: ["skill-2"],
+    },
+    {
+      query: "test ambiguous",
+      split: "test" as const,
+      expected_outcome: "ambiguous" as const,
+      relevant_skill_ids: ["skill-1", "skill-2"],
+    },
+    {
+      query: "test no match",
+      split: "test" as const,
+      expected_outcome: "no_match" as const,
+      relevant_skill_ids: [],
+    },
+  ];
+
+  beforeEach(async () => {
+    tmp = mkdtempSync(join(tmpdir(), "skillmux-resume-test-"));
+    vaultDir = join(tmp, "vault");
+    stateDir = join(tmp, "state");
+    configPath = join(tmp, "skillmux.toml");
+    datasetPath = join(tmp, "queries.json");
+
+    mkdirSync(vaultDir, { recursive: true });
+    mkdirSync(stateDir, { recursive: true });
+    mkdirSync(join(vaultDir, "skill-1"), { recursive: true });
+    mkdirSync(join(vaultDir, "skill-2"), { recursive: true });
+
+    writeFileSync(
+      join(vaultDir, "skill-1", "SKILL.md"),
+      `---\nname: skill 1\ndescription: first skill\naliases: [s1]\n---\n# skill 1\n`,
+    );
+    writeFileSync(
+      join(vaultDir, "skill-2", "SKILL.md"),
+      `---\nname: skill 2\ndescription: second skill\naliases: [s2]\n---\n# skill 2\n`,
+    );
+
+    writeFileSync(datasetPath, JSON.stringify(dataset, null, 2));
+
+    const toml = `vault_path = "${vaultDir}"
+local_vault_paths = []
+state_dir = "${stateDir}"
+
+[recall]
+k_lexical = 10
+k_vector = 10
+k_rerank = 5
+
+[output]
+ambiguous_candidate_limit = 5
+
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "http://127.0.0.1:9/v1/embeddings"
+model = "mock-embed"
+dimension = 3
+
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "http://127.0.0.1:9"
+model = "mock-rerank"
+`;
+    writeFileSync(configPath, toml);
+
+    // Populate index db with skills from the vault
+    const indexDb = openIndex(stateDir);
+    const skills = await (await import("../src/vault")).scanVault(vaultDir);
+    const { ingestVault } = await import("../src/db");
+    ingestVault(indexDb, skills);
+    indexDb.close();
+  });
+
+  afterEach(() => {
+    configure({});
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("creates running record and incrementally persists observations during run", async () => {
+    let runIdCaptured = "";
+
+    const executedQueries: string[] = [];
+
+    const fakeClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async (query: string, docs: Array<{ skill_id: string; text: string }>) => {
+        executedQueries.push(query);
+        return docs.map((d) => {
+          if (query.includes("match 1") && d.skill_id === "skill-1") return 0.95;
+          if (query.includes("match 2") && d.skill_id === "skill-2") return 0.95;
+          if (query.includes("ambiguous")) return 0.8;
+          return 0.1;
+        });
+      },
+    };
+
+    const adapter = new LocalAdapter({ configPath, clients: fakeClients });
+
+    const runRes = await adapter.calibrateRun({
+      datasetPath,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.1,
+      minDeliveredShortlistRecallAtK: 0.1,
+      minAutoMatchCount: 1,
+    });
+
+    expect(runRes.run_id).toBeDefined();
+    const runId = runRes.run_id!;
+
+    const db = openCalibrateDb(stateDir);
+    try {
+      const record = getCalibrationRun(db, runId);
+      expect(record).not.toBeNull();
+      expect(record!.status).toBe("completed");
+      expect(record!.observations).toHaveLength(dataset.length);
+
+      const obsMap = getCalibrationObservations(db, runId);
+      expect(obsMap.size).toBe(dataset.length);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("completed observations survive an interrupted/failed run", async () => {
+    let count = 0;
+
+    const fakeClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async (query: string, docs: Array<{ skill_id: string; text: string }>) => {
+        count++;
+        if (count > 3) {
+          throw new Error("Simulated mid-run network failure");
+        }
+        return docs.map(() => 0.9);
+      },
+    };
+
+    const adapter = new LocalAdapter({ configPath, clients: fakeClients });
+
+    await expect(
+      adapter.calibrateRun({
+        datasetPath,
+        concurrency: 1,
+        minAutoMatchPrecision: 0.1,
+        minRetrievalRecallAtK: 0.1,
+        minDeliveredShortlistRecallAtK: 0.1,
+        minAutoMatchCount: 1,
+      }),
+    ).rejects.toThrow(/Calibration requires successful hybrid retrieval|Simulated/);
+
+    const db = openCalibrateDb(stateDir);
+    try {
+      // Find the running run
+      const runs = db
+        .query("SELECT run_id, status FROM calibration_runs WHERE status = 'running'")
+        .all() as Array<{ run_id: string; status: string }>;
+      expect(runs).toHaveLength(1);
+      const runId = runs[0]!.run_id;
+
+      const obsMap = getCalibrationObservations(db, runId);
+      expect(obsMap.size).toBe(3); // 3 completed before failure
+    } finally {
+      db.close();
+    }
+  });
+
+  test("resume skips completed cases and produces identical final result", async () => {
+    let count = 0;
+    const executedInFirstRun: string[] = [];
+    const executedInSecondRun: string[] = [];
+
+    const scoringFunction = (query: string, docs: Array<{ skill_id: string; text: string }>) =>
+      docs.map((d) => {
+        if (query.includes("match 1") && d.skill_id === "skill-1") return 0.95;
+        if (query.includes("match 2") && d.skill_id === "skill-2") return 0.95;
+        if (query.includes("ambiguous")) return 0.8;
+        return 0.1;
+      });
+
+    // Run 1: Fail after 4 cases
+    const clients1 = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async (query: string, docs: Array<{ skill_id: string; text: string }>) => {
+        count++;
+        executedInFirstRun.push(query);
+        if (count > 4) {
+          throw new Error("Simulated interruption");
+        }
+        return scoringFunction(query, docs);
+      },
+    };
+
+    const adapter1 = new LocalAdapter({ configPath, clients: clients1 });
+
+    await expect(
+      adapter1.calibrateRun({
+        datasetPath,
+        concurrency: 1,
+        minAutoMatchPrecision: 0.1,
+        minRetrievalRecallAtK: 0.1,
+        minDeliveredShortlistRecallAtK: 0.1,
+        minAutoMatchCount: 1,
+      }),
+    ).rejects.toThrow(/Calibration requires successful hybrid retrieval|Simulated/);
+
+    const db = openCalibrateDb(stateDir);
+    let interruptedRunId = "";
+    try {
+      const runs = db
+        .query("SELECT run_id FROM calibration_runs WHERE status = 'running'")
+        .all() as Array<{ run_id: string }>;
+      expect(runs).toHaveLength(1);
+      interruptedRunId = runs[0]!.run_id;
+    } finally {
+      db.close();
+    }
+
+    // Run 2: Resume interrupted run
+    const clients2 = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async (query: string, docs: Array<{ skill_id: string; text: string }>) => {
+        executedInSecondRun.push(query);
+        return scoringFunction(query, docs);
+      },
+    };
+    const adapter2 = new LocalAdapter({ configPath, clients: clients2 });
+
+    const resumedResult = await adapter2.calibrateRun({
+      datasetPath,
+      concurrency: 2,
+      resumeRunId: interruptedRunId,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.1,
+      minDeliveredShortlistRecallAtK: 0.1,
+      minAutoMatchCount: 1,
+    });
+
+    expect(resumedResult.run_id).toBe(interruptedRunId);
+    expect(resumedResult.result?.status).toBe("completed");
+
+    // Second run should only have executed the remaining 4 cases!
+    expect(executedInSecondRun).toHaveLength(4);
+    expect(executedInFirstRun.length + executedInSecondRun.length).toBe(dataset.length + 1); // 4 + 1 failed + 4 resumed
+
+    // Uninterrupted clean run on fresh state to compare deterministic result
+    const adapterUninterrupted = new LocalAdapter({ configPath, clients: clients2 });
+    const uninterruptedRun = await adapterUninterrupted.calibrateRun({
+      datasetPath,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.1,
+      minDeliveredShortlistRecallAtK: 0.1,
+      minAutoMatchCount: 1,
+    });
+
+    expect(resumedResult.result?.selected_thresholds).toEqual(
+      uninterruptedRun.result?.selected_thresholds,
+    );
+    expect(resumedResult.result?.tune_metrics).toEqual(uninterruptedRun.result?.tune_metrics);
+    expect(resumedResult.result?.test_metrics).toEqual(uninterruptedRun.result?.test_metrics);
+  });
+
+  test("resume refuses already completed runs", async () => {
+    const fakeClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async (_q: string, docs: Array<{ skill_id: string; text: string }>) =>
+        docs.map(() => 0.95),
+    };
+    const adapter = new LocalAdapter({ configPath, clients: fakeClients });
+
+    const completed = await adapter.calibrateRun({
+      datasetPath,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.1,
+      minDeliveredShortlistRecallAtK: 0.1,
+      minAutoMatchCount: 1,
+    });
+
+    await expect(
+      adapter.calibrateRun({
+        datasetPath,
+        resumeRunId: completed.run_id,
+        minAutoMatchPrecision: 0.1,
+        minRetrievalRecallAtK: 0.1,
+        minDeliveredShortlistRecallAtK: 0.1,
+        minAutoMatchCount: 1,
+      }),
+    ).rejects.toThrow(/completed/i);
+  });
+
+  test("resume rejects every fingerprint and certification-setting mismatch", async () => {
+    const {
+      computeCorpusFingerprint,
+      createInitialCalibrationRun,
+    } = await import("../src/calibrate");
+    const {
+      embeddingFingerprint,
+      loadConfig,
+      rerankerFingerprint,
+    } = await import("../src/config");
+    const loadedConfig = await loadConfig(configPath);
+    const indexDb = openIndex(stateDir);
+    const corpusFingerprint = computeCorpusFingerprint(indexDb);
+    indexDb.close();
+    const baseRunningRun = {
+      run_id: "",
+      created_at: new Date().toISOString(),
+      status: "running" as const,
+      reranker_fingerprint: rerankerFingerprint(loadedConfig)!,
+      embedding_fingerprint: embeddingFingerprint(loadedConfig),
+      corpus_fingerprint: corpusFingerprint,
+      dataset_hash: createHash("sha256").update(readFileSync(datasetPath)).digest("hex"),
+      candidate_limit: 5,
+      min_auto_match_precision: 0.99,
+      min_auto_match_count: 30,
+      min_delivered_shortlist_recall_at_k: 0.95,
+      min_shortlist_recall_at_5: 0.95,
+      recall_settings: { k_lexical: 10, k_vector: 10, k_rerank: 5 },
+    };
+    const mismatches: Array<{
+      name: string;
+      expected: RegExp;
+      mutate: (run: typeof baseRunningRun) => void;
+    }> = [
+      { name: "dataset", expected: /dataset/i, mutate: (run) => { run.dataset_hash = "different"; } },
+      { name: "corpus", expected: /corpus/i, mutate: (run) => { run.corpus_fingerprint = "different"; } },
+      { name: "embedding", expected: /embedding/i, mutate: (run) => { run.embedding_fingerprint = "different"; } },
+      { name: "reranker", expected: /reranker/i, mutate: (run) => { run.reranker_fingerprint = "different"; } },
+      { name: "candidate limit", expected: /candidate limit/i, mutate: (run) => { run.candidate_limit = 7; } },
+      {
+        name: "recall settings",
+        expected: /recall settings/i,
+        mutate: (run) => { run.recall_settings = { ...run.recall_settings, k_rerank: 4 }; },
+      },
+      {
+        name: "minimum precision",
+        expected: /min_auto_match_precision/i,
+        mutate: (run) => { run.min_auto_match_precision = 0.98; },
+      },
+      {
+        name: "minimum match count",
+        expected: /min_auto_match_count/i,
+        mutate: (run) => { run.min_auto_match_count = 29; },
+      },
+      {
+        name: "delivered shortlist recall",
+        expected: /min_delivered_shortlist_recall_at_k/i,
+        mutate: (run) => { run.min_delivered_shortlist_recall_at_k = 0.94; },
+      },
+      {
+        name: "retrieval recall",
+        expected: /min_retrieval_recall_at_k/i,
+        mutate: (run) => { run.min_shortlist_recall_at_5 = 0.94; },
+      },
+    ];
+    const fakeClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async (_q: string, docs: Array<{ skill_id: string; text: string }>) =>
+        docs.map(() => 0.95),
+    };
+    const adapter = new LocalAdapter({ configPath, clients: fakeClients });
+
+    for (const [index, mismatch] of mismatches.entries()) {
+      const run = {
+        ...baseRunningRun,
+        run_id: `run-mismatch-${index}`,
+        recall_settings: { ...baseRunningRun.recall_settings },
+      };
+      mismatch.mutate(run);
+      const db = openCalibrateDb(stateDir);
+      createInitialCalibrationRun(db, run);
+      db.close();
+
+      await expect(
+        adapter.calibrateRun({
+          datasetPath,
+          resumeRunId: run.run_id,
+        }),
+      ).rejects.toThrow(mismatch.expected);
+    }
+  });
+
+  test("progress output reaches N/N, goes to stderr, and does not leak query/credential contents", async () => {
+    const progressLines: string[] = [];
+    const originalStderrWrite = process.stderr.write;
+    process.stderr.write = ((chunk: any) => {
+      progressLines.push(String(chunk));
+      return true;
+    }) as any;
+
+    const fakeClients = {
+      embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      rerank: async (query: string, docs: Array<{ skill_id: string; text: string }>) =>
+        docs.map((d) => {
+          if (query.includes("match 1") && d.skill_id === "skill-1") return 0.95;
+          if (query.includes("match 2") && d.skill_id === "skill-2") return 0.95;
+          if (query.includes("ambiguous")) return 0.8;
+          return 0.1;
+        }),
+    };
+    const adapter = new LocalAdapter({ configPath, clients: fakeClients });
+
+    try {
+      const res = await adapter.calibrateRun({
+        datasetPath,
+        minAutoMatchPrecision: 0.1,
+        minRetrievalRecallAtK: 0.1,
+        minDeliveredShortlistRecallAtK: 0.1,
+        minAutoMatchCount: 1,
+      });
+
+      expect(res.run_id).toBeDefined();
+      expect(res.result?.status).toBe("completed");
+
+      // Verify progress reached N/N
+      const fullStderr = progressLines.join("");
+      expect(fullStderr).toContain(`Calibration observations: ${dataset.length}/${dataset.length}`);
+
+      // Verify no raw queries or skill content appeared in progress output
+      for (const c of dataset) {
+        expect(fullStderr).not.toContain(c.query);
+      }
+      expect(fullStderr).not.toContain("http://127.0.0.1:9");
+      expect(fullStderr).not.toContain("secret");
+    } finally {
+      process.stderr.write = originalStderrWrite;
+    }
+  });
+});
