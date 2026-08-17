@@ -368,6 +368,7 @@ export interface RunCalibrationOptions {
     completedCount: number,
     totalCount: number,
   ) => void | Promise<void>;
+  onObservationsReady?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -874,6 +875,7 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
   });
 
   const observations: QueryObservation[] = cases.map((_, i) => obsMap.get(i)!);
+  opts.onObservationsReady?.();
 
   // --- Step 2: Select thresholds from tune split only ---
   const tuneObs = observations.filter((o) => o.split === "tune");

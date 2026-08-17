@@ -241,6 +241,13 @@ describe("skillmux doctor CLI", () => {
 });
 
 describe("skillmux calibrate run CLI", () => {
+  test("documents the opt-in timing flag in CLI help", async () => {
+    const result = await runCli("--help");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("calibrate run");
+    expect(result.stdout).toContain("--timing");
+  });
+
   test("parses --dataset instead of treating the run subcommand as an option", async () => {
     const result = await runCli(
       "calibrate",

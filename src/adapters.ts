@@ -35,7 +35,12 @@ import {
   type SetConfigResult,
 } from "./config-service";
 import type { ResolvedTarget } from "./context";
-import { configure, retrieveAndRerankSnapshot, syncVaultIfNeeded } from "./router-core";
+import {
+  configure,
+  retrieveAndRerankSnapshot,
+  syncVaultIfNeeded,
+  type StageTiming,
+} from "./router-core";
 import type { Clients, Config } from "./types";
 
 export interface Capabilities {
@@ -51,6 +56,43 @@ export interface TargetAdapterOptions {
   configPath?: string;
   allowInsecure?: boolean;
   clients?: Clients;
+}
+
+/**
+ * Aggregate timing data collected during a single calibrateRun invocation.
+ *
+ * All durations are in milliseconds and are non-negative.
+ *
+ * Cumulative fields (cumulative_embedding_ms, cumulative_lexical_ms,
+ * cumulative_vector_ms, cumulative_reranker_ms, cumulative_checkpoint_ms)
+ * represent total worker time summed across all concurrent query retrievals
+ * or checkpoint writes. Because queries run concurrently, the sum of these
+ * cumulative fields may exceed wall_ms — they measure how much worker time
+ * each stage consumed, not how much wall-clock time it contributed.
+ */
+export interface CalibrationTimingSummary {
+  /** Total number of dataset cases. */
+  cases_total: number;
+  /** Cases actually retrieved in this invocation (not reused from a prior run). */
+  cases_executed: number;
+  /** Cases loaded from a prior interrupted run (resume observations). */
+  cases_reused: number;
+  /** Wall-clock duration of the full calibrateRun operation (ms). */
+  wall_ms: number;
+  /** Duration of the one-time vault synchronization before retrieval (ms). */
+  vault_sync_ms: number;
+  /** Cumulative worker time spent in embedding across all queries (ms). */
+  cumulative_embedding_ms: number;
+  /** Cumulative worker time spent in lexical search across all queries (ms). */
+  cumulative_lexical_ms: number;
+  /** Cumulative worker time spent in vector search across all queries (ms). */
+  cumulative_vector_ms: number;
+  /** Cumulative worker time spent in reranking across all queries (ms). */
+  cumulative_reranker_ms: number;
+  /** Cumulative worker time spent writing observation checkpoints (ms). */
+  cumulative_checkpoint_ms: number;
+  /** Duration of threshold selection and test-split certification (ms). */
+  policy_evaluation_ms: number;
 }
 
 export interface TargetAdapter {
@@ -70,6 +112,10 @@ export interface TargetAdapter {
     concurrency?: number;
     resumeRunId?: string;
     onProgress?: (completed: number, total: number) => void;
+    /** Opt-in timing collection. When true, onTimingSummary is called after a non-throwing result. */
+    timing?: boolean;
+    /** Called after calibration completes or fails-gates (not called on throws). */
+    onTimingSummary?: (summary: CalibrationTimingSummary) => void;
   }): Promise<{ run_id?: string; result?: CalibrationResult }>;
   calibrateList(): Promise<any[]>;
   calibrateShow(runId: string): Promise<any>;
@@ -162,11 +208,25 @@ export class LocalAdapter implements TargetAdapter {
     concurrency?: number;
     resumeRunId?: string;
     onProgress?: (completed: number, total: number) => void;
+    timing?: boolean;
+    onTimingSummary?: (summary: CalibrationTimingSummary) => void;
   }): Promise<{ run_id?: string; result?: CalibrationResult }> {
+    const collectTiming = opts?.timing === true;
+    const wallStart = collectTiming ? performance.now() : 0;
+
     const config = await loadConfig(this.configPath);
     const clients = this.clients ?? createClients(config);
     configure({ config, clients });
-    await syncVaultIfNeeded();
+
+    // Measure vault synchronization
+    let vault_sync_ms = 0;
+    if (collectTiming) {
+      const t0 = performance.now();
+      await syncVaultIfNeeded();
+      vault_sync_ms = Math.max(0, performance.now() - t0);
+    } else {
+      await syncVaultIfNeeded();
+    }
 
     const candidateLimit =
       config.output?.ambiguous_candidate_limit ?? config.thresholds?.candidate_limit ?? 5;
@@ -210,6 +270,13 @@ export class LocalAdapter implements TargetAdapter {
     const db = openCalibrateDb(expandHome(config.state_dir));
     let runId: string;
     let initialObservations: Map<number, QueryObservation> | undefined = undefined;
+
+    // Cumulative timing accumulators (only used when collectTiming=true)
+    let cumulative_embedding_ms = 0;
+    let cumulative_lexical_ms = 0;
+    let cumulative_vector_ms = 0;
+    let cumulative_reranker_ms = 0;
+    let cumulative_checkpoint_ms = 0;
 
     try {
       if (opts?.resumeRunId) {
@@ -284,24 +351,44 @@ export class LocalAdapter implements TargetAdapter {
         });
       }
 
+      const casesReused = initialObservations?.size ?? 0;
+
       const onProgress = opts?.onProgress ?? ((completed, total) => {
         process.stderr.write(`Calibration observations: ${completed}/${total}\n`);
       });
 
+      const retrievalTiming = collectTiming
+        ? {
+            onTiming: (timing: StageTiming) => {
+              cumulative_embedding_ms += timing.embedding_ms;
+              cumulative_lexical_ms += timing.lexical_ms;
+              cumulative_vector_ms += timing.vector_ms;
+              cumulative_reranker_ms += timing.reranker_ms;
+            },
+          }
+        : undefined;
+
+      const getRankedCandidates = async (query: string) => {
+        const res = await retrieveAndRerankSnapshot(
+          { query, forceLexical: false },
+          retrievalTiming,
+        );
+        if (res.retrieval !== "reranked") {
+          throw new Error(
+            "Calibration requires successful hybrid retrieval and reranking for every query.",
+          );
+        }
+        return res.candidates.map((candidate) => ({
+          skill_id: candidate.skill_id,
+          score: candidate.score ?? 0,
+        }));
+      };
+
+      let policyEvaluationStart = 0;
+
       const result = await runCalibration({
         cases,
-        getRankedCandidates: async (query: string) => {
-          const res = await retrieveAndRerankSnapshot({ query, forceLexical: false });
-          if (res.retrieval !== "reranked") {
-            throw new Error(
-              "Calibration requires successful hybrid retrieval and reranking for every query.",
-            );
-          }
-          return res.candidates.map((candidate) => ({
-            skill_id: candidate.skill_id,
-            score: candidate.score ?? 0,
-          }));
-        },
+        getRankedCandidates,
         reranker: clients.rerank,
         candidateLimit,
         minAutoMatchPrecision,
@@ -311,10 +398,25 @@ export class LocalAdapter implements TargetAdapter {
         concurrency,
         initialObservations,
         onProgress,
-        onObservation: (obs, caseIdx) => {
-          saveCalibrationObservation(db, runId, caseIdx, obs);
-        },
+        onObservation: collectTiming
+          ? (obs, caseIdx) => {
+              const t0 = performance.now();
+              saveCalibrationObservation(db, runId, caseIdx, obs);
+              const t1 = performance.now();
+              cumulative_checkpoint_ms += Math.max(0, t1 - t0);
+            }
+          : (obs, caseIdx) => {
+              saveCalibrationObservation(db, runId, caseIdx, obs);
+            },
+        onObservationsReady: collectTiming
+          ? () => {
+              policyEvaluationStart = performance.now();
+            }
+          : undefined,
       });
+
+      // policy_evaluation_ms: threshold selection + certification duration
+      const policyEvalEnd = collectTiming ? performance.now() : 0;
 
       finalizeCalibrationRun(db, {
         run_id: runId,
@@ -326,11 +428,39 @@ export class LocalAdapter implements TargetAdapter {
         observations: result.observations,
       });
 
+      // Emit timing summary after a non-throwing result (completed or failed-gates).
+      // Never called when calibrateRun throws.
+      if (collectTiming && opts?.onTimingSummary) {
+        const wall_ms = Math.max(0, performance.now() - wallStart);
+        // policy_evaluation_ms covers threshold selection + test-split certification,
+        // the internal work runCalibration does after all observations are collected.
+        const policy_evaluation_ms = Math.max(0, policyEvalEnd - policyEvaluationStart);
+
+        const cases_reused = casesReused;
+        const cases_total = cases.length;
+        const cases_executed = cases_total - cases_reused;
+
+        opts.onTimingSummary({
+          cases_total,
+          cases_executed,
+          cases_reused,
+          wall_ms,
+          vault_sync_ms,
+          cumulative_embedding_ms,
+          cumulative_lexical_ms,
+          cumulative_vector_ms,
+          cumulative_reranker_ms,
+          cumulative_checkpoint_ms,
+          policy_evaluation_ms,
+        });
+      }
+
       return { run_id: runId, result };
     } finally {
       db.close();
     }
   }
+
 
   async calibrateList(): Promise<any[]> {
     const config = await loadConfig(this.configPath);
@@ -543,10 +673,13 @@ export class RemoteAdapter implements TargetAdapter {
     concurrency?: number;
     resumeRunId?: string;
     onProgress?: (completed: number, total: number) => void;
+    timing?: boolean;
+    onTimingSummary?: (summary: CalibrationTimingSummary) => void;
   }): Promise<{ run_id?: string; result?: CalibrationResult }> {
     void opts;
     throw this.remoteCalibrationNotImplemented();
   }
+
 
   async calibrateList(): Promise<any[]> {
     throw this.remoteCalibrationNotImplemented();

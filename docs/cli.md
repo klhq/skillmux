@@ -304,6 +304,9 @@ skillmux calibrate run --dataset ./eval/queries.json
 # Set the bounded worker count
 skillmux calibrate run --dataset ./eval/queries.json --concurrency 6
 
+# Print aggregate performance timing to stderr
+skillmux calibrate run --dataset ./eval/queries.json --timing
+
 # Resume a running or interrupted attempt with the same inputs and gates
 skillmux calibrate run --dataset ./eval/queries.json --resume <run_id>
 
