@@ -38,6 +38,7 @@ const config: Config = {
   state_dir: join(tmp, "state"),
   recall: { k_lexical: 15, k_vector: 15 },
   thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
+  output: { ambiguous_candidate_limit: 5 },
   inference: {
     mode: "remote",
     timeout_ms: 2000,
@@ -112,6 +113,35 @@ describe("hybrid recall (AC6)", () => {
     });
   });
 
+  test("sends no more than k_rerank candidates to the reranker", async () => {
+    let receivedDocCount = 0;
+    configure({
+      config: {
+        ...config,
+        recall: { k_lexical: 15, k_vector: 15, k_rerank: 2 },
+      },
+      clients: {
+        embed: async (texts) => texts.map(vectorFor),
+        rerank: async (_query, docs) => {
+          receivedDocCount = docs.length;
+          return docs.map(() => 0.8);
+        },
+      },
+    });
+
+    const raw = await retrieveAndRerank({ query: "quantum flux routing" });
+    expect(receivedDocCount).toBe(2);
+    expect(raw.candidates.length).toBe(2);
+
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => texts.map(vectorFor),
+        rerank: async (_query, docs) => docs.map(() => 0.5),
+      },
+    });
+  });
+
   test("includes a semantically-near skill that lexical recall alone misses", async () => {
     const result = await resolveSkill({ query: "quantum flux routing" });
 
@@ -166,9 +196,92 @@ describe("hybrid recall (AC6)", () => {
     expect(result.retrieval).toBe("lexical");
     expect(result.outcome).not.toBe("matched");
     if (result.outcome !== "ambiguous") throw new Error(`expected ambiguous, got ${result.outcome}`);
+    expect(result.degraded_from).toBe("reranked");
+    expect(result.degradation_reason).toBe("embedding_unavailable");
     const ids = result.candidates.map((c) => c.skill_id);
     expect(ids).toContain("lexical-skill");
     expect(ids).not.toContain("semantic-skill");
     for (const candidate of result.candidates) expect(candidate).not.toHaveProperty("score");
+  });
+
+  test("returns degradation_reason embedding_timeout when embedding times out", async () => {
+    const timeoutErr = new Error("request timed out");
+    timeoutErr.name = "TimeoutError";
+    configure({
+      config,
+      clients: {
+        embed: async () => {
+          throw timeoutErr;
+        },
+        rerank: async (_query, docs) => docs.map(() => 0.99),
+      },
+    });
+
+    const result = await resolveSkill({ query: "quantum flux routing" });
+    expect(result.retrieval).toBe("lexical");
+    expect(result.degraded_from).toBe("reranked");
+    expect(result.degradation_reason).toBe("embedding_timeout");
+  });
+
+  test("does not write the raw query to degradation logs", async () => {
+    const secretQuery = "deploy with token secret-123";
+    const logLines: string[] = [];
+    const originalConsoleError = console.error;
+    configure({
+      config,
+      clients: {
+        embed: async () => {
+          throw new Error("embedding endpoint unreachable");
+        },
+        rerank: async (_query, docs) => docs.map(() => 0.99),
+      },
+    });
+    console.error = (...args: unknown[]) => logLines.push(args.map(String).join(" "));
+
+    try {
+      await resolveSkill({ query: secretQuery });
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    expect(logLines.join("\n")).not.toContain(secretQuery);
+  });
+
+  test("returns degradation_reason reranker_timeout and falls back to hybrid when reranker times out", async () => {
+    const timeoutErr = new Error("reranker request timed out");
+    timeoutErr.name = "TimeoutError";
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => texts.map(vectorFor),
+        rerank: async () => {
+          throw timeoutErr;
+        },
+      },
+    });
+
+    const result = await resolveSkill({ query: "quantum flux routing" });
+    expect(result.retrieval).toBe("hybrid");
+    expect(result.degraded_from).toBe("reranked");
+    expect(result.degradation_reason).toBe("reranker_timeout");
+    if (result.outcome !== "ambiguous") throw new Error("expected ambiguous");
+    expect(result.candidates.length).toBeGreaterThan(0);
+  });
+
+  test("returns degradation_reason reranker_unavailable when reranker fails with 503", async () => {
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => texts.map(vectorFor),
+        rerank: async () => {
+          throw new Error("reranker 503 Service Unavailable");
+        },
+      },
+    });
+
+    const result = await resolveSkill({ query: "quantum flux routing" });
+    expect(result.retrieval).toBe("hybrid");
+    expect(result.degraded_from).toBe("reranked");
+    expect(result.degradation_reason).toBe("reranker_unavailable");
   });
 });

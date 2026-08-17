@@ -36,6 +36,7 @@ async function harness() {
     state_dir: stateDir,
     recall: { k_lexical: 20, k_vector: 20 },
     thresholds: { candidate_limit: 5 },
+    output: { ambiguous_candidate_limit: 5 },
     inference: {
       mode: "remote",
       timeout_ms: 2000,

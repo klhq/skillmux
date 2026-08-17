@@ -43,6 +43,7 @@ function testConfig(overrides: Partial<Config> = {}): Config {
     state_dir: mkdtempSync(join(tmpdir(), "doctor-state-")),
     recall: { k_lexical: 15, k_vector: 15 },
     thresholds: { candidate_limit: 5 },
+    output: { ambiguous_candidate_limit: 5 },
     inference: {
       mode: "remote",
       timeout_ms: 2000,
@@ -83,6 +84,25 @@ describe("diagnose", () => {
     const report = await diagnose(testConfig({ vault_path: vaultDir }));
 
     expect(report.retrieval_capability).toBe("hybrid");
+    expect(report.checks.find((check) => check.name === "config_authority")).toMatchObject({
+      ok: true,
+      detail: expect.stringContaining("environment overrides enabled"),
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("reports strict configuration authority when environment_overrides is false", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-strict-vault-"));
+    const report = await diagnose(testConfig({
+      vault_path: vaultDir,
+      config: { environment_overrides: false },
+    }));
+
+    expect(report.checks.find((check) => check.name === "config_authority")).toMatchObject({
+      ok: true,
+      detail: expect.stringContaining("TOML authoritative"),
+    });
 
     rmSync(vaultDir, { recursive: true, force: true });
   });
@@ -401,6 +421,16 @@ describe("diagnose calibration check", () => {
     expect(report.checks.find((check) => check.name === "calibration")).toBeUndefined();
   });
 
+  test("reports behavioral configuration provenance", async () => {
+    const report = await diagnose(testConfig(), process.env, {
+      vault_path: "toml",
+      "recall.k_rerank": "environment",
+    });
+
+    expect(report.checks.find((check) => check.name === "config_source:vault_path")?.detail).toBe("toml");
+    expect(report.checks.find((check) => check.name === "config_source:recall.k_rerank")?.detail).toBe("environment");
+  });
+
   test("flags thresholds that were never produced by an applied calibration run", async () => {
     const config = calibratedConfig();
 
@@ -469,6 +499,26 @@ describe("diagnose calibration check", () => {
     expect(calibrationCheck).toMatchObject({ ok: false });
     expect(calibrationCheck?.detail).toContain("stale");
     expect(calibrationCheck?.detail).toContain("reranker");
+  });
+
+  test("flags a stale calibration run when recall settings have changed", async () => {
+    const config = calibratedConfig();
+    seedIndexMatchingCorpusFingerprint(config.state_dir);
+    const indexDb = openIndex(config.state_dir);
+    const { computeCorpusFingerprint } = await import("../src/calibrate");
+    const corpusFingerprint = computeCorpusFingerprint(indexDb);
+    indexDb.close();
+    const runId = seedRun(config.state_dir, {
+      corpus_fingerprint: corpusFingerprint,
+      recall_settings: { k_lexical: 5, k_vector: 5, k_rerank: 2 },
+    });
+    (config.inference as any).calibration = { run_id: runId };
+
+    const report = await diagnose(config);
+    const calibrationCheck = report.checks.find((check) => check.name === "calibration");
+
+    expect(calibrationCheck).toMatchObject({ ok: false });
+    expect(calibrationCheck?.detail).toContain("recall settings");
   });
 
   test("flags an applied run_id whose run never actually certified", async () => {

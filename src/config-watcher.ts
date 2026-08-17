@@ -11,12 +11,15 @@ import type { Config } from "./types";
 // ---------------------------------------------------------------------------
 
 export const LIVE_RELOAD_KEYS = new Set([
+  "config.environment_overrides",
   "inference.thresholds.match_score",
   "inference.thresholds.match_margin",
   "inference.thresholds.candidate_floor",
   "inference.calibration.run_id",
   "recall.k_lexical",
   "recall.k_vector",
+  "recall.k_rerank",
+  "output.ambiguous_candidate_limit",
   "thresholds.candidate_limit",
   "inference.embedding.endpoint",
   "inference.embedding.api_key_env",

@@ -23,12 +23,13 @@ import {
   vectorTopK,
 } from "./db";
 import type { SkillRow } from "./db";
-import { decideResolveOutcome } from "./decision";
+import { decideResolveOutcome, type Decision } from "./decision";
 import type {
   RankedCandidate,
   RetrievalCapability,
   Clients,
   Config,
+  DegradationReason,
   FetchSkillInput,
   FetchSkillResult,
   ResolveResult,
@@ -400,16 +401,10 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
     return result;
   }
 
-  const { retrieval, candidates: rankedCandidates } = await retrieveAndRerank(input);
+  const retrievalResult = await retrieveAndRerank(input);
+  const { retrieval, candidates: rankedCandidates } = retrievalResult;
 
-  const decisionThresholds = retrieval === "reranked" && config.inference.mode === "remote"
-    ? { candidate_limit: config.thresholds.candidate_limit, ...config.inference.thresholds }
-    : config.thresholds;
-  const decision = decideResolveOutcome({
-    reranked: retrieval === "reranked",
-    candidates: rankedCandidates,
-    thresholds: decisionThresholds,
-  });
+  const decision = decideRetrievalResult(config, retrievalResult);
 
   let result: ResolveResult;
   if (decision.outcome === "matched") {
@@ -417,6 +412,12 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
     result = {
       outcome: "matched",
       retrieval: "reranked",
+      ...(retrievalResult.degraded_from
+        ? {
+            degraded_from: retrievalResult.degraded_from,
+            degradation_reason: retrievalResult.degradation_reason,
+          }
+        : {}),
       skill_id: decision.skill_id,
       title: delivery.title,
       content_sha256: delivery.content_sha256,
@@ -429,10 +430,26 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
     result = {
       outcome: "ambiguous",
       retrieval,
+      ...(retrievalResult.degraded_from
+        ? {
+            degraded_from: retrievalResult.degraded_from,
+            degradation_reason: retrievalResult.degradation_reason,
+          }
+        : {}),
       candidates: decision.candidates.map(({ score: _score, ...candidate }) => candidate),
     };
   } else {
-    result = { outcome: "no_match", retrieval, message: NO_MATCH_MESSAGE };
+    result = {
+      outcome: "no_match",
+      retrieval,
+      ...(retrievalResult.degraded_from
+        ? {
+            degraded_from: retrievalResult.degraded_from,
+            degradation_reason: retrievalResult.degradation_reason,
+          }
+        : {}),
+      message: NO_MATCH_MESSAGE,
+    };
   }
 
   insertAudit(
@@ -443,6 +460,8 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
       query: input.query,
       outcome: result.outcome,
       retrieval,
+      degraded_from: retrievalResult.degraded_from ?? null,
+      degradation_reason: retrievalResult.degradation_reason ?? null,
       candidates: rankedCandidates.map((c) => ({ skill_id: c.skill_id, score: c.score })),
       selected_skill_id: result.outcome === "matched" ? result.skill_id : null,
       latency_ms: Math.round(performance.now() - t0),
@@ -454,7 +473,61 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
 
 export interface RetrievalResult {
   retrieval: Exclude<RetrievalCapability, "exact">;
+  degraded_from?: "reranked" | "hybrid";
+  degradation_reason?: DegradationReason;
   candidates: RankedCandidate[];
+  trace: Array<{
+    skill_id: string;
+    lexical_rank: number | null;
+    fused_rank: number | null;
+    reranked_rank: number | null;
+  }>;
+}
+
+export function decideRetrievalResult(config: Config, result: RetrievalResult): Decision {
+  const candidateLimit = config.output?.ambiguous_candidate_limit ?? config.thresholds?.candidate_limit ?? 5;
+  const thresholds = result.retrieval === "reranked" && config.inference.mode === "remote"
+    ? { candidate_limit: candidateLimit, ...config.inference.thresholds }
+    : { ...config.thresholds, candidate_limit: candidateLimit };
+  return decideResolveOutcome({
+    reranked: result.retrieval === "reranked",
+    candidates: result.candidates,
+    thresholds,
+  });
+}
+
+export function classifyInferenceError(
+  stage: "embedding" | "reranker",
+  error: unknown,
+): DegradationReason {
+  const isTimeout =
+    (error as { name?: string })?.name === "TimeoutError" ||
+    (error as { name?: string })?.name === "AbortError" ||
+    String(error).toLowerCase().includes("timeout") ||
+    String(error).toLowerCase().includes("aborted");
+
+  if (isTimeout) {
+    return stage === "embedding" ? "embedding_timeout" : "reranker_timeout";
+  }
+
+  if (error instanceof RemoteInferenceError) {
+    if (error.kind === "protocol") {
+      return stage === "embedding" ? "embedding_protocol_error" : "reranker_protocol_error";
+    }
+    return stage === "embedding" ? "embedding_unavailable" : "reranker_unavailable";
+  }
+
+  const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  if (
+    msg.includes("protocol") ||
+    msg.includes("malformed") ||
+    msg.includes("invalid") ||
+    msg.includes("json")
+  ) {
+    return stage === "embedding" ? "embedding_protocol_error" : "reranker_protocol_error";
+  }
+
+  return stage === "embedding" ? "embedding_unavailable" : "reranker_unavailable";
 }
 
 /**
@@ -469,31 +542,60 @@ export async function retrieveAndRerank(
   await syncVaultIfNeeded();
   const clients = getClients();
   const lexical = ftsSearch(db, input.query, config.recall.k_lexical);
+  const lexicalRanks = new Map(lexical.map((row, index) => [row.skill_id, index + 1]));
 
   let retrieval: RetrievalResult["retrieval"] = "lexical";
+  let degraded_from: RetrievalResult["degraded_from"] = undefined;
+  let degradation_reason: RetrievalResult["degradation_reason"] = undefined;
   let rows = lexical;
+  let fusedRows: SkillRow[] | null = null;
+
   if (!input.forceLexical) {
     try {
       const queryVec = (await clients.embed([input.query]))[0];
       if (!queryVec) throw new Error("Embedding client returned no query vector.");
       const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
       rows = reciprocalRankFusion(lexical, nearest);
+      fusedRows = rows;
       retrieval = "hybrid";
-    } catch {
+    } catch (embedError) {
       retrieval = "lexical";
+      degraded_from = clients.rerank ? "reranked" : "hybrid";
+      degradation_reason = classifyInferenceError("embedding", embedError);
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          stage: "embedding",
+          degraded_from,
+          reason: degradation_reason,
+        }),
+      );
     }
   }
 
   let scores: number[] | null = null;
   if (clients.rerank && retrieval === "hybrid" && rows.length > 0) {
+    const kRerank = config.recall.k_rerank ?? 10;
+    const rerankCandidates = rows.slice(0, kRerank);
     try {
       scores = await clients.rerank(
         input.query,
-        rows.map((r) => ({ skill_id: r.skill_id, text: rerankText(r) })),
+        rerankCandidates.map((r) => ({ skill_id: r.skill_id, text: rerankText(r) })),
       );
       retrieval = "reranked";
-    } catch {
+      rows = rerankCandidates;
+    } catch (rerankError) {
       scores = null;
+      degraded_from = "reranked";
+      degradation_reason = classifyInferenceError("reranker", rerankError);
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          stage: "reranker",
+          degraded_from,
+          reason: degradation_reason,
+        }),
+      );
     }
   }
 
@@ -505,8 +607,22 @@ export async function retrieveAndRerank(
       score: scores?.[i] ?? null,
     }))
     .sort((a, b) => scores === null ? 0 : (b.score ?? -Infinity) - (a.score ?? -Infinity));
+  const rerankedRanks = retrieval === "reranked"
+    ? new Map(candidates.map((candidate, index) => [candidate.skill_id, index + 1]))
+    : new Map<string, number>();
+  const traceRows = fusedRows ?? rows;
 
-  return { retrieval, candidates };
+  return {
+    retrieval,
+    ...(degraded_from ? { degraded_from, degradation_reason } : {}),
+    candidates,
+    trace: traceRows.map((row, index) => ({
+      skill_id: row.skill_id,
+      lexical_rank: lexicalRanks.get(row.skill_id) ?? null,
+      fused_rank: fusedRows ? index + 1 : null,
+      reranked_rank: rerankedRanks.get(row.skill_id) ?? null,
+    })),
+  };
 }
 
 export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {

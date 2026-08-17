@@ -867,6 +867,11 @@ export interface CalibrationRunRecord {
   embedding_fingerprint: string;
   corpus_fingerprint: string;
   dataset_hash: string;
+  recall_settings?: {
+    k_lexical: number;
+    k_vector: number;
+    k_rerank: number;
+  };
   dataset_provenance?: DatasetProvenanceSummary;
   candidate_limit: number;
   attempt_count?: number;
@@ -963,6 +968,9 @@ export function openCalibrateDb(stateDir: string): Database {
   if (!columns.some((column) => column.name === "imported_labelled_case_count")) {
     db.run("ALTER TABLE calibration_runs ADD COLUMN imported_labelled_case_count INTEGER NOT NULL DEFAULT 0");
   }
+  if (!columns.some((column) => column.name === "recall_settings")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN recall_settings TEXT NOT NULL DEFAULT '{}'");
+  }
   return db;
 }
 
@@ -980,8 +988,9 @@ export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): v
       attempt_count, min_auto_match_precision, min_auto_match_count,
       min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason,
       selected_thresholds, tune_metrics, test_metrics, observations,
-      dataset_provenance, human_labelled_case_count, imported_labelled_case_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      dataset_provenance, human_labelled_case_count, imported_labelled_case_count,
+      recall_settings
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       run.run_id,
       run.created_at,
@@ -1004,6 +1013,7 @@ export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): v
       JSON.stringify(run.dataset_provenance ?? {}),
       run.dataset_provenance?.human_labelled_case_count ?? 0,
       run.dataset_provenance?.imported_labelled_case_count ?? 0,
+      JSON.stringify(run.recall_settings ?? {}),
     ],
   );
 }
@@ -1030,6 +1040,7 @@ interface RawCalibrationRow {
   dataset_provenance: string;
   human_labelled_case_count: number;
   imported_labelled_case_count: number;
+  recall_settings: string;
 }
 
 function parseMetrics(json: string): CalibrationMetrics {
@@ -1064,6 +1075,10 @@ function rowToRecord(row: RawCalibrationRow): CalibrationRunRecord {
     embedding_fingerprint: row.embedding_fingerprint,
     corpus_fingerprint: row.corpus_fingerprint,
     dataset_hash: row.dataset_hash,
+    recall_settings:
+      Object.keys(JSON.parse(row.recall_settings) as object).length > 0
+        ? JSON.parse(row.recall_settings) as CalibrationRunRecord["recall_settings"]
+        : undefined,
     dataset_provenance:
       Object.keys(JSON.parse(row.dataset_provenance) as object).length > 0
         ? JSON.parse(row.dataset_provenance) as DatasetProvenanceSummary

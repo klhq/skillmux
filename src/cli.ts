@@ -15,6 +15,7 @@ import {
 } from "./config";
 import { openIndex } from "./db";
 import { diagnose } from "./doctor";
+import { getEffectiveConfig } from "./config-service";
 import { evalVault } from "./eval";
 import {
   assessClientReadiness,
@@ -745,7 +746,8 @@ async function runEval(options: { isJson: boolean }): Promise<void> {
 }
 
 async function runDoctor(options: { isJson: boolean }): Promise<void> {
-  const report = await diagnose(await loadConfig());
+  const effective = await getEffectiveConfig(resolveConfigPath());
+  const report = await diagnose(effective.effective, process.env, effective.sources);
   emitSuccess({ isJson: options.isJson }, report, () => {
     console.log(`version: ${report.version}`);
     console.log(`runtime: ${report.runtime}`);

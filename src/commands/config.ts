@@ -124,9 +124,22 @@ export async function handleConfigCommand(
   }
 
   if (sub === "show") {
+    const withSources = args.includes("--sources");
     const data = await adapter.getConfigShow();
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, data, () => {
       renderTargetBanner(ctx.target);
+      if (withSources) {
+        const policy =
+          data.effective.config?.environment_overrides === false
+            ? "strict (TOML authoritative)"
+            : "permissive (environment overrides enabled)";
+        console.log(`Policy: ${policy}`);
+        console.log("\nSources:");
+        for (const [k, src] of Object.entries(data.sources)) {
+          console.log(`  ${k}: ${src}`);
+        }
+        console.log("\nEffective Configuration:");
+      }
       console.log(JSON.stringify(data.effective, null, 2));
     });
     return;

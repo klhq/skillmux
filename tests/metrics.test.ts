@@ -137,4 +137,20 @@ describe("MetricsRegistry", () => {
     expect(body).toContain("# TYPE skill_router_rate_limits_exceeded_total counter");
     expect(body).toContain("skill_router_rate_limits_exceeded_total 2");
   });
+
+  test("increments degraded retrieval counter labelled by stage and reason", () => {
+    const metrics = new MetricsRegistry();
+
+    metrics.recordDegradation("reranker", "reranker_timeout");
+    metrics.recordDegradation("reranker", "reranker_timeout");
+    metrics.recordDegradation("embedding", "embedding_unavailable");
+
+    const body = metrics.render();
+
+    expect(body).toContain("# HELP skill_router_degraded_retrieval_total Total count of degraded retrieval fallbacks labelled by stage and reason.");
+    expect(body).toContain("# TYPE skill_router_degraded_retrieval_total counter");
+    expect(body).toContain('skill_router_degraded_retrieval_total{stage="reranker",reason="reranker_timeout"} 2');
+    expect(body).toContain('skill_router_degraded_retrieval_total{stage="embedding",reason="embedding_unavailable"} 1');
+  });
 });
+

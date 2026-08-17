@@ -63,6 +63,7 @@ function configFor(root: string): Config {
     state_dir: join(root, "state"),
     recall: { k_lexical: 20, k_vector: 20 },
     thresholds: { candidate_limit: 5 },
+    output: { ambiguous_candidate_limit: 5 },
     inference: {
       mode: "local",
       bundle: "gte-small-v1",

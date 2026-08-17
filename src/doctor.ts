@@ -90,6 +90,11 @@ function checkCalibration(config: Config): DoctorCheck {
     rerankerFingerprint(config) !== run.reranker_fingerprint ? "reranker" : null,
     embeddingFingerprint(config) !== run.embedding_fingerprint ? "embedding" : null,
     currentCorpusFingerprint !== run.corpus_fingerprint ? "vault contents" : null,
+    run.recall_settings && (
+      run.recall_settings.k_lexical !== config.recall.k_lexical ||
+      run.recall_settings.k_vector !== config.recall.k_vector ||
+      run.recall_settings.k_rerank !== (config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector))
+    ) ? "recall settings" : null,
   ].filter((part): part is string => part !== null);
 
   if (stale.length > 0) {
@@ -109,8 +114,20 @@ export { describeDeployment };
 export async function diagnose(
   config: Config,
   environment: Record<string, string | undefined> = process.env,
+  sources: Record<string, "default" | "toml" | "environment" | "admin"> = {},
 ): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
+  const envOverrides = config.config?.environment_overrides !== false;
+  checks.push({
+    name: "config_authority",
+    ok: true,
+    detail: envOverrides
+      ? "environment overrides enabled"
+      : "TOML authoritative (environment overrides disabled)",
+  });
+  for (const [key, source] of Object.entries(sources)) {
+    checks.push({ name: `config_source:${key}`, ok: true, detail: source });
+  }
   checks.push({ name: "vault", ok: existsSync(expandHome(config.vault_path)), detail: expandHome(config.vault_path) });
 
   for (const localPath of config.local_vault_paths) {

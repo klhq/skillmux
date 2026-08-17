@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { SkillRow } from "./db";
-import { ftsSearch, vectorTopK } from "./db";
-import { reciprocalRankFusion } from "./rrf";
-import { backfillEmbeddings, getRuntime } from "./router-core";
+import {
+  backfillEmbeddings,
+  decideRetrievalResult,
+  getRuntime,
+  retrieveAndRerank,
+} from "./router-core";
 
 export interface EvalCase {
   query: string;
@@ -26,10 +28,34 @@ export interface EvalMetrics {
   mrr: number;
 }
 
+export interface CandidateEvalDetail {
+  skill_id: string;
+  lexical_rank: number | null;
+  fused_rank: number | null;
+  reranked_rank?: number | null;
+}
+
+export interface EvalCaseResult {
+  query: string;
+  expected: string[];
+  outcome: "matched" | "ambiguous" | "no_match";
+  retrieval: string;
+  degraded_from?: string | null;
+  degradation_reason?: string | null;
+  latency_ms: number;
+  recall_settings: {
+    k_lexical: number;
+    k_vector: number;
+    k_rerank: number;
+  };
+  candidates: CandidateEvalDetail[];
+}
+
 export interface EvalReport {
   queries: number;
   lexical: EvalMetrics;
   hybrid: EvalMetrics;
+  cases?: EvalCaseResult[];
 }
 
 function metrics(rankings: string[][], cases: EvalCase[]): EvalMetrics {
@@ -70,24 +96,55 @@ export function loadEvalCases(path = join(import.meta.dir, "..", "eval", "querie
 
 
 export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
-  const { config, db, clients } = await getRuntime();
-  if (config.inference.mode !== "local") throw new Error('Default evaluation requires inference.mode = "local".');
+  const { config } = await getRuntime();
   await backfillEmbeddings();
 
   const lexicalRankings: string[][] = [];
   const hybridRankings: string[][] = [];
+  const caseResults: EvalCaseResult[] = [];
+  const kRerank = config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector);
+
   for (const evalCase of cases) {
-    const lexical = ftsSearch(db, evalCase.query, config.recall.k_lexical);
-    const vector = (await clients.embed([evalCase.query]))[0];
-    if (!vector) throw new Error("Embedding client returned no query vector.");
-    const semantic = vectorTopK(db, vector, config.recall.k_vector);
-    lexicalRankings.push(lexical.map((row) => row.skill_id));
-    hybridRankings.push(reciprocalRankFusion<SkillRow>(lexical, semantic).map((row) => row.skill_id));
+    const start = performance.now();
+    const retrievalResult = await retrieveAndRerank({ query: evalCase.query });
+    const decision = decideRetrievalResult(config, retrievalResult);
+    const fusedRanking = retrievalResult.trace
+      .filter((candidate) => candidate.fused_rank !== null)
+      .sort((a, b) => a.fused_rank! - b.fused_rank!)
+      .map((candidate) => candidate.skill_id);
+
+    lexicalRankings.push(retrievalResult.trace
+      .filter((candidate) => candidate.lexical_rank !== null)
+      .sort((a, b) => a.lexical_rank! - b.lexical_rank!)
+      .map((candidate) => candidate.skill_id));
+    hybridRankings.push(fusedRanking.length > 0
+      ? fusedRanking
+      : retrievalResult.candidates.map((candidate) => candidate.skill_id));
+
+    const latency_ms = Math.round(performance.now() - start);
+    const candidateDetails: CandidateEvalDetail[] = retrievalResult.trace;
+
+    caseResults.push({
+      query: evalCase.query,
+      expected: evalCase.expected,
+      outcome: decision.outcome,
+      retrieval: retrievalResult.retrieval,
+      degraded_from: retrievalResult.degraded_from ?? null,
+      degradation_reason: retrievalResult.degradation_reason ?? null,
+      latency_ms,
+      recall_settings: {
+        k_lexical: config.recall.k_lexical,
+        k_vector: config.recall.k_vector,
+        k_rerank: kRerank,
+      },
+      candidates: candidateDetails,
+    });
   }
 
   return {
     queries: cases.length,
     lexical: metrics(lexicalRankings, cases),
     hybrid: metrics(hybridRankings, cases),
+    cases: caseResults,
   };
 }

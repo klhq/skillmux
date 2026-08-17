@@ -46,6 +46,19 @@ describe("CLI Integration & Parity (AC1, AC2, AC3, AC11, AC12)", () => {
     expect(envelope.data.sources).toBeDefined();
   });
 
+  it("config show --sources outputs policy and sources in text mode", async () => {
+    const proc = Bun.spawn(["bun", CLI_PATH, "config", "show", "--sources"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Policy:");
+    expect(stdout).toContain("Sources:");
+    expect(stdout).toContain("vault_path:");
+  });
+
   it("suggests corrections for mistyped subcommands and returns exit code 2", async () => {
     const proc = Bun.spawn(["bun", CLI_PATH, "conifg"], {
       stdout: "pipe",
