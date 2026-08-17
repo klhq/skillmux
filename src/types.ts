@@ -1,6 +1,7 @@
 export interface RecallConfig {
   k_lexical: number;
   k_vector: number;
+  k_rerank?: number;
 }
 
 export interface Thresholds {
@@ -98,7 +99,12 @@ export interface ServerConfig {
   admin?: AdminConfig;
 }
 
+export interface ConfigPolicy {
+  environment_overrides?: boolean;
+}
+
 export interface Config {
+  config?: ConfigPolicy;
   vault_path: string;
   local_vault_paths: string[];
   state_dir: string;
@@ -120,9 +126,19 @@ export interface RankedCandidate extends Candidate {
 
 export type RetrievalCapability = "exact" | "reranked" | "hybrid" | "lexical";
 
+export type DegradationReason =
+  | "embedding_timeout"
+  | "embedding_unavailable"
+  | "embedding_protocol_error"
+  | "reranker_timeout"
+  | "reranker_unavailable"
+  | "reranker_protocol_error";
+
 export interface MatchedResult {
   outcome: "matched";
   retrieval: "exact" | "reranked";
+  degraded_from?: "reranked" | "hybrid";
+  degradation_reason?: DegradationReason;
   skill_id: string;
   title: string;
   content_sha256: string;
@@ -135,12 +151,16 @@ export interface MatchedResult {
 export interface AmbiguousResult {
   outcome: "ambiguous";
   retrieval: RetrievalCapability;
+  degraded_from?: "reranked" | "hybrid";
+  degradation_reason?: DegradationReason;
   candidates: Candidate[];
 }
 
 export interface NoMatchResult {
   outcome: "no_match";
   retrieval: RetrievalCapability;
+  degraded_from?: "reranked" | "hybrid";
+  degradation_reason?: DegradationReason;
   message: string;
 }
 
@@ -175,6 +195,8 @@ export interface AuditRow {
   query: string;
   outcome: "matched" | "ambiguous" | "no_match";
   retrieval: RetrievalCapability;
+  degraded_from?: "reranked" | "hybrid" | null;
+  degradation_reason?: DegradationReason | null;
   candidates: AuditCandidate[];
   selected_skill_id: string | null;
   latency_ms: number;

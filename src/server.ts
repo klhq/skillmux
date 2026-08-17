@@ -86,6 +86,10 @@ export function createMcpServer(): McpServer {
         const duration = (performance.now() - startTime) / 1000;
         metricsRegistry.recordResolveLatencySeconds(duration);
         metricsRegistry.recordResolveOutcome(result.outcome);
+        if (result.degradation_reason) {
+          const stage = result.degradation_reason.startsWith("embedding_") ? "embedding" : "reranker";
+          metricsRegistry.recordDegradation(stage, result.degradation_reason);
+        }
 
         if (result.outcome === "matched") {
           const { body, ...meta } = result;

@@ -111,6 +111,14 @@ export async function diagnose(
   environment: Record<string, string | undefined> = process.env,
 ): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
+  const envOverrides = config.config?.environment_overrides !== false;
+  checks.push({
+    name: "config_authority",
+    ok: true,
+    detail: envOverrides
+      ? "environment overrides enabled"
+      : "TOML authoritative (environment overrides disabled)",
+  });
   checks.push({ name: "vault", ok: existsSync(expandHome(config.vault_path)), detail: expandHome(config.vault_path) });
 
   for (const localPath of config.local_vault_paths) {

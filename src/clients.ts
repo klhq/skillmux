@@ -212,6 +212,17 @@ async function fetchRerankerScores(
     });
   } catch (error) {
     if (error instanceof RemoteInferenceError) throw error;
+    const isTimeout =
+      (error as { name?: string })?.name === "TimeoutError" ||
+      (error as { name?: string })?.name === "AbortError" ||
+      String(error).toLowerCase().includes("timeout") ||
+      String(error).toLowerCase().includes("aborted");
+    if (isTimeout) {
+      throw new RemoteInferenceError(
+        "availability",
+        `reranker adapter "${reranker.adapter}" request timed out`,
+      );
+    }
     throw new RemoteInferenceError(
       "availability",
       `reranker adapter "${reranker.adapter}" request failed`,
@@ -302,6 +313,14 @@ export function createClients(config: Config): Clients {
         });
       } catch (error) {
         if (error instanceof RemoteInferenceError) throw error;
+        const isTimeout =
+          (error as { name?: string })?.name === "TimeoutError" ||
+          (error as { name?: string })?.name === "AbortError" ||
+          String(error).toLowerCase().includes("timeout") ||
+          String(error).toLowerCase().includes("aborted");
+        if (isTimeout) {
+          throw new RemoteInferenceError("availability", "embedding endpoint request timed out");
+        }
         throw new RemoteInferenceError("availability", "embedding endpoint request failed");
       }
       if (!response.ok) throw httpFailure("embedding endpoint", response.status);

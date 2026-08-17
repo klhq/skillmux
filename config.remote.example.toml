@@ -4,6 +4,13 @@
 # Keep the canonical vault separate from client skill directories.
 vault_path = "~/skills"
 
+# Optional: bounded recall and candidate reranking budgets.
+# k_rerank bounds the maximum number of candidates passed to the reranker adapter.
+# [recall]
+# k_lexical = 20
+# k_vector = 20
+# k_rerank = 10
+
 [inference]
 mode = "remote"
 timeout_ms = 5000

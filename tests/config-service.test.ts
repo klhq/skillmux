@@ -44,6 +44,23 @@ describe("Config Service (AC4, AC5, AC6)", () => {
     expect(sources["vault_path"]).toBe("environment");
     expect(sources["recall.k_lexical"]).toBe("toml");
     expect(sources["recall.k_vector"]).toBe("default");
+    expect(sources["config.environment_overrides"]).toBe("default");
+  });
+
+  it("identifies sources as toml when environment_overrides is false", async () => {
+    writeFileSync(
+      CONFIG_FILE,
+      `vault_path = "~/custom-vault"\n\n[config]\nenvironment_overrides = false\n\n[recall]\nk_lexical = 50\n`,
+      "utf-8"
+    );
+    process.env.VAULT_PATH = "/env/vault";
+    process.env.SKILLMUX_VAULT_PATH = "/env/vault2";
+
+    const { effective, sources } = await getEffectiveConfig(CONFIG_FILE);
+    expect(effective.vault_path).toBe("~/custom-vault");
+    expect(sources["vault_path"]).toBe("toml");
+    expect(sources["recall.k_lexical"]).toBe("toml");
+    expect(sources["config.environment_overrides"]).toBe("toml");
   });
 
   it("gets and sets valid schema-known dotted keys (AC4)", async () => {

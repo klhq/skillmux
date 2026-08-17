@@ -536,3 +536,158 @@ dimension = 384
     await expect(loadConfig(path)).rejects.toThrow(/inference\.embedding\.endpoint/);
   });
 });
+
+describe("Configuration Authority & environment_overrides policy", () => {
+  let consoleErrorSpy: string[];
+  const originalConsoleError = console.error;
+
+  beforeEach(() => {
+    warnedEnv.clear();
+    consoleErrorSpy = [];
+    console.error = (...args: any[]) => {
+      consoleErrorSpy.push(args.join(" "));
+    };
+  });
+
+  afterEach(() => {
+    console.error = originalConsoleError;
+  });
+
+  test("defaults config.environment_overrides to true", async () => {
+    const config = await loadConfig("/does/not/exist/config.toml");
+    expect(config.config?.environment_overrides).toBe(true);
+  });
+
+  test("when environment_overrides is true, SKILLMUX_* overrides TOML", async () => {
+    const path = await configFile(`
+[config]
+environment_overrides = true
+
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "https://embed.example.com/v1/embeddings"
+model = "toml-model"
+dimension = 384
+`);
+    process.env.SKILLMUX_EMBED_MODEL = "env-model";
+    const config = await loadConfig(path);
+    expect(config.inference.mode === "remote" && config.inference.embedding.model).toBe("env-model");
+  });
+
+  test("when environment_overrides is false, behavioral SKILLMUX_* and generic env vars do not override TOML", async () => {
+    const path = await configFile(`
+[config]
+environment_overrides = false
+
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "https://embed.example.com/v1/embeddings"
+model = "toml-model"
+dimension = 384
+`);
+    process.env.SKILLMUX_EMBED_MODEL = "env-model";
+    process.env.EMBED_MODEL = "generic-model";
+    process.env.VAULT_PATH = "/env/vault";
+    process.env.STATE_DIR = "/env/state";
+
+    const config = await loadConfig(path);
+    expect(config.inference.mode === "remote" && config.inference.embedding.model).toBe("toml-model");
+    expect(config.vault_path).toBe("~/skills");
+    expect(config.state_dir).toBe("~/.local/state/skillmux");
+    expect(consoleErrorSpy.some((msg) => msg.includes("EMBED_MODEL is deprecated"))).toBe(true);
+  });
+
+  test("when environment_overrides is false, api_key_env secret resolution still succeeds", async () => {
+    process.env.MY_SECRET_KEY = "super-secret";
+    const path = await configFile(`
+[config]
+environment_overrides = false
+
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "https://embed.example.com/v1/embeddings"
+model = "toml-model"
+dimension = 384
+api_key_env = "MY_SECRET_KEY"
+`);
+    const config = await loadConfig(path);
+    expect(config.inference.mode === "remote" && config.inference.embedding.api_key_env).toBe("MY_SECRET_KEY");
+  });
+
+  test("generic EMBED_* and RERANK_* env vars trigger deprecation warning in 1.x", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "https://embed.example.com/v1/embeddings"
+model = "toml-model"
+dimension = 384
+`);
+    process.env.EMBED_MODEL = "generic-embed-model";
+    const config = await loadConfig(path);
+    expect(config.inference.mode === "remote" && config.inference.embedding.model).toBe("generic-embed-model");
+    expect(consoleErrorSpy.some((msg) => msg.includes("EMBED_MODEL is deprecated"))).toBe(true);
+  });
+});
+
+describe("recall.k_rerank budget configuration", () => {
+  test("defaults k_rerank when not explicitly provided in TOML", async () => {
+    const path = await configFile(`
+[recall]
+k_lexical = 15
+k_vector = 15
+`);
+    const config = await loadConfig(path);
+    expect(config.recall.k_rerank).toBeDefined();
+    expect(config.recall.k_rerank).toBeGreaterThan(0);
+    expect(config.recall.k_rerank).toBeLessThanOrEqual(config.recall.k_lexical + config.recall.k_vector);
+  });
+
+  test("loads explicit recall.k_rerank from TOML", async () => {
+    const path = await configFile(`
+[recall]
+k_lexical = 15
+k_vector = 15
+k_rerank = 5
+`);
+    const config = await loadConfig(path);
+    expect(config.recall.k_rerank).toBe(5);
+  });
+
+  test("rejects k_rerank exceeding k_lexical + k_vector", async () => {
+    const path = await configFile(`
+[recall]
+k_lexical = 2
+k_vector = 2
+k_rerank = 5
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/recall\.k_rerank/);
+  });
+
+  test("rejects non-positive k_rerank", async () => {
+    const path = await configFile(`
+[recall]
+k_lexical = 15
+k_vector = 15
+k_rerank = 0
+`);
+    await expect(loadConfig(path)).rejects.toThrow();
+  });
+});
+
+

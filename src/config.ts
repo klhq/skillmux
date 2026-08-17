@@ -26,10 +26,22 @@ const remoteThresholdsSchema = z.object({
 }).strict();
 
 const configSchema = z.object({
+  config: z.object({
+    environment_overrides: z.boolean().default(true),
+  }).strict().optional(),
   vault_path: z.string().min(1),
   local_vault_paths: z.array(z.string()),
   state_dir: z.string().min(1),
-  recall: z.object({ k_lexical: z.number().int().positive(), k_vector: z.number().int().positive() }).strict(),
+  recall: z.object({
+    k_lexical: z.number().int().positive(),
+    k_vector: z.number().int().positive(),
+    k_rerank: z.number().int().positive().optional(),
+  }).strict().transform((r) => ({
+    ...r,
+    k_rerank: r.k_rerank ?? Math.min(10, r.k_lexical + r.k_vector),
+  })).refine((r) => r.k_rerank <= r.k_lexical + r.k_vector, {
+    message: "recall.k_rerank cannot exceed k_lexical + k_vector",
+  }),
   thresholds: z.object({
     candidate_limit: z.number().int().positive(),
     match_score: z.number().optional(),
@@ -85,10 +97,13 @@ const configSchema = z.object({
 export const LOCAL_BUNDLE_ID = "gte-small-v1";
 
 const DEFAULTS: Config = {
+  config: {
+    environment_overrides: true,
+  },
   vault_path: "~/skills",
   local_vault_paths: [],
   state_dir: "~/.local/state/skillmux",
-  recall: { k_lexical: 20, k_vector: 20 },
+  recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
   thresholds: { candidate_limit: 5 },
   inference: {
     mode: "local",
@@ -270,14 +285,40 @@ export async function loadConfig(path?: string): Promise<Config> {
     }
   }
 
-  // Environment variable overrides.
-  if (process.env.VAULT_PATH) {
-    merged.vault_path = process.env.VAULT_PATH;
+  // Warn about deprecated generic environment variables regardless of override policy
+  const GENERIC_ENV_MAPPINGS: Record<string, string> = {
+    VAULT_PATH: "SKILLMUX_VAULT_PATH",
+    STATE_DIR: "SKILLMUX_STATE_DIR",
+    RECALL_K_LEXICAL: "SKILLMUX_RECALL_K_LEXICAL",
+    RECALL_K_VECTOR: "SKILLMUX_RECALL_K_VECTOR",
+    RECALL_K_RERANK: "SKILLMUX_RECALL_K_RERANK",
+    EMBED_MODEL: "SKILLMUX_EMBED_MODEL",
+    EMBED_ENDPOINT: "SKILLMUX_EMBED_ENDPOINT",
+    EMBED_DIMENSION: "SKILLMUX_EMBED_DIMENSION",
+    EMBED_DEVICE: "SKILLMUX_EMBED_DEVICE",
+    EMBED_DTYPE: "SKILLMUX_EMBED_DTYPE",
+    RERANK_MODEL: "SKILLMUX_RERANK_MODEL",
+    RERANK_ENDPOINT: "SKILLMUX_RERANK_ENDPOINT",
+    RERANK_ADAPTER: "SKILLMUX_RERANK_ADAPTER",
+    HTTP_AUTH_ENABLED: "SKILLMUX_HTTP_AUTH_ENABLED",
+    HTTP_AUTH_TOKEN_ENV: "SKILLMUX_HTTP_AUTH_TOKEN_ENV",
+    HTTP_ALLOWED_ORIGINS: "SKILLMUX_HTTP_ALLOWED_ORIGINS",
+    HTTP_HOSTNAME: "SKILLMUX_HTTP_HOSTNAME",
+    HTTP_RATE_LIMIT_ENABLED: "SKILLMUX_HTTP_RATE_LIMIT_ENABLED",
+    HTTP_RATE_LIMIT_RPM: "SKILLMUX_HTTP_RATE_LIMIT_RPM",
+    HTTP_RATE_LIMIT_TRUST_PROXY: "SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY",
+  };
+  for (const [generic, preferred] of Object.entries(GENERIC_ENV_MAPPINGS)) {
+    if (process.env[generic] !== undefined && !warnedEnv.has(generic)) {
+      warnedEnv.add(generic);
+      console.error(`skillmux: ${generic} is deprecated, use ${preferred} instead`);
+    }
   }
-  if (process.env.STATE_DIR) {
-    merged.state_dir = process.env.STATE_DIR;
-  }
+
+  const allowEnvOverrides = merged.config?.environment_overrides !== false;
+
   const getEnv = (newPrefixed: string, unprefixed: string) => {
+    if (!allowEnvOverrides) return undefined;
     const legacyPrefixed = newPrefixed.replace(/^SKILLMUX_/, "SKILL_ROUTER_");
     if (process.env[newPrefixed] !== undefined) return process.env[newPrefixed];
     if (process.env[legacyPrefixed] !== undefined) {
@@ -290,18 +331,48 @@ export async function loadConfig(path?: string): Promise<Config> {
     return process.env[unprefixed];
   };
 
-  if (merged.inference.mode === "local") {
-    let modelsDirEnv = process.env.SKILLMUX_MODELS_DIR;
-    if (modelsDirEnv === undefined && process.env.SKILL_ROUTER_MODELS_DIR !== undefined) {
-      if (!warnedEnv.has("SKILL_ROUTER_MODELS_DIR")) {
-        warnedEnv.add("SKILL_ROUTER_MODELS_DIR");
-        console.error("skillmux: SKILL_ROUTER_MODELS_DIR is deprecated, use SKILLMUX_MODELS_DIR instead");
-      }
-      modelsDirEnv = process.env.SKILL_ROUTER_MODELS_DIR;
+  // Environment variable overrides.
+  if (allowEnvOverrides) {
+    const vaultPath = getEnv("SKILLMUX_VAULT_PATH", "VAULT_PATH");
+    if (vaultPath) merged.vault_path = vaultPath;
+    const stateDir = getEnv("SKILLMUX_STATE_DIR", "STATE_DIR");
+    if (stateDir) merged.state_dir = stateDir;
+    const kLexicalStr = getEnv("SKILLMUX_RECALL_K_LEXICAL", "RECALL_K_LEXICAL");
+    if (kLexicalStr) {
+      const k = Number(kLexicalStr);
+      if (!Number.isInteger(k) || k < 1) throw new Error(`Invalid recall.k_lexical: ${kLexicalStr}`);
+      merged.recall.k_lexical = k;
     }
-    if (modelsDirEnv) merged.inference.models_dir = modelsDirEnv;
-    if (process.env.EMBED_DEVICE) merged.inference.embedding.device = process.env.EMBED_DEVICE as ONNXDevice;
-    if (process.env.EMBED_DTYPE) merged.inference.embedding.dtype = process.env.EMBED_DTYPE as ONNXDtype;
+    const kVectorStr = getEnv("SKILLMUX_RECALL_K_VECTOR", "RECALL_K_VECTOR");
+    if (kVectorStr) {
+      const k = Number(kVectorStr);
+      if (!Number.isInteger(k) || k < 1) throw new Error(`Invalid recall.k_vector: ${kVectorStr}`);
+      merged.recall.k_vector = k;
+    }
+    const kRerankStr = getEnv("SKILLMUX_RECALL_K_RERANK", "RECALL_K_RERANK");
+    if (kRerankStr) {
+      const k = Number(kRerankStr);
+      if (!Number.isInteger(k) || k < 1) throw new Error(`Invalid recall.k_rerank: ${kRerankStr}`);
+      merged.recall.k_rerank = k;
+    }
+  }
+
+  if (merged.inference.mode === "local") {
+    if (allowEnvOverrides) {
+      let modelsDirEnv = process.env.SKILLMUX_MODELS_DIR;
+      if (modelsDirEnv === undefined && process.env.SKILL_ROUTER_MODELS_DIR !== undefined) {
+        if (!warnedEnv.has("SKILL_ROUTER_MODELS_DIR")) {
+          warnedEnv.add("SKILL_ROUTER_MODELS_DIR");
+          console.error("skillmux: SKILL_ROUTER_MODELS_DIR is deprecated, use SKILLMUX_MODELS_DIR instead");
+        }
+        modelsDirEnv = process.env.SKILL_ROUTER_MODELS_DIR;
+      }
+      if (modelsDirEnv) merged.inference.models_dir = modelsDirEnv;
+      const embedDevice = getEnv("SKILLMUX_EMBED_DEVICE", "EMBED_DEVICE");
+      if (embedDevice) merged.inference.embedding.device = embedDevice as ONNXDevice;
+      const embedDtype = getEnv("SKILLMUX_EMBED_DTYPE", "EMBED_DTYPE");
+      if (embedDtype) merged.inference.embedding.dtype = embedDtype as ONNXDtype;
+    }
   } else if (merged.inference.mode === "remote") {
     if (!merged.inference.embedding) {
       throw new Error("Remote inference requires an inference.embedding section.");
@@ -385,43 +456,49 @@ export async function loadConfig(path?: string): Promise<Config> {
 
   // HTTP server environment overrides
   if (merged.server) {
-    if (process.env.HTTP_AUTH_ENABLED) {
-      merged.server.auth_enabled = process.env.HTTP_AUTH_ENABLED === "true";
-    }
-    if (process.env.HTTP_AUTH_TOKEN_ENV) {
-      merged.server.auth_token_env = process.env.HTTP_AUTH_TOKEN_ENV;
-    }
-    if (process.env.HTTP_ALLOWED_ORIGINS) {
-      merged.server.allowed_origins = process.env.HTTP_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
-    }
-    if (process.env.HTTP_HOSTNAME) {
-      merged.server.hostname = process.env.HTTP_HOSTNAME;
-    }
-
-    if (!merged.server.rate_limit) {
-      merged.server.rate_limit = { enabled: false, requests_per_minute: 60 };
-    }
-
-    const rateLimitEnabledStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_ENABLED", "HTTP_RATE_LIMIT_ENABLED");
-    if (rateLimitEnabledStr) {
-      merged.server.rate_limit.enabled = rateLimitEnabledStr === "true";
-    }
-
-    const rateLimitRPMStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_RPM", "HTTP_RATE_LIMIT_RPM");
-    if (rateLimitRPMStr) {
-      const rpm = Number(rateLimitRPMStr);
-      if (!Number.isInteger(rpm)) {
-        throw new Error(`Invalid rate limit RPM: ${rateLimitRPMStr}`);
+    if (allowEnvOverrides) {
+      const authEnabledStr = getEnv("SKILLMUX_HTTP_AUTH_ENABLED", "HTTP_AUTH_ENABLED");
+      if (authEnabledStr !== undefined) {
+        merged.server.auth_enabled = authEnabledStr === "true";
       }
-      merged.server.rate_limit.requests_per_minute = rpm;
+      const authTokenEnv = getEnv("SKILLMUX_HTTP_AUTH_TOKEN_ENV", "HTTP_AUTH_TOKEN_ENV");
+      if (authTokenEnv !== undefined) {
+        merged.server.auth_token_env = authTokenEnv;
+      }
+      const allowedOriginsStr = getEnv("SKILLMUX_HTTP_ALLOWED_ORIGINS", "HTTP_ALLOWED_ORIGINS");
+      if (allowedOriginsStr !== undefined) {
+        merged.server.allowed_origins = allowedOriginsStr.split(",").map((o) => o.trim());
+      }
+      const hostname = getEnv("SKILLMUX_HTTP_HOSTNAME", "HTTP_HOSTNAME");
+      if (hostname !== undefined) {
+        merged.server.hostname = hostname;
+      }
+
+      if (!merged.server.rate_limit) {
+        merged.server.rate_limit = { enabled: false, requests_per_minute: 60 };
+      }
+
+      const rateLimitEnabledStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_ENABLED", "HTTP_RATE_LIMIT_ENABLED");
+      if (rateLimitEnabledStr) {
+        merged.server.rate_limit.enabled = rateLimitEnabledStr === "true";
+      }
+
+      const rateLimitRPMStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_RPM", "HTTP_RATE_LIMIT_RPM");
+      if (rateLimitRPMStr) {
+        const rpm = Number(rateLimitRPMStr);
+        if (!Number.isInteger(rpm)) {
+          throw new Error(`Invalid rate limit RPM: ${rateLimitRPMStr}`);
+        }
+        merged.server.rate_limit.requests_per_minute = rpm;
+      }
+
+      const rateLimitTrustProxyStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY", "HTTP_RATE_LIMIT_TRUST_PROXY");
+      if (rateLimitTrustProxyStr) {
+        merged.server.rate_limit.trust_proxy = rateLimitTrustProxyStr === "true";
+      }
     }
 
-    const rateLimitTrustProxyStr = getEnv("SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY", "HTTP_RATE_LIMIT_TRUST_PROXY");
-    if (rateLimitTrustProxyStr) {
-      merged.server.rate_limit.trust_proxy = rateLimitTrustProxyStr === "true";
-    }
-
-    if (merged.server.rate_limit.enabled && merged.server.rate_limit.requests_per_minute === undefined) {
+    if (merged.server.rate_limit && merged.server.rate_limit.enabled && merged.server.rate_limit.requests_per_minute === undefined) {
       merged.server.rate_limit.requests_per_minute = 60;
     }
   }

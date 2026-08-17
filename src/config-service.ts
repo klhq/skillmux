@@ -55,9 +55,11 @@ export const RESTART_REQUIRED_KEYS = [
 ];
 
 export const RELOADABLE_KEYS = [
+  "config.environment_overrides",
   "vault_path",
   "recall.k_lexical",
   "recall.k_vector",
+  "recall.k_rerank",
   "thresholds.candidate_limit",
   "thresholds.match_score",
   "thresholds.match_margin",
@@ -138,12 +140,15 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
   }
 
   const sources: ConfigSourceMap = {};
+  const allowEnvOverrides = effective.config?.environment_overrides !== false;
 
   const allKeys = [
+    "config.environment_overrides",
     "vault_path",
     "state_dir",
     "recall.k_lexical",
     "recall.k_vector",
+    "recall.k_rerank",
     "thresholds.candidate_limit",
     "thresholds.match_score",
     "thresholds.match_margin",
@@ -173,7 +178,7 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
   ];
 
   for (const key of allKeys) {
-    if (isEnvMasked(key)) {
+    if (isEnvMasked(key, allowEnvOverrides)) {
       sources[key] = "environment";
     } else if (getNestedValue(rawToml, key) !== undefined) {
       sources[key] = "toml";
@@ -185,21 +190,26 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
   return { effective, sources, rawToml };
 }
 
-export function isEnvMasked(key: string): boolean {
-  if (key === "vault_path" && process.env.VAULT_PATH) return true;
-  if (key === "state_dir" && process.env.STATE_DIR) return true;
+export function isEnvMasked(key: string, allowEnvOverrides: boolean = true): boolean {
+  if (!allowEnvOverrides) return false;
+  if (key === "vault_path" && (process.env.SKILLMUX_VAULT_PATH || process.env.SKILL_ROUTER_VAULT_PATH || process.env.VAULT_PATH)) return true;
+  if (key === "state_dir" && (process.env.SKILLMUX_STATE_DIR || process.env.SKILL_ROUTER_STATE_DIR || process.env.STATE_DIR)) return true;
+  if (key === "recall.k_lexical" && (process.env.SKILLMUX_RECALL_K_LEXICAL || process.env.RECALL_K_LEXICAL)) return true;
+  if (key === "recall.k_vector" && (process.env.SKILLMUX_RECALL_K_VECTOR || process.env.RECALL_K_VECTOR)) return true;
+  if (key === "recall.k_rerank" && (process.env.SKILLMUX_RECALL_K_RERANK || process.env.RECALL_K_RERANK)) return true;
   if (key === "inference.models_dir" && (process.env.SKILLMUX_MODELS_DIR || process.env.SKILL_ROUTER_MODELS_DIR)) return true;
-  if (key === "inference.embedding.device" && process.env.EMBED_DEVICE) return true;
-  if (key === "inference.embedding.dtype" && process.env.EMBED_DTYPE) return true;
-  if (key === "inference.embedding.endpoint" && (process.env.SKILLMUX_EMBED_ENDPOINT || process.env.EMBED_ENDPOINT)) return true;
-  if (key === "inference.embedding.model" && (process.env.SKILLMUX_EMBED_MODEL || process.env.EMBED_MODEL)) return true;
-  if (key === "inference.embedding.dimension" && (process.env.SKILLMUX_EMBED_DIMENSION || process.env.EMBED_DIMENSION)) return true;
-  if (key === "inference.reranker.adapter" && (process.env.SKILLMUX_RERANK_ADAPTER || process.env.RERANK_ADAPTER)) return true;
-  if (key === "inference.reranker.endpoint" && (process.env.SKILLMUX_RERANK_ENDPOINT || process.env.RERANK_ENDPOINT)) return true;
-  if (key === "inference.reranker.model" && (process.env.SKILLMUX_RERANK_MODEL || process.env.RERANK_MODEL)) return true;
-  if (key === "server.auth_enabled" && process.env.HTTP_AUTH_ENABLED) return true;
-  if (key === "server.auth_token_env" && process.env.HTTP_AUTH_TOKEN_ENV) return true;
-  if (key === "server.hostname" && process.env.HTTP_HOSTNAME) return true;
+  if (key === "inference.embedding.device" && (process.env.SKILLMUX_EMBED_DEVICE || process.env.EMBED_DEVICE)) return true;
+  if (key === "inference.embedding.dtype" && (process.env.SKILLMUX_EMBED_DTYPE || process.env.EMBED_DTYPE)) return true;
+  if (key === "inference.embedding.endpoint" && (process.env.SKILLMUX_EMBED_ENDPOINT || process.env.SKILL_ROUTER_EMBED_ENDPOINT || process.env.EMBED_ENDPOINT)) return true;
+  if (key === "inference.embedding.model" && (process.env.SKILLMUX_EMBED_MODEL || process.env.SKILL_ROUTER_EMBED_MODEL || process.env.EMBED_MODEL)) return true;
+  if (key === "inference.embedding.dimension" && (process.env.SKILLMUX_EMBED_DIMENSION || process.env.SKILL_ROUTER_EMBED_DIMENSION || process.env.EMBED_DIMENSION)) return true;
+  if (key === "inference.reranker.adapter" && (process.env.SKILLMUX_RERANK_ADAPTER || process.env.SKILL_ROUTER_RERANK_ADAPTER || process.env.RERANK_ADAPTER)) return true;
+  if (key === "inference.reranker.endpoint" && (process.env.SKILLMUX_RERANK_ENDPOINT || process.env.SKILL_ROUTER_RERANK_ENDPOINT || process.env.RERANK_ENDPOINT)) return true;
+  if (key === "inference.reranker.model" && (process.env.SKILLMUX_RERANK_MODEL || process.env.SKILL_ROUTER_RERANK_MODEL || process.env.RERANK_MODEL)) return true;
+  if (key === "server.auth_enabled" && (process.env.SKILLMUX_HTTP_AUTH_ENABLED || process.env.HTTP_AUTH_ENABLED)) return true;
+  if (key === "server.auth_token_env" && (process.env.SKILLMUX_HTTP_AUTH_TOKEN_ENV || process.env.HTTP_AUTH_TOKEN_ENV)) return true;
+  if (key === "server.allowed_origins" && (process.env.SKILLMUX_HTTP_ALLOWED_ORIGINS || process.env.HTTP_ALLOWED_ORIGINS)) return true;
+  if (key === "server.hostname" && (process.env.SKILLMUX_HTTP_HOSTNAME || process.env.HTTP_HOSTNAME)) return true;
   if (key === "server.rate_limit.enabled" && (process.env.SKILLMUX_HTTP_RATE_LIMIT_ENABLED || process.env.HTTP_RATE_LIMIT_ENABLED)) return true;
   if (key === "server.rate_limit.requests_per_minute" && (process.env.SKILLMUX_HTTP_RATE_LIMIT_RPM || process.env.HTTP_RATE_LIMIT_RPM)) return true;
   if (key === "server.rate_limit.trust_proxy" && (process.env.SKILLMUX_HTTP_RATE_LIMIT_TRUST_PROXY || process.env.HTTP_RATE_LIMIT_TRUST_PROXY)) return true;
@@ -208,10 +218,12 @@ export function isEnvMasked(key: string): boolean {
 
 export function validateDottedKey(key: string): void {
   const allowed = new Set([
+    "config.environment_overrides",
     "vault_path",
     "state_dir",
     "recall.k_lexical",
     "recall.k_vector",
+    "recall.k_rerank",
     "thresholds.candidate_limit",
     "thresholds.match_score",
     "thresholds.match_margin",
@@ -253,6 +265,7 @@ export function parseDottedValue(key: string, valueStr: string): unknown {
   const numberKeys = new Set([
     "recall.k_lexical",
     "recall.k_vector",
+    "recall.k_rerank",
     "thresholds.candidate_limit",
     "thresholds.match_score",
     "thresholds.match_margin",
@@ -271,6 +284,7 @@ export function parseDottedValue(key: string, valueStr: string): unknown {
   }
 
   const booleanKeys = new Set([
+    "config.environment_overrides",
     "server.auth_enabled",
     "server.admin.enabled",
     "server.rate_limit.enabled",

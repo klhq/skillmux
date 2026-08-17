@@ -5,6 +5,12 @@
 # which core and project skills appear in those directories.
 vault_path = "~/skills"
 
+# Optional: configuration authority policy. Defaults to true.
+# When set to false, behavioral environment variables are ignored and TOML remains
+# authoritative (CLI flags and secret names like api_key_env still resolve).
+# [config]
+# environment_overrides = true
+
 # Optional, default []: machine-local override-only vaults, checked before
 # vault_path for a given skill_id. Never holds skillmux.toml or the sync git
 # hook — those always stay in vault_path. See docs/configuration.md#local-vault-overlays.

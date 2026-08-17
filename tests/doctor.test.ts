@@ -83,6 +83,25 @@ describe("diagnose", () => {
     const report = await diagnose(testConfig({ vault_path: vaultDir }));
 
     expect(report.retrieval_capability).toBe("hybrid");
+    expect(report.checks.find((check) => check.name === "config_authority")).toMatchObject({
+      ok: true,
+      detail: expect.stringContaining("environment overrides enabled"),
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("reports strict configuration authority when environment_overrides is false", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-strict-vault-"));
+    const report = await diagnose(testConfig({
+      vault_path: vaultDir,
+      config: { environment_overrides: false },
+    }));
+
+    expect(report.checks.find((check) => check.name === "config_authority")).toMatchObject({
+      ok: true,
+      detail: expect.stringContaining("TOML authoritative"),
+    });
 
     rmSync(vaultDir, { recursive: true, force: true });
   });

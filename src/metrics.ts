@@ -18,6 +18,7 @@ export class MetricsRegistry {
 
   private errors = 0;
   private rateLimitsExceeded = 0;
+  private degradations = new Map<string, number>();
   private readiness: ReadinessSnapshot | null = null;
   private deployment: MetricsDeploymentIdentity | null = null;
 
@@ -35,6 +36,11 @@ export class MetricsRegistry {
 
   recordResolveOutcome(outcome: string) {
     this.outcomes.set(outcome, (this.outcomes.get(outcome) || 0) + 1);
+  }
+
+  recordDegradation(stage: "embedding" | "reranker", reason: string) {
+    const key = `${stage}:${reason}`;
+    this.degradations.set(key, (this.degradations.get(key) || 0) + 1);
   }
 
   recordResolveLatencySeconds(seconds: number) {
@@ -97,6 +103,14 @@ export class MetricsRegistry {
     lines.push("# HELP skill_router_rate_limits_exceeded_total Total count of HTTP requests rejected by rate limiting.");
     lines.push("# TYPE skill_router_rate_limits_exceeded_total counter");
     lines.push(`skill_router_rate_limits_exceeded_total ${this.rateLimitsExceeded}`);
+
+    // Degraded retrieval total
+    lines.push("# HELP skill_router_degraded_retrieval_total Total count of degraded retrieval fallbacks labelled by stage and reason.");
+    lines.push("# TYPE skill_router_degraded_retrieval_total counter");
+    for (const [key, count] of this.degradations) {
+      const [stage, reason] = key.split(":");
+      lines.push(`skill_router_degraded_retrieval_total{stage="${stage}",reason="${reason}"} ${count}`);
+    }
 
     lines.push("# HELP skill_router_ready Whether the service is ready to route requests.");
     lines.push("# TYPE skill_router_ready gauge");
