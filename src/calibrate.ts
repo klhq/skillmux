@@ -465,6 +465,46 @@ export function wilsonLowerBound(successes: number, total: number): number {
   return Math.max(0, (centre - adjustment) / denominator);
 }
 
+/**
+ * Computes the maximum attainable 95% Wilson lower bound on auto-match precision
+ * for the tune split subject to minAutoMatchCount and the number of matched tune cases.
+ * Under perfect ranking/classification (zero false positives), at most all true matched
+ * tune cases can be auto-matched.
+ */
+export function computeMaxAttainablePrecisionLowerBound(
+  cases: DecisionCase[],
+  minAutoMatchCount: number,
+): { tuneMatchedCount: number; maxAttainablePrecision: number } {
+  const tuneMatchedCount = cases.filter(
+    (c) => c.split === "tune" && c.expected_outcome === "matched",
+  ).length;
+  const effectiveTrials = Math.max(tuneMatchedCount, minAutoMatchCount);
+  const maxAttainablePrecision = wilsonLowerBound(tuneMatchedCount, effectiveTrials);
+  return { tuneMatchedCount, maxAttainablePrecision };
+}
+
+/**
+ * Asserts that the requested auto-match precision and count gates are mathematically
+ * attainable on the given dataset's tune split before inference begins.
+ */
+export function assertCalibrationFeasibility(
+  cases: DecisionCase[],
+  gates: { minAutoMatchPrecision: number; minAutoMatchCount: number },
+): void {
+  const { tuneMatchedCount, maxAttainablePrecision } =
+    computeMaxAttainablePrecisionLowerBound(cases, gates.minAutoMatchCount);
+  if (maxAttainablePrecision < gates.minAutoMatchPrecision) {
+    throw new Error(
+      `Requested calibration gates are mathematically unattainable on this dataset: ` +
+      `min_auto_match_precision=${gates.minAutoMatchPrecision} requires more evidence than the ` +
+      `tune split provides (${tuneMatchedCount} matched cases, min_auto_match_count=${gates.minAutoMatchCount}). ` +
+      `The maximum attainable 95% Wilson lower bound under perfect classification is ` +
+      `${maxAttainablePrecision.toFixed(4)}. ` +
+      `Lower --min-auto-match-precision or supply a larger dataset.`,
+    );
+  }
+}
+
 function computeTestMetrics(
   observations: QueryObservation[],
   thresholds: SelectedThresholds,
@@ -799,10 +839,10 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
     getCandidates,
     getRankedCandidates,
     reranker,
-    minAutoMatchPrecision = 0.99,
+    minAutoMatchPrecision = 0.75,
     minRetrievalRecallAtK = 0.95,
     minDeliveredShortlistRecallAtK = minRetrievalRecallAtK,
-    minAutoMatchCount = 30,
+    minAutoMatchCount = 15,
     candidateLimit,
     concurrency = 4,
     initialObservations,

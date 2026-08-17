@@ -373,8 +373,8 @@ model = "mock-rerank"
       corpus_fingerprint: corpusFingerprint,
       dataset_hash: createHash("sha256").update(readFileSync(datasetPath)).digest("hex"),
       candidate_limit: 5,
-      min_auto_match_precision: 0.99,
-      min_auto_match_count: 30,
+      min_auto_match_precision: 0.1,
+      min_auto_match_count: 1,
       min_delivered_shortlist_recall_at_k: 0.95,
       min_shortlist_recall_at_5: 0.95,
       recall_settings: { k_lexical: 10, k_vector: 10, k_rerank: 5 },
@@ -397,12 +397,12 @@ model = "mock-rerank"
       {
         name: "minimum precision",
         expected: /min_auto_match_precision/i,
-        mutate: (run) => { run.min_auto_match_precision = 0.98; },
+        mutate: (run) => { run.min_auto_match_precision = 0.2; },
       },
       {
         name: "minimum match count",
         expected: /min_auto_match_count/i,
-        mutate: (run) => { run.min_auto_match_count = 29; },
+        mutate: (run) => { run.min_auto_match_count = 2; },
       },
       {
         name: "delivered shortlist recall",
@@ -437,6 +437,8 @@ model = "mock-rerank"
         adapter.calibrateRun({
           datasetPath,
           resumeRunId: run.run_id,
+          minAutoMatchPrecision: 0.1,
+          minAutoMatchCount: 1,
         }),
       ).rejects.toThrow(mismatch.expected);
     }

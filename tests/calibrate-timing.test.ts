@@ -289,16 +289,19 @@ model = "mock-rerank"
   // -------------------------------------------------------------------------
 
   test("should produce a timing summary for a failed-gates calibration result", async () => {
-    const adapter = new LocalAdapter({ configPath, clients: makeFakeClients() });
+    const adapter = new LocalAdapter({
+      configPath,
+      clients: makeFakeClients(() => 0.01),
+    });
 
     let capturedTiming: CalibrationTimingSummary | undefined;
 
     const res = await adapter.calibrateRun({
       datasetPath,
-      minAutoMatchPrecision: 0.9999,
-      minRetrievalRecallAtK: 0.9999,
-      minDeliveredShortlistRecallAtK: 0.9999,
-      minAutoMatchCount: 999,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.95,
+      minDeliveredShortlistRecallAtK: 0.95,
+      minAutoMatchCount: 1,
       timing: true,
       onTimingSummary: (summary) => {
         capturedTiming = summary;

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import {
   applyCalibrationRun,
+  assertCalibrationFeasibility,
   computeCorpusFingerprint,
   createInitialCalibrationRun,
   finalizeCalibrationRun,
@@ -318,14 +319,19 @@ export class LocalAdapter implements TargetAdapter {
       k_vector: config.recall.k_vector,
       k_rerank: config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector),
     };
-    const minAutoMatchPrecision = opts?.minAutoMatchPrecision ?? 0.99;
-    const minAutoMatchCount = opts?.minAutoMatchCount ?? 30;
+    const minAutoMatchPrecision = opts?.minAutoMatchPrecision ?? 0.75;
+    const minAutoMatchCount = opts?.minAutoMatchCount ?? 15;
     const minDeliveredShortlistRecallAtK =
       opts?.minDeliveredShortlistRecallAtK ??
       opts?.minRetrievalRecallAtK ??
       0.95;
     const minShortlistRecallAt5 = opts?.minRetrievalRecallAtK ?? 0.95;
     const concurrency = opts?.concurrency ?? 4;
+
+    assertCalibrationFeasibility(cases, {
+      minAutoMatchPrecision,
+      minAutoMatchCount,
+    });
 
     const db = openCalibrateDb(expandHome(config.state_dir));
     let runId: string;

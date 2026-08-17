@@ -705,6 +705,9 @@ Setup:
 
 Calibration:
   skillmux calibrate run [--dataset <path>] [--concurrency <n>] [--resume <run_id>]
+                         [--min-auto-match-precision <0..1>] [--min-auto-match-count <n>]
+                         [--min-retrieval-recall-at-k <0..1>]
+                         [--min-delivered-shortlist-recall-at-k <0..1>]
                          [--timing] [--json]
   skillmux calibrate <list|show|apply|generate-dataset>
 
