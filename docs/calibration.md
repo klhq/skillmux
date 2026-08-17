@@ -34,6 +34,43 @@ query. It runs four queries at a time by default. Set a different positive
 worker limit with `--concurrency N`. The CLI writes completed-case progress to
 stderr without exposing query text.
 
+### Timing report
+
+Add `--timing` to any `calibrate run` invocation to write an aggregate
+performance report to **stderr** after the run finishes (with a completed or
+failed-gates result; a thrown error produces no report). Stdout remains valid
+JSON under `--json --timing`.
+
+```sh
+skillmux calibrate run --dataset ./eval/queries.json --timing
+```
+
+The report uses stable snake_case field names in milliseconds:
+
+| Field | Description |
+|---|---|
+| `cases_total` | Total dataset cases |
+| `cases_executed` | Cases retrieved in this invocation |
+| `cases_reused` | Cases loaded from a prior interrupted run (resume) |
+| `wall_ms` | Wall-clock duration of the full calibrateRun operation |
+| `vault_sync_ms` | One-time vault synchronization before retrieval |
+| `cumulative_embedding_ms` | Total worker time in embedding across all queries |
+| `cumulative_lexical_ms` | Total worker time in lexical search across all queries |
+| `cumulative_vector_ms` | Total worker time in vector search across all queries |
+| `cumulative_reranker_ms` | Total worker time in reranking across all queries |
+| `cumulative_checkpoint_ms` | Total worker time writing observation checkpoints |
+| `policy_evaluation_ms` | Threshold selection and test-split certification |
+
+**Cumulative vs wall time.** The cumulative fields (`cumulative_embedding_ms`,
+`cumulative_lexical_ms`, `cumulative_vector_ms`, `cumulative_reranker_ms`,
+`cumulative_checkpoint_ms`) are total _worker time_ summed across all concurrent
+query retrievals. Because multiple queries run at the same time, the sum of these
+fields typically exceeds `wall_ms`. They measure how much time each stage
+consumed across all workers, not how much wall-clock time each stage accounted
+for. `cases_executed + cases_reused = cases_total`.
+
+Timing collection is fully disabled when `--timing` is absent; it does not affect
+calibration results, resume behavior, checkpoint durability, or JSON schemas.
 Skillmux checkpoints each observation in the calibration evidence database.
 If inference fails or you interrupt the process, find the `running` run with
 `calibrate list` and resume it with the same dataset and certification flags:

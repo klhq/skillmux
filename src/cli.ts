@@ -477,6 +477,7 @@ async function handleCalibrateCommand(
     let minAutoMatchCount: number | undefined;
     let concurrency: number | undefined;
     let resumeRunId: string | undefined;
+    let timing = false;
     const readNumber = (flag: string, raw: string | undefined): number => {
       if (raw === undefined) throw new Error(`${flag} requires a value`);
       const value = Number(raw);
@@ -510,6 +511,8 @@ async function handleCalibrateCommand(
       } else if (option === "--resume") {
         resumeRunId = args[++i];
         if (!resumeRunId) throw new Error("--resume requires a run_id value");
+      } else if (option === "--timing") {
+        timing = true;
       } else {
         throw new Error(`unknown calibrate run option: ${option}`);
       }
@@ -531,6 +534,32 @@ async function handleCalibrateCommand(
       minAutoMatchCount,
       concurrency,
       resumeRunId,
+      timing,
+      onTimingSummary: timing
+        ? (summary) => {
+            // Write timing report to stderr only — stdout remains valid JSON under --json.
+            // Cumulative fields are total worker time across concurrent queries and may
+            // exceed wall_ms. They do not sum to wall time.
+            process.stderr.write(
+              [
+                "--- calibrate run timing ---",
+                `cases_total:                ${summary.cases_total}`,
+                `cases_executed:             ${summary.cases_executed}  (retrieved in this invocation)`,
+                `cases_reused:               ${summary.cases_reused}  (loaded from prior interrupted run)`,
+                `wall_ms:                    ${summary.wall_ms.toFixed(1)}`,
+                `vault_sync_ms:              ${summary.vault_sync_ms.toFixed(1)}`,
+                "cumulative worker time (concurrent totals; may exceed wall_ms):",
+                `  cumulative_embedding_ms:  ${summary.cumulative_embedding_ms.toFixed(1)}`,
+                `  cumulative_lexical_ms:    ${summary.cumulative_lexical_ms.toFixed(1)}`,
+                `  cumulative_vector_ms:     ${summary.cumulative_vector_ms.toFixed(1)}`,
+                `  cumulative_reranker_ms:   ${summary.cumulative_reranker_ms.toFixed(1)}`,
+                `  cumulative_checkpoint_ms: ${summary.cumulative_checkpoint_ms.toFixed(1)}`,
+                `policy_evaluation_ms:       ${summary.policy_evaluation_ms.toFixed(1)}`,
+                "",
+              ].join("\n"),
+            );
+          }
+        : undefined,
     });
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderCalibrationTarget(ctx.target);
@@ -539,6 +568,7 @@ async function handleCalibrateCommand(
     });
     return;
   }
+
 
   if (sub === "list") {
     const res = await adapter.calibrateList();
@@ -670,6 +700,11 @@ Setup:
   skillmux target <list|show|add|remove>
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
   skillmux skill which <skill_id>
+
+Calibration:
+  skillmux calibrate run [--dataset <path>] [--concurrency <n>] [--resume <run_id>]
+                         [--timing] [--json]
+  skillmux calibrate <list|show|apply|generate-dataset>
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
