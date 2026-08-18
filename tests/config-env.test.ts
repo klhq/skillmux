@@ -97,11 +97,6 @@ adapter = "jina-v1"
 endpoint = "https://rerank.example.com/v1/rerank"
 model = "example/reranker"
 api_key_env = "RERANK_SECRET"
-
-[inference.thresholds]
-match_score = 0.91
-match_margin = 0.21
-candidate_floor = 0.41
 `);
 
     const config = await loadConfig(path);
@@ -121,7 +116,6 @@ candidate_floor = 0.41
         model: "example/reranker",
         api_key_env: "RERANK_SECRET",
       },
-      thresholds: { match_score: 0.91, match_margin: 0.21, candidate_floor: 0.41 },
     });
   });
 
@@ -163,10 +157,6 @@ dimension = 768
 adapter = "jina-v1"
 endpoint = "https://old-rerank.example.com/rerank"
 model = "old/reranker"
-[inference.thresholds]
-match_score = 0.9
-match_margin = 0.2
-candidate_floor = 0.4
 `);
     process.env.SKILLMUX_EMBED_ENDPOINT = "https://new.example.com/v1/embeddings";
     process.env.SKILLMUX_EMBED_MODEL = "new/embed";
@@ -226,10 +216,6 @@ dimension = 384
 adapter = "jina-v1"
 endpoint = "https://rerank.example.com/v1/rerank"
 model = "reranker"
-[inference.thresholds]
-match_score = 0.9
-match_margin = 0.2
-candidate_floor = 0.4
 `);
     process.env.SKILLMUX_RERANK_ADAPTER = "unknown-v1";
     await expect(loadConfig(path)).rejects.toThrow();
@@ -296,10 +282,6 @@ dimension = 384
 adapter = "jina-v1"
 endpoint = "${endpoint}"
 model = "reranker"
-[inference.thresholds]
-match_score = 0.9
-match_margin = 0.2
-candidate_floor = 0.4
 `);
     await expect(loadConfig(path)).rejects.toThrow(/without userinfo or a fragment/);
   });
@@ -341,17 +323,13 @@ adapter = "jina-v1"
 endpoint = "https://rerank.example.com/v1/rerank"
 model = "reranker"
 ${configKey === "inference.reranker.api_key_env" ? `api_key_env = "${envName}"` : ""}
-[inference.thresholds]
-match_score = 0.9
-match_margin = 0.2
-candidate_floor = 0.4
 `);
     await expect(loadConfig(path)).rejects.toThrow(new RegExp(envName));
     process.env[envName] = "";
     await expect(loadConfig(path)).rejects.toThrow(new RegExp(envName));
   });
 
-  test("warns but loads a configured reranker without calibrated thresholds", async () => {
+  test("loads a configured reranker without threshold configuration", async () => {
     const path = await configFile(`
 [inference]
 mode = "remote"
@@ -366,23 +344,10 @@ adapter = "jina-v1"
 endpoint = "https://rerank.example.com/v1/rerank"
 model = "reranker"
 `);
-    const warningKey = "inference.reranker.without-thresholds";
-    warnedEnv.delete(warningKey);
-    const originalError = console.error;
-    const warnings: string[] = [];
-    console.error = (...args: unknown[]) => warnings.push(args.join(" "));
-    try {
-      const config = await loadConfig(path);
-      expect(config.inference.mode).toBe("remote");
-      if (config.inference.mode !== "remote") throw new Error("expected remote config");
-      expect(config.inference.reranker).toBeDefined();
-      expect(config.inference.thresholds).toBeUndefined();
-      expect(warnings).toEqual([
-        expect.stringContaining("skillmux calibrate run"),
-      ]);
-    } finally {
-      console.error = originalError;
-      warnedEnv.delete(warningKey);
+    const config = await loadConfig(path);
+    expect(config.inference.mode).toBe("remote");
+    if (config.inference.mode === "remote") {
+      expect(config.inference.reranker?.model).toBe("reranker");
     }
   });
 });
@@ -691,57 +656,134 @@ k_rerank = 0
   });
 });
 
-describe("output.ambiguous_candidate_limit configuration", () => {
-  let consoleErrorSpy: string[];
-  const originalConsoleError = console.error;
-
-  beforeEach(() => {
-    warnedEnv.clear();
-    consoleErrorSpy = [];
-    console.error = (...args: any[]) => {
-      consoleErrorSpy.push(args.join(" "));
-    };
-  });
-
-  afterEach(() => {
-    console.error = originalConsoleError;
-  });
-
-  test("defaults output.ambiguous_candidate_limit to 5", async () => {
+describe("output configuration and migration errors (2.0 ranked shortlist)", () => {
+  test("defaults output.top_k to 10 and output.max_top_k to 50", async () => {
     const path = await configFile(`
 vault_path = "~/skills"
 `);
     const config = await loadConfig(path);
-    expect(config.output.ambiguous_candidate_limit).toBe(5);
+    expect(config.output.top_k).toBe(10);
+    expect(config.output.max_top_k).toBe(50);
   });
 
-  test("loads output.ambiguous_candidate_limit from TOML", async () => {
+  test("loads output.top_k and output.max_top_k from TOML", async () => {
     const path = await configFile(`
 [output]
-ambiguous_candidate_limit = 8
+top_k = 15
+max_top_k = 30
 `);
     const config = await loadConfig(path);
-    expect(config.output.ambiguous_candidate_limit).toBe(8);
+    expect(config.output.top_k).toBe(15);
+    expect(config.output.max_top_k).toBe(30);
   });
 
-  test("warns when legacy thresholds.candidate_limit is used in TOML and uses it as fallback", async () => {
+  test("rejects non-positive integer for output.top_k", async () => {
+    const path = await configFile(`
+[output]
+top_k = 0
+`);
+    await expect(loadConfig(path)).rejects.toThrow();
+  });
+
+  test("rejects non-positive integer for output.max_top_k", async () => {
+    const path = await configFile(`
+[output]
+max_top_k = -1
+`);
+    await expect(loadConfig(path)).rejects.toThrow();
+  });
+
+  test("rejects when output.top_k exceeds output.max_top_k", async () => {
+    const path = await configFile(`
+[output]
+top_k = 25
+max_top_k = 20
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/top_k.*max_top_k/i);
+  });
+
+  test("rejects when output.top_k exceeds recall.k_rerank when reranking is enabled", async () => {
+    const path = await configFile(`
+[recall]
+k_lexical = 20
+k_vector = 20
+k_rerank = 5
+
+[output]
+top_k = 10
+max_top_k = 50
+
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "http://127.0.0.1:9/v1/embeddings"
+model = "model"
+dimension = 1024
+
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "http://127.0.0.1:9/rerank"
+model = "reranker"
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/k_rerank/i);
+  });
+
+  test("rejects legacy [thresholds] table with actionable migration error", async () => {
     const path = await configFile(`
 [thresholds]
-candidate_limit = 7
+match_score = 0.9
 `);
-    const config = await loadConfig(path);
-    expect(config.output.ambiguous_candidate_limit).toBe(7);
-    expect(consoleErrorSpy.some((msg) => msg.includes("thresholds.candidate_limit is deprecated"))).toBe(true);
+    await expect(loadConfig(path)).rejects.toThrow(/threshold/i);
   });
 
-  test("SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT environment variable overrides TOML", async () => {
+  test("rejects legacy output.ambiguous_candidate_limit with actionable migration error", async () => {
     const path = await configFile(`
 [output]
-ambiguous_candidate_limit = 3
+ambiguous_candidate_limit = 5
 `);
-    process.env.SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT = "9";
+    await expect(loadConfig(path)).rejects.toThrow(/output\.ambiguous_candidate_limit.*output\.top_k/i);
+  });
+
+  test("rejects legacy inference.thresholds with actionable migration error", async () => {
+    const path = await configFile(`
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "http://127.0.0.1:9/v1/embeddings"
+model = "model"
+dimension = 1024
+
+[inference.thresholds]
+match_score = 0.9
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/threshold/i);
+  });
+
+  test("rejects legacy environment variables with actionable migration error", async () => {
+    process.env.SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT = "5";
+    const path = await configFile(`
+vault_path = "~/skills"
+`);
+    await expect(loadConfig(path)).rejects.toThrow(/SKILLMUX_OUTPUT_TOP_K/i);
+  });
+
+  test("SKILLMUX_OUTPUT_TOP_K and SKILLMUX_OUTPUT_MAX_TOP_K environment variables override TOML", async () => {
+    const path = await configFile(`
+[output]
+top_k = 5
+max_top_k = 20
+`);
+    process.env.SKILLMUX_OUTPUT_TOP_K = "8";
+    process.env.SKILLMUX_OUTPUT_MAX_TOP_K = "30";
     const config = await loadConfig(path);
-    expect(config.output.ambiguous_candidate_limit).toBe(9);
+    expect(config.output.top_k).toBe(8);
+    expect(config.output.max_top_k).toBe(30);
   });
 });
 

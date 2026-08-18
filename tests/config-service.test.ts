@@ -135,10 +135,6 @@ dimension = 384
 adapter = "jina-v1"
 endpoint = "https://rerank.example.com/v1/rerank"
 model = "reranker"
-[inference.thresholds]
-match_score = 0.9
-match_margin = 0.2
-candidate_floor = 0.4
 `,
       "utf-8",
     );

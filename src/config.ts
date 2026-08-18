@@ -43,14 +43,11 @@ const configSchema = z.object({
     message: "recall.k_rerank cannot exceed k_lexical + k_vector",
   }),
   output: z.object({
-    ambiguous_candidate_limit: z.number().int().positive().default(5),
-  }).strict().optional(),
-  thresholds: z.object({
-    candidate_limit: z.number().int().positive().optional(),
-    match_score: z.number().optional(),
-    match_margin: z.number().nonnegative().optional(),
-    candidate_floor: z.number().optional(),
-  }).strict().optional(),
+    top_k: z.number().int().positive().default(10),
+    max_top_k: z.number().int().positive().default(50),
+  }).strict().refine((o) => o.top_k <= o.max_top_k, {
+    message: "output.top_k cannot exceed output.max_top_k",
+  }).default({ top_k: 10, max_top_k: 50 }),
   inference: z.discriminatedUnion("mode", [
     z.object({
       mode: z.literal("local"),
@@ -74,7 +71,6 @@ const configSchema = z.object({
         model: z.string().min(1),
         api_key_env: z.string().min(1).optional(),
       }).strict().optional(),
-      thresholds: remoteThresholdsSchema.optional(),
       calibration: z.object({ run_id: z.string().min(1) }).strict().optional(),
     }).strict(),
   ]),
@@ -93,7 +89,15 @@ const configSchema = z.object({
       token_env: z.string().min(1),
     }).strict().optional(),
   }).strict().optional(),
-}).strict();
+}).strict().refine((cfg) => {
+  const hasReranker = cfg.inference.mode === "remote" && !!cfg.inference.reranker;
+  if (hasReranker && cfg.output.top_k > cfg.recall.k_rerank) {
+    return false;
+  }
+  return true;
+}, {
+  message: "output.top_k cannot exceed recall.k_rerank when reranking is enabled",
+});
 
 // Fallback values only; a config.toml (SKILLMUX_CONFIG or default path)
 // overrides them. The local bundle is the zero-config OSS path.
@@ -107,8 +111,7 @@ const DEFAULTS: Config = {
   local_vault_paths: [],
   state_dir: "~/.local/state/skillmux",
   recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
-  thresholds: { candidate_limit: 5 },
-  output: { ambiguous_candidate_limit: 5 },
+  output: { top_k: 10, max_top_k: 50 },
   inference: {
     mode: "local",
     bundle: LOCAL_BUNDLE_ID,
@@ -232,6 +235,18 @@ export async function loadConfig(path?: string): Promise<Config> {
         "The old client appended /v1/embeddings.",
     );
   }
+  const removedLegacyOutputEnv = [
+    "SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT",
+    "AMBIGUOUS_CANDIDATE_LIMIT",
+    "SKILLMUX_CANDIDATE_LIMIT",
+    "CANDIDATE_LIMIT",
+  ].find((name) => process.env[name] !== undefined);
+  if (removedLegacyOutputEnv) {
+    throw new Error(
+      `${removedLegacyOutputEnv} is no longer supported. Use SKILLMUX_OUTPUT_TOP_K instead.`,
+    );
+  }
+
   const configPath = resolveConfigPath(path);
   const file = Bun.file(expandHome(configPath));
 
@@ -248,6 +263,21 @@ export async function loadConfig(path?: string): Promise<Config> {
     merged = baseConfig;
   } else {
     const parsed = Bun.TOML.parse(await file.text()) as Record<string, unknown>;
+    if ("thresholds" in parsed) {
+      throw new Error(
+        "The [thresholds] table is obsolete in 2.0. Threshold calibration was removed; use [output] with top_k.",
+      );
+    }
+    if (isPlainObject(parsed.output) && "ambiguous_candidate_limit" in parsed.output) {
+      throw new Error(
+        "output.ambiguous_candidate_limit is obsolete in 2.0. Use output.top_k instead.",
+      );
+    }
+    if (isPlainObject(parsed.inference) && "thresholds" in parsed.inference) {
+      throw new Error(
+        "inference.thresholds is obsolete in 2.0. Threshold calibration was removed.",
+      );
+    }
     if ("embedding" in parsed || "rerank" in parsed || "remote_timeout_ms" in parsed) {
       throw new Error(
         "Legacy inference config is not supported. Move [embedding], [rerank], and remote_timeout_ms under [inference] using config.remote.example.toml.",
@@ -279,30 +309,9 @@ export async function loadConfig(path?: string): Promise<Config> {
         throw new Error("Remote inference requires an inference.embedding section.");
       }
     }
-    if (parsed.thresholds && typeof parsed.thresholds === "object" && (parsed.thresholds as Record<string, unknown>).candidate_limit !== undefined) {
-      console.error("skillmux: thresholds.candidate_limit is deprecated, use output.ambiguous_candidate_limit instead");
-      if (!parsed.output || (parsed.output as Record<string, unknown>).ambiguous_candidate_limit === undefined) {
-        parsed.output = {
-          ...(typeof parsed.output === "object" && parsed.output !== null ? parsed.output : {}),
-          ambiguous_candidate_limit: (parsed.thresholds as Record<string, unknown>).candidate_limit,
-        };
-      }
-    }
 
     if (parsed.inference && typeof parsed.inference === "object" && "mode" in parsed.inference) {
       if (parsed.inference.mode === "remote") {
-        if ("thresholds" in parsed.inference) {
-          const rawRemoteThresholds = (parsed.inference as Record<string, unknown>).thresholds;
-          if (
-            typeof rawRemoteThresholds === "object" &&
-            rawRemoteThresholds !== null &&
-            !("match_score" in rawRemoteThresholds) &&
-            !("match_margin" in rawRemoteThresholds) &&
-            !("candidate_floor" in rawRemoteThresholds)
-          ) {
-            throw new Error("Invalid inference.thresholds in config.toml: must specify at least one threshold.");
-          }
-        }
         const withoutInference = { ...parsed };
         delete withoutInference.inference;
         merged = {
@@ -318,12 +327,7 @@ export async function loadConfig(path?: string): Promise<Config> {
   }
 
   if (!merged.output) {
-    merged.output = { ambiguous_candidate_limit: merged.thresholds?.candidate_limit ?? 5 };
-  }
-  if (!merged.thresholds) {
-    merged.thresholds = { candidate_limit: merged.output.ambiguous_candidate_limit };
-  } else if (merged.thresholds.candidate_limit === undefined) {
-    merged.thresholds.candidate_limit = merged.output.ambiguous_candidate_limit;
+    merged.output = { top_k: 10, max_top_k: 50 };
   }
 
   // Warn about deprecated generic environment variables regardless of override policy
@@ -333,8 +337,8 @@ export async function loadConfig(path?: string): Promise<Config> {
     RECALL_K_LEXICAL: "SKILLMUX_RECALL_K_LEXICAL",
     RECALL_K_VECTOR: "SKILLMUX_RECALL_K_VECTOR",
     RECALL_K_RERANK: "SKILLMUX_RECALL_K_RERANK",
-    AMBIGUOUS_CANDIDATE_LIMIT: "SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT",
-    CANDIDATE_LIMIT: "SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT",
+    OUTPUT_TOP_K: "SKILLMUX_OUTPUT_TOP_K",
+    OUTPUT_MAX_TOP_K: "SKILLMUX_OUTPUT_MAX_TOP_K",
     EMBED_MODEL: "SKILLMUX_EMBED_MODEL",
     EMBED_ENDPOINT: "SKILLMUX_EMBED_ENDPOINT",
     EMBED_DIMENSION: "SKILLMUX_EMBED_DIMENSION",
@@ -398,14 +402,17 @@ export async function loadConfig(path?: string): Promise<Config> {
       if (!Number.isInteger(k) || k < 1) throw new Error(`Invalid recall.k_rerank: ${kRerankStr}`);
       merged.recall.k_rerank = k;
     }
-    const ambiguousLimitStr =
-      getEnv("SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT", "AMBIGUOUS_CANDIDATE_LIMIT") ??
-      getEnv("SKILLMUX_CANDIDATE_LIMIT", "CANDIDATE_LIMIT");
-    if (ambiguousLimitStr) {
-      const lim = Number(ambiguousLimitStr);
-      if (!Number.isInteger(lim) || lim < 1) throw new Error(`Invalid output.ambiguous_candidate_limit: ${ambiguousLimitStr}`);
-      merged.output.ambiguous_candidate_limit = lim;
-      merged.thresholds.candidate_limit = lim;
+    const topKStr = getEnv("SKILLMUX_OUTPUT_TOP_K", "OUTPUT_TOP_K");
+    if (topKStr) {
+      const k = Number(topKStr);
+      if (!Number.isInteger(k) || k < 1) throw new Error(`Invalid output.top_k: ${topKStr}`);
+      merged.output.top_k = k;
+    }
+    const maxTopKStr = getEnv("SKILLMUX_OUTPUT_MAX_TOP_K", "OUTPUT_MAX_TOP_K");
+    if (maxTopKStr) {
+      const k = Number(maxTopKStr);
+      if (!Number.isInteger(k) || k < 1) throw new Error(`Invalid output.max_top_k: ${maxTopKStr}`);
+      merged.output.max_top_k = k;
     }
   }
 
@@ -440,16 +447,6 @@ export async function loadConfig(path?: string): Promise<Config> {
     }
     if (merged.inference.reranker && (!merged.inference.reranker.endpoint || !merged.inference.reranker.model)) {
       throw new Error("Configured inference.reranker requires adapter, endpoint, and model.");
-    }
-    if (merged.inference.reranker && !merged.inference.thresholds) {
-      const warningKey = "inference.reranker.without-thresholds";
-      if (!warnedEnv.has(warningKey)) {
-        warnedEnv.add(warningKey);
-        console.error(
-          "skillmux: configured reranker has no calibrated inference.thresholds; " +
-            "routing will remain ambiguous until you run `skillmux calibrate run`.",
-        );
-      }
     }
     const embedEndpoint = getEnv("SKILLMUX_EMBED_ENDPOINT", "EMBED_ENDPOINT");
     const embedModel = getEnv("SKILLMUX_EMBED_MODEL", "EMBED_MODEL");

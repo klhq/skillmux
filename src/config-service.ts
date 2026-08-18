@@ -60,11 +60,8 @@ export const RELOADABLE_KEYS = [
   "recall.k_lexical",
   "recall.k_vector",
   "recall.k_rerank",
-  "output.ambiguous_candidate_limit",
-  "thresholds.candidate_limit",
-  "thresholds.match_score",
-  "thresholds.match_margin",
-  "thresholds.candidate_floor",
+  "output.top_k",
+  "output.max_top_k",
   "inference.embedding.endpoint",
   "inference.embedding.api_key_env",
   "inference.reranker.adapter",
@@ -150,11 +147,8 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
     "recall.k_lexical",
     "recall.k_vector",
     "recall.k_rerank",
-    "output.ambiguous_candidate_limit",
-    "thresholds.candidate_limit",
-    "thresholds.match_score",
-    "thresholds.match_margin",
-    "thresholds.candidate_floor",
+    "output.top_k",
+    "output.max_top_k",
     "inference.mode",
     "inference.bundle",
     "inference.models_dir",
@@ -200,15 +194,8 @@ export function isEnvMasked(key: string, allowEnvOverrides: boolean = true): boo
   if (key === "recall.k_lexical" && (process.env.SKILLMUX_RECALL_K_LEXICAL || process.env.RECALL_K_LEXICAL)) return true;
   if (key === "recall.k_vector" && (process.env.SKILLMUX_RECALL_K_VECTOR || process.env.RECALL_K_VECTOR)) return true;
   if (key === "recall.k_rerank" && (process.env.SKILLMUX_RECALL_K_RERANK || process.env.RECALL_K_RERANK)) return true;
-  if (
-    (key === "output.ambiguous_candidate_limit" || key === "thresholds.candidate_limit") &&
-    (process.env.SKILLMUX_OUTPUT_AMBIGUOUS_CANDIDATE_LIMIT ||
-      process.env.AMBIGUOUS_CANDIDATE_LIMIT ||
-      process.env.SKILLMUX_CANDIDATE_LIMIT ||
-      process.env.CANDIDATE_LIMIT)
-  ) {
-    return true;
-  }
+  if (key === "output.top_k" && (process.env.SKILLMUX_OUTPUT_TOP_K || process.env.OUTPUT_TOP_K)) return true;
+  if (key === "output.max_top_k" && (process.env.SKILLMUX_OUTPUT_MAX_TOP_K || process.env.OUTPUT_MAX_TOP_K)) return true;
   if (key === "inference.models_dir" && (process.env.SKILLMUX_MODELS_DIR || process.env.SKILL_ROUTER_MODELS_DIR)) return true;
   if (key === "inference.embedding.device" && (process.env.SKILLMUX_EMBED_DEVICE || process.env.EMBED_DEVICE)) return true;
   if (key === "inference.embedding.dtype" && (process.env.SKILLMUX_EMBED_DTYPE || process.env.EMBED_DTYPE)) return true;
@@ -229,6 +216,12 @@ export function isEnvMasked(key: string, allowEnvOverrides: boolean = true): boo
 }
 
 export function validateDottedKey(key: string): void {
+  if (key === "output.ambiguous_candidate_limit") {
+    throw new Error("output.ambiguous_candidate_limit is obsolete in 2.0. Use output.top_k instead.");
+  }
+  if (key.startsWith("thresholds.") || key.startsWith("inference.thresholds.")) {
+    throw new Error("thresholds are obsolete in 2.0. Threshold calibration was removed; use output.top_k.");
+  }
   const allowed = new Set([
     "config.environment_overrides",
     "vault_path",
@@ -236,11 +229,8 @@ export function validateDottedKey(key: string): void {
     "recall.k_lexical",
     "recall.k_vector",
     "recall.k_rerank",
-    "output.ambiguous_candidate_limit",
-    "thresholds.candidate_limit",
-    "thresholds.match_score",
-    "thresholds.match_margin",
-    "thresholds.candidate_floor",
+    "output.top_k",
+    "output.max_top_k",
     "inference.mode",
     "inference.bundle",
     "inference.models_dir",
@@ -279,11 +269,8 @@ export function parseDottedValue(key: string, valueStr: string): unknown {
     "recall.k_lexical",
     "recall.k_vector",
     "recall.k_rerank",
-    "output.ambiguous_candidate_limit",
-    "thresholds.candidate_limit",
-    "thresholds.match_score",
-    "thresholds.match_margin",
-    "thresholds.candidate_floor",
+    "output.top_k",
+    "output.max_top_k",
     "inference.embedding.dimension",
     "inference.timeout_ms",
     "server.rate_limit.requests_per_minute",

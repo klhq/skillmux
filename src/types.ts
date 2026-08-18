@@ -5,11 +5,12 @@ export interface RecallConfig {
 }
 
 export interface OutputConfig {
-  ambiguous_candidate_limit: number;
+  top_k: number;
+  max_top_k: number;
 }
 
 export interface Thresholds {
-  /** @deprecated Use output.ambiguous_candidate_limit instead */
+  /** @deprecated Use output.top_k instead */
   candidate_limit?: number;
   match_score?: number;
   match_margin?: number;
@@ -114,8 +115,8 @@ export interface Config {
   local_vault_paths: string[];
   state_dir: string;
   recall: RecallConfig;
-  thresholds: Thresholds;
   output: OutputConfig;
+  thresholds?: Thresholds;
   inference: InferenceConfig;
   server?: ServerConfig;
 }
