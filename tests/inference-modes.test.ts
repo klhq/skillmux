@@ -69,11 +69,6 @@ describe("reranker fingerprint", () => {
           endpoint: "https://one.example.com/v1/rerank",
           model: "reranker",
         },
-        thresholds: {
-          match_score: 0.9,
-          match_margin: 0.2,
-          candidate_floor: 0.4,
-        },
       },
     };
     const fingerprint = rerankerFingerprint(remote);

@@ -23,7 +23,6 @@ import {
   vectorTopK,
 } from "./db";
 import type { SkillRow } from "./db";
-import { decideResolveOutcome, type Decision } from "./decision";
 import type {
   RankedCandidate,
   RetrievalCapability,
@@ -54,7 +53,6 @@ function maxVaultMtime(vaultPath: string, localVaultPaths: string[]): number {
 
 export { buildAuditRow } from "./audit";
 export { loadConfig } from "./config";
-export { decideResolveOutcome } from "./decision";
 export type * from "./types";
 
 const NO_MATCH_MESSAGE =
@@ -444,21 +442,6 @@ export interface RetrievalResult {
   }>;
 }
 
-export function decideRetrievalResult(config: Config, result: RetrievalResult): Decision {
-  const candidateLimit = config.output?.top_k ?? 10;
-  const thresholds = { candidate_limit: candidateLimit, ...config.thresholds };
-  return decideResolveOutcome({
-    reranked: result.retrieval === "reranked",
-    candidates: result.candidates.map((c, i) => ({
-      rank: i + 1,
-      skill_id: c.skill_id,
-      description: c.description ?? "",
-      score: c.score ?? null,
-    })),
-    thresholds,
-  });
-}
-
 export function classifyInferenceError(
   stage: "embedding" | "reranker",
   error: unknown,
@@ -493,64 +476,26 @@ export function classifyInferenceError(
   return stage === "embedding" ? "embedding_unavailable" : "reranker_unavailable";
 }
 
-export interface StageTiming {
-  embedding_ms: number;
-  lexical_ms: number;
-  vector_ms: number;
-  reranker_ms: number;
-}
-
-export interface RetrieveSnapshotOptions {
-  onTiming?: (timing: StageTiming) => void;
-}
-
 /**
- * Retrieve the full fused candidate set and rerank it once without applying
- * decision thresholds, synchronizing the vault before reading the index.
+ * Retrieve the full fused candidate set, optionally rerank it, and synchronize
+ * the vault before reading the index.
  */
 export async function retrieveAndRerank(
   input: ResolveSkillInput,
 ): Promise<RetrievalResult> {
   await syncVaultIfNeeded();
-  return retrieveAndRerankSnapshot(input);
-}
-
-/**
- * Retrieve candidates against an already-synchronized index snapshot without
- * triggering syncVaultIfNeeded(). Calibration uses this to avoid observing the
- * policy it is trying to replace while keeping one corpus for the whole run.
- */
-export async function retrieveAndRerankSnapshot(
-  input: ResolveSkillInput,
-  options?: RetrieveSnapshotOptions,
-): Promise<RetrievalResult> {
   const { config, db } = await getEnv();
   const clients = getClients();
-  const measureTiming = options?.onTiming !== undefined;
 
-  let embedding_ms = 0;
-  let lexical_ms = 0;
-  let vector_ms = 0;
-  let reranker_ms = 0;
-
-  const tEmbed0 = measureTiming ? performance.now() : 0;
   const embedPromise =
     !input.forceLexical && clients.embed
       ? clients.embed([input.query]).then(
-        (res) => {
-          if (measureTiming) embedding_ms = Math.max(0, performance.now() - tEmbed0);
-          return res;
-        },
-        (err) => {
-          if (measureTiming) embedding_ms = Math.max(0, performance.now() - tEmbed0);
-          return { error: err };
-        },
+        (res) => res,
+        (err) => ({ error: err }),
       )
       : null;
 
-  const tLex0 = measureTiming ? performance.now() : 0;
   const lexical = ftsSearch(db, input.query, config.recall.k_lexical);
-  if (measureTiming) lexical_ms = Math.max(0, performance.now() - tLex0);
   const lexicalRanks = new Map(lexical.map((row, index) => [row.skill_id, index + 1]));
 
   let retrieval: RetrievalResult["retrieval"] = "lexical";
@@ -574,17 +519,14 @@ export async function retrieveAndRerankSnapshot(
         }),
       );
     } else {
-      const tVec0 = measureTiming ? performance.now() : 0;
       try {
         const queryVec = (embedRes as Float32Array[])[0];
         if (!queryVec) throw new Error("Embedding client returned no query vector.");
         const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
-        if (measureTiming) vector_ms = Math.max(0, performance.now() - tVec0);
         rows = reciprocalRankFusion(lexical, nearest);
         fusedRows = rows;
         retrieval = "hybrid";
       } catch (embedError) {
-        if (measureTiming) vector_ms = Math.max(0, performance.now() - tVec0);
         retrieval = "lexical";
         degraded_from = clients.rerank ? "reranked" : "hybrid";
         degradation_reason = classifyInferenceError("embedding", embedError);
@@ -604,17 +546,14 @@ export async function retrieveAndRerankSnapshot(
   if (clients.rerank && retrieval === "hybrid" && rows.length > 0) {
     const kRerank = config.recall.k_rerank ?? 10;
     const rerankCandidates = rows.slice(0, kRerank);
-    const tRerank0 = measureTiming ? performance.now() : 0;
     try {
       scores = await clients.rerank(
         input.query,
         rerankCandidates.map((r) => ({ skill_id: r.skill_id, text: rerankText(r) })),
       );
-      if (measureTiming) reranker_ms = Math.max(0, performance.now() - tRerank0);
       retrieval = "reranked";
       rows = rerankCandidates;
     } catch (rerankError) {
-      if (measureTiming) reranker_ms = Math.max(0, performance.now() - tRerank0);
       scores = null;
       degraded_from = "reranked";
       degradation_reason = classifyInferenceError("reranker", rerankError);
@@ -641,13 +580,6 @@ export async function retrieveAndRerankSnapshot(
     ? new Map(candidates.map((candidate, index) => [candidate.skill_id, index + 1]))
     : new Map<string, number>();
   const traceRows = fusedRows ?? rows;
-
-  options?.onTiming?.({
-    embedding_ms,
-    lexical_ms,
-    vector_ms,
-    reranker_ms,
-  });
 
   return {
     retrieval,

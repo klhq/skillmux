@@ -287,56 +287,6 @@ skillmux skill which csv-formatter
 
 ---
 
-## Policy calibration (`skillmux calibrate`)
-
-Calibrate decision thresholds (`match_score`, `match_margin`, `candidate_floor`) against synthetic or labeled query datasets.
-Calibration is local-only in this release. Remote targets advertise the
-capability as unavailable and return `not_implemented`; a local dataset path is
-never uploaded or represented as remotely executed. See
-[`docs/calibration.md`](calibration.md) for dataset responsibilities,
-certification gates, run evidence, reference values, and the complete operator
-lifecycle.
-
-```sh
-# Run calibration on a dataset with default certification gates (min precision 0.75, min count 15)
-skillmux calibrate run --dataset ./eval/queries.json
-
-# Specify explicit certification gates and tune selection buffers
-# Note: --min-auto-match-precision is interpreted as a 95% Wilson lower confidence bound.
-# Calibration preflight validates that the requested gate is mathematically attainable on the tune split.
-skillmux calibrate run --dataset ./eval/queries.json \
-  --min-auto-match-precision 0.75 \
-  --min-auto-match-count 15 \
-  --min-retrieval-recall-at-k 0.95 \
-  --min-delivered-shortlist-recall-at-k 0.95 \
-  --tune-auto-match-precision-buffer 0.03 \
-  --tune-auto-match-count-buffer 3 \
-  --tune-delivered-shortlist-recall-buffer 0.02
-
-# Set the bounded worker count
-skillmux calibrate run --dataset ./eval/queries.json --concurrency 6
-
-# Print aggregate performance timing to stderr
-skillmux calibrate run --dataset ./eval/queries.json --timing
-
-# Resume a running or interrupted attempt with the same inputs and gates
-skillmux calibrate run --dataset ./eval/queries.json --resume <run_id>
-
-# List stored calibration runs in the evidence store
-skillmux calibrate list
-
-# Inspect detailed metrics and confusion matrix for a run
-skillmux calibrate show <run_id>
-
-# Apply calibrated thresholds to configuration (with fingerprint validation)
-skillmux calibrate apply <run_id>
-
-# Generate a synthetic decision dataset from vault skills
-skillmux calibrate generate-dataset --out ./eval/queries.json
-```
-
----
-
 ## Administrative HTTP API (`/admin/v1/*`)
 
 The HTTP server has two separate surfaces:
@@ -363,12 +313,9 @@ Requests require `Authorization: Bearer <token>` where `<token>` matches the env
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/admin/v1/capabilities` | `GET` | Advertises server features (`config_read`, `config_write`, `calibration`, `persistence`) |
+| `/admin/v1/capabilities` | `GET` | Advertises server features (`config_read`, `config_write`, `persistence`) |
 | `/admin/v1/config` | `GET` | Returns desired/effective config, sources, and `ETag` revision hash |
 | `/admin/v1/config` | `PATCH` | Applies dotted-key updates; requires matching `If-Match` header |
-| `/admin/v1/calibrations` | `GET`, `POST` | Returns `501 not_implemented` (calibration is local-only) |
-| `/admin/v1/calibrations/{run_id}` | `GET` | Returns `501 not_implemented`; raw evaluation queries are not exposed |
-| `/admin/v1/calibrations/{run_id}/apply` | `POST` | Returns `501 not_implemented` |
 
 ---
 

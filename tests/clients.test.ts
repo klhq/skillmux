@@ -162,11 +162,6 @@ function testConfig(
         model: "BAAI/bge-reranker-v2-m3",
         ...reranker,
       },
-      thresholds: {
-        match_score: 0.9,
-        match_margin: 0.2,
-        candidate_floor: 0.4,
-      },
     },
   };
 }

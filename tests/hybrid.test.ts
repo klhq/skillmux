@@ -7,9 +7,6 @@ import {
   configure,
   resolveSkill,
   retrieveAndRerank,
-  retrieveAndRerankSnapshot,
-  type RetrieveSnapshotOptions,
-  type StageTiming,
 } from "../src/router-core";
 import type { Config } from "../src/types";
 
@@ -79,12 +76,8 @@ describe("hybrid recall (AC6)", () => {
   test("raw retrieval returns the full reranked shortlist with one reranker call", async () => {
     let rerankerCalls = 0;
     if (config.inference.mode !== "remote") throw new Error("expected remote config");
-    const { thresholds: _thresholds, ...uncalibratedInference } = config.inference;
     configure({
-      config: {
-        ...config,
-        inference: uncalibratedInference,
-      },
+      config,
       clients: {
         embed: async (texts) => texts.map(vectorFor),
         rerank: async (_query, docs) => {
@@ -319,7 +312,7 @@ describe("hybrid recall (AC6)", () => {
     expect(res.candidates.length).toBeGreaterThan(0);
   });
 
-  test("ordinary retrieveAndRerank() synchronizes vault changes by default while snapshot retrieval does not", async () => {
+  test("ordinary retrieveAndRerank() synchronizes vault changes by default", async () => {
     configure({
       config,
       clients: {
@@ -333,218 +326,5 @@ describe("hybrid recall (AC6)", () => {
     // retrieveAndRerank without prior manual sync should automatically discover and index the new skill
     const res = await retrieveAndRerank({ query: "late-added-hybrid-skill" });
     expect(res.candidates.some((c) => c.skill_id === "late-added-hybrid-skill")).toBe(true);
-
-    // Write another skill
-    writeSkill("unsynced-snapshot-skill", "Dynamic handler not visible to snapshot.");
-    // retrieveAndRerankSnapshot should query the existing index snapshot without triggering syncVaultIfNeeded()
-    const snapshotRes = await retrieveAndRerankSnapshot({ query: "unsynced-snapshot-skill" });
-    expect(snapshotRes.candidates.some((c) => c.skill_id === "unsynced-snapshot-skill")).toBe(false);
-  });
-
-  describe("stage timing (Task 2A)", () => {
-    test("timing callback is absent by default and normal snapshot retrieval works", async () => {
-      configure({
-        config,
-        clients: {
-          embed: async (texts) => texts.map(vectorFor),
-          rerank: async (_query, docs) => docs.map(() => 0.95),
-        },
-      });
-
-      const res = await retrieveAndRerankSnapshot({ query: "quantum flux routing" });
-      expect(res.retrieval).toBe("reranked");
-      expect(res.candidates.length).toBeGreaterThan(0);
-      expect(res.trace.length).toBeGreaterThan(0);
-    });
-
-    test("fires onTiming callback once when supplied and reports all four non-negative stable fields", async () => {
-      configure({
-        config,
-        clients: {
-          embed: async (texts) => texts.map(vectorFor),
-          rerank: async (_query, docs) => docs.map(() => 0.95),
-        },
-      });
-
-      let timingCalls = 0;
-      let timingPayload: StageTiming | null = null;
-
-      const options: RetrieveSnapshotOptions = {
-        onTiming: (timing) => {
-          timingCalls++;
-          timingPayload = timing;
-        },
-      };
-
-      const res = await retrieveAndRerankSnapshot({ query: "quantum flux routing" }, options);
-      expect(res.retrieval).toBe("reranked");
-      expect(timingCalls).toBe(1);
-      expect(timingPayload).not.toBeNull();
-
-      if (!timingPayload) throw new Error("timingPayload was not set");
-      const timing: StageTiming = timingPayload;
-
-      // Stable four fields shape assertion
-      expect(Object.keys(timing).sort()).toEqual([
-        "embedding_ms",
-        "lexical_ms",
-        "reranker_ms",
-        "vector_ms",
-      ]);
-
-      // All fields must be non-negative numbers
-      expect(typeof timing.embedding_ms).toBe("number");
-      expect(timing.embedding_ms).toBeGreaterThanOrEqual(0);
-
-      expect(typeof timing.lexical_ms).toBe("number");
-      expect(timing.lexical_ms).toBeGreaterThanOrEqual(0);
-
-      expect(typeof timing.vector_ms).toBe("number");
-      expect(timing.vector_ms).toBeGreaterThanOrEqual(0);
-
-      expect(typeof timing.reranker_ms).toBe("number");
-      expect(timing.reranker_ms).toBeGreaterThanOrEqual(0);
-    });
-
-    test("records attempted failed stages without exposing query text on embedding failure", async () => {
-      const secretQuery = "secret-token-query-embed-fail-123";
-      configure({
-        config,
-        clients: {
-          embed: async () => {
-            throw new Error("embedding service unavailable");
-          },
-          rerank: async (_query, docs) => docs.map(() => 0.95),
-        },
-      });
-
-      let timingCalls = 0;
-      let timingPayload: StageTiming | null = null;
-
-      const res = await retrieveAndRerankSnapshot(
-        { query: secretQuery },
-        {
-          onTiming: (timing) => {
-            timingCalls++;
-            timingPayload = timing;
-          },
-        },
-      );
-
-      expect(res.retrieval).toBe("lexical");
-      expect(res.degraded_from).toBe("reranked");
-      expect(timingCalls).toBe(1);
-      expect(timingPayload).not.toBeNull();
-
-      if (!timingPayload) throw new Error("timingPayload was not set");
-      const timing: StageTiming = timingPayload;
-
-      // Attempted embedding was timed even though it failed
-      expect(typeof timing.embedding_ms).toBe("number");
-      expect(timing.embedding_ms).toBeGreaterThanOrEqual(0);
-
-      // Lexical ran and was timed
-      expect(typeof timing.lexical_ms).toBe("number");
-      expect(timing.lexical_ms).toBeGreaterThanOrEqual(0);
-
-      // Vector search and reranker did not run and report zero
-      expect(timing.vector_ms).toBe(0);
-      expect(timing.reranker_ms).toBe(0);
-
-      // Query text must not be exposed in timing payload
-      expect(JSON.stringify(timing)).not.toContain(secretQuery);
-    });
-
-    test("records attempted failed stages without exposing query text on reranker failure", async () => {
-      const secretQuery = "secret-token-query-rerank-fail-456";
-      configure({
-        config,
-        clients: {
-          embed: async (texts) => texts.map(vectorFor),
-          rerank: async () => {
-            throw new Error("reranker timeout");
-          },
-        },
-      });
-
-      let timingCalls = 0;
-      let timingPayload: StageTiming | null = null;
-
-      const res = await retrieveAndRerankSnapshot(
-        { query: secretQuery },
-        {
-          onTiming: (timing) => {
-            timingCalls++;
-            timingPayload = timing;
-          },
-        },
-      );
-
-      expect(res.retrieval).toBe("hybrid");
-      expect(res.degraded_from).toBe("reranked");
-      expect(timingCalls).toBe(1);
-      expect(timingPayload).not.toBeNull();
-
-      if (!timingPayload) throw new Error("timingPayload was not set");
-      const timing: StageTiming = timingPayload;
-
-      // Embedding ran and succeeded
-      expect(typeof timing.embedding_ms).toBe("number");
-      expect(timing.embedding_ms).toBeGreaterThanOrEqual(0);
-
-      // Lexical ran and succeeded
-      expect(typeof timing.lexical_ms).toBe("number");
-      expect(timing.lexical_ms).toBeGreaterThanOrEqual(0);
-
-      // Vector search ran and succeeded
-      expect(typeof timing.vector_ms).toBe("number");
-      expect(timing.vector_ms).toBeGreaterThanOrEqual(0);
-
-      // Reranker was attempted, failed, and its duration was timed
-      expect(typeof timing.reranker_ms).toBe("number");
-      expect(timing.reranker_ms).toBeGreaterThanOrEqual(0);
-
-      // Query text must not be exposed in timing payload
-      expect(JSON.stringify(timing)).not.toContain(secretQuery);
-    });
-
-    test("reports zero for unexecuted stages when forceLexical is true", async () => {
-      configure({
-        config,
-        clients: {
-          embed: async (texts) => texts.map(vectorFor),
-          rerank: async (_query, docs) => docs.map(() => 0.95),
-        },
-      });
-
-      let timingCalls = 0;
-      let timingPayload: StageTiming | null = null;
-
-      const res = await retrieveAndRerankSnapshot(
-        { query: "quantum flux routing", forceLexical: true },
-        {
-          onTiming: (timing) => {
-            timingCalls++;
-            timingPayload = timing;
-          },
-        },
-      );
-
-      expect(res.retrieval).toBe("lexical");
-      expect(timingCalls).toBe(1);
-      expect(timingPayload).not.toBeNull();
-
-      if (!timingPayload) throw new Error("timingPayload was not set");
-      const timing: StageTiming = timingPayload;
-
-      // Embedding did not run
-      expect(timing.embedding_ms).toBe(0);
-      // Lexical ran
-      expect(typeof timing.lexical_ms).toBe("number");
-      expect(timing.lexical_ms).toBeGreaterThanOrEqual(0);
-      // Vector search and reranker did not run
-      expect(timing.vector_ms).toBe(0);
-      expect(timing.reranker_ms).toBe(0);
-    });
   });
 });

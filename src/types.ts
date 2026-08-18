@@ -79,8 +79,6 @@ export interface RemoteInferenceConfig {
   timeout_ms: number;
   embedding: RemoteEmbeddingConfig;
   reranker?: RemoteRerankerConfig;
-  thresholds?: Required<Omit<Thresholds, "candidate_limit">>;
-  calibration?: { run_id: string };
 }
 
 export type InferenceConfig = LocalInferenceConfig | RemoteInferenceConfig;
@@ -116,7 +114,6 @@ export interface Config {
   state_dir: string;
   recall: RecallConfig;
   output: OutputConfig;
-  thresholds?: Thresholds;
   inference: InferenceConfig;
   server?: ServerConfig;
 }
