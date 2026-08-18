@@ -13,6 +13,20 @@
 
 - Replace decision-labelled dataset parsing with relevant-skill ranking labels.
 - Report Recall@5, Recall@10, MRR, and nDCG.
+- Keep cases with an empty `relevant_skill_ids` list, but exclude them from all
+  ranking-metric denominators. Report their count as `unjudged_queries` so the
+  report never treats “nothing labelled relevant” as a ranking failure or a
+  successful no-match decision.
+- Define Recall@K as the fraction of relevant skill IDs present in the first K
+  results, averaged across judged queries. Define MRR from the first relevant
+  result. Define nDCG@10 with binary relevance and an ideal ranking containing
+  every relevant ID. A missing relevant result contributes zero.
+- Evaluate the final delivered ranking for the `hybrid` lane: reranked order
+  when reranking succeeds, and fused order when it is unavailable or degraded.
+- Preserve per-case latency, retrieval mode, degradation metadata, recall
+  settings, and rank traces. Remove the synthesized decision `outcome`.
+- Keep the legacy `expected` field only as an explicit migration error. The
+  accepted dataset shape is `query`, `split`, and `relevant_skill_ids`.
 - Migrate maintained evaluation fixtures without inspecting or changing labels
   based on prior certification results.
 - Remove evaluation dependencies on threshold decisions.
