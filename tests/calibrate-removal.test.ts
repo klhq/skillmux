@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../src/config";
@@ -7,6 +7,7 @@ import { startServer, type ServerHandle } from "../src/server";
 import { diagnose } from "../src/doctor";
 import { evalVault } from "../src/eval";
 import { generateCompletions } from "../src/completions";
+import { configure } from "../src/router-core";
 
 describe("PR3 calibration removal public interface", () => {
   let tmp: string;
@@ -17,6 +18,7 @@ describe("PR3 calibration removal public interface", () => {
   });
 
   afterEach(async () => {
+    configure({});
     if (serverHandle) {
       await serverHandle.stop();
       serverHandle = null;
@@ -110,8 +112,6 @@ token_env = "ADMIN_TOKEN"
     const vaultPath = join(tmp, "vault");
     const stateDir = join(tmp, "state");
     const skillDir = join(vaultPath, "demo-skill");
-    mkdtempSync(join(tmp, "scratch-")); // ensure scratch
-    const { mkdirSync } = await import("node:fs");
     mkdirSync(skillDir, { recursive: true });
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
@@ -162,12 +162,23 @@ max_top_k = 10
     await sHandle.stop();
     expect(readFileSync(sentinelPath)).toEqual(sentinelBytes);
 
-    // 3. Run eval suite
-    try {
-      await evalVault([]);
-    } catch {
-      // It's ok if eval fails; the requirement is that calibrate.sqlite3 is never touched
-    }
+    // 3. Explicitly configure runtime with deterministic embedding vectors and run eval suite
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => texts.map(() => new Float32Array([0.1, 0.2, 0.3, 0.4])),
+      },
+    });
+
+    const evalReport = await evalVault([
+      {
+        query: "demo query",
+        relevant_skill_ids: ["demo-skill"],
+      },
+    ]);
+    expect(evalReport.queries).toBe(1);
+    expect(evalReport.judged_queries).toBe(1);
+    expect(evalReport.unjudged_queries).toBe(0);
     expect(readFileSync(sentinelPath)).toEqual(sentinelBytes);
   });
 
