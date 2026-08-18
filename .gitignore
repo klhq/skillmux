@@ -9,3 +9,4 @@ dist/
 
 # Internal planning docs — never published
 .agents/
+docs/sdd/
