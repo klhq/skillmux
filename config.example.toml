@@ -15,3 +15,8 @@ vault_path = "~/skills"
 # vault_path for a given skill_id. Never holds skillmux.toml or the sync git
 # hook — those always stay in vault_path. See docs/configuration.md#local-vault-overlays.
 # local_vault_paths = ["~/skills-local"]
+
+# Optional: output configuration for resolve_skill ranked candidates.
+# [output]
+# top_k = 10
+# max_top_k = 50

@@ -70,16 +70,30 @@ Input:
 
 ```json
 {
-  "query": "convert this spreadsheet to a Markdown table"
+  "query": "convert this spreadsheet to a Markdown table",
+  "top_k": 5
 }
 ```
 
-Skillmux returns one outcome:
+Skillmux returns a ranked candidates response:
 
-- `matched`: `structuredContent` contains match metadata and the text content
-  contains the `SKILL.md` body once;
-- `ambiguous`: `structuredContent` contains up to `candidate_limit` candidates;
-- `no_match`: the agent continues with its normal workflow.
+```json
+{
+  "retrieval": "reranked",
+  "candidates": [
+    {
+      "rank": 1,
+      "skill_id": "csv-formatter",
+      "description": "Convert CSV and spreadsheets into formatted Markdown tables.",
+      "score": 0.92
+    }
+  ]
+}
+```
+
+- `retrieval`: the effective retrieval capability (`reranked`, `hybrid`, or `lexical`).
+- `candidates`: zero through effective `top_k` candidates ordered by descending score with contiguous 1-based ranks.
+- If reranking or embedding fails, degradation metadata (`degraded_from`, `degradation_reason`) is included.
 
 ### `fetch_skill`
 
@@ -102,13 +116,9 @@ The complete wire contract lives in [schema.json](schema.json).
 Give the calling client these rules:
 
 1. Call `resolve_skill` when a task may benefit from a specialized workflow.
-2. Follow the delivered skill on `matched`.
-3. On `ambiguous`, choose the best candidate and call `fetch_skill`.
-4. On `no_match`, continue without loading a skill.
-
-Do not treat the first ambiguous candidate as an automatic match. Skillmux
-uses ambiguity to keep the final choice with the calling model when it lacks
-enough confidence.
+2. Review the returned ranked candidates shortlist.
+3. If a relevant candidate exists, call `fetch_skill` with its `skill_id` to retrieve complete instructions.
+4. If no candidate is relevant (or `candidates` is empty), continue under your normal workflow.
 
 ## Retrieval pipeline
 
@@ -118,7 +128,7 @@ Skillmux builds candidates in stages:
 2. Local or remote embeddings rank semantic similarity.
 3. Reciprocal-rank fusion combines both lists.
 4. An optional reranker scores the fused candidates.
-5. Calibrated thresholds select `matched`, `ambiguous`, or `no_match`.
+5. Returns up to effective `top_k` ranked candidates.
 
 The default local inference configuration uses FTS5 and quantized
 `Xenova/gte-small` embeddings. Skillmux CLI installations cache the
@@ -128,13 +138,8 @@ OpenAI-compatible embedding endpoint.
 
 Remote inference also supports `jina-v1` or `bifrost-v1` reranker adapters.
 
-Without a reranker, Skillmux returns a shortlist and does not auto-match.
-Without calibrated thresholds, a configured reranker orders the shortlist but
-still does not auto-match.
-
 Read [Configuration](configuration.md#local-inference) for local and remote
-inference settings. Read [Policy calibration](calibration.md) before enabling
-automatic matches.
+inference settings.
 
 ## Fallback and readiness
 
