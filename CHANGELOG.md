@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/klhq/skillmux/compare/v1.5.2...v1.6.0) (2026-08-18)
+
+
+### Added
+
+* **calibrate:** add tune safety buffers ([#120](https://github.com/klhq/skillmux/issues/120)) ([66d501c](https://github.com/klhq/skillmux/commit/66d501c4ac16956e8e887622e5178caef743bec7))
+
 ## [1.5.2](https://github.com/klhq/skillmux/compare/v1.5.1...v1.5.2) (2026-08-17)
 
 
