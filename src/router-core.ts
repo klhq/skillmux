@@ -477,8 +477,8 @@ export function classifyInferenceError(
 }
 
 /**
- * Retrieve the full fused candidate set and rerank it once without applying
- * decision thresholds, synchronizing the vault before reading the index.
+ * Retrieve the full fused candidate set, optionally rerank it, and synchronize
+ * the vault before reading the index.
  */
 export async function retrieveAndRerank(
   input: ResolveSkillInput,
