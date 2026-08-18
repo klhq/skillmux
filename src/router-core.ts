@@ -370,87 +370,40 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
   const { config, db } = await getEnv();
   await syncVaultIfNeeded();
 
-  // Short-circuit: exact match on skill_id, title, or alias (First Principles #1)
-  const exactMatch = findExactMatch(db, input.query);
-  if (exactMatch) {
-    const delivery = await deliverSkill(db, config, exactMatch.skill_id);
-    const result: ResolveResult = {
-      outcome: "matched",
-      retrieval: "exact",
-      skill_id: exactMatch.skill_id,
-      title: delivery.title,
-      content_sha256: delivery.content_sha256,
-      score: 1.0,
-      margin: 1.0,
-      body: delivery.body,
-      files: delivery.files,
-    };
-    insertAudit(
-      db,
-      buildAuditRow({
-        id: 0,
-        ts: new Date().toISOString(),
-        query: input.query,
-        outcome: "matched",
-        retrieval: "exact",
-        candidates: [{ skill_id: exactMatch.skill_id, score: 1.0 }],
-        selected_skill_id: exactMatch.skill_id,
-        latency_ms: Math.round(performance.now() - t0),
-      }),
-    );
-    return result;
+  if (input.top_k !== undefined) {
+    if (!Number.isInteger(input.top_k) || input.top_k < 1) {
+      throw new Error(`Invalid top_k: ${input.top_k} must be a positive integer`);
+    }
+    if (input.top_k > config.output.max_top_k) {
+      throw new Error(
+        `Invalid top_k: ${input.top_k} exceeds max_top_k of ${config.output.max_top_k}`,
+      );
+    }
   }
 
+  const effectiveTopK = input.top_k ?? config.output.top_k;
   const retrievalResult = await retrieveAndRerank(input);
   const { retrieval, candidates: rankedCandidates } = retrievalResult;
 
-  const decision = decideRetrievalResult(config, retrievalResult);
+  const candidates: RankedCandidate[] = rankedCandidates
+    .slice(0, effectiveTopK)
+    .map((c, index) => ({
+      rank: index + 1,
+      skill_id: c.skill_id,
+      description: c.description,
+      score: c.score,
+    }));
 
-  let result: ResolveResult;
-  if (decision.outcome === "matched") {
-    const delivery = await deliverSkill(db, config, decision.skill_id);
-    result = {
-      outcome: "matched",
-      retrieval: "reranked",
-      ...(retrievalResult.degraded_from
-        ? {
-            degraded_from: retrievalResult.degraded_from,
-            degradation_reason: retrievalResult.degradation_reason,
-          }
-        : {}),
-      skill_id: decision.skill_id,
-      title: delivery.title,
-      content_sha256: delivery.content_sha256,
-      score: decision.score,
-      margin: decision.margin,
-      body: delivery.body,
-      files: delivery.files,
-    };
-  } else if (decision.outcome === "ambiguous") {
-    result = {
-      outcome: "ambiguous",
-      retrieval,
-      ...(retrievalResult.degraded_from
-        ? {
-            degraded_from: retrievalResult.degraded_from,
-            degradation_reason: retrievalResult.degradation_reason,
-          }
-        : {}),
-      candidates: decision.candidates.map(({ score: _score, ...candidate }) => candidate),
-    };
-  } else {
-    result = {
-      outcome: "no_match",
-      retrieval,
-      ...(retrievalResult.degraded_from
-        ? {
-            degraded_from: retrievalResult.degraded_from,
-            degradation_reason: retrievalResult.degradation_reason,
-          }
-        : {}),
-      message: NO_MATCH_MESSAGE,
-    };
-  }
+  const result: ResolveResult = {
+    retrieval,
+    ...(retrievalResult.degraded_from
+      ? {
+          degraded_from: retrievalResult.degraded_from,
+          degradation_reason: retrievalResult.degradation_reason,
+        }
+      : {}),
+    candidates,
+  };
 
   insertAudit(
     db,
@@ -458,12 +411,12 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
       id: 0, // assigned by SQLite
       ts: new Date().toISOString(),
       query: input.query,
-      outcome: result.outcome,
+      outcome: candidates.length === 0 ? "no_match" : "ambiguous",
       retrieval,
       degraded_from: retrievalResult.degraded_from ?? null,
       degradation_reason: retrievalResult.degradation_reason ?? null,
       candidates: rankedCandidates.map((c) => ({ skill_id: c.skill_id, score: c.score })),
-      selected_skill_id: result.outcome === "matched" ? result.skill_id : null,
+      selected_skill_id: null,
       latency_ms: Math.round(performance.now() - t0),
     }),
   );
@@ -471,11 +424,18 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
   return result;
 }
 
+export interface RawCandidate {
+  skill_id: string;
+  title: string;
+  description: string;
+  score: number | null;
+}
+
 export interface RetrievalResult {
   retrieval: Exclude<RetrievalCapability, "exact">;
   degraded_from?: "reranked" | "hybrid";
   degradation_reason?: DegradationReason;
-  candidates: RankedCandidate[];
+  candidates: RawCandidate[];
   trace: Array<{
     skill_id: string;
     lexical_rank: number | null;
@@ -485,10 +445,8 @@ export interface RetrievalResult {
 }
 
 export function decideRetrievalResult(config: Config, result: RetrievalResult): Decision {
-  const candidateLimit = config.output?.ambiguous_candidate_limit ?? config.thresholds?.candidate_limit ?? 5;
-  const thresholds = result.retrieval === "reranked" && config.inference.mode === "remote"
-    ? { candidate_limit: candidateLimit, ...config.inference.thresholds }
-    : { ...config.thresholds, candidate_limit: candidateLimit };
+  const candidateLimit = config.output?.top_k ?? 10;
+  const thresholds = { candidate_limit: candidateLimit, ...config.thresholds };
   return decideResolveOutcome({
     reranked: result.retrieval === "reranked",
     candidates: result.candidates,

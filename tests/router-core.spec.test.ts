@@ -58,12 +58,11 @@ beforeAll(() => {
       `[recall]`,
       `k_lexical = 15`,
       `k_vector = 15`,
+      `k_rerank = 10`,
       ``,
-      `[thresholds]`,
-      `match_score = 0.9`,
-      `match_margin = 0.2`,
-      `candidate_floor = 0.4`,
-      `candidate_limit = 5`,
+      `[output]`,
+      `top_k = 10`,
+      `max_top_k = 50`,
       ``,
       `[inference]`,
       `mode = "remote"`,
@@ -80,19 +79,17 @@ beforeAll(() => {
       `endpoint = "http://127.0.0.1:9/rerank"`,
       `model = "BAAI/bge-reranker-v2-m3"`,
       ``,
-      `[inference.thresholds]`,
-      `match_score = 0.9`,
-      `match_margin = 0.2`,
-      `candidate_floor = 0.4`,
-      ``,
     ].join("\n"),
   );
-  process.env.SKILL_ROUTER_CONFIG = configPath;
+  process.env.SKILLMUX_CONFIG = configPath;
 
   configure({
     clients: {
       embed: async (texts: string[]) => texts.map(() => new Float32Array(1024)),
       rerank: async (query: string, docs: { skill_id: string; text: string }[]) => {
+        if (query.includes("Lazy Test Skill")) {
+          return docs.map((d) => (d.skill_id === "lazy-test-skill" ? 0.99 : 0.1));
+        }
         if (query.includes("exactly one ideal") || query.includes("references and scripts")) {
           return docs.map((d) => (d.skill_id === "alpha-skill" ? 0.95 : 0.1));
         }
@@ -106,132 +103,90 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  delete process.env.SKILLMUX_CONFIG;
   delete process.env.SKILL_ROUTER_CONFIG;
   rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("resolveSkill contract", () => {
-  test("accepts an object input with required query string", async () => {
-    await expect(resolveSkill({ query: "route this task to a skill" })).resolves.toBeDefined();
+describe("resolveSkill contract (2.0 ranked shortlist)", () => {
+  test("accepts an object input with required query string and returns ranked candidates response", async () => {
+    const result = await resolveSkill({ query: "route this task to a skill" });
+    expect(result).toHaveProperty("retrieval");
+    expect(result).toHaveProperty("candidates");
+    expect(result).not.toHaveProperty("outcome");
+    expect(result).not.toHaveProperty("body");
+    expect(result).not.toHaveProperty("message");
+    expect(Array.isArray(result.candidates)).toBe(true);
   });
 
-  test("returns only schema-defined outcome values", async () => {
-    const result = await resolveSkill({ query: "find a matching skill" });
-
-    expect(["matched", "ambiguous", "no_match"]).toContain(result.outcome);
-  });
-
-  test("matched result includes all required fields with reranked retrieval", async () => {
+  test("every candidate has contiguous 1-based rank, skill_id, description, and score", async () => {
     const result = await resolveSkill({ query: "exactly one ideal skill" });
 
-    expect(result.outcome).toBe("matched");
-    if (result.outcome !== "matched") throw new Error("unreachable");
-    expect(["exact", "reranked"]).toContain(result.retrieval);
-    expect(result.skill_id).toMatch(/^[a-z0-9][a-z0-9-]{1,127}$/);
-    expect(result.title).toEqual(expect.any(String));
-    expect(result.content_sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(result.score).toEqual(expect.any(Number));
-    expect(result.margin).toEqual(expect.any(Number));
-    expect(result.margin).toBeGreaterThanOrEqual(0);
-    expect(result.body).toEqual(expect.any(String));
-    expect(result.body.length).toBeGreaterThan(0);
-    expect(Array.isArray(result.files)).toBe(true);
-  });
-
-  test("matched result includes supporting file paths only as relative paths", async () => {
-    const result = await resolveSkill({ query: "skill with references and scripts" });
-
-    expect(result.outcome).toBe("matched");
-    if (result.outcome !== "matched") throw new Error("unreachable");
-    for (const file of result.files) {
-      expect(file).toEqual(expect.any(String));
-      expect(file.length).toBeGreaterThan(0);
-      expect(file.startsWith("/")).toBe(false);
-    }
-  });
-
-  test("short-circuits and matches exactly on skill_id, title, or alias (First Principles #1)", async () => {
-    // 1. exact match on skill_id
-    const resId = await resolveSkill({ query: "alpha-skill" });
-    expect(resId.outcome).toBe("matched");
-    if (resId.outcome !== "matched") throw new Error("unreachable");
-    expect(resId.skill_id).toBe("alpha-skill");
-    expect(resId.score).toBe(1.0);
-
-    // 2. exact match on title
-    const resTitle = await resolveSkill({ query: "router-core" });
-    expect(resTitle.outcome).toBe("matched");
-    if (resTitle.outcome !== "matched") throw new Error("unreachable");
-    expect(resTitle.skill_id).toBe("router-core");
-    expect(resTitle.score).toBe(1.0);
-
-    // 3. exact match on alias
-    const dir = join(vaultDir, "alias-test-skill");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "SKILL.md"),
-      `---\nname: Alias Test\ndescription: Test skill with aliases.\naliases:\n  - my-cool-alias\n  - another-alias\n---\n\n# Alias Test\nBody\n`,
-    );
-    
-    const { openIndex, replaceSkills, toSkillRow } = await import("../src/db");
-    const { scanVault } = await import("../src/vault");
-    const db = openIndex(stateDir);
-    const skills = await scanVault(vaultDir);
-    replaceSkills(db, skills.map(toSkillRow));
-
-    const resAlias = await resolveSkill({ query: "my-cool-alias" });
-    expect(resAlias.outcome).toBe("matched");
-    if (resAlias.outcome !== "matched") throw new Error("unreachable");
-    expect(resAlias.skill_id).toBe("alias-test-skill");
-    expect(resAlias.score).toBe(1.0);
-  });
-
-
-  test("ambiguous result includes 1 to 5 candidates and no body", async () => {
-    const result = await resolveSkill({ query: "something plausibly served by multiple skills" });
-
-    expect(result.outcome).toBe("ambiguous");
-    if (result.outcome !== "ambiguous") throw new Error("unreachable");
-    expect(result.candidates.length).toBeGreaterThanOrEqual(1);
-    expect(result.candidates.length).toBeLessThanOrEqual(5);
-    expect(result).not.toHaveProperty("body");
-    for (const candidate of result.candidates) {
+    expect(result.retrieval).toBe("reranked");
+    expect(result.candidates.length).toBeGreaterThan(0);
+    result.candidates.forEach((candidate, index) => {
+      expect(candidate.rank).toBe(index + 1);
       expect(candidate.skill_id).toMatch(/^[a-z0-9][a-z0-9-]{1,127}$/);
-      expect(candidate.title).toEqual(expect.any(String));
-      expect(candidate.title.length).toBeGreaterThan(0);
       expect(candidate.description).toEqual(expect.any(String));
       expect(candidate.description.length).toBeGreaterThan(0);
-      expect(candidate).not.toHaveProperty("score");
+      expect(typeof candidate.score === "number" || candidate.score === null).toBe(true);
+      expect(candidate).not.toHaveProperty("title");
+      expect(candidate).not.toHaveProperty("body");
+    });
+    expect(result.candidates[0]!.skill_id).toBe("alpha-skill");
+  });
+
+  test("never returns outcome, matched, ambiguous, or no_match", async () => {
+    const queries = [
+      "alpha-skill",
+      "exactly one ideal skill",
+      "something plausibly served by multiple skills",
+      "completely unrelated request with no skill match",
+    ];
+    for (const query of queries) {
+      const result: any = await resolveSkill({ query });
+      expect(result.outcome).toBeUndefined();
+      expect(result.match).toBeUndefined();
+      expect(result.matched).toBeUndefined();
+      expect(result.ambiguous).toBeUndefined();
+      expect(result.no_match).toBeUndefined();
+      expect(result.body).toBeUndefined();
     }
   });
 
-  test("lexical ambiguous result hides internal scores", async () => {
+  test("returns at most effective top_k candidates with contiguous 1-based ranks", async () => {
+    const result = await resolveSkill({ query: "skills" });
+    expect(result.candidates.length).toBeLessThanOrEqual(10);
+    result.candidates.forEach((candidate, index) => {
+      expect(candidate.rank).toBe(index + 1);
+    });
+  });
+
+  test("honors bounded per-request top_k override", async () => {
+    const result = await resolveSkill({ query: "skills", top_k: 2 });
+    expect(result.candidates.length).toBeLessThanOrEqual(2);
+    result.candidates.forEach((candidate, index) => {
+      expect(candidate.rank).toBe(index + 1);
+    });
+  });
+
+  test("rejects invalid per-request top_k overrides", async () => {
+    await expect(resolveSkill({ query: "skills", top_k: 0 })).rejects.toThrow();
+    await expect(resolveSkill({ query: "skills", top_k: -5 })).rejects.toThrow();
+    await expect(resolveSkill({ query: "skills", top_k: 1.5 })).rejects.toThrow();
+    await expect(resolveSkill({ query: "skills", top_k: 100 })).rejects.toThrow(/max_top_k/i);
+  });
+
+  test("degraded lane returns fused-order candidates without outcome or threshold filtering", async () => {
     const result = await resolveSkill({ query: "fallback when reranker is offline", forceLexical: true });
 
-    expect(result.outcome).toBe("ambiguous");
-    if (result.outcome !== "ambiguous") throw new Error("unreachable");
     expect(result.retrieval).toBe("lexical");
-    for (const candidate of result.candidates) {
-      expect(candidate).not.toHaveProperty("score");
-    }
-  });
-
-  test("no_match result includes guidance message and no candidates or body", async () => {
-    const result = await resolveSkill({ query: "completely unrelated request with no skill match" });
-
-    expect(result.outcome).toBe("no_match");
-    if (result.outcome !== "no_match") throw new Error("unreachable");
-    expect(result.message).toEqual(expect.any(String));
-    expect(result.message.length).toBeGreaterThan(0);
-    expect(result).not.toHaveProperty("body");
-    expect(result).not.toHaveProperty("candidates");
-  });
-
-  test("degraded lane never returns matched", async () => {
-    const result = await resolveSkill({ query: "best possible match but remote models are unavailable", forceLexical: true });
-
-    expect(result.retrieval).toBe("lexical");
-    expect(result.outcome).not.toBe("matched");
+    expect(result).not.toHaveProperty("outcome");
+    expect(Array.isArray(result.candidates)).toBe(true);
+    result.candidates.forEach((candidate, index) => {
+      expect(candidate.rank).toBe(index + 1);
+      expect(candidate.skill_id).toBeDefined();
+    });
   });
 });
 
@@ -427,10 +382,8 @@ describe("config contract", () => {
     expect(config.state_dir).toEqual(expect.any(String));
     expect(config.recall.k_lexical).toEqual(expect.any(Number));
     expect(config.recall.k_vector).toEqual(expect.any(Number));
-    expect(config.thresholds.match_score).toEqual(expect.any(Number));
-    expect(config.thresholds.match_margin).toEqual(expect.any(Number));
-    expect(config.thresholds.candidate_floor).toEqual(expect.any(Number));
-    expect(config.thresholds.candidate_limit).toEqual(expect.any(Number));
+    expect(config.output.top_k).toEqual(expect.any(Number));
+    expect(config.output.max_top_k).toEqual(expect.any(Number));
     expect(["local", "remote"]).toContain(config.inference.mode);
     expect(config.inference.embedding.model).toEqual(expect.any(String));
     expect(config.inference.embedding.dimension).toBe(config.inference.mode === "local" ? 384 : 1024);
@@ -498,10 +451,9 @@ describe("on-demand lazy indexing (First Principles #2)", () => {
     utimesSync(dir, futureTime, futureTime);
     utimesSync(vaultDir, futureTime, futureTime);
 
-    // Call resolveSkill and verify it automatically re-indexes and matches the new skill
+    // Call resolveSkill and verify it automatically re-indexes and includes the new skill
     const res = await resolveSkill({ query: "Lazy Test Skill" });
-    expect(res.outcome).toBe("matched");
-    if (res.outcome !== "matched") throw new Error("unreachable");
-    expect(res.skill_id).toBe("lazy-test-skill");
+    expect(res.candidates.length).toBeGreaterThan(0);
+    expect(res.candidates[0]!.skill_id).toBe("lazy-test-skill");
   });
 });
