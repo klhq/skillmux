@@ -18,58 +18,59 @@ import {
 } from "../src/calibrate";
 import { decideResolveOutcome } from "../src/decision";
 
+// --- valid minimal dataset ---
+
+const validTuneMatch = {
+  query: "why did my container stop",
+  split: "tune",
+  expected_outcome: "matched",
+  relevant_skill_ids: ["mock-skill-a"],
+};
+const validTuneAmbiguous = {
+  query: "write browser automation",
+  split: "tune",
+  expected_outcome: "ambiguous",
+  relevant_skill_ids: ["mock-skill-b", "mock-skill-c"],
+};
+const validTuneNoMatch = {
+  query: "what is 2+2",
+  split: "tune",
+  expected_outcome: "no_match",
+  relevant_skill_ids: [],
+};
+const validTestMatch = {
+  query: "check github pr checks",
+  split: "test",
+  expected_outcome: "matched",
+  relevant_skill_ids: ["mock-skill-d"],
+};
+const validTestAmbiguous = {
+  query: "look up and fetch library docs",
+  split: "test",
+  expected_outcome: "ambiguous",
+  relevant_skill_ids: ["mock-skill-e", "mock-skill-f"],
+};
+const validTestNoMatch = {
+  query: "tell me a joke",
+  split: "test",
+  expected_outcome: "no_match",
+  relevant_skill_ids: [],
+};
+
+const minimalValidDataset = [
+  validTuneMatch,
+  validTuneAmbiguous,
+  validTuneNoMatch,
+  validTestMatch,
+  validTestAmbiguous,
+  validTestNoMatch,
+];
+
 // ---------------------------------------------------------------------------
 // AC1 — Decision-policy dataset schema
 // ---------------------------------------------------------------------------
 
 describe("decision-policy dataset schema", () => {
-  // --- valid minimal dataset ---
-
-  const validTuneMatch = {
-    query: "why did my container stop",
-    split: "tune",
-    expected_outcome: "matched",
-    relevant_skill_ids: ["mock-skill-a"],
-  };
-  const validTuneAmbiguous = {
-    query: "write browser automation",
-    split: "tune",
-    expected_outcome: "ambiguous",
-    relevant_skill_ids: ["mock-skill-b", "mock-skill-c"],
-  };
-  const validTuneNoMatch = {
-    query: "what is 2+2",
-    split: "tune",
-    expected_outcome: "no_match",
-    relevant_skill_ids: [],
-  };
-  const validTestMatch = {
-    query: "check github pr checks",
-    split: "test",
-    expected_outcome: "matched",
-    relevant_skill_ids: ["mock-skill-d"],
-  };
-  const validTestAmbiguous = {
-    query: "look up and fetch library docs",
-    split: "test",
-    expected_outcome: "ambiguous",
-    relevant_skill_ids: ["mock-skill-e", "mock-skill-f"],
-  };
-  const validTestNoMatch = {
-    query: "tell me a joke",
-    split: "test",
-    expected_outcome: "no_match",
-    relevant_skill_ids: [],
-  };
-
-  const minimalValidDataset = [
-    validTuneMatch,
-    validTuneAmbiguous,
-    validTuneNoMatch,
-    validTestMatch,
-    validTestAmbiguous,
-    validTestNoMatch,
-  ];
 
   test("should accept a dataset with all required fields and both splits", () => {
     const cases = loadDecisionCases(minimalValidDataset);
@@ -284,19 +285,25 @@ describe("decision-policy dataset schema", () => {
 // AC1 — Checked-in dataset is a valid decision-policy dataset
 // ---------------------------------------------------------------------------
 
-describe("checked-in decision-policy dataset", () => {
-  test("should load and validate the checked-in eval/queries.json as a decision dataset", () => {
-    const datasetPath = join(import.meta.dir, "..", "eval", "queries.json");
-    const cases = loadDecisionCasesFromFile(datasetPath);
-    expect(cases.length).toBeGreaterThan(0);
-    const tune = cases.filter((c) => c.split === "tune");
-    const testSplit = cases.filter((c) => c.split === "test");
-    expect(tune.some((c) => c.expected_outcome === "matched")).toBe(true);
-    expect(tune.some((c) => c.expected_outcome === "ambiguous")).toBe(true);
-    expect(tune.some((c) => c.expected_outcome === "no_match")).toBe(true);
-    expect(testSplit.some((c) => c.expected_outcome === "matched")).toBe(true);
-    expect(testSplit.some((c) => c.expected_outcome === "ambiguous")).toBe(true);
-    expect(testSplit.some((c) => c.expected_outcome === "no_match")).toBe(true);
+describe("decision-policy dataset file loading", () => {
+  test("should load and validate a decision dataset from file", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "skillmux-calibrate-ds-"));
+    try {
+      const datasetPath = join(tempDir, "decision-queries.json");
+      writeFileSync(datasetPath, JSON.stringify(minimalValidDataset));
+      const cases = loadDecisionCasesFromFile(datasetPath);
+      expect(cases.length).toBeGreaterThan(0);
+      const tune = cases.filter((c) => c.split === "tune");
+      const testSplit = cases.filter((c) => c.split === "test");
+      expect(tune.some((c) => c.expected_outcome === "matched")).toBe(true);
+      expect(tune.some((c) => c.expected_outcome === "ambiguous")).toBe(true);
+      expect(tune.some((c) => c.expected_outcome === "no_match")).toBe(true);
+      expect(testSplit.some((c) => c.expected_outcome === "matched")).toBe(true);
+      expect(testSplit.some((c) => c.expected_outcome === "ambiguous")).toBe(true);
+      expect(testSplit.some((c) => c.expected_outcome === "no_match")).toBe(true);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   test("should throw when reading a non-existent file", () => {

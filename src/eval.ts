@@ -10,16 +10,48 @@ import {
 
 export interface EvalCase {
   query: string;
-  expected: string[];
+  split?: string;
+  relevant_skill_ids: string[];
 }
 
-const rawEvalItemSchema = z.object({
-  query: z.string().min(1),
-  expected: z.array(z.string().min(1)).optional(),
-  relevant_skill_ids: z.array(z.string()).optional(),
-  split: z.string().optional(),
-  expected_outcome: z.string().optional(),
-});
+export function parseEvalCases(raw: unknown): EvalCase[] {
+  if (!Array.isArray(raw)) throw new Error("Eval cases file must contain a JSON array");
+  const result: EvalCase[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const item = raw[i];
+    if (typeof item !== "object" || item === null) {
+      throw new Error(`Eval case at index ${i} must be an object`);
+    }
+    if ("expected" in item) {
+      throw new Error(
+        `Legacy 'expected' field at case ${i} is no longer supported in eval datasets; use 'relevant_skill_ids' instead.`,
+      );
+    }
+    if ("expected_outcome" in item) {
+      throw new Error(
+        `Legacy 'expected_outcome' field at case ${i} is no longer supported in eval datasets; remove it and provide 'relevant_skill_ids' instead.`,
+      );
+    }
+    if (typeof (item as any).query !== "string" || (item as any).query.trim().length === 0) {
+      throw new Error(`Eval case at index ${i} has invalid 'query': must be a non-empty string`);
+    }
+    if (
+      !Array.isArray((item as any).relevant_skill_ids) ||
+      (item as any).relevant_skill_ids.some((id: unknown) => typeof id !== "string")
+    ) {
+      throw new Error(`Eval case at index ${i} has invalid 'relevant_skill_ids': must be an array of strings`);
+    }
+    if ("split" in item && (item as any).split !== undefined && typeof (item as any).split !== "string") {
+      throw new Error(`Eval case at index ${i} has invalid 'split': must be a string if present`);
+    }
+    result.push({
+      query: (item as any).query,
+      ...((item as any).split !== undefined ? { split: (item as any).split } : {}),
+      relevant_skill_ids: (item as any).relevant_skill_ids,
+    });
+  }
+  return result;
+}
 
 
 export interface EvalMetrics {
@@ -79,19 +111,7 @@ function metrics(rankings: string[][], cases: EvalCase[]): EvalMetrics {
 
 export function loadEvalCases(path = join(import.meta.dir, "..", "eval", "queries.json")): EvalCase[] {
   const raw = JSON.parse(readFileSync(path, "utf8"));
-  if (!Array.isArray(raw)) throw new Error("Eval cases file must contain a JSON array");
-  const parsed = z.array(rawEvalItemSchema).parse(raw);
-  const result: EvalCase[] = [];
-  for (const item of parsed) {
-    const expected = item.expected ?? item.relevant_skill_ids;
-    if (expected && expected.length > 0) {
-      result.push({ query: item.query, expected });
-    }
-  }
-  if (parsed.length > 0 && result.length === 0) {
-    throw new Error("Eval cases file contained no cases with expected targets");
-  }
-  return result;
+  return parseEvalCases(raw);
 }
 
 

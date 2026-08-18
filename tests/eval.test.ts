@@ -45,12 +45,48 @@ afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("local labeled evaluation", () => {
+describe("ranking evaluation dataset parsing", () => {
+  test("accepts valid dataset with query, split, and relevant_skill_ids", () => {
+    const path = join(tmp, "valid-queries.json");
+    writeFileSync(
+      path,
+      JSON.stringify([
+        { query: "run docker logs", split: "tune", relevant_skill_ids: ["docker-manager"] },
+        { query: "unjudged query", split: "test", relevant_skill_ids: [] },
+      ]),
+    );
+    const cases = loadEvalCases(path);
+    expect(cases).toEqual([
+      { query: "run docker logs", split: "tune", relevant_skill_ids: ["docker-manager"] },
+      { query: "unjudged query", split: "test", relevant_skill_ids: [] },
+    ]);
+  });
+
+  test("rejects legacy 'expected' field with actionable migration error", () => {
+    const path = join(tmp, "legacy-expected.json");
+    writeFileSync(path, JSON.stringify([{ query: "run docker logs", expected: ["docker-manager"] }]));
+    expect(() => loadEvalCases(path)).toThrow(/expected.*relevant_skill_ids/i);
+  });
+
+  test("rejects legacy 'expected_outcome' field with actionable migration error", () => {
+    const path = join(tmp, "legacy-outcome.json");
+    writeFileSync(
+      path,
+      JSON.stringify([
+        { query: "run docker logs", expected_outcome: "matched", relevant_skill_ids: ["docker-manager"] },
+      ]),
+    );
+    expect(() => loadEvalCases(path)).toThrow(/expected_outcome/i);
+  });
+
   test("rejects malformed evaluation fixtures", () => {
     const path = join(tmp, "invalid-queries.json");
-    writeFileSync(path, JSON.stringify([{ query: "", expected: [] }]));
+    writeFileSync(path, JSON.stringify([{ query: "", relevant_skill_ids: [] }]));
     expect(() => loadEvalCases(path)).toThrow();
   });
+});
+
+describe("local labeled evaluation", () => {
 
   test("reports lexical and hybrid recall plus MRR without a reranker", async () => {
     const report = await evalVault([{ query: "why did my container stop", expected: ["docker-manager"] }]);
