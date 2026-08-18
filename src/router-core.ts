@@ -23,7 +23,6 @@ import {
   vectorTopK,
 } from "./db";
 import type { SkillRow } from "./db";
-import { decideResolveOutcome, type Decision } from "./decision";
 import type {
   RankedCandidate,
   RetrievalCapability,
@@ -54,7 +53,6 @@ function maxVaultMtime(vaultPath: string, localVaultPaths: string[]): number {
 
 export { buildAuditRow } from "./audit";
 export { loadConfig } from "./config";
-export { decideResolveOutcome } from "./decision";
 export type * from "./types";
 
 const NO_MATCH_MESSAGE =
@@ -442,21 +440,6 @@ export interface RetrievalResult {
     fused_rank: number | null;
     reranked_rank: number | null;
   }>;
-}
-
-export function decideRetrievalResult(config: Config, result: RetrievalResult): Decision {
-  const candidateLimit = config.output?.top_k ?? 10;
-  const thresholds = { candidate_limit: candidateLimit, ...config.thresholds };
-  return decideResolveOutcome({
-    reranked: result.retrieval === "reranked",
-    candidates: result.candidates.map((c, i) => ({
-      rank: i + 1,
-      skill_id: c.skill_id,
-      description: c.description ?? "",
-      score: c.score ?? null,
-    })),
-    thresholds,
-  });
 }
 
 export function classifyInferenceError(

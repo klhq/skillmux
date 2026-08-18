@@ -1,9 +1,7 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { computeCorpusFingerprint, getCalibrationRun, openCalibrateDb } from "./calibrate";
 import { createClients, RemoteInferenceError } from "./clients";
-import { embeddingDimension, embeddingFingerprint, expandHome, rerankerFingerprint } from "./config";
+import { embeddingDimension, expandHome } from "./config";
 import { describeDeployment, type DeploymentIdentity } from "./deployment";
-import { openIndex } from "./db";
 import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
 import { readSkillmuxMarker } from "./sync";
 import type { Config } from "./types";
@@ -30,83 +28,6 @@ export interface DoctorReport {
   remote_embedding_configured: DeploymentIdentity["remote_embedding_configured"];
   remote_reranker_configured: DeploymentIdentity["remote_reranker_configured"];
   checks: DoctorCheck[];
-}
-
-/**
- * Warn when live `inference.thresholds` didn't come from an applied
- * `skillmux calibrate` run — e.g. hand-copied from an example config.
- * Reranker score scales are not portable across models/adapters/corpora,
- * so uncalibrated thresholds routinely make automatic matching unreachable
- * without any visible error.
- */
-function checkCalibration(config: Config): DoctorCheck {
-  const inference = config.inference;
-  if (inference.mode !== "remote") throw new Error("checkCalibration requires remote inference mode");
-  const runId = inference.calibration?.run_id;
-  if (!runId) {
-    return {
-      name: "calibration",
-      ok: false,
-      detail: "inference.thresholds are set but were never produced by `skillmux calibrate apply` — " +
-        "likely copied from an example config. Reranker scores are not portable across models, " +
-        "adapters, or corpora, so automatic matching may never trigger (or may trigger incorrectly). " +
-        "Run `skillmux calibrate`.",
-    };
-  }
-
-  const calibrateDb = openCalibrateDb(expandHome(config.state_dir));
-  let run;
-  try {
-    run = getCalibrationRun(calibrateDb, runId);
-  } finally {
-    calibrateDb.close();
-  }
-  if (!run) {
-    return {
-      name: "calibration",
-      ok: false,
-      detail: `inference.calibration.run_id "${runId}" was not found in the local calibration ` +
-        "evidence store (state_dir may differ from where it was calibrated). Recalibrate.",
-    };
-  }
-  if (run.status !== "completed") {
-    return {
-      name: "calibration",
-      ok: false,
-      detail: `inference.calibration.run_id "${runId}" has status "${run.status}" and should never ` +
-        "have been applied. Recalibrate.",
-    };
-  }
-
-  const indexDb = openIndex(expandHome(config.state_dir));
-  let currentCorpusFingerprint: string;
-  try {
-    currentCorpusFingerprint = computeCorpusFingerprint(indexDb);
-  } finally {
-    indexDb.close();
-  }
-
-  const stale = [
-    rerankerFingerprint(config) !== run.reranker_fingerprint ? "reranker" : null,
-    embeddingFingerprint(config) !== run.embedding_fingerprint ? "embedding" : null,
-    currentCorpusFingerprint !== run.corpus_fingerprint ? "vault contents" : null,
-    run.recall_settings && (
-      run.recall_settings.k_lexical !== config.recall.k_lexical ||
-      run.recall_settings.k_vector !== config.recall.k_vector ||
-      run.recall_settings.k_rerank !== (config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector))
-    ) ? "recall settings" : null,
-  ].filter((part): part is string => part !== null);
-
-  if (stale.length > 0) {
-    return {
-      name: "calibration",
-      ok: false,
-      detail: `applied calibration run "${runId}" is stale — ${stale.join(", ")} changed since it was ` +
-        "calibrated. Recalibrate.",
-    };
-  }
-
-  return { name: "calibration", ok: true, detail: `thresholds from applied calibration run "${runId}"` };
 }
 
 export { describeDeployment };
@@ -244,10 +165,6 @@ export async function diagnose(
         checks.push({ name: "reranker", ok: false, ...inferenceFailure(error) });
       }
     }
-  }
-
-  if (config.inference.mode === "remote" && config.inference.reranker && config.inference.thresholds) {
-    checks.push(checkCalibration(config));
   }
 
   const inferenceReady = checks.some((check) => check.name === "embedding" && check.ok);

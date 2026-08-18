@@ -4,7 +4,6 @@ import { Database } from "bun:sqlite";
 import { existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
-import { generateDataset } from "./dataset-generator";
 
 import { createClients } from "./clients";
 import {
@@ -208,7 +207,7 @@ async function main() {
     return;
   }
 
-  // Parse global flags for context/config/calibrate
+  // Parse global flags for context/config
   for (let i = 0; i < rawArgv.length; i++) {
     const arg = rawArgv[i];
     if (arg === "--json") isJson = true;
@@ -457,188 +456,6 @@ async function handleContextCommand(
   }
 
   throw new Error("usage: skillmux context <add|list|current|use|remove>");
-}
-
-async function handleCalibrateCommand(
-  adapter: TargetAdapter,
-  sub: string,
-  args: string[],
-  ctx: { target: ResolvedTarget; isJson: boolean },
-) {
-  if (sub === "run") {
-    let datasetPath: string | undefined;
-    let minAutoMatchPrecision: number | undefined;
-    let minRetrievalRecallAtK: number | undefined;
-    let minDeliveredShortlistRecallAtK: number | undefined;
-    let minAutoMatchCount: number | undefined;
-    let tuneAutoMatchPrecisionBuffer: number | undefined;
-    let tuneAutoMatchCountBuffer: number | undefined;
-    let tuneDeliveredShortlistRecallBuffer: number | undefined;
-    let concurrency: number | undefined;
-    let resumeRunId: string | undefined;
-    let timing = false;
-    const readNumber = (flag: string, raw: string | undefined): number => {
-      if (raw === undefined) throw new Error(`${flag} requires a value`);
-      const value = Number(raw);
-      if (!Number.isFinite(value)) throw new Error(`${flag} must be a number`);
-      return value;
-    };
-    for (let i = 1; i < args.length; i++) {
-      const option = args[i];
-      if (option === "--dataset") {
-        datasetPath = args[++i];
-        if (!datasetPath) throw new Error("--dataset requires a path value");
-      } else if (option === "--min-auto-match-precision") {
-        minAutoMatchPrecision = readNumber(option, args[++i]);
-      } else if (option === "--min-retrieval-recall-at-k") {
-        minRetrievalRecallAtK = readNumber(option, args[++i]);
-      } else if (option === "--min-delivered-shortlist-recall-at-k") {
-        minDeliveredShortlistRecallAtK = readNumber(option, args[++i]);
-      } else if (option === "--min-auto-match-count") {
-        minAutoMatchCount = readNumber(option, args[++i]);
-        if (!Number.isInteger(minAutoMatchCount) || minAutoMatchCount < 1) {
-          throw new Error("--min-auto-match-count must be a positive integer");
-        }
-      } else if (option === "--tune-auto-match-precision-buffer") {
-        tuneAutoMatchPrecisionBuffer = readNumber(option, args[++i]);
-      } else if (option === "--tune-auto-match-count-buffer") {
-        tuneAutoMatchCountBuffer = readNumber(option, args[++i]);
-        if (!Number.isInteger(tuneAutoMatchCountBuffer) || tuneAutoMatchCountBuffer < 0) {
-          throw new Error("--tune-auto-match-count-buffer must be a non-negative integer");
-        }
-      } else if (option === "--tune-delivered-shortlist-recall-buffer") {
-        tuneDeliveredShortlistRecallBuffer = readNumber(option, args[++i]);
-      } else if (option === "--concurrency") {
-        const raw = args[++i];
-        if (raw === undefined) throw new Error("--concurrency requires a value");
-        const val = Number(raw);
-        if (!Number.isInteger(val) || val < 1) {
-          throw new Error("--concurrency must be a positive integer");
-        }
-        concurrency = val;
-      } else if (option === "--resume") {
-        resumeRunId = args[++i];
-        if (!resumeRunId) throw new Error("--resume requires a run_id value");
-      } else if (option === "--timing") {
-        timing = true;
-      } else if (option === "--json") {
-        // Global flag accepted in the documented subcommand position
-      } else {
-        throw new Error(`unknown calibrate run option: ${option}`);
-      }
-    }
-    for (const [flag, value] of [
-      ["--min-auto-match-precision", minAutoMatchPrecision],
-      ["--min-retrieval-recall-at-k", minRetrievalRecallAtK],
-      ["--min-delivered-shortlist-recall-at-k", minDeliveredShortlistRecallAtK],
-      ["--tune-auto-match-precision-buffer", tuneAutoMatchPrecisionBuffer],
-      ["--tune-delivered-shortlist-recall-buffer", tuneDeliveredShortlistRecallBuffer],
-    ] as const) {
-      if (value !== undefined && (value < 0 || value > 1)) {
-        throw new Error(`${flag} must be between 0 and 1`);
-      }
-    }
-    const res = await adapter.calibrateRun({
-      datasetPath,
-      minAutoMatchPrecision,
-      minRetrievalRecallAtK,
-      minDeliveredShortlistRecallAtK,
-      minAutoMatchCount,
-      tuneAutoMatchPrecisionBuffer,
-      tuneAutoMatchCountBuffer,
-      tuneDeliveredShortlistRecallBuffer,
-      concurrency,
-      resumeRunId,
-      timing,
-      onTimingSummary: timing
-        ? (summary) => {
-            // Write timing report to stderr only — stdout remains valid JSON under --json.
-            // Cumulative fields are total worker time across concurrent queries and may
-            // exceed wall_ms. They do not sum to wall time.
-            process.stderr.write(
-              [
-                "--- calibrate run timing ---",
-                `cases_total:                ${summary.cases_total}`,
-                `cases_executed:             ${summary.cases_executed}  (retrieved in this invocation)`,
-                `cases_reused:               ${summary.cases_reused}  (loaded from prior interrupted run)`,
-                `wall_ms:                    ${summary.wall_ms.toFixed(1)}`,
-                `vault_sync_ms:              ${summary.vault_sync_ms.toFixed(1)}`,
-                "cumulative worker time (concurrent totals; may exceed wall_ms):",
-                `  cumulative_embedding_ms:  ${summary.cumulative_embedding_ms.toFixed(1)}`,
-                `  cumulative_lexical_ms:    ${summary.cumulative_lexical_ms.toFixed(1)}`,
-                `  cumulative_vector_ms:     ${summary.cumulative_vector_ms.toFixed(1)}`,
-                `  cumulative_reranker_ms:   ${summary.cumulative_reranker_ms.toFixed(1)}`,
-                `  cumulative_checkpoint_ms: ${summary.cumulative_checkpoint_ms.toFixed(1)}`,
-                `policy_evaluation_ms:       ${summary.policy_evaluation_ms.toFixed(1)}`,
-                "",
-              ].join("\n"),
-            );
-          }
-        : undefined,
-    });
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderCalibrationTarget(ctx.target);
-      console.log(`Calibration run complete.`);
-      if (res.result) console.log(JSON.stringify(res.result, null, 2));
-    });
-    return;
-  }
-
-
-  if (sub === "list") {
-    const res = await adapter.calibrateList();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderCalibrationTarget(ctx.target);
-      renderTable(
-        [
-          { key: "run_id", header: "RUN_ID" },
-          { key: "created_at", header: "CREATED_AT" },
-          { key: "status", header: "STATUS" },
-        ],
-        res,
-      );
-    });
-    return;
-  }
-
-  if (sub === "show") {
-    const runId = args[1];
-    if (!runId) throw new Error("usage: skillmux calibrate show <run_id>");
-    const res = await adapter.calibrateShow(runId);
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderCalibrationTarget(ctx.target);
-      console.log(JSON.stringify(res, null, 2));
-    });
-    return;
-  }
-
-  if (sub === "apply") {
-    const runId = args[1];
-    if (!runId) throw new Error("usage: skillmux calibrate apply <run_id>");
-    const res = await adapter.calibrateApply(runId);
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderCalibrationTarget(ctx.target);
-      console.log(`Applied calibration run "${runId}"`);
-    });
-    return;
-  }
-
-  if (sub === "generate-dataset") {
-    await runCalibrateGenerateDataset(args.slice(1));
-    return;
-  }
-
-  throw new Error(
-    "usage: skillmux calibrate generate-dataset [--vault <path>] [--out <file>]",
-  );
-}
-
-function renderCalibrationTarget(target: ResolvedTarget): void {
-  if (target.type === "local") {
-    console.log("Target: local");
-  } else {
-    console.log(`Target: remote (${target.name} -> ${target.server})`);
-  }
 }
 
 async function handleCompletionsCommand(shell: string) {
@@ -1789,47 +1606,6 @@ async function runInstall(
   } finally {
     rmSync(cloneDir, { recursive: true, force: true });
   }
-}
-
-function parseCalibrateGenerateDatasetArgs(args: string[]): {
-  vault?: string;
-  out?: string;
-} {
-  let vault: string | undefined;
-  let out: string | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const option = args[i];
-    if (option === "--vault") {
-      const value = args[++i];
-      if (!value) throw new Error("--vault requires a path value");
-      vault = value;
-    } else if (option === "--out") {
-      const value = args[++i];
-      if (!value) throw new Error("--out requires a file path value");
-      out = value;
-    } else {
-      throw new Error(`unknown calibrate option: ${option}`);
-    }
-  }
-  return { vault, out };
-}
-
-async function runCalibrateGenerateDataset(args: string[]): Promise<void> {
-  const { vault: vaultArg, out: outArg } =
-    parseCalibrateGenerateDatasetArgs(args);
-  const config = await loadConfig();
-  const vaultPath = expandHome(vaultArg ?? config.vault_path);
-  const outPath = expandHome(outArg ?? join(config.state_dir, "queries.json"));
-
-  const skills = await scanVault(vaultPath);
-  const dataset = generateDataset(skills);
-
-  const parentDir = join(outPath, "..");
-  mkdirSync(parentDir, { recursive: true });
-  await Bun.write(outPath, JSON.stringify(dataset, null, 2) + "\n");
-  console.log(
-    `generated synthetic dataset with ${dataset.length} cases at ${outPath}`,
-  );
 }
 
 if (import.meta.main) {
