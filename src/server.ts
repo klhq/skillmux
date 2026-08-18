@@ -74,30 +74,29 @@ export function createMcpServer(): McpServer {
     "resolve_skill",
     {
       description:
-        "Route a natural-language task description to the most relevant skill in the vault. " +
-        "Returns outcome matched (skill delivered inline), ambiguous (shortlist — pick one, then call fetch_skill), " +
-        "or no_match (proceed under your normal workflow).",
-      inputSchema: { query: z.string().min(1) },
+        "Route a natural-language task description to candidate skills in the vault. " +
+        "Returns a ranked shortlist of candidates. Use fetch_skill to retrieve a candidate's complete instructions.",
+      inputSchema: {
+        query: z.string().min(1).describe("Natural-language task or prompt description to route."),
+        top_k: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Optional maximum number of ranked candidates to return (subject to server max_top_k limit)."),
+      },
     },
-    async ({ query }) => {
+    async ({ query, top_k }) => {
       const startTime = performance.now();
       try {
-        const result = await resolveSkill({ query });
+        const result = await resolveSkill({ query, top_k });
         const duration = (performance.now() - startTime) / 1000;
         metricsRegistry.recordResolveLatencySeconds(duration);
-        metricsRegistry.recordResolveOutcome(result.outcome);
         if (result.degradation_reason) {
           const stage = result.degradation_reason.startsWith("embedding_") ? "embedding" : "reranker";
           metricsRegistry.recordDegradation(stage, result.degradation_reason);
         }
 
-        if (result.outcome === "matched") {
-          const { body, ...meta } = result;
-          return {
-            content: [{ type: "text" as const, text: body }],
-            structuredContent: { ...meta },
-          };
-        }
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
           structuredContent: { ...result },
