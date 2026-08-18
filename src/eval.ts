@@ -39,13 +39,20 @@ export function parseEvalCases(raw: unknown): EvalCase[] {
     ) {
       throw new Error(`Eval case at index ${i} has invalid 'relevant_skill_ids': must be an array of strings`);
     }
+    const relevantSkillIds = (item as any).relevant_skill_ids as string[];
+    if (relevantSkillIds.some((id) => id.trim().length === 0)) {
+      throw new Error(`Eval case at index ${i} has invalid 'relevant_skill_ids': IDs must be non-empty strings`);
+    }
+    if (new Set(relevantSkillIds).size !== relevantSkillIds.length) {
+      throw new Error(`Eval case at index ${i} has invalid 'relevant_skill_ids': duplicate IDs are not allowed`);
+    }
     if ("split" in item && (item as any).split !== undefined && typeof (item as any).split !== "string") {
       throw new Error(`Eval case at index ${i} has invalid 'split': must be a string if present`);
     }
     result.push({
       query: (item as any).query,
       ...((item as any).split !== undefined ? { split: (item as any).split } : {}),
-      relevant_skill_ids: (item as any).relevant_skill_ids,
+      relevant_skill_ids: relevantSkillIds,
     });
   }
   return result;
@@ -185,19 +192,11 @@ export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
         .map((candidate) => candidate.skill_id),
     );
 
-    // hybrid metrics use final delivered order: reranked rank when reranking succeeds; fused rank when no reranker or reranker degradation occurs
-    const hybridRanking = retrievalResult.retrieval === "reranked"
-      ? retrievalResult.trace
-          .filter((candidate) => candidate.reranked_rank !== null)
-          .sort((a, b) => a.reranked_rank! - b.reranked_rank!)
-          .map((candidate) => candidate.skill_id)
-      : (retrievalResult.trace.some((candidate) => candidate.fused_rank !== null)
-          ? retrievalResult.trace
-              .filter((candidate) => candidate.fused_rank !== null)
-              .sort((a, b) => a.fused_rank! - b.fused_rank!)
-              .map((candidate) => candidate.skill_id)
-          : retrievalResult.candidates.map((candidate) => candidate.skill_id));
-    hybridRankings.push(hybridRanking);
+    // retrieveAndRerank returns candidates in the exact order delivered to the
+    // caller: reranked when available, otherwise fused or lexical fallback.
+    hybridRankings.push(
+      retrievalResult.candidates.map((candidate) => candidate.skill_id),
+    );
 
     const latency_ms = Math.round(performance.now() - start);
     const candidateDetails: CandidateEvalDetail[] = retrievalResult.trace;

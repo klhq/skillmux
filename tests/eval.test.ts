@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { computeRankingMetrics, evalVault, loadEvalCases, type EvalCase } from "../src/eval";
+import { computeRankingMetrics, evalVault, loadEvalCases, parseEvalCases, type EvalCase } from "../src/eval";
 import { backfillEmbeddings, configure, rebuildIndex } from "../src/router-core";
 import type { Config } from "../src/types";
 
@@ -83,6 +83,15 @@ describe("ranking evaluation dataset parsing", () => {
     const path = join(tmp, "invalid-queries.json");
     writeFileSync(path, JSON.stringify([{ query: "", relevant_skill_ids: [] }]));
     expect(() => loadEvalCases(path)).toThrow();
+  });
+
+  test("rejects empty or duplicate relevant skill IDs", () => {
+    expect(() => parseEvalCases([
+      { query: "empty label", relevant_skill_ids: [""] },
+    ])).toThrow(/non-empty/i);
+    expect(() => parseEvalCases([
+      { query: "duplicate label", relevant_skill_ids: ["skill-a", "skill-a"] },
+    ])).toThrow(/duplicate/i);
   });
 });
 
