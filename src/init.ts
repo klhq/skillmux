@@ -357,15 +357,14 @@ export function applyInit(
   return manifest;
 }
 
-/** Verbatim from docs/sdd/skr-cli/think.md §3.3 — the shared instruction-stack paragraph. */
 export const DISCOVERY_PARAGRAPH =
   "Skills: only a curated core is loaded statically. Before improvising a " +
   "multi-step workflow, or when a task smells like a domain you have no loaded " +
   "skill for (career/resume, trading, SEO, i18n, design, one-off tooling), " +
-  "call `resolve_skill` with a one-line task description. `matched` → follow " +
-  "the returned SKILL.md. `ambiguous` → pick from the candidates and " +
-  "`fetch_skill`. `no_match` → proceed normally; don't force an unrelated " +
-  "skill.";
+  "call `resolve_skill` with a one-line task description. `resolve_skill` " +
+  "returns a ranked shortlist; inspect candidates, fetch one or more " +
+  "relevant skills with `fetch_skill`, or ignore all and proceed normally " +
+  "when none are useful.";
 
 export const MCP_REGISTRATION_SNIPPET = JSON.stringify(
   { mcpServers: { "skillmux": { command: "skillmux", args: ["serve"] } } },

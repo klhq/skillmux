@@ -29,14 +29,13 @@ beforeAll(async () => {
       `vault_path = "${vaultDir}"`,
       `state_dir = "${join(tmp, "state")}"`,
       `[recall]`,
-      `k_lexical = 15`,
-      `k_vector = 15`,
+      `k_lexical = 50`,
+      `k_vector = 50`,
+      `k_rerank = 50`,
       ``,
-      `[thresholds]`,
-      `match_score = 0.9`,
-      `match_margin = 0.2`,
-      `candidate_floor = 0.4`,
-      `candidate_limit = 5`,
+      `[output]`,
+      `top_k = 10`,
+      `max_top_k = 50`,
       ``,
       `[inference]`,
       `mode = "remote"`,
@@ -53,15 +52,11 @@ beforeAll(async () => {
       `endpoint = "http://127.0.0.1:9/rerank"`,
       `model = "BAAI/bge-reranker-v2-m3"`,
       ``,
-      `[inference.thresholds]`,
-      `match_score = 0.9`,
-      `match_margin = 0.2`,
-      `candidate_floor = 0.4`,
     ].join("\n"),
   );
 
   // Set config path override
-  process.env.SKILL_ROUTER_CONFIG = configPath;
+  process.env.SKILLMUX_CONFIG = configPath;
   // This suite asserts the CORS preflight response shape, not the default
   // allowed_origins posture (which is deny-by-default) — opt in explicitly.
   process.env.HTTP_ALLOWED_ORIGINS = "*";
@@ -89,6 +84,8 @@ beforeAll(async () => {
 afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
   delete process.env.HTTP_ALLOWED_ORIGINS;
+  delete process.env.SKILLMUX_CONFIG;
+  delete process.env.SKILL_ROUTER_CONFIG;
 });
 
 function parseSSEResponse(text: string): any {

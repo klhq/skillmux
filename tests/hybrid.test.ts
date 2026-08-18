@@ -39,9 +39,8 @@ const config: Config = {
   vault_path: vaultDir,
   local_vault_paths: [],
   state_dir: join(tmp, "state"),
-  recall: { k_lexical: 15, k_vector: 15 },
-  thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-  output: { ambiguous_candidate_limit: 5 },
+  recall: { k_lexical: 15, k_vector: 15, k_rerank: 10 },
+  output: { top_k: 10, max_top_k: 50 },
   inference: {
     mode: "remote",
     timeout_ms: 2000,
@@ -52,7 +51,6 @@ const config: Config = {
       dimension: 3,
     },
     reranker: { adapter: "jina-v1", endpoint: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
-      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
   },
 };
 
@@ -103,8 +101,8 @@ describe("hybrid recall (AC6)", () => {
     expect(rerankerCalls).toBe(1);
 
     const resolved = await resolveSkill({ query: "quantum flux routing" });
-    expect(resolved.outcome).toBe("ambiguous");
     expect(resolved.retrieval).toBe("reranked");
+    expect(resolved.candidates.length).toBeGreaterThan(0);
     expect(rerankerCalls).toBe(2);
 
     configure({
@@ -148,8 +146,6 @@ describe("hybrid recall (AC6)", () => {
   test("includes a semantically-near skill that lexical recall alone misses", async () => {
     const result = await resolveSkill({ query: "quantum flux routing" });
 
-    expect(result.outcome).toBe("ambiguous");
-    if (result.outcome !== "ambiguous") throw new Error("unreachable");
     const ids = result.candidates.map((c) => c.skill_id);
     expect(ids).toContain("lexical-skill");
     expect(ids).toContain("semantic-skill");
@@ -178,8 +174,6 @@ describe("hybrid recall (AC6)", () => {
 
     const result = await resolveSkill({ query: "容器 部署", forceLexical: true });
 
-    expect(result.outcome).toBe("ambiguous");
-    if (result.outcome !== "ambiguous") throw new Error("unreachable");
     expect(result.candidates.map((c) => c.skill_id)).toContain("zh-deploy-skill");
   });
 
@@ -197,14 +191,11 @@ describe("hybrid recall (AC6)", () => {
     const result = await resolveSkill({ query: "quantum flux routing" });
 
     expect(result.retrieval).toBe("lexical");
-    expect(result.outcome).not.toBe("matched");
-    if (result.outcome !== "ambiguous") throw new Error(`expected ambiguous, got ${result.outcome}`);
     expect(result.degraded_from).toBe("reranked");
     expect(result.degradation_reason).toBe("embedding_unavailable");
     const ids = result.candidates.map((c) => c.skill_id);
     expect(ids).toContain("lexical-skill");
     expect(ids).not.toContain("semantic-skill");
-    for (const candidate of result.candidates) expect(candidate).not.toHaveProperty("score");
   });
 
   test("returns degradation_reason embedding_timeout when embedding times out", async () => {
@@ -267,7 +258,6 @@ describe("hybrid recall (AC6)", () => {
     expect(result.retrieval).toBe("hybrid");
     expect(result.degraded_from).toBe("reranked");
     expect(result.degradation_reason).toBe("reranker_timeout");
-    if (result.outcome !== "ambiguous") throw new Error("expected ambiguous");
     expect(result.candidates.length).toBeGreaterThan(0);
   });
 

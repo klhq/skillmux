@@ -33,8 +33,9 @@ state_dir = "${join(root, "state")}"
 k_lexical = ${kLexical}
 k_vector = 20
 
-[thresholds]
-candidate_limit = 5
+[output]
+top_k = 10
+max_top_k = 50
 
 [inference]
 mode = "local"
@@ -61,9 +62,8 @@ function configFor(root: string): Config {
     vault_path: join(root, "vault"),
     local_vault_paths: [],
     state_dir: join(root, "state"),
-    recall: { k_lexical: 20, k_vector: 20 },
-    thresholds: { candidate_limit: 5 },
-    output: { ambiguous_candidate_limit: 5 },
+    recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
+    output: { top_k: 10, max_top_k: 50 },
     inference: {
       mode: "local",
       bundle: "gte-small-v1",

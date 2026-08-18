@@ -28,10 +28,7 @@ endpoint = "https://reranker.example.com/v1/rerank"
 model = "your-reranker-model"
 api_key_env = "RERANKER_API_KEY"
 
-# Optional. Without these values, reranked results remain ambiguous.
-# Calibrate locally against your corpus before enabling automatic matches.
-# See docs/calibration.md; these example values are not universal defaults.
-[inference.thresholds]
-match_score = 0.90
-match_margin = 0.30
-candidate_floor = 0.50
+# Optional: output configuration for resolve_skill ranked candidates.
+# [output]
+# top_k = 10
+# max_top_k = 50

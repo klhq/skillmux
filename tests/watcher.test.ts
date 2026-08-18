@@ -25,9 +25,8 @@ const config: Config = {
   vault_path: vaultDir,
   local_vault_paths: [],
   state_dir: join(tmp, "state"),
-  recall: { k_lexical: 15, k_vector: 15 },
-  thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-  output: { ambiguous_candidate_limit: 5 },
+  recall: { k_lexical: 15, k_vector: 15, k_rerank: 10 },
+  output: { top_k: 10, max_top_k: 50 },
   inference: {
     mode: "remote",
     timeout_ms: 200,
@@ -38,7 +37,6 @@ const config: Config = {
       dimension: 3,
     },
     reranker: { adapter: "jina-v1", endpoint: "http://127.0.0.1:9/rerank", model: "BAAI/bge-reranker-v2-m3" },
-      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
   },
 };
 
@@ -97,7 +95,7 @@ describe("vault watcher (AC8)", () => {
       // the watcher by cleaning up the stale row itself on the disk miss.
       await waitFor(async () => {
         const result = await resolveSkill({ query: "zeppelin maintenance", forceLexical: true });
-        const ids = result.outcome === "ambiguous" ? result.candidates.map((c) => c.skill_id) : [];
+        const ids = result.candidates.map((c) => c.skill_id);
         if (ids.includes("doomed-skill")) throw new Error("doomed-skill is still indexed");
       }, TEST_TIMEOUT_MS);
     },
@@ -115,8 +113,6 @@ describe("vault watcher (AC8)", () => {
 
       const result = await resolveSkill({ query: "rare orchid greenhouse", forceLexical: true });
 
-      expect(result.outcome).toBe("ambiguous");
-      if (result.outcome !== "ambiguous") throw new Error("unreachable");
       expect(result.candidates.map((c) => c.skill_id)).toContain("fragile-skill");
       expect(result.candidates.find((c) => c.skill_id === "fragile-skill")!.description).toContain(
         "orchid",

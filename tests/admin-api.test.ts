@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import packageJson from "../package.json" with { type: "json" };
 import { startServer, type ServerHandle } from "../src/server";
 import { loadConfig } from "../src/config";
@@ -17,6 +17,9 @@ describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
   beforeEach(() => {
     mkdirSync(TEST_VAULT, { recursive: true });
     mkdirSync(TEST_STATE, { recursive: true });
+    const testConfigPath = join(TEST_DIR, "config.toml");
+    writeFileSync(testConfigPath, `vault_path = "${TEST_VAULT}"\nstate_dir = "${TEST_STATE}"\n`);
+    process.env.SKILLMUX_CONFIG = testConfigPath;
     process.env.SKILLMUX_ADMIN_TOKEN = adminToken;
   });
 

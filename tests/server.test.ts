@@ -38,14 +38,13 @@ beforeAll(async () => {
       `vault_path = "${vaultDir}"`,
       `state_dir = "${join(tmp, "state")}"`,
       `[recall]`,
-      `k_lexical = 15`,
-      `k_vector = 15`,
+      `k_lexical = 50`,
+      `k_vector = 50`,
+      `k_rerank = 50`,
       ``,
-      `[thresholds]`,
-      `match_score = 0.9`,
-      `match_margin = 0.2`,
-      `candidate_floor = 0.4`,
-      `candidate_limit = 5`,
+      `[output]`,
+      `top_k = 10`,
+      `max_top_k = 50`,
       ``,
       `[inference]`,
       `mode = "remote"`,
@@ -62,10 +61,6 @@ beforeAll(async () => {
       `endpoint = "http://127.0.0.1:9/rerank"`,
       `model = "BAAI/bge-reranker-v2-m3"`,
       ``,
-      `[inference.thresholds]`,
-      `match_score = 0.9`,
-      `match_margin = 0.2`,
-      `candidate_floor = 0.4`,
     ].join("\n"),
   );
 
@@ -88,6 +83,11 @@ describe("MCP stdio server", () => {
     const { tools } = await client.listTools();
 
     expect(tools.map((t) => t.name).sort()).toEqual(["fetch_skill", "resolve_skill"]);
+    const resolveTool = tools.find((t) => t.name === "resolve_skill");
+    expect(resolveTool?.inputSchema.properties).toHaveProperty("query");
+    expect(resolveTool?.inputSchema.properties).toHaveProperty("top_k");
+    const topKSchema = resolveTool?.inputSchema.properties?.top_k as Record<string, unknown>;
+    expect(topKSchema?.maximum).not.toBe(500);
   });
 
   test("fetch_skill returns metadata in structuredContent and the body exactly once as text", async () => {
@@ -118,7 +118,48 @@ describe("MCP stdio server", () => {
     expect(result.isError).toBeFalsy();
     const payload = result.structuredContent as Record<string, unknown>;
     expect(payload.retrieval).toBe("lexical");
-    expect(["ambiguous", "no_match"]).toContain(payload.outcome as string);
+    expect(payload).not.toHaveProperty("outcome");
+    expect(payload).not.toHaveProperty("body");
+    expect(Array.isArray(payload.candidates)).toBe(true);
+    const candidates = payload.candidates as Array<{ rank: number; skill_id: string; description: string }>;
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates[0]!.rank).toBe(1);
+    expect(candidates[0]!.skill_id).toBe("stdio-skill");
+  });
+
+  test("resolve_skill honors top_k override over MCP wire", async () => {
+    const result = await client.callTool({
+      name: "resolve_skill",
+      arguments: { query: "stdio transport questions", top_k: 1 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const payload = result.structuredContent as Record<string, unknown>;
+    const candidates = payload.candidates as Array<{ rank: number; skill_id: string }>;
+    expect(candidates.length).toBe(1);
+    expect(candidates[0]!.rank).toBe(1);
+  });
+
+  test("resolve_skill validates top_k against configured max_top_k rather than an independent 500 cap", async () => {
+    // top_k > 500 reaches resolveSkill and fails against configured max_top_k instead of an MCP schema cap
+    const resultLarge = await client.callTool({
+      name: "resolve_skill",
+      arguments: { query: "stdio transport questions", top_k: 600 },
+    });
+
+    expect(resultLarge.isError).toBe(true);
+    const largeTexts = (resultLarge.content as { type: string; text: string }[]).map((c) => c.text).join(" ");
+    expect(largeTexts).toContain("Invalid top_k: 600 exceeds max_top_k of 50");
+
+    // top_k <= 500 but > configured max_top_k (50) fails identically against configured max_top_k
+    const resultConfigLimit = await client.callTool({
+      name: "resolve_skill",
+      arguments: { query: "stdio transport questions", top_k: 51 },
+    });
+
+    expect(resultConfigLimit.isError).toBe(true);
+    const limitTexts = (resultConfigLimit.content as { type: string; text: string }[]).map((c) => c.text).join(" ");
+    expect(limitTexts).toContain("Invalid top_k: 51 exceeds max_top_k of 50");
   });
 
   test("fetch_skill with unknown skill_id returns a SKILL_NOT_FOUND tool error", async () => {

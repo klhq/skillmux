@@ -142,7 +142,7 @@ Inspect provenance and active policy with `skillmux config show --sources` or `s
 
 ## Advanced retrieval
 
-Candidate-generation depth, reranking candidate budgets, and agent-context delivery are separate controls:
+Candidate-generation depth, reranking candidate budgets, and output candidate shortlist size are separate controls:
 
 ```toml
 [recall]
@@ -151,12 +151,14 @@ k_vector = 20
 k_rerank = 10
 
 [output]
-ambiguous_candidate_limit = 5
+top_k = 10
+max_top_k = 50
 ```
 
 - `recall.k_lexical` and `recall.k_vector` control initial candidate generation depth.
 - `recall.k_rerank` bounds the candidate shortlist sent to the reranker adapter (defaults to `10`, cannot exceed `k_lexical + k_vector`).
-- `output.ambiguous_candidate_limit` controls agent context: it caps the ambiguous candidate list returned to the calling LLM after retrieval, reranking, and threshold filtering (`thresholds.candidate_limit` is deprecated in 1.x).
+- `output.top_k` sets the default maximum number of candidates returned by `resolve_skill` (defaults to `10`).
+- `output.max_top_k` sets the upper bound for per-request `top_k` overrides (defaults to `50`).
 
 ### Failure visibility and degraded retrieval
 
@@ -164,7 +166,6 @@ When remote embedding or reranking fails or times out, Skillmux gracefully falls
 
 ```json
 {
-  "outcome": "ambiguous",
   "retrieval": "hybrid",
   "degraded_from": "reranked",
   "degradation_reason": "reranker_timeout",

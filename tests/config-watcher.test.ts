@@ -24,8 +24,9 @@ state_dir = "~/.local/state/skillmux"
 k_lexical = ${extraKLexical}
 k_vector = 20
 
-[thresholds]
-candidate_limit = 5
+[output]
+top_k = 10
+max_top_k = 50
 
 [inference]
 mode = "local"
@@ -45,11 +46,13 @@ function remoteToml(endpoint: string, timeoutMs = 2000): string {
 state_dir = "~/.local/state/skillmux"
 
 [recall]
-k_lexical = 20
-k_vector = 20
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
 
-[thresholds]
-candidate_limit = 5
+[output]
+top_k = 10
+max_top_k = 50
 
 [inference]
 mode = "remote"
@@ -65,11 +68,6 @@ dimension = 384
 adapter = "jina-v1"
 endpoint = "${endpoint}"
 model = "reranker"
-
-[inference.thresholds]
-match_score = 0.9
-match_margin = 0.2
-candidate_floor = 0.4
 `;
 }
 

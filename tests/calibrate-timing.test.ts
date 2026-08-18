@@ -102,12 +102,13 @@ local_vault_paths = []
 state_dir = "${stateDir}"
 
 [recall]
-k_lexical = 10
-k_vector = 10
-k_rerank = 5
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
 
 [output]
-ambiguous_candidate_limit = 5
+top_k = 5
+max_top_k = 50
 
 [inference]
 mode = "remote"

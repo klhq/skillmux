@@ -930,9 +930,10 @@ describe("runCalibration — in-memory calibration run", () => {
     const selected = result.selected_thresholds!;
     expect(selected.candidate_floor).toBeGreaterThan(0.1);
 
-    const candidates = ranked("tune-ambiguous").map((candidate) => ({
-      ...candidate,
-      title: candidate.skill_id,
+    const candidates = ranked("tune-ambiguous").map((candidate, index) => ({
+      rank: index + 1,
+      skill_id: candidate.skill_id,
+      score: candidate.score,
       description: "",
     }));
     const untrimmed = decideResolveOutcome({

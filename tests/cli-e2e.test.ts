@@ -6,9 +6,15 @@ const CLI_PATH = join(process.cwd(), "src/cli.ts");
 
 describe("CLI Integration & Parity (AC1, AC2, AC3, AC11, AC12)", () => {
   const TEST_DIR = join(process.cwd(), ".tmp-test-cli-e2e-" + Math.random().toString(36).slice(2));
+  mkdirSync(join(TEST_DIR, "vault"), { recursive: true });
+  mkdirSync(join(TEST_DIR, "state"), { recursive: true });
+  const configPath = join(TEST_DIR, "config.toml");
+  Bun.write(configPath, `vault_path = "${join(TEST_DIR, "vault")}"\nstate_dir = "${join(TEST_DIR, "state")}"\n`);
+  const env = { ...process.env, SKILLMUX_CONFIG: configPath };
 
   it("context list displays built-in local context", async () => {
     const proc = Bun.spawn(["bun", CLI_PATH, "context", "list"], {
+      env,
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -20,6 +26,7 @@ describe("CLI Integration & Parity (AC1, AC2, AC3, AC11, AC12)", () => {
 
   it("context list --json outputs standard JSON envelope", async () => {
     const proc = Bun.spawn(["bun", CLI_PATH, "context", "list", "--json"], {
+      env,
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -34,6 +41,7 @@ describe("CLI Integration & Parity (AC1, AC2, AC3, AC11, AC12)", () => {
 
   it("config show --json outputs source-aware configuration", async () => {
     const proc = Bun.spawn(["bun", CLI_PATH, "config", "show", "--json"], {
+      env,
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -48,6 +56,7 @@ describe("CLI Integration & Parity (AC1, AC2, AC3, AC11, AC12)", () => {
 
   it("config show --sources outputs policy and sources in text mode", async () => {
     const proc = Bun.spawn(["bun", CLI_PATH, "config", "show", "--sources"], {
+      env,
       stdout: "pipe",
       stderr: "pipe",
     });

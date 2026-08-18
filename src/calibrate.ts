@@ -393,10 +393,11 @@ function decideObservation(
   thresholds: SelectedThresholds,
   candidateLimit: number,
 ) {
-  const candidates: RankedCandidate[] = obs.ranked.map((candidate) => ({
-    ...candidate,
-    title: candidate.skill_id,
+  const candidates: RankedCandidate[] = obs.ranked.map((candidate, index) => ({
+    rank: index + 1,
+    skill_id: candidate.skill_id,
     description: "",
+    score: candidate.score,
   }));
   return decideResolveOutcome({
     reranked: true,

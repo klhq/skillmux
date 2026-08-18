@@ -151,12 +151,16 @@ describe("deriveTargetName", () => {
 });
 
 describe("printLastMile", () => {
-  test("includes the MCP registration command and the exact §3.3 discovery paragraph", () => {
+  test("includes the MCP registration command and the ranked-only discovery paragraph", () => {
     const text = printLastMile();
 
     expect(text).toContain(`"command": "skillmux"`);
     expect(text).toContain("resolve_skill");
-    expect(text).toContain("no_match");
+    expect(text).toContain("ranked shortlist");
+    expect(text).toContain("inspect candidates");
+    expect(text).not.toContain("no_match");
+    expect(text).not.toContain("matched` →");
+    expect(text).not.toContain("ambiguous` →");
   });
 });
 

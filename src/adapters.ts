@@ -295,8 +295,7 @@ export class LocalAdapter implements TargetAdapter {
       await syncVaultIfNeeded();
     }
 
-    const candidateLimit =
-      config.output?.ambiguous_candidate_limit ?? config.thresholds?.candidate_limit ?? 5;
+    const candidateLimit = config.output?.top_k ?? 5;
     const datasetFile = opts?.datasetPath ?? join(expandHome(config.state_dir), "queries.json");
     const indexDb = openIndex(expandHome(config.state_dir));
     let indexedSkills: Array<{ skill_id: string; content_sha256: string }>;

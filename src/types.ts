@@ -5,11 +5,12 @@ export interface RecallConfig {
 }
 
 export interface OutputConfig {
-  ambiguous_candidate_limit: number;
+  top_k: number;
+  max_top_k: number;
 }
 
 export interface Thresholds {
-  /** @deprecated Use output.ambiguous_candidate_limit instead */
+  /** @deprecated Use output.top_k instead */
   candidate_limit?: number;
   match_score?: number;
   match_margin?: number;
@@ -114,19 +115,16 @@ export interface Config {
   local_vault_paths: string[];
   state_dir: string;
   recall: RecallConfig;
-  thresholds: Thresholds;
   output: OutputConfig;
+  thresholds?: Thresholds;
   inference: InferenceConfig;
   server?: ServerConfig;
 }
 
-export interface Candidate {
+export interface RankedCandidate {
+  rank: number;
   skill_id: string;
-  title: string;
   description: string;
-}
-
-export interface RankedCandidate extends Candidate {
   score: number | null;
 }
 
@@ -140,40 +138,16 @@ export type DegradationReason =
   | "reranker_unavailable"
   | "reranker_protocol_error";
 
-export interface MatchedResult {
-  outcome: "matched";
-  retrieval: "exact" | "reranked";
-  degraded_from?: "reranked" | "hybrid";
-  degradation_reason?: DegradationReason;
-  skill_id: string;
-  title: string;
-  content_sha256: string;
-  score: number;
-  margin: number;
-  body: string;
-  files: string[];
-}
-
-export interface AmbiguousResult {
-  outcome: "ambiguous";
+export interface ResolveResult {
   retrieval: RetrievalCapability;
   degraded_from?: "reranked" | "hybrid";
   degradation_reason?: DegradationReason;
-  candidates: Candidate[];
+  candidates: RankedCandidate[];
 }
-
-export interface NoMatchResult {
-  outcome: "no_match";
-  retrieval: RetrievalCapability;
-  degraded_from?: "reranked" | "hybrid";
-  degradation_reason?: DegradationReason;
-  message: string;
-}
-
-export type ResolveResult = MatchedResult | AmbiguousResult | NoMatchResult;
 
 export interface ResolveSkillInput {
   query: string;
+  top_k?: number;
   /** Test/ops escape hatch: use lexical retrieval only. Not exposed on the MCP wire. */
   forceLexical?: boolean;
 }
