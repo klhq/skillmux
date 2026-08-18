@@ -89,6 +89,42 @@ The operator owns the labels: supply or review the cases, start the run,
 inspect its evidence, and explicitly apply an acceptable result. A successful
 run never changes live thresholds by itself.
 
+## Certification gates and preflight feasibility
+
+Calibration certifies threshold policies against statistical confidence gates before allowing them to be applied:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--min-auto-match-precision` | `0.75` | Minimum 95% Wilson score lower confidence bound on auto-match precision |
+| `--min-auto-match-count` | `15` | Minimum number of auto-matches required in evaluation |
+| `--min-retrieval-recall-at-k` | `0.95` | Minimum top-k retrieval recall on matchable queries |
+| `--min-delivered-shortlist-recall-at-k` | `0.95` | Minimum delivered shortlist recall on matchable queries |
+| `--tune-auto-match-precision-buffer` | `0.03` | Tune-only selection buffer for Wilson auto-match precision lower bound |
+| `--tune-auto-match-count-buffer` | `3` | Tune-only selection buffer for minimum auto-match count |
+| `--tune-delivered-shortlist-recall-buffer` | `0.02` | Tune-only selection buffer for delivered shortlist recall |
+
+### Tune selection buffers vs production gates
+
+Tune selection buffers ensure that threshold optimization selects policies with sufficient headroom beyond production gates. A candidate policy during tune search must satisfy the production gates plus their respective tune selection buffers. Test-split certification evaluates selected policies against the original production gates without selection buffers.
+
+### Wilson lower confidence bound and evidence size
+
+`min-auto-match-precision` is evaluated not as raw sample accuracy, but as a **95% Wilson score lower confidence bound** ($z \approx 1.960$). This accounts for statistical uncertainty in small datasets.
+
+Because the Wilson lower bound penalizes small sample sizes:
+- A gate of **0.75** lower bound requires at least **15** flawless (15/15) auto-matches ($\text{Wilson}(15, 15) \approx 0.7961$).
+- A 20-case tune matched split can achieve at most $\text{Wilson}(20, 20) \approx 0.8389$.
+- A gate of **0.99** lower bound is statistically impossible on small datasets; it requires at least **381** flawless auto-matches ($\text{Wilson}(381, 381) \approx 0.9900$).
+
+### Preflight feasibility check
+
+To avoid running expensive remote embeddings and rerankings on gates that can never pass, Skillmux executes a **preflight feasibility calculation** immediately after loading the dataset and before creating a running calibration record:
+
+$$\text{effective\_trials} = \max(N_{\text{tune\_matched}}, \text{minAutoMatchCount})$$
+$$\text{max\_attainable\_precision} = \text{WilsonLowerBound}(N_{\text{tune\_matched}}, \text{effective\_trials})$$
+
+If $\text{max\_attainable\_precision} < \text{minAutoMatchPrecision}$, calibration fails immediately with an actionable error indicating the requested precision, requested count, available tune matched cases, and maximum attainable lower bound.
+
 ## Reading a run
 
 A `run_id` identifies one immutable calibration attempt and its evidence.
@@ -156,7 +192,7 @@ Provenance: the small synthetic corpus and labelled decision cases in
 [`tests/router-core.spec.test.ts`](../tests/router-core.spec.test.ts), with the
 wire contract captured by
 [`tests/fixtures/reranker/jina-v1-request.json`](../tests/fixtures/reranker/jina-v1-request.json).
-That fixture is below the default 30-auto-match certification minimum, so the
+That fixture is below the default 15-auto-match certification minimum, so the
 values are a smoke-test/reference profile, not a completed calibration run.
 Run the lifecycle above against the deployment's real corpus before enabling
 automatic matches in production.

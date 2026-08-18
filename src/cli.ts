@@ -475,6 +475,9 @@ async function handleCalibrateCommand(
     let minRetrievalRecallAtK: number | undefined;
     let minDeliveredShortlistRecallAtK: number | undefined;
     let minAutoMatchCount: number | undefined;
+    let tuneAutoMatchPrecisionBuffer: number | undefined;
+    let tuneAutoMatchCountBuffer: number | undefined;
+    let tuneDeliveredShortlistRecallBuffer: number | undefined;
     let concurrency: number | undefined;
     let resumeRunId: string | undefined;
     let timing = false;
@@ -500,6 +503,15 @@ async function handleCalibrateCommand(
         if (!Number.isInteger(minAutoMatchCount) || minAutoMatchCount < 1) {
           throw new Error("--min-auto-match-count must be a positive integer");
         }
+      } else if (option === "--tune-auto-match-precision-buffer") {
+        tuneAutoMatchPrecisionBuffer = readNumber(option, args[++i]);
+      } else if (option === "--tune-auto-match-count-buffer") {
+        tuneAutoMatchCountBuffer = readNumber(option, args[++i]);
+        if (!Number.isInteger(tuneAutoMatchCountBuffer) || tuneAutoMatchCountBuffer < 0) {
+          throw new Error("--tune-auto-match-count-buffer must be a non-negative integer");
+        }
+      } else if (option === "--tune-delivered-shortlist-recall-buffer") {
+        tuneDeliveredShortlistRecallBuffer = readNumber(option, args[++i]);
       } else if (option === "--concurrency") {
         const raw = args[++i];
         if (raw === undefined) throw new Error("--concurrency requires a value");
@@ -513,6 +525,8 @@ async function handleCalibrateCommand(
         if (!resumeRunId) throw new Error("--resume requires a run_id value");
       } else if (option === "--timing") {
         timing = true;
+      } else if (option === "--json") {
+        // Global flag accepted in the documented subcommand position
       } else {
         throw new Error(`unknown calibrate run option: ${option}`);
       }
@@ -521,6 +535,8 @@ async function handleCalibrateCommand(
       ["--min-auto-match-precision", minAutoMatchPrecision],
       ["--min-retrieval-recall-at-k", minRetrievalRecallAtK],
       ["--min-delivered-shortlist-recall-at-k", minDeliveredShortlistRecallAtK],
+      ["--tune-auto-match-precision-buffer", tuneAutoMatchPrecisionBuffer],
+      ["--tune-delivered-shortlist-recall-buffer", tuneDeliveredShortlistRecallBuffer],
     ] as const) {
       if (value !== undefined && (value < 0 || value > 1)) {
         throw new Error(`${flag} must be between 0 and 1`);
@@ -532,6 +548,9 @@ async function handleCalibrateCommand(
       minRetrievalRecallAtK,
       minDeliveredShortlistRecallAtK,
       minAutoMatchCount,
+      tuneAutoMatchPrecisionBuffer,
+      tuneAutoMatchCountBuffer,
+      tuneDeliveredShortlistRecallBuffer,
       concurrency,
       resumeRunId,
       timing,
@@ -703,6 +722,12 @@ Setup:
 
 Calibration:
   skillmux calibrate run [--dataset <path>] [--concurrency <n>] [--resume <run_id>]
+                         [--min-auto-match-precision <0..1>] [--min-auto-match-count <n>]
+                         [--min-retrieval-recall-at-k <0..1>]
+                         [--min-delivered-shortlist-recall-at-k <0..1>]
+                         [--tune-auto-match-precision-buffer <0..1>]
+                         [--tune-auto-match-count-buffer <n>]
+                         [--tune-delivered-shortlist-recall-buffer <0..1>]
                          [--timing] [--json]
   skillmux calibrate <list|show|apply|generate-dataset>
 

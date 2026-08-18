@@ -298,8 +298,20 @@ certification gates, run evidence, reference values, and the complete operator
 lifecycle.
 
 ```sh
-# Run calibration on a dataset with the default four workers
+# Run calibration on a dataset with default certification gates (min precision 0.75, min count 15)
 skillmux calibrate run --dataset ./eval/queries.json
+
+# Specify explicit certification gates and tune selection buffers
+# Note: --min-auto-match-precision is interpreted as a 95% Wilson lower confidence bound.
+# Calibration preflight validates that the requested gate is mathematically attainable on the tune split.
+skillmux calibrate run --dataset ./eval/queries.json \
+  --min-auto-match-precision 0.75 \
+  --min-auto-match-count 15 \
+  --min-retrieval-recall-at-k 0.95 \
+  --min-delivered-shortlist-recall-at-k 0.95 \
+  --tune-auto-match-precision-buffer 0.03 \
+  --tune-auto-match-count-buffer 3 \
+  --tune-delivered-shortlist-recall-buffer 0.02
 
 # Set the bounded worker count
 skillmux calibrate run --dataset ./eval/queries.json --concurrency 6

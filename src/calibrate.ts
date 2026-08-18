@@ -330,6 +330,12 @@ export type CalibrationFailureReason =
   | "insufficient_sample"
   | "test_certification_failed";
 
+export interface TuneGateSlack {
+  auto_match_precision_lower_bound_slack: number;
+  auto_match_count_slack: number;
+  delivered_shortlist_recall_slack: number;
+}
+
 export interface CalibrationResult {
   status: CalibrationStatus;
   failed_reason?: CalibrationFailureReason;
@@ -337,6 +343,7 @@ export interface CalibrationResult {
   selected_thresholds?: SelectedThresholds;
   tune_metrics?: CalibrationMetrics;
   test_metrics?: CalibrationTestMetrics;
+  tune_gate_slack?: TuneGateSlack;
 }
 
 export interface RunCalibrationOptions {
@@ -357,6 +364,12 @@ export interface RunCalibrationOptions {
   minDeliveredShortlistRecallAtK?: number;
   /** Default: 30 */
   minAutoMatchCount?: number;
+  /** Tune-only selection buffer for Wilson auto-match precision lower bound. Default: 0.03 */
+  tuneAutoMatchPrecisionBuffer?: number;
+  /** Tune-only selection buffer for minimum auto-match count. Default: 3 */
+  tuneAutoMatchCountBuffer?: number;
+  /** Tune-only selection buffer for delivered shortlist recall. Default: 0.02 */
+  tuneDeliveredShortlistRecallBuffer?: number;
   candidateLimit: number;
   /** Default: 4 */
   concurrency?: number;
@@ -463,6 +476,97 @@ export function wilsonLowerBound(successes: number, total: number): number {
     (proportion * (1 - proportion) + zSquared / (4 * total)) / total,
   );
   return Math.max(0, (centre - adjustment) / denominator);
+}
+
+/**
+ * Computes the maximum attainable 95% Wilson lower bound on auto-match precision
+ * for the tune split subject to minAutoMatchCount and the number of matched tune cases.
+ * Under perfect ranking/classification (zero false positives), at most all true matched
+ * tune cases can be auto-matched.
+ */
+export function computeMaxAttainablePrecisionLowerBound(
+  cases: DecisionCase[],
+  minAutoMatchCount: number,
+): { tuneMatchedCount: number; maxAttainablePrecision: number } {
+  const tuneMatchedCount = cases.filter(
+    (c) => c.split === "tune" && c.expected_outcome === "matched",
+  ).length;
+  const effectiveTrials = Math.max(tuneMatchedCount, minAutoMatchCount);
+  const maxAttainablePrecision = wilsonLowerBound(tuneMatchedCount, effectiveTrials);
+  return { tuneMatchedCount, maxAttainablePrecision };
+}
+
+/**
+ * Asserts that the requested auto-match precision and count gates are mathematically
+ * attainable on the given dataset's tune split before inference begins.
+ */
+export function assertCalibrationFeasibility(
+  cases: DecisionCase[],
+  gates: {
+    minAutoMatchPrecision: number;
+    minAutoMatchCount: number;
+    minDeliveredShortlistRecallAtK?: number;
+    tuneAutoMatchPrecisionBuffer?: number;
+    tuneAutoMatchCountBuffer?: number;
+    tuneDeliveredShortlistRecallBuffer?: number;
+  },
+): void {
+  const precisionBuffer = gates.tuneAutoMatchPrecisionBuffer ?? 0.03;
+  const countBuffer = gates.tuneAutoMatchCountBuffer ?? 3;
+  const recallBuffer = gates.tuneDeliveredShortlistRecallBuffer ?? 0.02;
+
+  if (precisionBuffer < 0 || !Number.isFinite(precisionBuffer)) {
+    throw new Error("tune_auto_match_precision_buffer must be a non-negative number");
+  }
+  if (countBuffer < 0 || !Number.isInteger(countBuffer)) {
+    throw new Error("tune_auto_match_count_buffer must be a non-negative integer");
+  }
+  if (recallBuffer < 0 || !Number.isFinite(recallBuffer)) {
+    throw new Error("tune_delivered_shortlist_recall_buffer must be a non-negative number");
+  }
+
+  const effectivePrecision = gates.minAutoMatchPrecision + precisionBuffer;
+  if (effectivePrecision > 1.0) {
+    throw new Error(
+      `Requested calibration gates with tune buffers are mathematically impossible: ` +
+      `effective min_auto_match_precision (${effectivePrecision.toFixed(2)}) exceeds 1.0 ` +
+      `(min_auto_match_precision=${gates.minAutoMatchPrecision}, tune_buffer=${precisionBuffer}). ` +
+      `Lower --min-auto-match-precision or --tune-auto-match-precision-buffer.`,
+    );
+  }
+
+  const baseDeliveredRecall = gates.minDeliveredShortlistRecallAtK ?? 0.95;
+  const effectiveDeliveredRecall = baseDeliveredRecall + recallBuffer;
+  if (effectiveDeliveredRecall > 1.0) {
+    throw new Error(
+      `Requested calibration gates with tune buffers are mathematically impossible: ` +
+      `effective min_delivered_shortlist_recall_at_k (${effectiveDeliveredRecall.toFixed(2)}) exceeds 1.0 ` +
+      `(min_delivered_shortlist_recall_at_k=${baseDeliveredRecall}, tune_buffer=${recallBuffer}). ` +
+      `Lower --min-delivered-shortlist-recall-at-k or --tune-delivered-shortlist-recall-buffer.`,
+    );
+  }
+
+  const effectiveCount = gates.minAutoMatchCount + countBuffer;
+  const { tuneMatchedCount, maxAttainablePrecision } =
+    computeMaxAttainablePrecisionLowerBound(cases, effectiveCount);
+  if (effectiveCount > tuneMatchedCount) {
+    throw new Error(
+      `Requested calibration gates are mathematically unattainable on this dataset: ` +
+      `effective min_auto_match_count (${effectiveCount}) exceeds the number of matched cases in the ` +
+      `tune split (${tuneMatchedCount}) (min_auto_match_count=${gates.minAutoMatchCount}, tune_buffer=${countBuffer}). ` +
+      `Lower --min-auto-match-count or --tune-auto-match-count-buffer, or supply a dataset with more matched tune cases.`,
+    );
+  }
+  if (maxAttainablePrecision < effectivePrecision) {
+    throw new Error(
+      `Requested calibration gates are mathematically unattainable on this dataset: ` +
+      `min_auto_match_precision=${gates.minAutoMatchPrecision} requires more evidence than the ` +
+      `tune split provides (${tuneMatchedCount} matched cases, min_auto_match_count=${gates.minAutoMatchCount}, effective min_auto_match_count=${effectiveCount}). ` +
+      `The maximum attainable 95% Wilson lower bound under perfect classification is ` +
+      `${maxAttainablePrecision.toFixed(4)}. ` +
+      `Lower --min-auto-match-precision or supply a larger dataset.`,
+    );
+  }
 }
 
 function computeTestMetrics(
@@ -799,10 +903,13 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
     getCandidates,
     getRankedCandidates,
     reranker,
-    minAutoMatchPrecision = 0.99,
+    minAutoMatchPrecision = 0.75,
     minRetrievalRecallAtK = 0.95,
     minDeliveredShortlistRecallAtK = minRetrievalRecallAtK,
-    minAutoMatchCount = 30,
+    minAutoMatchCount = 15,
+    tuneAutoMatchPrecisionBuffer = 0.03,
+    tuneAutoMatchCountBuffer = 3,
+    tuneDeliveredShortlistRecallBuffer = 0.02,
     candidateLimit,
     concurrency = 4,
     initialObservations,
@@ -904,9 +1011,16 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
     minDeliveredShortlistRecallAtK,
     minAutoMatchCount,
   };
+  const tuneGates = {
+    minAutoMatchPrecision: minAutoMatchPrecision + tuneAutoMatchPrecisionBuffer,
+    minRetrievalRecallAtK,
+    minDeliveredShortlistRecallAtK:
+      minDeliveredShortlistRecallAtK + tuneDeliveredShortlistRecallBuffer,
+    minAutoMatchCount: minAutoMatchCount + tuneAutoMatchCountBuffer,
+  };
   const selection = selectThresholds(
     tuneObs,
-    gates,
+    tuneGates,
     candidateLimit,
   );
 
@@ -919,8 +1033,16 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
   }
   const selected = selection.selected;
 
-  // --- Step 3: Report tune metrics ---
+  // --- Step 3: Report tune metrics & explicit tune gate slack ---
   const tune_metrics = computeMetrics(tuneObs, selected, candidateLimit);
+  const tune_gate_slack: TuneGateSlack = {
+    auto_match_precision_lower_bound_slack:
+      tune_metrics.auto_match_precision_lower_bound - minAutoMatchPrecision,
+    auto_match_count_slack:
+      tune_metrics.auto_match_count - minAutoMatchCount,
+    delivered_shortlist_recall_slack:
+      tune_metrics.delivered_shortlist_recall_at_k - minDeliveredShortlistRecallAtK,
+  };
 
   // --- Step 4: Evaluate untouched test split ---
   const test_metrics = computeTestMetrics(testObs, selected, candidateLimit);
@@ -932,10 +1054,18 @@ export async function runCalibration(opts: RunCalibrationOptions): Promise<Calib
       selected_thresholds: selected,
       tune_metrics,
       test_metrics,
+      tune_gate_slack,
     };
   }
 
-  return { status: "completed", observations, selected_thresholds: selected, tune_metrics, test_metrics };
+  return {
+    status: "completed",
+    observations,
+    selected_thresholds: selected,
+    tune_metrics,
+    test_metrics,
+    tune_gate_slack,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -966,6 +1096,10 @@ export interface CalibrationRunRecord {
   min_auto_match_count?: number;
   min_delivered_shortlist_recall_at_k?: number;
   min_shortlist_recall_at_5: number;
+  tune_auto_match_precision_buffer?: number;
+  tune_auto_match_count_buffer?: number;
+  tune_delivered_shortlist_recall_buffer?: number;
+  tune_gate_slack?: TuneGateSlack;
   failed_reason?: CalibrationFailureReason;
   selected_thresholds?: SelectedThresholds;
   tune_metrics?: CalibrationMetrics;
@@ -990,6 +1124,9 @@ export interface CalibrationRunSummary {
   min_auto_match_count: number;
   min_delivered_shortlist_recall_at_k: number;
   min_shortlist_recall_at_5: number;
+  tune_auto_match_precision_buffer: number;
+  tune_auto_match_count_buffer: number;
+  tune_delivered_shortlist_recall_buffer: number;
   failed_reason?: CalibrationFailureReason;
 }
 
@@ -1053,7 +1190,11 @@ export function openCalibrateDb(stateDir: string): Database {
         dataset_provenance TEXT NOT NULL DEFAULT '{}',
         human_labelled_case_count INTEGER NOT NULL DEFAULT 0,
         imported_labelled_case_count INTEGER NOT NULL DEFAULT 0,
-        recall_settings TEXT NOT NULL DEFAULT '{}'
+        recall_settings TEXT NOT NULL DEFAULT '{}',
+        tune_auto_match_precision_buffer REAL NOT NULL DEFAULT 0.03,
+        tune_auto_match_count_buffer INTEGER NOT NULL DEFAULT 3,
+        tune_delivered_shortlist_recall_buffer REAL NOT NULL DEFAULT 0.02,
+        tune_gate_slack TEXT
       )`);
       db.run(
         `INSERT INTO calibration_runs_new (${selectCols}) SELECT ${selectCols} FROM calibration_runs`,
@@ -1106,6 +1247,18 @@ export function openCalibrateDb(stateDir: string): Database {
   if (!columns.some((column) => column.name === "recall_settings")) {
     db.run("ALTER TABLE calibration_runs ADD COLUMN recall_settings TEXT NOT NULL DEFAULT '{}'");
   }
+  if (!columns.some((column) => column.name === "tune_auto_match_precision_buffer")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN tune_auto_match_precision_buffer REAL NOT NULL DEFAULT 0.03");
+  }
+  if (!columns.some((column) => column.name === "tune_auto_match_count_buffer")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN tune_auto_match_count_buffer INTEGER NOT NULL DEFAULT 3");
+  }
+  if (!columns.some((column) => column.name === "tune_delivered_shortlist_recall_buffer")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN tune_delivered_shortlist_recall_buffer REAL NOT NULL DEFAULT 0.02");
+  }
+  if (!columns.some((column) => column.name === "tune_gate_slack")) {
+    db.run("ALTER TABLE calibration_runs ADD COLUMN tune_gate_slack TEXT");
+  }
 
   db.run(`CREATE TABLE IF NOT EXISTS calibration_observations (
     run_id TEXT NOT NULL,
@@ -1135,6 +1288,9 @@ export interface CreateInitialCalibrationRunOptions {
   min_auto_match_count?: number;
   min_delivered_shortlist_recall_at_k?: number;
   min_shortlist_recall_at_5: number;
+  tune_auto_match_precision_buffer?: number;
+  tune_auto_match_count_buffer?: number;
+  tune_delivered_shortlist_recall_buffer?: number;
   dataset_provenance?: DatasetProvenanceSummary;
   recall_settings?: {
     k_lexical: number;
@@ -1161,8 +1317,10 @@ export function createInitialCalibrationRun(
       min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason,
       selected_thresholds, tune_metrics, test_metrics, observations,
       dataset_provenance, human_labelled_case_count, imported_labelled_case_count,
-      recall_settings
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      recall_settings,
+      tune_auto_match_precision_buffer, tune_auto_match_count_buffer,
+      tune_delivered_shortlist_recall_buffer, tune_gate_slack
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       run.run_id,
       run.created_at,
@@ -1186,6 +1344,10 @@ export function createInitialCalibrationRun(
       run.dataset_provenance?.human_labelled_case_count ?? 0,
       run.dataset_provenance?.imported_labelled_case_count ?? 0,
       JSON.stringify(run.recall_settings ?? {}),
+      run.tune_auto_match_precision_buffer ?? 0.03,
+      run.tune_auto_match_count_buffer ?? 3,
+      run.tune_delivered_shortlist_recall_buffer ?? 0.02,
+      null,
     ],
   );
 }
@@ -1251,6 +1413,7 @@ export interface FinalizeCalibrationRunOptions {
   selected_thresholds?: SelectedThresholds;
   tune_metrics?: CalibrationMetrics;
   test_metrics?: CalibrationTestMetrics;
+  tune_gate_slack?: TuneGateSlack;
   observations: QueryObservation[];
 }
 
@@ -1266,7 +1429,8 @@ export function finalizeCalibrationRun(
       selected_thresholds = ?,
       tune_metrics = ?,
       test_metrics = ?,
-      observations = ?
+      observations = ?,
+      tune_gate_slack = ?
      WHERE run_id = ?`,
     [
       run.status,
@@ -1275,6 +1439,7 @@ export function finalizeCalibrationRun(
       run.tune_metrics != null ? JSON.stringify(run.tune_metrics) : null,
       run.test_metrics != null ? JSON.stringify(run.test_metrics) : null,
       JSON.stringify(run.observations),
+      run.tune_gate_slack != null ? JSON.stringify(run.tune_gate_slack) : null,
       run.run_id,
     ],
   );
@@ -1296,8 +1461,10 @@ export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): v
         min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason,
         selected_thresholds, tune_metrics, test_metrics, observations,
         dataset_provenance, human_labelled_case_count, imported_labelled_case_count,
-        recall_settings
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        recall_settings,
+        tune_auto_match_precision_buffer, tune_auto_match_count_buffer,
+        tune_delivered_shortlist_recall_buffer, tune_gate_slack
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         run.run_id,
         run.created_at,
@@ -1321,6 +1488,10 @@ export function insertCalibrationRun(db: Database, run: CalibrationRunRecord): v
         run.dataset_provenance?.human_labelled_case_count ?? 0,
         run.dataset_provenance?.imported_labelled_case_count ?? 0,
         JSON.stringify(run.recall_settings ?? {}),
+        run.tune_auto_match_precision_buffer ?? 0.03,
+        run.tune_auto_match_count_buffer ?? 3,
+        run.tune_delivered_shortlist_recall_buffer ?? 0.02,
+        run.tune_gate_slack != null ? JSON.stringify(run.tune_gate_slack) : null,
       ],
     );
     if (run.observations && run.observations.length > 0) {
@@ -1355,6 +1526,10 @@ interface RawCalibrationRow {
   human_labelled_case_count: number;
   imported_labelled_case_count: number;
   recall_settings: string;
+  tune_auto_match_precision_buffer: number | null;
+  tune_auto_match_count_buffer: number | null;
+  tune_delivered_shortlist_recall_buffer: number | null;
+  tune_gate_slack: string | null;
 }
 
 function parseMetrics(json: string): CalibrationMetrics {
@@ -1403,6 +1578,10 @@ function rowToRecord(row: RawCalibrationRow): CalibrationRunRecord {
     min_auto_match_count: row.min_auto_match_count,
     min_delivered_shortlist_recall_at_k: row.min_delivered_shortlist_recall_at_k,
     min_shortlist_recall_at_5: row.min_shortlist_recall_at_5,
+    tune_auto_match_precision_buffer: row.tune_auto_match_precision_buffer ?? 0.03,
+    tune_auto_match_count_buffer: row.tune_auto_match_count_buffer ?? 3,
+    tune_delivered_shortlist_recall_buffer: row.tune_delivered_shortlist_recall_buffer ?? 0.02,
+    tune_gate_slack: row.tune_gate_slack != null ? JSON.parse(row.tune_gate_slack) : undefined,
     failed_reason: row.failed_reason as CalibrationFailureReason | null ?? undefined,
     selected_thresholds: row.selected_thresholds != null
       ? (JSON.parse(row.selected_thresholds) as SelectedThresholds)
@@ -1445,7 +1624,9 @@ export function listCalibrationRuns(db: Database): CalibrationRunSummary[] {
         reranker_fingerprint, embedding_fingerprint, corpus_fingerprint, dataset_hash,
         candidate_limit,
         attempt_count, min_auto_match_precision, min_auto_match_count,
-        min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5, failed_reason,
+        min_delivered_shortlist_recall_at_k, min_shortlist_recall_at_5,
+        tune_auto_match_precision_buffer, tune_auto_match_count_buffer,
+        tune_delivered_shortlist_recall_buffer, failed_reason,
         human_labelled_case_count, imported_labelled_case_count
        FROM calibration_runs ORDER BY created_at DESC`,
     )

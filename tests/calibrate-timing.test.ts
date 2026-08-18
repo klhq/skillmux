@@ -54,6 +54,16 @@ function makeFakeClients(scoreOverride?: (query: string, skillId: string) => num
 }
 
 // ---------------------------------------------------------------------------
+// Zero tune selection buffers for tiny synthetic test fixture
+// ---------------------------------------------------------------------------
+
+const zeroTuneBuffers = {
+  tuneAutoMatchPrecisionBuffer: 0,
+  tuneAutoMatchCountBuffer: 0,
+  tuneDeliveredShortlistRecallBuffer: 0,
+};
+
+// ---------------------------------------------------------------------------
 // Per-test fixture setup
 // ---------------------------------------------------------------------------
 
@@ -143,6 +153,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      ...zeroTuneBuffers,
       timing: true,
       onTimingSummary: (summary) => {
         capturedTiming = summary;
@@ -184,6 +195,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      ...zeroTuneBuffers,
       timing: true,
       onTimingSummary: (summary) => {
         capturedTiming = summary;
@@ -222,6 +234,7 @@ model = "mock-rerank"
         minRetrievalRecallAtK: 0.1,
         minDeliveredShortlistRecallAtK: 0.1,
         minAutoMatchCount: 1,
+        ...zeroTuneBuffers,
         timing: true,
         onTimingSummary: () => { /* should not be called */ },
       }),
@@ -246,6 +259,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      ...zeroTuneBuffers,
       timing: true,
       onTimingSummary: (summary) => {
         resumeTiming = summary;
@@ -275,6 +289,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      ...zeroTuneBuffers,
       // timing not set
       onTimingSummary: () => {
         called = true;
@@ -289,16 +304,20 @@ model = "mock-rerank"
   // -------------------------------------------------------------------------
 
   test("should produce a timing summary for a failed-gates calibration result", async () => {
-    const adapter = new LocalAdapter({ configPath, clients: makeFakeClients() });
+    const adapter = new LocalAdapter({
+      configPath,
+      clients: makeFakeClients(() => 0.01),
+    });
 
     let capturedTiming: CalibrationTimingSummary | undefined;
 
     const res = await adapter.calibrateRun({
       datasetPath,
-      minAutoMatchPrecision: 0.9999,
-      minRetrievalRecallAtK: 0.9999,
-      minDeliveredShortlistRecallAtK: 0.9999,
-      minAutoMatchCount: 999,
+      minAutoMatchPrecision: 0.1,
+      minRetrievalRecallAtK: 0.95,
+      minDeliveredShortlistRecallAtK: 0.95,
+      minAutoMatchCount: 1,
+      ...zeroTuneBuffers,
       timing: true,
       onTimingSummary: (summary) => {
         capturedTiming = summary;
@@ -340,6 +359,7 @@ model = "mock-rerank"
         minRetrievalRecallAtK: 0.1,
         minDeliveredShortlistRecallAtK: 0.1,
         minAutoMatchCount: 1,
+        ...zeroTuneBuffers,
         timing: true,
         onTimingSummary: () => {
           called = true;

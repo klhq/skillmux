@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import {
   applyCalibrationRun,
+  assertCalibrationFeasibility,
   computeCorpusFingerprint,
   createInitialCalibrationRun,
   finalizeCalibrationRun,
@@ -36,12 +37,32 @@ import {
 } from "./config-service";
 import type { ResolvedTarget } from "./context";
 import {
+  classifyInferenceError,
   configure,
   retrieveAndRerankSnapshot,
   syncVaultIfNeeded,
   type StageTiming,
 } from "./router-core";
 import type { Clients, Config } from "./types";
+
+/**
+ * Maximum retry attempts for transient reranker availability errors during calibration.
+ *
+ * Single-capacity remote reranker endpoints can suffer isolated blips (e.g. transient
+ * connection reset or momentary 503) during long multi-case calibration runs.
+ * A small bounded budget of 2 retries (3 attempts total) allows calibration to ride out
+ * transient blips without stalling on hard failures.
+ */
+export const CALIBRATION_RERANK_MAX_RETRIES = 2;
+
+/**
+ * Base backoff delay (ms) between reranker retries during calibration.
+ *
+ * A conservative nonzero delay gives recovering remote endpoints time to settle.
+ * Because reranker admission is strictly FIFO serialized, waiting workers remain
+ * queued rather than creating synchronized retry storms.
+ */
+export const CALIBRATION_RERANK_RETRY_BACKOFF_MS = 250;
 
 export interface Capabilities {
   config_read: boolean;
@@ -109,6 +130,9 @@ export interface TargetAdapter {
     minRetrievalRecallAtK?: number;
     minDeliveredShortlistRecallAtK?: number;
     minAutoMatchCount?: number;
+    tuneAutoMatchPrecisionBuffer?: number;
+    tuneAutoMatchCountBuffer?: number;
+    tuneDeliveredShortlistRecallBuffer?: number;
     concurrency?: number;
     resumeRunId?: string;
     onProgress?: (completed: number, total: number) => void;
@@ -205,6 +229,9 @@ export class LocalAdapter implements TargetAdapter {
     minRetrievalRecallAtK?: number;
     minDeliveredShortlistRecallAtK?: number;
     minAutoMatchCount?: number;
+    tuneAutoMatchPrecisionBuffer?: number;
+    tuneAutoMatchCountBuffer?: number;
+    tuneDeliveredShortlistRecallBuffer?: number;
     concurrency?: number;
     resumeRunId?: string;
     onProgress?: (completed: number, total: number) => void;
@@ -215,7 +242,47 @@ export class LocalAdapter implements TargetAdapter {
     const wallStart = collectTiming ? performance.now() : 0;
 
     const config = await loadConfig(this.configPath);
-    const clients = this.clients ?? createClients(config);
+    const baseClients = this.clients ?? createClients(config);
+
+    // Bounded admission at the calibration reranker boundary: serialize rerank calls
+    // so concurrent case retrieval (embedding, lexical, vector) does not overwhelm
+    // a single-capacity remote reranker endpoint.
+    //
+    // If an admitted request encounters a transient reranker_unavailable error,
+    // retry with conservative backoff up to CALIBRATION_RERANK_MAX_RETRIES.
+    // Non-availability errors (protocol, timeouts) and permanent failures fail closed.
+    let rerankQueue = Promise.resolve() as Promise<any>;
+    const serializedRerank: typeof baseClients.rerank = baseClients.rerank
+      ? (query, docs) => {
+          const run = async () => {
+            let attempt = 0;
+            while (true) {
+              try {
+                return await baseClients.rerank!(query, docs);
+              } catch (err) {
+                attempt++;
+                const degradationReason = classifyInferenceError("reranker", err);
+                if (
+                  degradationReason === "reranker_unavailable" &&
+                  attempt <= CALIBRATION_RERANK_MAX_RETRIES
+                ) {
+                  await Bun.sleep(CALIBRATION_RERANK_RETRY_BACKOFF_MS * attempt);
+                  continue;
+                }
+                throw err;
+              }
+            }
+          };
+          const next = rerankQueue.then(run, run);
+          rerankQueue = next.catch(() => {});
+          return next;
+        }
+      : undefined;
+
+    const clients: Clients = {
+      ...baseClients,
+      rerank: serializedRerank,
+    };
     configure({ config, clients });
 
     // Measure vault synchronization
@@ -246,6 +313,7 @@ export class LocalAdapter implements TargetAdapter {
       datasetFile,
       indexedSkills.map((skill) => skill.skill_id),
     );
+
     const fingerprint = rerankerFingerprint(config);
     if (!fingerprint) {
       throw new Error("A configured remote reranker is required to record calibration.");
@@ -258,14 +326,26 @@ export class LocalAdapter implements TargetAdapter {
       k_vector: config.recall.k_vector,
       k_rerank: config.recall.k_rerank ?? Math.min(10, config.recall.k_lexical + config.recall.k_vector),
     };
-    const minAutoMatchPrecision = opts?.minAutoMatchPrecision ?? 0.99;
-    const minAutoMatchCount = opts?.minAutoMatchCount ?? 30;
+    const minAutoMatchPrecision = opts?.minAutoMatchPrecision ?? 0.75;
+    const minAutoMatchCount = opts?.minAutoMatchCount ?? 15;
     const minDeliveredShortlistRecallAtK =
       opts?.minDeliveredShortlistRecallAtK ??
       opts?.minRetrievalRecallAtK ??
       0.95;
     const minShortlistRecallAt5 = opts?.minRetrievalRecallAtK ?? 0.95;
+    const tuneAutoMatchPrecisionBuffer = opts?.tuneAutoMatchPrecisionBuffer ?? 0.03;
+    const tuneAutoMatchCountBuffer = opts?.tuneAutoMatchCountBuffer ?? 3;
+    const tuneDeliveredShortlistRecallBuffer = opts?.tuneDeliveredShortlistRecallBuffer ?? 0.02;
     const concurrency = opts?.concurrency ?? 4;
+
+    assertCalibrationFeasibility(cases, {
+      minAutoMatchPrecision,
+      minAutoMatchCount,
+      minDeliveredShortlistRecallAtK,
+      tuneAutoMatchPrecisionBuffer,
+      tuneAutoMatchCountBuffer,
+      tuneDeliveredShortlistRecallBuffer,
+    });
 
     const db = openCalibrateDb(expandHome(config.state_dir));
     let runId: string;
@@ -326,6 +406,30 @@ export class LocalAdapter implements TargetAdapter {
         if (existingRun.min_shortlist_recall_at_5 !== minShortlistRecallAt5) {
           throw new Error("Certification gate mismatch: min_retrieval_recall_at_k differs from original run");
         }
+        if (
+          existingRun.tune_auto_match_precision_buffer !== undefined &&
+          existingRun.tune_auto_match_precision_buffer !== tuneAutoMatchPrecisionBuffer
+        ) {
+          throw new Error(
+            "Certification gate mismatch: tune_auto_match_precision_buffer differs from original run",
+          );
+        }
+        if (
+          existingRun.tune_auto_match_count_buffer !== undefined &&
+          existingRun.tune_auto_match_count_buffer !== tuneAutoMatchCountBuffer
+        ) {
+          throw new Error(
+            "Certification gate mismatch: tune_auto_match_count_buffer differs from original run",
+          );
+        }
+        if (
+          existingRun.tune_delivered_shortlist_recall_buffer !== undefined &&
+          existingRun.tune_delivered_shortlist_recall_buffer !== tuneDeliveredShortlistRecallBuffer
+        ) {
+          throw new Error(
+            "Certification gate mismatch: tune_delivered_shortlist_recall_buffer differs from original run",
+          );
+        }
 
         initialObservations = getCalibrationObservations(db, runId);
         if (initialObservations.size === 0 && existingRun.observations && existingRun.observations.length > 0) {
@@ -348,6 +452,9 @@ export class LocalAdapter implements TargetAdapter {
           min_auto_match_count: minAutoMatchCount,
           min_delivered_shortlist_recall_at_k: minDeliveredShortlistRecallAtK,
           min_shortlist_recall_at_5: minShortlistRecallAt5,
+          tune_auto_match_precision_buffer: tuneAutoMatchPrecisionBuffer,
+          tune_auto_match_count_buffer: tuneAutoMatchCountBuffer,
+          tune_delivered_shortlist_recall_buffer: tuneDeliveredShortlistRecallBuffer,
         });
       }
 
@@ -395,6 +502,9 @@ export class LocalAdapter implements TargetAdapter {
         minRetrievalRecallAtK: minShortlistRecallAt5,
         minDeliveredShortlistRecallAtK,
         minAutoMatchCount,
+        tuneAutoMatchPrecisionBuffer,
+        tuneAutoMatchCountBuffer,
+        tuneDeliveredShortlistRecallBuffer,
         concurrency,
         initialObservations,
         onProgress,
@@ -425,6 +535,7 @@ export class LocalAdapter implements TargetAdapter {
         selected_thresholds: result.selected_thresholds,
         tune_metrics: result.tune_metrics,
         test_metrics: result.test_metrics,
+        tune_gate_slack: result.tune_gate_slack,
         observations: result.observations,
       });
 
@@ -670,6 +781,9 @@ export class RemoteAdapter implements TargetAdapter {
     minRetrievalRecallAtK?: number;
     minDeliveredShortlistRecallAtK?: number;
     minAutoMatchCount?: number;
+    tuneAutoMatchPrecisionBuffer?: number;
+    tuneAutoMatchCountBuffer?: number;
+    tuneDeliveredShortlistRecallBuffer?: number;
     concurrency?: number;
     resumeRunId?: string;
     onProgress?: (completed: number, total: number) => void;

@@ -361,6 +361,9 @@ describe("runCalibration — in-memory calibration run", () => {
     minRetrievalRecallAtK: 0,
     minDeliveredShortlistRecallAtK: 0,
     minAutoMatchCount: 1,
+    tuneAutoMatchPrecisionBuffer: 0,
+    tuneAutoMatchCountBuffer: 0,
+    tuneDeliveredShortlistRecallBuffer: 0,
   };
 
   test("should require a reranker — throw without one", async () => {
@@ -949,6 +952,193 @@ describe("runCalibration — in-memory calibration run", () => {
       expect(trimmed.candidates.length).toBeLessThan(untrimmed.candidates.length);
     }
   });
+
+  test("tune candidate selection rejects a barely passing candidate when tune selection buffers are enabled and selects a buffered candidate", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    // Build dataset with 30 tune cases (25 matched, 2 ambiguous, 3 no_match)
+    // and 30 test cases (25 matched, 2 ambiguous, 3 no_match)
+    const cases: import("../src/calibrate").DecisionCase[] = [];
+    for (let i = 0; i < 25; i++) {
+      cases.push({ query: `tune-match-${i}`, split: "tune", expected_outcome: "matched", relevant_skill_ids: ["skill-target"] });
+    }
+    for (let i = 0; i < 2; i++) {
+      cases.push({ query: `tune-amb-${i}`, split: "tune", expected_outcome: "ambiguous", relevant_skill_ids: ["skill-target", "skill-other"] });
+    }
+    for (let i = 0; i < 3; i++) {
+      cases.push({ query: `tune-none-${i}`, split: "tune", expected_outcome: "no_match", relevant_skill_ids: [] });
+    }
+    for (let i = 0; i < 25; i++) {
+      cases.push({ query: `test-match-${i}`, split: "test", expected_outcome: "matched", relevant_skill_ids: ["skill-target"] });
+    }
+    for (let i = 0; i < 2; i++) {
+      cases.push({ query: `test-amb-${i}`, split: "test", expected_outcome: "ambiguous", relevant_skill_ids: ["skill-target", "skill-other"] });
+    }
+    for (let i = 0; i < 3; i++) {
+      cases.push({ query: `test-none-${i}`, split: "test", expected_outcome: "no_match", relevant_skill_ids: [] });
+    }
+
+    // Two possible score tiers for queries:
+    // Tier High (18 tune match queries): score 0.95, margin 0.5 -> correct match
+    // Tier Mid (4 tune match queries): score 0.85, margin 0.3 -> correct match
+    // Tier False (3 tune match queries): score 0.85, margin 0.3 -> wrong match (top is skill-other)
+    // Tier None / Amb: score <= 0.5
+    //
+    // Policy A (score <= 0.85, margin <= 0.3):
+    //   total auto matches = 18 + 4 + 3 = 25
+    //   correct = 22 / 25
+    //   wilson lower bound(22, 25) = ~0.704
+    // If we adjust numbers:
+    // Let 20 tune match queries be High (score 0.95, margin 0.5 -> correct)
+    // Let 2 tune match queries be Mid (score 0.85, margin 0.3 -> correct)
+    // Let 1 tune match query be Mid-wrong (score 0.85, margin 0.3 -> wrong, top is skill-other)
+    // Let 2 tune match queries be Low (score 0.4 -> no match)
+    //
+    // At threshold score=0.90:
+    //   auto matches = 20 (all 20 correct)
+    //   wilson lower bound(20, 20) = 0.838
+    //   coverage = 20 / 25 = 0.80
+    // At threshold score=0.80:
+    //   auto matches = 23 (22 correct, 1 wrong)
+    //   wilson lower bound(22, 23) = 0.781
+    //
+    // If production gate is minAutoMatchPrecision = 0.77, minAutoMatchCount = 15:
+    // With NO buffer (precision gate 0.77):
+    //   threshold 0.80 passes (0.781 >= 0.77), has coverage 22/25 = 0.88 -> selected!
+    // With DEFAULT buffer 0.03 (effective tune precision 0.77 + 0.03 = 0.80):
+    //   threshold 0.80 FAILS (0.781 < 0.80)
+    //   threshold 0.90 PASSES (0.838 >= 0.80), has coverage 20/25 = 0.80 -> selected!
+
+    const rankedForQuery = (query: string) => {
+      if (query.startsWith("tune-match-") || query.startsWith("test-match-")) {
+        const idx = Number(query.split("-")[2]);
+        if (idx < 20) {
+          return [{ skill_id: "skill-target", score: 0.95 }, { skill_id: "skill-other", score: 0.60 }];
+        } else if (idx < 22) {
+          return [{ skill_id: "skill-target", score: 0.85 }, { skill_id: "skill-other", score: 0.50 }];
+        } else if (idx === 22) {
+          return [{ skill_id: "skill-other", score: 0.85 }, { skill_id: "skill-target", score: 0.50 }];
+        } else {
+          return [{ skill_id: "skill-target", score: 0.40 }, { skill_id: "skill-other", score: 0.05 }];
+        }
+      }
+      if (query.includes("-amb-")) {
+        return [{ skill_id: "skill-target", score: 0.40 }, { skill_id: "skill-other", score: 0.05 }];
+      }
+      return [{ skill_id: "skill-other", score: 0.40 }, { skill_id: "skill-target", score: 0.05 }];
+    };
+
+    // Run with buffered defaults (0.03 buffer -> effective 0.80)
+    const bufferedResult = await runCalibration({
+      cases,
+      getRankedCandidates: async (q) => rankedForQuery(q),
+      reranker: undefined,
+      minAutoMatchPrecision: 0.77,
+      minAutoMatchCount: 15,
+      minRetrievalRecallAtK: 0.8,
+      candidateLimit: 5,
+    });
+
+    expect(bufferedResult.status).toBe("completed");
+    expect(bufferedResult.selected_thresholds).toBeDefined();
+    // Buffered selection should pick score >= 0.95 (candidate B) rather than 0.85 (candidate A)
+    expect(bufferedResult.selected_thresholds!.match_score).toBeGreaterThanOrEqual(0.90);
+    expect(bufferedResult.tune_gate_slack).toBeDefined();
+    expect(bufferedResult.tune_gate_slack!.auto_match_precision_lower_bound_slack).toBeGreaterThanOrEqual(0.03);
+
+    // Run with buffers explicitly set to 0 (unbuffered -> picks higher coverage candidate A)
+    const unbufferedResult = await runCalibration({
+      cases,
+      getRankedCandidates: async (q) => rankedForQuery(q),
+      reranker: undefined,
+      minAutoMatchPrecision: 0.77,
+      minAutoMatchCount: 15,
+      minRetrievalRecallAtK: 0.8,
+      tuneAutoMatchPrecisionBuffer: 0,
+      tuneAutoMatchCountBuffer: 0,
+      tuneDeliveredShortlistRecallBuffer: 0,
+      candidateLimit: 5,
+    });
+
+    expect(unbufferedResult.status).toBe("completed");
+    expect(unbufferedResult.selected_thresholds).toBeDefined();
+    expect(unbufferedResult.selected_thresholds!.match_score).toBeLessThanOrEqual(0.85);
+    expect(unbufferedResult.tune_metrics!.auto_match_coverage).toBeGreaterThan(
+      bufferedResult.tune_metrics!.auto_match_coverage,
+    );
+  });
+
+  test("certification evaluates on untouched test split using original production gates with no selection buffers", async () => {
+    const { runCalibration } = await import("../src/calibrate");
+    // 30 tune cases (25 match, 2 amb, 3 none), 30 test cases (25 match, 2 amb, 3 none)
+    const cases: import("../src/calibrate").DecisionCase[] = [];
+    for (let i = 0; i < 25; i++) {
+      cases.push({ query: `tune-match-${i}`, split: "tune", expected_outcome: "matched", relevant_skill_ids: ["skill-target"] });
+    }
+    for (let i = 0; i < 2; i++) {
+      cases.push({ query: `tune-amb-${i}`, split: "tune", expected_outcome: "ambiguous", relevant_skill_ids: ["skill-target", "skill-other"] });
+    }
+    for (let i = 0; i < 3; i++) {
+      cases.push({ query: `tune-none-${i}`, split: "tune", expected_outcome: "no_match", relevant_skill_ids: [] });
+    }
+    for (let i = 0; i < 25; i++) {
+      cases.push({ query: `test-match-${i}`, split: "test", expected_outcome: "matched", relevant_skill_ids: ["skill-target"] });
+    }
+    for (let i = 0; i < 2; i++) {
+      cases.push({ query: `test-amb-${i}`, split: "test", expected_outcome: "ambiguous", relevant_skill_ids: ["skill-target", "skill-other"] });
+    }
+    for (let i = 0; i < 3; i++) {
+      cases.push({ query: `test-none-${i}`, split: "test", expected_outcome: "no_match", relevant_skill_ids: [] });
+    }
+
+    // Tune split: 20 high-confidence cases (score 0.95, margin 0.35) -> 20/20 = 1.0 precision, Wilson LB = 0.838
+    // Test split: 18 high-confidence cases (score 0.95, margin 0.35), 2 false matches at score 0.95 -> 18/20 = 0.90 precision, Wilson LB = 0.699
+    // If minAutoMatchPrecision = 0.68, buffer = 0.05:
+    // Tune gate effective = 0.68 + 0.05 = 0.73 <= 0.838 -> passes tune selection!
+    // Test precision lower bound = 0.699:
+    // - Under unbuffered production gate (0.68): 0.699 >= 0.68 -> passes test certification!
+    // - Under buffered gate (0.73): 0.699 < 0.73 -> would have failed if buffers leaked to test certification.
+    const ranked = (query: string) => {
+      if (query.startsWith("tune-match-")) {
+        const idx = Number(query.split("-")[2]);
+        if (idx < 20) {
+          return [{ skill_id: "skill-target", score: 0.95 }, { skill_id: "skill-other", score: 0.60 }];
+        }
+        return [{ skill_id: "skill-target", score: 0.40 }, { skill_id: "skill-other", score: 0.05 }];
+      }
+      if (query.startsWith("test-match-")) {
+        const idx = Number(query.split("-")[2]);
+        if (idx < 18) {
+          return [{ skill_id: "skill-target", score: 0.95 }, { skill_id: "skill-other", score: 0.60 }];
+        } else if (idx < 20) {
+          // False match for test queries 18, 19
+          return [{ skill_id: "skill-other", score: 0.95 }, { skill_id: "skill-target", score: 0.60 }];
+        }
+        return [{ skill_id: "skill-target", score: 0.40 }, { skill_id: "skill-other", score: 0.05 }];
+      }
+      if (query.includes("-amb-")) {
+        return [{ skill_id: "skill-target", score: 0.40 }, { skill_id: "skill-other", score: 0.05 }];
+      }
+      return [{ skill_id: "skill-other", score: 0.40 }, { skill_id: "skill-target", score: 0.05 }];
+    };
+
+    const result = await runCalibration({
+      cases,
+      getRankedCandidates: async (q) => ranked(q),
+      reranker: undefined,
+      minAutoMatchPrecision: 0.68,
+      minAutoMatchCount: 15,
+      minRetrievalRecallAtK: 0.8,
+      tuneAutoMatchPrecisionBuffer: 0.05,
+      tuneAutoMatchCountBuffer: 3,
+      tuneDeliveredShortlistRecallBuffer: 0.02,
+      candidateLimit: 5,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.test_metrics).toBeDefined();
+    expect(result.test_metrics!.auto_match_precision_lower_bound).toBeLessThan(0.73);
+    expect(result.test_metrics!.auto_match_precision_lower_bound).toBeGreaterThanOrEqual(0.68);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1193,6 +1383,33 @@ describe("calibration SQLite store", () => {
     const summary = listCalibrationRuns(db).find((run) => run.run_id === "run-provenance-001")!;
     expect(summary.human_labelled_case_count).toBe(12);
     expect(summary.imported_labelled_case_count).toBe(4);
+  });
+
+  test("persists tune selection buffers and tune gate slack in run detail and list output", () => {
+    const slack = {
+      auto_match_precision_lower_bound_slack: 0.1,
+      auto_match_count_slack: 5,
+      delivered_shortlist_recall_slack: 0.05,
+    };
+    insertCalibrationRun(db, {
+      ...baseRun,
+      run_id: "run-buffers-001",
+      dataset_hash: "dataset@sha256:buffers",
+      tune_auto_match_precision_buffer: 0.04,
+      tune_auto_match_count_buffer: 4,
+      tune_delivered_shortlist_recall_buffer: 0.03,
+      tune_gate_slack: slack,
+    });
+    const run = getCalibrationRun(db, "run-buffers-001")!;
+    expect(run.tune_auto_match_precision_buffer).toBe(0.04);
+    expect(run.tune_auto_match_count_buffer).toBe(4);
+    expect(run.tune_delivered_shortlist_recall_buffer).toBe(0.03);
+    expect(run.tune_gate_slack).toEqual(slack);
+
+    const summary = listCalibrationRuns(db).find((r) => r.run_id === "run-buffers-001")!;
+    expect(summary.tune_auto_match_precision_buffer).toBe(0.04);
+    expect(summary.tune_auto_match_count_buffer).toBe(4);
+    expect(summary.tune_delivered_shortlist_recall_buffer).toBe(0.03);
   });
 
   test("should round-trip selected thresholds as structured data", () => {
