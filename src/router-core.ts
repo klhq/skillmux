@@ -449,7 +449,12 @@ export function decideRetrievalResult(config: Config, result: RetrievalResult): 
   const thresholds = { candidate_limit: candidateLimit, ...config.thresholds };
   return decideResolveOutcome({
     reranked: result.retrieval === "reranked",
-    candidates: result.candidates,
+    candidates: result.candidates.map((c, i) => ({
+      rank: i + 1,
+      skill_id: c.skill_id,
+      description: c.description ?? "",
+      score: c.score ?? null,
+    })),
     thresholds,
   });
 }

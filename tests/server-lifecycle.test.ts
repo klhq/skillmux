@@ -25,9 +25,8 @@ describe("server lifecycle", () => {
       vault_path: vault,
       local_vault_paths: [],
       state_dir: join(root, "state"),
-      recall: { k_lexical: 20, k_vector: 20 },
-      thresholds: { candidate_limit: 10 },
-      output: { ambiguous_candidate_limit: 10 },
+      recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
+      output: { top_k: 10, max_top_k: 50 },
       inference: {
         mode: "local",
         bundle: "gte-small-v1",

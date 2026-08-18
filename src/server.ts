@@ -81,7 +81,8 @@ export function createMcpServer(): McpServer {
         top_k: z
           .number()
           .int()
-          .positive()
+          .min(1)
+          .max(500)
           .optional()
           .describe("Optional maximum number of ranked candidates to return (subject to server max_top_k limit)."),
       },

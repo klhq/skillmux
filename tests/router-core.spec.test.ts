@@ -223,8 +223,8 @@ describe("decision logic", () => {
     const result = decideResolveOutcome({
       reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.92 },
-        { skill_id: "beta-skill", title: "Beta", description: "B", score: 0.61 },
+        { rank: 1, skill_id: "alpha-skill", description: "A", score: 0.92 },
+        { rank: 2, skill_id: "beta-skill", description: "B", score: 0.61 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -245,8 +245,8 @@ describe("decision logic", () => {
     const result = decideResolveOutcome({
       reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.92 },
-        { skill_id: "beta-skill", title: "Beta", description: "B", score: 0.88 },
+        { rank: 1, skill_id: "alpha-skill", description: "A", score: 0.92 },
+        { rank: 2, skill_id: "beta-skill", description: "B", score: 0.88 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -263,7 +263,7 @@ describe("decision logic", () => {
     const result = decideResolveOutcome({
       reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.55 },
+        { rank: 1, skill_id: "alpha-skill", description: "A", score: 0.55 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -282,7 +282,7 @@ describe("decision logic", () => {
     const result = decideResolveOutcome({
       reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.19 },
+        { rank: 1, skill_id: "alpha-skill", description: "A", score: 0.19 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -299,7 +299,7 @@ describe("decision logic", () => {
     const result = decideResolveOutcome({
       reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.93 },
+        { rank: 1, skill_id: "alpha-skill", description: "A", score: 0.93 },
       ],
       thresholds: {
         match_score: 0.9,
@@ -318,7 +318,7 @@ describe("decision logic", () => {
     const result = decideResolveOutcome({
       reranked: false,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: null },
+        { rank: 1, skill_id: "alpha-skill", description: "A", score: null },
       ],
       thresholds: {
         match_score: 0.9,
@@ -336,8 +336,8 @@ describe("decision logic", () => {
     const result = decideResolveOutcome({
       reranked: true,
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.99 },
-        { skill_id: "beta-skill", title: "Beta", description: "B", score: 0.5 },
+        { rank: 1, skill_id: "alpha-skill", description: "A", score: 0.99 },
+        { rank: 2, skill_id: "beta-skill", description: "B", score: 0.5 },
       ],
       thresholds: { candidate_limit: 5 },
     });
@@ -345,8 +345,8 @@ describe("decision logic", () => {
     expect(result).toEqual({
       outcome: "ambiguous",
       candidates: [
-        { skill_id: "alpha-skill", title: "Alpha", description: "A", score: 0.99 },
-        { skill_id: "beta-skill", title: "Beta", description: "B", score: 0.5 },
+        { rank: 1, skill_id: "alpha-skill", description: "A", score: 0.99 },
+        { rank: 2, skill_id: "beta-skill", description: "B", score: 0.5 },
       ],
     });
   });
@@ -355,9 +355,9 @@ describe("decision logic", () => {
     const result = decideResolveOutcome({
       reranked: true,
       candidates: [
-        { skill_id: "a", title: "A", description: "A", score: 0.8 },
-        { skill_id: "b", title: "B", description: "B", score: 0.7 },
-        { skill_id: "c", title: "C", description: "C", score: 0.6 },
+        { rank: 1, skill_id: "a", description: "A", score: 0.8 },
+        { rank: 2, skill_id: "b", description: "B", score: 0.7 },
+        { rank: 3, skill_id: "c", description: "C", score: 0.6 },
       ],
       thresholds: {
         match_score: 0.9,

@@ -120,7 +120,7 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
   sources: ConfigSourceMap;
   rawToml: Record<string, unknown>;
 }> {
-  const path = configPath ?? DEFAULT_CONFIG_PATH;
+  const path = configPath ?? process.env.SKILLMUX_CONFIG ?? DEFAULT_CONFIG_PATH;
   const effective = await loadConfig(path);
   const rawToml: Record<string, unknown> = {};
 
@@ -315,7 +315,7 @@ export async function setDottedKey(
     throw new Error(`Cannot set environment-masked configuration key "${key}"`);
   }
 
-  const path = opts?.configPath ?? DEFAULT_CONFIG_PATH;
+  const path = opts?.configPath ?? process.env.SKILLMUX_CONFIG ?? DEFAULT_CONFIG_PATH;
   const targetName = opts?.targetName ?? "local";
 
   const { effective: priorEffective, rawToml } = await getEffectiveConfig(path);
@@ -432,7 +432,7 @@ export async function getLocalConfigStatus(configPath?: string): Promise<ConfigS
 
   return {
     target: "local",
-    desired_source: configPath ?? DEFAULT_CONFIG_PATH,
+    desired_source: configPath ?? process.env.SKILLMUX_CONFIG ?? DEFAULT_CONFIG_PATH,
     desired_source_hash: hash,
     active_revision: hash,
     active_source_hash: hash,

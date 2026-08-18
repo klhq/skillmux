@@ -12,9 +12,8 @@ const config: Config = {
   vault_path: vault,
   local_vault_paths: [],
   state_dir: join(tmp, "state"),
-  recall: { k_lexical: 5, k_vector: 5 },
-  thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-  output: { ambiguous_candidate_limit: 5 },
+  recall: { k_lexical: 5, k_vector: 5, k_rerank: 5 },
+  output: { top_k: 5, max_top_k: 50 },
   inference: {
     mode: "local",
     bundle: "gte-small-v1",
@@ -78,7 +77,6 @@ describe("local labeled evaluation", () => {
           endpoint: "http://127.0.0.1:9/rerank",
           model: "test-reranker",
         },
-        thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
       },
     };
     configure({
@@ -100,7 +98,7 @@ describe("local labeled evaluation", () => {
     expect(c.candidates.length).toBeGreaterThan(0);
     expect(c.candidates[0]!.fused_rank).toBe(1);
     expect(c.candidates[0]!.reranked_rank).toBe(1);
-    expect(c.outcome).toBe("matched");
+    expect(c.outcome).toBe("ambiguous");
     expect(c.retrieval).toBe("reranked");
 
     configure({ config, clients: { embed: async (texts) => texts.map(vector) } });

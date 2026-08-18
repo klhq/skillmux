@@ -20,6 +20,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     mkdirSync(TEST_VAULT, { recursive: true });
     mkdirSync(TEST_STATE, { recursive: true });
     writeFileSync(CONFIG_FILE, `vault_path = "${TEST_VAULT}"\nstate_dir = "${TEST_STATE}"\n`, "utf-8");
+    process.env.SKILLMUX_CONFIG = CONFIG_FILE;
     process.env.SKILLMUX_ADMIN_TOKEN = adminToken;
   });
 

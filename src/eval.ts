@@ -127,7 +127,7 @@ export async function evalVault(cases = loadEvalCases()): Promise<EvalReport> {
     caseResults.push({
       query: evalCase.query,
       expected: evalCase.expected,
-      outcome: decision.outcome,
+      outcome: (decision as any).outcome ?? ((decision as any).candidates?.length > 0 ? "ambiguous" : "no_match"),
       retrieval: retrievalResult.retrieval,
       degraded_from: retrievalResult.degraded_from ?? null,
       degradation_reason: retrievalResult.degradation_reason ?? null,

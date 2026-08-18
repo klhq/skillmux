@@ -47,9 +47,8 @@ const config: Config = {
   vault_path: vaultDir,
   local_vault_paths: [],
   state_dir: join(tmp, "state"),
-  recall: { k_lexical: 15, k_vector: 15 },
-  thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4, candidate_limit: 5 },
-  output: { ambiguous_candidate_limit: 5 },
+  recall: { k_lexical: 15, k_vector: 15, k_rerank: 10 },
+  output: { top_k: 10, max_top_k: 50 },
   inference: {
     mode: "remote",
     timeout_ms: 200,
@@ -60,7 +59,6 @@ const config: Config = {
       dimension: 3,
     },
     reranker: { adapter: "jina-v1", endpoint: "http://127.0.0.1:9", model: "BAAI/bge-reranker-v2-m3" },
-      thresholds: { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 },
   },
 };
 
@@ -137,9 +135,9 @@ describe("audit log persistence (AC10)", () => {
     expect(countAfter).toBe(countBefore + 1);
     const row = rows[0]!;
     expect(row.query).toBe("audit log persistence questions");
-    expect(row.outcome).toBe("matched");
+    expect(row.outcome).toBe("ambiguous");
     expect(row.retrieval).toBe("reranked");
-    expect(row.selected_skill_id).toBe("audit-target");
+    expect(row.selected_skill_id).toBeNull();
     expect(row.latency_ms).toBeGreaterThanOrEqual(0);
     const candidates = JSON.parse(row.candidates) as { skill_id: string; score: number | null }[];
     expect(candidates.length).toBeGreaterThanOrEqual(1);

@@ -144,14 +144,8 @@ function testConfig(
     vault_path: "/unused",
     local_vault_paths: [],
     state_dir: "/unused",
-    recall: { k_lexical: 15, k_vector: 15 },
-    thresholds: {
-      match_score: 0.9,
-      match_margin: 0.2,
-      candidate_floor: 0.4,
-      candidate_limit: 5,
-    },
-    output: { ambiguous_candidate_limit: 5 },
+    recall: { k_lexical: 15, k_vector: 15, k_rerank: 10 },
+    output: { top_k: 10, max_top_k: 50 },
     inference: {
       mode: "remote",
       timeout_ms: 2000,

@@ -113,7 +113,8 @@ k_vector = 10
 k_rerank = 5
 
 [output]
-ambiguous_candidate_limit = 5
+top_k = 5
+max_top_k = 50
 
 [inference]
 mode = "remote"

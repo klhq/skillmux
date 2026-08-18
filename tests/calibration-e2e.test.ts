@@ -27,16 +27,18 @@ import type { Clients } from "../src/types";
 import { waitFor } from "./test-utils";
 
 
-function baseToml(matchScore = 0.8): string {
+function baseToml(): string {
   return `vault_path = "~/skills"
 state_dir = "~/.local/state/skillmux"
 
 [recall]
 k_lexical = 20
 k_vector = 20
+k_rerank = 10
 
-[thresholds]
-candidate_limit = 5
+[output]
+top_k = 10
+max_top_k = 50
 
 [inference]
 mode = "local"
@@ -60,9 +62,8 @@ function makeConfig(root: string): Config {
     vault_path: join(root, "vault"),
     local_vault_paths: [],
     state_dir: join(root, "state"),
-    recall: { k_lexical: 20, k_vector: 20 },
-    thresholds: { candidate_limit: 5 },
-    output: { ambiguous_candidate_limit: 5 },
+    recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
+    output: { top_k: 10, max_top_k: 50 },
     inference: {
       mode: "local",
       bundle: "gte-small-v1",
@@ -119,11 +120,6 @@ dimension = 1024
 adapter = "jina-v1"
 endpoint = "https://rerank.example.com"
 model = "rerank-model"
-
-[inference.thresholds]
-match_score = 0.80
-match_margin = 0.20
-candidate_floor = 0.40
 `;
     const tomlPath = join(root, "config.toml");
     await Bun.write(tomlPath, remoteToml);
@@ -186,17 +182,11 @@ candidate_floor = 0.40
     // Apply calibration run → atomically writes thresholds to TOML
     await applyCalibrationRun(calDb, "run-e2e-001", tomlPath, {});
 
-    // Wait for the watcher to detect the change and reload
-    await waitFor(() => reloadedConfigs.length > 0 || errors.length > 0);
-    expect(errors).toHaveLength(0);
-    expect(reloadedConfigs.length).toBeGreaterThanOrEqual(1);
-    const reloaded = reloadedConfigs.at(-1)!;
-    expect(reloaded.inference.mode).toBe("remote");
-    if (reloaded.inference.mode === "remote" && reloaded.inference.thresholds) {
-      expect(reloaded.inference.thresholds.match_score).toBeCloseTo(0.92);
-      expect(reloaded.inference.thresholds.match_margin).toBeCloseTo(0.18);
-      expect(reloaded.inference.thresholds.candidate_floor).toBeCloseTo(0.45);
-    }
+    // In 2.0, loading a config with inference.thresholds emits a migration error
+    await waitFor(() => errors.length > 0);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect((errors[0] as Error).message).toMatch(/inference\.thresholds is obsolete in 2.0/);
+    watcher.stop();
   });
 
   test("new config from watcher can be fed into RuntimeSnapshotManager.replace — concurrent requests see coherent state", async () => {
@@ -208,7 +198,7 @@ candidate_floor = 0.40
     const config1 = makeConfig(root);
     const config2 = {
       ...makeConfig(root),
-      recall: { k_lexical: 50, k_vector: 50 },
+      recall: { k_lexical: 50, k_vector: 50, k_rerank: 10 },
     };
 
     const manager = RuntimeSnapshotManager.create(config1, fakeClients);
@@ -251,9 +241,11 @@ state_dir = "${join(root, "state")}"
 [recall]
 k_lexical = 20
 k_vector = 20
+k_rerank = 10
 
-[thresholds]
-candidate_limit = 5
+[output]
+top_k = 10
+max_top_k = 50
 
 [inference]
 mode = "local"
@@ -284,7 +276,7 @@ dimension = 3
     expect(snap1.config.recall.k_lexical).toBe(20);
     r1();
 
-    // Write updated config atomically, matching calibration apply behavior.
+    // Write updated config atomically
     const updatedTomlPath = `${tomlPath}.tmp`;
     writeFileSync(
       updatedTomlPath,
@@ -294,9 +286,11 @@ state_dir = "${join(root, "state")}"
 [recall]
 k_lexical = 77
 k_vector = 77
+k_rerank = 10
 
-[thresholds]
-candidate_limit = 5
+[output]
+top_k = 10
+max_top_k = 50
 
 [inference]
 mode = "local"
