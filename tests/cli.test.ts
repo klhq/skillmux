@@ -2263,3 +2263,85 @@ describe("CLI output envelopes for project, target, and local-vault", () => {
     rmSync(configPath2, { force: true });
   });
 });
+
+describe("skillmux eval CLI", () => {
+  test("renders formatted text output with ranking metrics and query counts", async () => {
+    const mockServer = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/v1/embeddings") {
+          const body = (await req.json()) as { input: string | string[] };
+          const inputs = Array.isArray(body.input) ? body.input : [body.input];
+          return Response.json({
+            data: inputs.map((_, i) => ({ index: i, embedding: [1, 0, 0] })),
+          });
+        }
+        return new Response("Not Found", { status: 404 });
+      },
+    });
+
+    const evalConfigPath = join(tmp, "eval-cli-test-config.toml");
+    writeFileSync(
+      evalConfigPath,
+      [
+        `vault_path = "${vaultDir}"`,
+        `state_dir = "${stateDir}"`,
+        `[recall]`,
+        `k_lexical = 5`,
+        `k_vector = 5`,
+        `k_rerank = 5`,
+        `[output]`,
+        `top_k = 5`,
+        `max_top_k = 50`,
+        `[inference]`,
+        `mode = "remote"`,
+        `timeout_ms = 2000`,
+        `[inference.embedding]`,
+        `provider = "openai"`,
+        `endpoint = "http://127.0.0.1:${mockServer.port}/v1/embeddings"`,
+        `model = "test-model"`,
+        `dimension = 3`,
+      ].join("\n"),
+    );
+
+    try {
+      const res = await runCliEnv(["eval"], { SKILLMUX_CONFIG: evalConfigPath });
+      expect(res.exitCode).toBe(0);
+      expect(res.stdout).toContain("holdout queries:");
+      expect(res.stdout).toContain("judged queries:");
+      expect(res.stdout).toContain("unjudged queries:");
+      expect(res.stdout).toContain("lexical recall@5:");
+      expect(res.stdout).toContain("lexical recall@10:");
+      expect(res.stdout).toContain("lexical MRR:");
+      expect(res.stdout).toContain("lexical nDCG@10:");
+      expect(res.stdout).toContain("hybrid recall@5:");
+      expect(res.stdout).toContain("hybrid recall@10:");
+      expect(res.stdout).toContain("hybrid MRR:");
+      expect(res.stdout).toContain("hybrid nDCG@10:");
+
+      const jsonRes = await runCliEnv(["eval", "--json"], { SKILLMUX_CONFIG: evalConfigPath });
+      expect(jsonRes.exitCode).toBe(0);
+      const parsed = JSON.parse(jsonRes.stdout);
+      expect(parsed.schema_version).toBe(1);
+      expect(parsed.ok).toBe(true);
+      expect(parsed.data).toBeDefined();
+      expect(typeof parsed.data.queries).toBe("number");
+      expect(typeof parsed.data.judged_queries).toBe("number");
+      expect(typeof parsed.data.unjudged_queries).toBe("number");
+      expect(parsed.data.queries).toBe(parsed.data.judged_queries + parsed.data.unjudged_queries);
+      expect(typeof parsed.data.lexical.recall_at_5).toBe("number");
+      expect(typeof parsed.data.lexical.recall_at_10).toBe("number");
+      expect(typeof parsed.data.lexical.mrr).toBe("number");
+      expect(typeof parsed.data.lexical.ndcg_at_10).toBe("number");
+      expect(typeof parsed.data.hybrid.recall_at_5).toBe("number");
+      expect(typeof parsed.data.hybrid.recall_at_10).toBe("number");
+      expect(typeof parsed.data.hybrid.mrr).toBe("number");
+      expect(typeof parsed.data.hybrid.ndcg_at_10).toBe("number");
+    } finally {
+      mockServer.stop();
+      rmSync(evalConfigPath, { force: true });
+    }
+  });
+});
+

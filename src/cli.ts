@@ -810,13 +810,17 @@ async function runEval(options: { isJson: boolean }): Promise<void> {
     throw new Error(`eval requires local embeddings: ${String(error)}`);
   });
   emitSuccess({ isJson: options.isJson }, report, () => {
-    console.log(`holdout queries: ${report.queries}`);
-    console.log(`lexical recall@3: ${report.lexical.recall_at_3.toFixed(3)}`);
-    console.log(`lexical recall@5: ${report.lexical.recall_at_5.toFixed(3)}`);
-    console.log(`lexical MRR:      ${report.lexical.mrr.toFixed(3)}`);
-    console.log(`hybrid recall@3:  ${report.hybrid.recall_at_3.toFixed(3)}`);
-    console.log(`hybrid recall@5:  ${report.hybrid.recall_at_5.toFixed(3)}`);
-    console.log(`hybrid MRR:       ${report.hybrid.mrr.toFixed(3)}`);
+    console.log(`holdout queries:   ${report.queries}`);
+    console.log(`judged queries:    ${report.judged_queries}`);
+    console.log(`unjudged queries:  ${report.unjudged_queries}`);
+    console.log(`lexical recall@5:  ${report.lexical.recall_at_5.toFixed(3)}`);
+    console.log(`lexical recall@10: ${report.lexical.recall_at_10.toFixed(3)}`);
+    console.log(`lexical MRR:       ${report.lexical.mrr.toFixed(3)}`);
+    console.log(`lexical nDCG@10:   ${report.lexical.ndcg_at_10.toFixed(3)}`);
+    console.log(`hybrid recall@5:   ${report.hybrid.recall_at_5.toFixed(3)}`);
+    console.log(`hybrid recall@10:  ${report.hybrid.recall_at_10.toFixed(3)}`);
+    console.log(`hybrid MRR:        ${report.hybrid.mrr.toFixed(3)}`);
+    console.log(`hybrid nDCG@10:    ${report.hybrid.ndcg_at_10.toFixed(3)}`);
   });
 }
 
