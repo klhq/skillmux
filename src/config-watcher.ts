@@ -12,7 +12,6 @@ import type { Config } from "./types";
 
 export const LIVE_RELOAD_KEYS = new Set([
   "config.environment_overrides",
-  "inference.calibration.run_id",
   "recall.k_lexical",
   "recall.k_vector",
   "recall.k_rerank",
