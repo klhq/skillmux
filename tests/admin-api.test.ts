@@ -83,10 +83,10 @@ describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
     const caps = await resOk.json();
     expect(caps.config_read).toBe(true);
     expect(caps.config_write).toBe(true);
-    expect(caps.calibration).toBe(false);
+    expect(caps.calibration).toBeUndefined();
   });
 
-  it("reports remote calibration as not implemented without fabricating a run id", async () => {
+  it("returns 404 for removed calibration routes", async () => {
     const config = await getTestConfig(true);
     serverHandle = await startServer({ transport: "http", port: 0, config });
     const baseUrl = `http://127.0.0.1:${serverHandle.port}`;
@@ -105,11 +105,7 @@ describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
         method: request.method,
         headers,
       });
-      expect(res.status).toBe(501);
-      const body = await res.json();
-      expect(body.error).toBe("not_implemented");
-      expect(body.run_id).toBeUndefined();
-      expect(JSON.stringify(body)).not.toContain("observations");
+      expect(res.status).toBe(404);
     }
   });
 

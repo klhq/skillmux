@@ -73,7 +73,7 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
   });
 
   it("suggests corrections for mistyped commands (AC12)", () => {
-    const known = ["context", "config", "calibrate", "serve", "index", "sync", "scan"];
+    const known = ["context", "config", "serve", "index", "sync", "scan"];
     expect(suggestCorrection("conifg", known)).toBe("config");
     expect(suggestCorrection("cntxt", known)).toBe("context");
     expect(suggestCorrection("completely_unknown_command", known)).toBeNull();
@@ -90,6 +90,7 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(bash).toContain("--migrate-full-vault");
     expect(bash).toContain("core");
     expect(bash).not.toContain("manifest");
+    expect(bash).not.toContain("calibrate");
 
     const zsh = generateCompletions("zsh");
     expect(zsh).toContain("#compdef skillmux");
@@ -115,7 +116,7 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
       [...fish.matchAll(/__fish_use_subcommand" -a (\S+)/g)].map((m) => m[1]!),
     );
 
-    expect(bashCommands.size).toBeGreaterThanOrEqual(19);
+    expect(bashCommands.size).toBe(18);
     expect(zshCommands).toEqual(bashCommands);
     expect(fishCommands).toEqual(bashCommands);
   });

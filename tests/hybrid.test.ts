@@ -79,12 +79,8 @@ describe("hybrid recall (AC6)", () => {
   test("raw retrieval returns the full reranked shortlist with one reranker call", async () => {
     let rerankerCalls = 0;
     if (config.inference.mode !== "remote") throw new Error("expected remote config");
-    const { thresholds: _thresholds, ...uncalibratedInference } = config.inference;
     configure({
-      config: {
-        ...config,
-        inference: uncalibratedInference,
-      },
+      config,
       clients: {
         embed: async (texts) => texts.map(vectorFor),
         rerank: async (_query, docs) => {

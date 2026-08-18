@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { insertCalibrationRun, openCalibrateDb, type CalibrationRunRecord } from "../src/calibrate";
 import { openIndex, upsertSkill } from "../src/db";
 import { diagnose } from "../src/doctor";
 import type { Config } from "../src/types";
@@ -154,7 +153,6 @@ describe("diagnose", () => {
       endpoint: `http://127.0.0.1:${server.port}/rerank-unavailable?token=secret`,
       model: "reranker",
     };
-    config.inference.thresholds = { match_score: 0.9, match_margin: 0.2, candidate_floor: 0.4 };
 
     const report = await diagnose(config);
     expect(report.checks.find((check) => check.name === "embedding")).toMatchObject({
@@ -362,59 +360,8 @@ dir = "~/.claude/skills"
   });
 });
 
-describe("diagnose calibration check", () => {
-  function calibratedConfig(overrides: Partial<Config> = {}): Config {
-    return testConfig({
-      inference: {
-        mode: "remote",
-        timeout_ms: 2000,
-        embedding: { provider: "openai", endpoint: `http://127.0.0.1:${server.port}/v1/embeddings`, model: "test-model", dimension: 3 },
-        reranker: { adapter: "jina-v1", endpoint: `http://127.0.0.1:${server.port}/v1/rerank`, model: "test-reranker" },
-        thresholds: { match_score: 0.5, match_margin: 0.1, candidate_floor: 0.1 },
-      },
-      ...overrides,
-    });
-  }
-
-  const RERANKER_FP = "remote:jina-v1:test-reranker";
-  const EMBEDDING_FP = "remote:openai:test-model:3";
-
-  function seedRun(stateDir: string, overrides: Partial<CalibrationRunRecord> = {}): string {
-    const runId = overrides.run_id ?? "run_test";
-    const db = openCalibrateDb(stateDir);
-    insertCalibrationRun(db, {
-      run_id: runId,
-      created_at: new Date().toISOString(),
-      status: "completed",
-      reranker_fingerprint: RERANKER_FP,
-      embedding_fingerprint: EMBEDDING_FP,
-      corpus_fingerprint: "vault:matching",
-      dataset_hash: "hash",
-      candidate_limit: 5,
-      min_auto_match_precision: 0.9,
-      min_shortlist_recall_at_5: 0.9,
-      selected_thresholds: { match_score: 0.5, match_margin: 0.1, candidate_floor: 0.1 },
-      observations: [],
-      ...overrides,
-    });
-    db.close();
-    return runId;
-  }
-
-  function seedIndexMatchingCorpusFingerprint(stateDir: string) {
-    const indexDb = openIndex(stateDir);
-    upsertSkill(indexDb, {
-      skill_id: "some-skill",
-      title: "Some Skill",
-      description: "does a thing",
-      aliases: [],
-      body: "body",
-      content_sha256: "deadbeef",
-    });
-    indexDb.close();
-  }
-
-  test("does not report a calibration check when no reranker/thresholds are configured", async () => {
+describe("diagnose configuration provenance and checks", () => {
+  test("does not report a calibration check", async () => {
     const report = await diagnose(testConfig());
 
     expect(report.checks.find((check) => check.name === "calibration")).toBeUndefined();
@@ -428,108 +375,5 @@ describe("diagnose calibration check", () => {
 
     expect(report.checks.find((check) => check.name === "config_source:vault_path")?.detail).toBe("toml");
     expect(report.checks.find((check) => check.name === "config_source:recall.k_rerank")?.detail).toBe("environment");
-  });
-
-  test("flags thresholds that were never produced by an applied calibration run", async () => {
-    const config = calibratedConfig();
-
-    const report = await diagnose(config);
-
-    expect(report.checks.find((check) => check.name === "calibration")).toMatchObject({
-      ok: false,
-      detail: expect.stringContaining("never produced by `skillmux calibrate apply`"),
-    });
-  });
-
-  test("flags a run_id that isn't in the local calibration evidence store", async () => {
-    const config = calibratedConfig({
-      inference: {
-        mode: "remote",
-        timeout_ms: 2000,
-        embedding: { provider: "openai", endpoint: `http://127.0.0.1:${server.port}/v1/embeddings`, model: "test-model", dimension: 3 },
-        reranker: { adapter: "jina-v1", endpoint: `http://127.0.0.1:${server.port}/v1/rerank`, model: "test-reranker" },
-        thresholds: { match_score: 0.5, match_margin: 0.1, candidate_floor: 0.1 },
-        calibration: { run_id: "run_missing" },
-      },
-    });
-
-    const report = await diagnose(config);
-
-    expect(report.checks.find((check) => check.name === "calibration")).toMatchObject({
-      ok: false,
-      detail: expect.stringContaining("not found in the local calibration"),
-    });
-  });
-
-  test("reports ok:true when the applied run's fingerprints still match", async () => {
-    const config = calibratedConfig();
-    seedIndexMatchingCorpusFingerprint(config.state_dir);
-    const indexDb = openIndex(config.state_dir);
-    const { computeCorpusFingerprint } = await import("../src/calibrate");
-    const corpusFingerprint = computeCorpusFingerprint(indexDb);
-    indexDb.close();
-    const runId = seedRun(config.state_dir, { corpus_fingerprint: corpusFingerprint });
-    (config.inference as any).calibration = { run_id: runId };
-
-    const report = await diagnose(config);
-
-    expect(report.checks.find((check) => check.name === "calibration")).toMatchObject({
-      ok: true,
-      detail: expect.stringContaining(runId),
-    });
-  });
-
-  test("flags a stale calibration run when the reranker config has changed since calibration", async () => {
-    const config = calibratedConfig();
-    seedIndexMatchingCorpusFingerprint(config.state_dir);
-    const indexDb = openIndex(config.state_dir);
-    const { computeCorpusFingerprint } = await import("../src/calibrate");
-    const corpusFingerprint = computeCorpusFingerprint(indexDb);
-    indexDb.close();
-    const runId = seedRun(config.state_dir, {
-      corpus_fingerprint: corpusFingerprint,
-      reranker_fingerprint: "remote:jina-v1:a-different-reranker-model",
-    });
-    (config.inference as any).calibration = { run_id: runId };
-
-    const report = await diagnose(config);
-    const calibrationCheck = report.checks.find((check) => check.name === "calibration");
-
-    expect(calibrationCheck).toMatchObject({ ok: false });
-    expect(calibrationCheck?.detail).toContain("stale");
-    expect(calibrationCheck?.detail).toContain("reranker");
-  });
-
-  test("flags a stale calibration run when recall settings have changed", async () => {
-    const config = calibratedConfig();
-    seedIndexMatchingCorpusFingerprint(config.state_dir);
-    const indexDb = openIndex(config.state_dir);
-    const { computeCorpusFingerprint } = await import("../src/calibrate");
-    const corpusFingerprint = computeCorpusFingerprint(indexDb);
-    indexDb.close();
-    const runId = seedRun(config.state_dir, {
-      corpus_fingerprint: corpusFingerprint,
-      recall_settings: { k_lexical: 5, k_vector: 5, k_rerank: 2 },
-    });
-    (config.inference as any).calibration = { run_id: runId };
-
-    const report = await diagnose(config);
-    const calibrationCheck = report.checks.find((check) => check.name === "calibration");
-
-    expect(calibrationCheck).toMatchObject({ ok: false });
-    expect(calibrationCheck?.detail).toContain("recall settings");
-  });
-
-  test("flags an applied run_id whose run never actually certified", async () => {
-    const config = calibratedConfig();
-    const runId = seedRun(config.state_dir, { status: "failed_gates", selected_thresholds: undefined });
-    (config.inference as any).calibration = { run_id: runId };
-
-    const report = await diagnose(config);
-
-    expect(report.checks.find((check) => check.name === "calibration")).toMatchObject({
-      ok: false,
-      detail: expect.stringContaining("should never have been applied"),
-    });
   });
 });
