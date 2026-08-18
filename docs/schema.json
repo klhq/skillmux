@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://klh.app/schemas/skillmux/router-core.json",
   "title": "Skillmux — router-core contract",
-  "description": "Typed contract for the skillmux MCP server: tool inputs/outputs, config.toml, and audit-log rows. The SKILL.md body must appear exactly once on the wire.",
+  "description": "Typed contract for the skillmux MCP server: tool inputs/outputs and config.toml. The SKILL.md body must appear exactly once on the wire.",
   "$defs": {
     "SkillId": {
       "type": "string",
@@ -266,43 +266,6 @@
         }
       },
       "required": ["auth_enabled", "auth_token_env", "allowed_origins"],
-      "additionalProperties": false
-    },
-    "AuditRow": {
-      "type": "object",
-      "description": "AC10: one row per resolve_skill call, appended to the audit table in the state-dir SQLite. Raw query stored deliberately (single-user private homelab).",
-      "properties": {
-        "id": { "type": "integer", "minimum": 1 },
-        "ts": { "type": "string", "format": "date-time" },
-        "query": { "type": "string" },
-        "outcome": { "type": "string", "enum": ["matched", "ambiguous", "no_match"] },
-        "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
-        "degraded_from": {
-          "oneOf": [{ "enum": ["reranked", "hybrid"] }, { "type": "null" }]
-        },
-        "degradation_reason": {
-          "oneOf": [{ "$ref": "#/$defs/DegradationReason" }, { "type": "null" }]
-        },
-        "candidates": {
-          "type": "array",
-          "description": "skill_id + score of every reranked (or FTS5-ranked) candidate considered, best first.",
-          "items": {
-            "type": "object",
-            "properties": {
-              "skill_id": { "$ref": "#/$defs/SkillId" },
-              "score": { "type": ["number", "null"] }
-            },
-            "required": ["skill_id", "score"],
-            "additionalProperties": false
-          }
-        },
-        "selected_skill_id": {
-          "oneOf": [{ "$ref": "#/$defs/SkillId" }, { "type": "null" }],
-          "description": "Set iff outcome=matched."
-        },
-        "latency_ms": { "type": "integer", "minimum": 0 }
-      },
-      "required": ["id", "ts", "query", "outcome", "retrieval", "candidates", "selected_skill_id", "latency_ms"],
       "additionalProperties": false
     }
   }

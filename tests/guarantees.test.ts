@@ -154,7 +154,7 @@ describe("audit log persistence (AC10)", () => {
 // decoders (vLLM, Ollama) have their own, undocumented limits.
 // See CONTRIBUTING.md, "MCP Tool Schemas (GBNF Safety)".
 const SAFE_GBNF_BOUND = 500;
-const BOUND_KEYS = ["maxLength", "maxItems", "maximum", "maxProperties"];
+const BOUND_KEYS = ["maxLength", "maxItems", "maxProperties"];
 
 /** The schema an MCP client actually receives — not the Zod object, which
  *  exposes a different, version-dependent shape. */

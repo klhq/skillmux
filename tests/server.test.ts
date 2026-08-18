@@ -86,6 +86,8 @@ describe("MCP stdio server", () => {
     const resolveTool = tools.find((t) => t.name === "resolve_skill");
     expect(resolveTool?.inputSchema.properties).toHaveProperty("query");
     expect(resolveTool?.inputSchema.properties).toHaveProperty("top_k");
+    const topKSchema = resolveTool?.inputSchema.properties?.top_k as Record<string, unknown>;
+    expect(topKSchema?.maximum).not.toBe(500);
   });
 
   test("fetch_skill returns metadata in structuredContent and the body exactly once as text", async () => {
@@ -136,6 +138,28 @@ describe("MCP stdio server", () => {
     const candidates = payload.candidates as Array<{ rank: number; skill_id: string }>;
     expect(candidates.length).toBe(1);
     expect(candidates[0]!.rank).toBe(1);
+  });
+
+  test("resolve_skill validates top_k against configured max_top_k rather than an independent 500 cap", async () => {
+    // top_k > 500 reaches resolveSkill and fails against configured max_top_k instead of an MCP schema cap
+    const resultLarge = await client.callTool({
+      name: "resolve_skill",
+      arguments: { query: "stdio transport questions", top_k: 600 },
+    });
+
+    expect(resultLarge.isError).toBe(true);
+    const largeTexts = (resultLarge.content as { type: string; text: string }[]).map((c) => c.text).join(" ");
+    expect(largeTexts).toContain("Invalid top_k: 600 exceeds max_top_k of 50");
+
+    // top_k <= 500 but > configured max_top_k (50) fails identically against configured max_top_k
+    const resultConfigLimit = await client.callTool({
+      name: "resolve_skill",
+      arguments: { query: "stdio transport questions", top_k: 51 },
+    });
+
+    expect(resultConfigLimit.isError).toBe(true);
+    const limitTexts = (resultConfigLimit.content as { type: string; text: string }[]).map((c) => c.text).join(" ");
+    expect(limitTexts).toContain("Invalid top_k: 51 exceeds max_top_k of 50");
   });
 
   test("fetch_skill with unknown skill_id returns a SKILL_NOT_FOUND tool error", async () => {

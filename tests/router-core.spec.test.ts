@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, utimesSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -455,5 +455,21 @@ describe("on-demand lazy indexing (First Principles #2)", () => {
     const res = await resolveSkill({ query: "Lazy Test Skill" });
     expect(res.candidates.length).toBeGreaterThan(0);
     expect(res.candidates[0]!.skill_id).toBe("lazy-test-skill");
+  });
+});
+
+describe("public JSON schema contract (AC5)", () => {
+  test("docs/schema.json contains no legacy outcome union, AuditRow, or threshold fields", () => {
+    const raw = readFileSync(join(import.meta.dir, "..", "docs", "schema.json"), "utf8");
+    const schema = JSON.parse(raw);
+
+    expect(schema.$defs).not.toHaveProperty("AuditRow");
+    expect(raw).not.toContain('"outcome"');
+    expect(raw).not.toContain('"matched"');
+    expect(raw).not.toContain('"ambiguous"');
+    expect(raw).not.toContain('"no_match"');
+    expect(raw).not.toContain("match_score");
+    expect(raw).not.toContain("match_margin");
+    expect(raw).not.toContain("candidate_floor");
   });
 });
