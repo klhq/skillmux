@@ -241,11 +241,29 @@ describe("skillmux doctor CLI", () => {
 });
 
 describe("skillmux calibrate run CLI", () => {
-  test("documents the opt-in timing flag in CLI help", async () => {
+  test("documents the opt-in timing flag and tune buffer options in CLI help", async () => {
     const result = await runCli("--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("calibrate run");
     expect(result.stdout).toContain("--timing");
+    expect(result.stdout).toContain("--tune-auto-match-precision-buffer");
+    expect(result.stdout).toContain("--tune-auto-match-count-buffer");
+    expect(result.stdout).toContain("--tune-delivered-shortlist-recall-buffer");
+  });
+
+  test("rejects invalid tune buffer options", async () => {
+    for (const bad of ["-0.1", "1.5", "abc"]) {
+      const result = await runCli("calibrate", "run", "--tune-auto-match-precision-buffer", bad);
+      expect(result.exitCode).not.toBe(0);
+    }
+    for (const bad of ["-1", "2.5", "abc"]) {
+      const result = await runCli("calibrate", "run", "--tune-auto-match-count-buffer", bad);
+      expect(result.exitCode).not.toBe(0);
+    }
+    for (const bad of ["-0.1", "1.5", "abc"]) {
+      const result = await runCli("calibrate", "run", "--tune-delivered-shortlist-recall-buffer", bad);
+      expect(result.exitCode).not.toBe(0);
+    }
   });
 
   test("parses --dataset instead of treating the run subcommand as an option", async () => {
@@ -355,6 +373,8 @@ describe("skillmux calibrate run CLI", () => {
           "0.1",
           "--min-auto-match-count",
           "1",
+          "--tune-auto-match-count-buffer",
+          "0",
           "--timing",
           "--json",
         ],
@@ -390,6 +410,8 @@ describe("skillmux calibrate run CLI", () => {
           "0.1",
           "--min-auto-match-count",
           "1",
+          "--tune-auto-match-count-buffer",
+          "0",
           "--timing",
         ],
         { SKILLMUX_CONFIG: testConfig },

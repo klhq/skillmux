@@ -99,6 +99,13 @@ Calibration certifies threshold policies against statistical confidence gates be
 | `--min-auto-match-count` | `15` | Minimum number of auto-matches required in evaluation |
 | `--min-retrieval-recall-at-k` | `0.95` | Minimum top-k retrieval recall on matchable queries |
 | `--min-delivered-shortlist-recall-at-k` | `0.95` | Minimum delivered shortlist recall on matchable queries |
+| `--tune-auto-match-precision-buffer` | `0.03` | Tune-only selection buffer for Wilson auto-match precision lower bound |
+| `--tune-auto-match-count-buffer` | `3` | Tune-only selection buffer for minimum auto-match count |
+| `--tune-delivered-shortlist-recall-buffer` | `0.02` | Tune-only selection buffer for delivered shortlist recall |
+
+### Tune selection buffers vs production gates
+
+Tune selection buffers ensure that threshold optimization selects policies with sufficient headroom beyond production gates. A candidate policy during tune search must satisfy the production gates plus their respective tune selection buffers. Test-split certification evaluates selected policies against the original production gates without selection buffers.
 
 ### Wilson lower confidence bound and evidence size
 

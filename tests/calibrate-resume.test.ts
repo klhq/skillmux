@@ -164,6 +164,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
     });
 
     expect(runRes.run_id).toBeDefined();
@@ -207,6 +208,7 @@ model = "mock-rerank"
         minRetrievalRecallAtK: 0.1,
         minDeliveredShortlistRecallAtK: 0.1,
         minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
       }),
     ).rejects.toThrow(/Calibration requires successful hybrid retrieval|Simulated/);
 
@@ -262,6 +264,7 @@ model = "mock-rerank"
         minRetrievalRecallAtK: 0.1,
         minDeliveredShortlistRecallAtK: 0.1,
         minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
       }),
     ).rejects.toThrow(/Calibration requires successful hybrid retrieval|Simulated/);
 
@@ -295,6 +298,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
     });
 
     expect(resumedResult.run_id).toBe(interruptedRunId);
@@ -313,6 +317,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
     });
 
     expect(resumedResult.result?.selected_thresholds).toEqual(
@@ -336,6 +341,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
     });
 
     await expect(
@@ -346,6 +352,7 @@ model = "mock-rerank"
         minRetrievalRecallAtK: 0.1,
         minDeliveredShortlistRecallAtK: 0.1,
         minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
       }),
     ).rejects.toThrow(/completed/i);
   });
@@ -377,6 +384,9 @@ model = "mock-rerank"
       min_auto_match_count: 1,
       min_delivered_shortlist_recall_at_k: 0.95,
       min_shortlist_recall_at_5: 0.95,
+      tune_auto_match_precision_buffer: 0.03,
+      tune_auto_match_count_buffer: 0,
+      tune_delivered_shortlist_recall_buffer: 0.02,
       recall_settings: { k_lexical: 10, k_vector: 10, k_rerank: 5 },
     };
     const mismatches: Array<{
@@ -414,6 +424,21 @@ model = "mock-rerank"
         expected: /min_retrieval_recall_at_k/i,
         mutate: (run) => { run.min_shortlist_recall_at_5 = 0.94; },
       },
+      {
+        name: "tune auto match precision buffer",
+        expected: /tune_auto_match_precision_buffer/i,
+        mutate: (run) => { run.tune_auto_match_precision_buffer = 0.05; },
+      },
+      {
+        name: "tune auto match count buffer",
+        expected: /tune_auto_match_count_buffer/i,
+        mutate: (run) => { run.tune_auto_match_count_buffer = 1; },
+      },
+      {
+        name: "tune delivered shortlist recall buffer",
+        expected: /tune_delivered_shortlist_recall_buffer/i,
+        mutate: (run) => { run.tune_delivered_shortlist_recall_buffer = 0.04; },
+      },
     ];
     const fakeClients = {
       embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
@@ -439,6 +464,7 @@ model = "mock-rerank"
           resumeRunId: run.run_id,
           minAutoMatchPrecision: 0.1,
           minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
         }),
       ).rejects.toThrow(mismatch.expected);
     }
@@ -471,6 +497,7 @@ model = "mock-rerank"
         minRetrievalRecallAtK: 0.1,
         minDeliveredShortlistRecallAtK: 0.1,
         minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
       });
 
       expect(res.run_id).toBeDefined();
@@ -521,6 +548,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
     });
 
     expect(runRes.run_id).toBeDefined();
@@ -589,6 +617,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
     });
 
     expect(runRes.run_id).toBeDefined();
@@ -685,6 +714,7 @@ model = "mock-rerank"
       minRetrievalRecallAtK: 0.1,
       minDeliveredShortlistRecallAtK: 0.1,
       minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
     });
 
     expect(runRes.run_id).toBeDefined();
@@ -729,6 +759,7 @@ model = "mock-rerank"
         minRetrievalRecallAtK: 0.1,
         minDeliveredShortlistRecallAtK: 0.1,
         minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
       }),
     ).rejects.toThrow("Calibration requires successful hybrid retrieval and reranking for every query.");
     // Should fail without burning multiple retries per case
@@ -754,6 +785,7 @@ model = "mock-rerank"
         minRetrievalRecallAtK: 0.1,
         minDeliveredShortlistRecallAtK: 0.1,
         minAutoMatchCount: 1,
+      tuneAutoMatchCountBuffer: 0,
       }),
     ).rejects.toThrow("Calibration requires successful hybrid retrieval and reranking for every query.");
     expect(timeoutAttempts).toBeLessThanOrEqual(2);

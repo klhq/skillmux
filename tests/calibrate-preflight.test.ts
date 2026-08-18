@@ -163,7 +163,7 @@ model = "mock-rerank"
     expect(row!.min_auto_match_count).toBe(15);
   });
 
-  test("proves explicit 0.99/30 rejects before any getRankedCandidates call or running DB record", async () => {
+  test("proves explicit 0.99/20 rejects before any getRankedCandidates call or running DB record", async () => {
     const adapter = new LocalAdapter({ configPath, clients: makeFakeClients() });
 
     let thrownError: Error | undefined;
@@ -171,7 +171,9 @@ model = "mock-rerank"
       await adapter.calibrateRun({
         datasetPath,
         minAutoMatchPrecision: 0.99,
-        minAutoMatchCount: 30,
+        minAutoMatchCount: 20,
+        tuneAutoMatchPrecisionBuffer: 0,
+        tuneAutoMatchCountBuffer: 0,
       });
     } catch (err: any) {
       thrownError = err;
@@ -180,9 +182,8 @@ model = "mock-rerank"
     expect(thrownError).toBeDefined();
     const msg = thrownError!.message;
     expect(msg).toContain("0.99");
-    expect(msg).toContain("30");
     expect(msg).toContain("20");
-    expect(msg).toMatch(/0\.487[89]/);
+    expect(msg).toMatch(/0\.838[89]/);
 
     // Assert that no retrieval / rerank calls took place
     expect(rerankCallCount).toBe(0);
@@ -193,5 +194,103 @@ model = "mock-rerank"
     db.close();
 
     expect(rows.count).toBe(0);
+  });
+
+  test("rejects impossible effective precision or recall buffer requirements in preflight", async () => {
+    const adapter = new LocalAdapter({ configPath, clients: makeFakeClients() });
+
+    // 1. Effective precision > 1.0
+    await expect(
+      adapter.calibrateRun({
+        datasetPath,
+        minAutoMatchPrecision: 0.98,
+        tuneAutoMatchPrecisionBuffer: 0.05,
+      }),
+    ).rejects.toThrow(/mathematically impossible.*effective.*precision.*1\.03/i);
+
+    // 2. Effective delivered recall > 1.0
+    await expect(
+      adapter.calibrateRun({
+        datasetPath,
+        minDeliveredShortlistRecallAtK: 0.99,
+        tuneDeliveredShortlistRecallBuffer: 0.03,
+      }),
+    ).rejects.toThrow(/mathematically impossible.*effective.*delivered.*recall.*1\.02/i);
+
+    // 3. Negative buffers
+    await expect(
+      adapter.calibrateRun({
+        datasetPath,
+        tuneAutoMatchPrecisionBuffer: -0.01,
+      }),
+    ).rejects.toThrow(/non-negative number/i);
+
+    await expect(
+      adapter.calibrateRun({
+        datasetPath,
+        tuneAutoMatchCountBuffer: -1,
+      }),
+    ).rejects.toThrow(/non-negative integer/i);
+
+    // 4. Non-integer count buffer
+    await expect(
+      adapter.calibrateRun({
+        datasetPath,
+        tuneAutoMatchCountBuffer: 1.5,
+      }),
+    ).rejects.toThrow(/non-negative integer/i);
+
+    expect(rerankCallCount).toBe(0);
+  });
+
+  test("rejects when tune dataset is too small for effective buffered precision and count gates", async () => {
+    const adapter = new LocalAdapter({ configPath, clients: makeFakeClients() });
+
+    // 20 matched tune cases in standardDataset
+    // minAutoMatchCount: 15, buffer: 6 -> effective count = 21 > 20
+    let thrown: Error | undefined;
+    try {
+      await adapter.calibrateRun({
+        datasetPath,
+        minAutoMatchPrecision: 0.75,
+        minAutoMatchCount: 15,
+        tuneAutoMatchCountBuffer: 6,
+      });
+    } catch (e: any) {
+      thrown = e;
+    }
+
+    expect(thrown).toBeDefined();
+    expect(thrown!.message).toContain("mathematically unattainable");
+    expect(thrown!.message).toContain("21");
+    expect(thrown!.message).toContain("20");
+    expect(rerankCallCount).toBe(0);
+  });
+
+  test("explicitly rejects effective count exceeding tune matched cases even when precision gate is low", async () => {
+    const adapter = new LocalAdapter({ configPath, clients: makeFakeClients() });
+
+    // 20 matched tune cases in standardDataset
+    // minAutoMatchCount: 18, buffer: 3 -> effective count = 21 > 20
+    // minAutoMatchPrecision: 0.1 -> Wilson(20, 21) is ~0.75 > 0.13 (effective precision)
+    // Without an explicit count check, the Wilson check would falsely pass this impossible count.
+    let thrown: Error | undefined;
+    try {
+      await adapter.calibrateRun({
+        datasetPath,
+        minAutoMatchPrecision: 0.1,
+        minAutoMatchCount: 18,
+        tuneAutoMatchCountBuffer: 3,
+      });
+    } catch (e: any) {
+      thrown = e;
+    }
+
+    expect(thrown).toBeDefined();
+    expect(thrown!.message).toContain("mathematically unattainable");
+    expect(thrown!.message).toContain("effective min_auto_match_count");
+    expect(thrown!.message).toContain("21");
+    expect(thrown!.message).toContain("20");
+    expect(rerankCallCount).toBe(0);
   });
 });
