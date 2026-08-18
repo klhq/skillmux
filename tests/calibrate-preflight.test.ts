@@ -108,9 +108,9 @@ local_vault_paths = []
 state_dir = "${stateDir}"
 
 [recall]
-k_lexical = 10
-k_vector = 10
-k_rerank = 5
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
 
 [output]
 top_k = 5

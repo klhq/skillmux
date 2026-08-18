@@ -46,8 +46,9 @@ function remoteToml(endpoint: string, timeoutMs = 2000): string {
 state_dir = "~/.local/state/skillmux"
 
 [recall]
-k_lexical = 20
-k_vector = 20
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
 
 [output]
 top_k = 10

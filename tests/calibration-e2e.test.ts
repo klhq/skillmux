@@ -106,6 +106,11 @@ describe("calibration-tuning end-to-end", () => {
     // Start with a remote-mode config (thresholds are only valid there)
     const remoteToml = `vault_path = "~/skills"
 
+[recall]
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
+
 [inference]
 mode = "remote"
 timeout_ms = 5000

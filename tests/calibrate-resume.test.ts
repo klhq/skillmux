@@ -101,9 +101,9 @@ local_vault_paths = []
 state_dir = "${stateDir}"
 
 [recall]
-k_lexical = 10
-k_vector = 10
-k_rerank = 5
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
 
 [output]
 top_k = 5
@@ -388,7 +388,11 @@ model = "mock-rerank"
       tune_auto_match_precision_buffer: 0.03,
       tune_auto_match_count_buffer: 0,
       tune_delivered_shortlist_recall_buffer: 0.02,
-      recall_settings: { k_lexical: 10, k_vector: 10, k_rerank: 5 },
+      recall_settings: {
+        k_lexical: loadedConfig.recall.k_lexical,
+        k_vector: loadedConfig.recall.k_vector,
+        k_rerank: loadedConfig.recall.k_rerank ?? 50,
+      },
     };
     const mismatches: Array<{
       name: string;
@@ -403,7 +407,7 @@ model = "mock-rerank"
       {
         name: "recall settings",
         expected: /recall settings/i,
-        mutate: (run) => { run.recall_settings = { ...run.recall_settings, k_rerank: 4 }; },
+        mutate: (run) => { run.recall_settings = { ...run.recall_settings, k_rerank: (run.recall_settings.k_rerank ?? 50) - 1 }; },
       },
       {
         name: "minimum precision",

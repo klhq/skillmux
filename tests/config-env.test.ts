@@ -81,6 +81,11 @@ describe("inference configuration", () => {
     process.env.EMBED_SECRET = "embed-token";
     process.env.RERANK_SECRET = "rerank-token";
     const path = await configFile(`
+[recall]
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
+
 [inference]
 mode = "remote"
 timeout_ms = 5000
@@ -145,6 +150,10 @@ api_key_env = "RERANK_SECRET"
     }
 
     const path = await configFile(`
+[recall]
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
 [inference]
 mode = "remote"
 timeout_ms = 2000
@@ -331,6 +340,10 @@ ${configKey === "inference.reranker.api_key_env" ? `api_key_env = "${envName}"` 
 
   test("loads a configured reranker without threshold configuration", async () => {
     const path = await configFile(`
+[recall]
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
 [inference]
 mode = "remote"
 timeout_ms = 2000
@@ -702,16 +715,16 @@ max_top_k = 20
     await expect(loadConfig(path)).rejects.toThrow(/top_k.*max_top_k/i);
   });
 
-  test("rejects when output.top_k exceeds recall.k_rerank when reranking is enabled", async () => {
+  test("rejects when output.max_top_k exceeds recall.k_rerank when reranking is enabled via TOML", async () => {
     const path = await configFile(`
 [recall]
 k_lexical = 20
 k_vector = 20
-k_rerank = 5
+k_rerank = 10
 
 [output]
-top_k = 10
-max_top_k = 50
+top_k = 5
+max_top_k = 15
 
 [inference]
 mode = "remote"
@@ -728,7 +741,89 @@ adapter = "jina-v1"
 endpoint = "http://127.0.0.1:9/rerank"
 model = "reranker"
 `);
-    await expect(loadConfig(path)).rejects.toThrow(/k_rerank/i);
+    await expect(loadConfig(path)).rejects.toThrow(/output\.max_top_k.*recall\.k_rerank/i);
+  });
+
+  test("rejects when output.max_top_k exceeds recall.k_rerank via environment variable override", async () => {
+    const path = await configFile(`
+[recall]
+k_lexical = 20
+k_vector = 20
+k_rerank = 15
+
+[output]
+top_k = 5
+max_top_k = 15
+
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "http://127.0.0.1:9/v1/embeddings"
+model = "model"
+dimension = 1024
+
+[inference.reranker]
+adapter = "jina-v1"
+endpoint = "http://127.0.0.1:9/rerank"
+model = "reranker"
+`);
+    process.env.SKILLMUX_OUTPUT_MAX_TOP_K = "20";
+    await expect(loadConfig(path)).rejects.toThrow(/output\.max_top_k.*recall\.k_rerank/i);
+
+    delete process.env.SKILLMUX_OUTPUT_MAX_TOP_K;
+    process.env.SKILLMUX_RECALL_K_RERANK = "10";
+    await expect(loadConfig(path)).rejects.toThrow(/output\.max_top_k.*recall\.k_rerank/i);
+  });
+
+  test("preserves local/no-reranker behavior when output.max_top_k exceeds recall.k_rerank", async () => {
+    const path = await configFile(`
+[recall]
+k_lexical = 10
+k_vector = 10
+k_rerank = 10
+
+[output]
+top_k = 10
+max_top_k = 50
+
+[inference]
+mode = "local"
+bundle = "gte-small-v1"
+models_dir = "~/.cache/skillmux/models"
+embedding = { model = "Xenova/gte-small", dimension = 384 }
+`);
+    const config = await loadConfig(path);
+    expect(config.output.max_top_k).toBe(50);
+    expect(config.recall.k_rerank).toBe(10);
+  });
+
+  test("preserves remote mode without reranker when output.max_top_k exceeds recall.k_rerank", async () => {
+    const path = await configFile(`
+[recall]
+k_lexical = 10
+k_vector = 10
+k_rerank = 10
+
+[output]
+top_k = 10
+max_top_k = 50
+
+[inference]
+mode = "remote"
+timeout_ms = 2000
+
+[inference.embedding]
+provider = "openai"
+endpoint = "http://127.0.0.1:9/v1/embeddings"
+model = "model"
+dimension = 1024
+`);
+    const config = await loadConfig(path);
+    expect(config.output.max_top_k).toBe(50);
+    expect(config.recall.k_rerank).toBe(10);
   });
 
   test("rejects legacy [thresholds] table with actionable migration error", async () => {

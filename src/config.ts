@@ -91,12 +91,12 @@ const configSchema = z.object({
   }).strict().optional(),
 }).strict().refine((cfg) => {
   const hasReranker = cfg.inference.mode === "remote" && !!cfg.inference.reranker;
-  if (hasReranker && cfg.output.top_k > cfg.recall.k_rerank) {
+  if (hasReranker && cfg.output.max_top_k > cfg.recall.k_rerank) {
     return false;
   }
   return true;
 }, {
-  message: "output.top_k cannot exceed recall.k_rerank when reranking is enabled",
+  message: "output.max_top_k cannot exceed recall.k_rerank when reranking is enabled",
 });
 
 // Fallback values only; a config.toml (SKILLMUX_CONFIG or default path)

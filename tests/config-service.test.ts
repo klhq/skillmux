@@ -123,7 +123,11 @@ describe("Config Service (AC4, AC5, AC6)", () => {
   it("enumerates inference sources, environment masks, and reloadable keys", async () => {
     writeFileSync(
       CONFIG_FILE,
-      `[inference]
+      `[recall]
+k_lexical = 50
+k_vector = 50
+k_rerank = 50
+[inference]
 mode = "remote"
 timeout_ms = 2000
 [inference.embedding]
