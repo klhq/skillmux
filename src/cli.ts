@@ -116,7 +116,6 @@ import { runTarget } from "./commands/target";
 const KNOWN_COMMANDS = [
   "context",
   "config",
-  "calibrate",
   "completions",
   "serve",
   "index",
@@ -147,7 +146,6 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
       "local-vault",
       "models",
       "context",
-      "calibrate",
       "eval",
     ].includes(command)
   ) {
@@ -235,10 +233,10 @@ async function main() {
     return;
   }
 
-  // Only resolve target if command is target-aware or context/config/calibrate
+  // Only resolve target if command is target-aware or context/config
   const isLocalConfigInit = command === "config" && rawArgv[1] === "init";
   if (
-    (["context", "config", "calibrate"].includes(command) &&
+    (["context", "config"].includes(command) &&
       !isLocalConfigInit) ||
     flagContext ||
     flagServer
@@ -272,11 +270,9 @@ async function main() {
         });
         break;
       case "calibrate":
-        await handleCalibrateCommand(adapter, subCommand, rawArgv.slice(1), {
-          target: resolvedTarget,
-          isJson,
-        });
-        break;
+        throw new Error(
+          'skillmux calibrate was removed in 2.0. Threshold calibration was removed; use "skillmux eval" for ranking evaluation.',
+        );
       case "completions":
         await handleCompletionsCommand(subCommand);
         break;
@@ -364,7 +360,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|skill which|local-vault init|config show|models download|calibrate generate-dataset>`;
+          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|skill which|local-vault init|config show|models download>`;
         throw new Error(msg);
       }
     }
@@ -720,17 +716,6 @@ Setup:
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
   skillmux skill which <skill_id>
 
-Calibration:
-  skillmux calibrate run [--dataset <path>] [--concurrency <n>] [--resume <run_id>]
-                         [--min-auto-match-precision <0..1>] [--min-auto-match-count <n>]
-                         [--min-retrieval-recall-at-k <0..1>]
-                         [--min-delivered-shortlist-recall-at-k <0..1>]
-                         [--tune-auto-match-precision-buffer <0..1>]
-                         [--tune-auto-match-count-buffer <n>]
-                         [--tune-delivered-shortlist-recall-buffer <0..1>]
-                         [--timing] [--json]
-  skillmux calibrate <list|show|apply|generate-dataset>
-
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
   antigravity, goose, hermes, skillmux-mcp
@@ -740,7 +725,7 @@ Init targets:
 
 Commands:
   serve, index, sync, init, project, target, core, report, scan, install, eval, doctor, skill,
-  local-vault, config, models, calibrate, context, completions`);
+  local-vault, config, models, context, completions`);
 }
 
 // ---------------------------------------------------------------------------

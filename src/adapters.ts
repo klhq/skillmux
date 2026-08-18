@@ -67,7 +67,6 @@ export const CALIBRATION_RERANK_RETRY_BACKOFF_MS = 250;
 export interface Capabilities {
   config_read: boolean;
   config_write: boolean;
-  calibration: boolean;
   persistence: "writable" | "externally_managed";
   reloadable_keys: string[];
   restart_required_keys: string[];
@@ -170,7 +169,6 @@ export class LocalAdapter implements TargetAdapter {
     return {
       config_read: true,
       config_write: !isExternallyManaged,
-      calibration: true,
       persistence: isExternallyManaged ? "externally_managed" : "writable",
       reloadable_keys: RELOADABLE_KEYS,
       restart_required_keys: RESTART_REQUIRED_KEYS,

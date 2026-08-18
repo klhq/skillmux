@@ -393,7 +393,6 @@ export async function startServer(opts?: {
               JSON.stringify({
                 config_read: true,
                 config_write: !isExternallyManaged,
-                calibration: false,
                 persistence: isExternallyManaged
                   ? "externally_managed"
                   : "writable",
@@ -478,18 +477,6 @@ export async function startServer(opts?: {
               status: 200,
               headers,
             });
-          }
-
-          if (url.pathname.startsWith("/admin/v1/calibrations")) {
-            return new Response(
-              JSON.stringify({
-                error: "not_implemented",
-                message:
-                  "Remote calibration is not implemented in this release. " +
-                  "Run `skillmux calibrate` against a local target.",
-              }),
-              { status: 501, headers },
-            );
           }
 
           return new Response("Not Found", { status: 404, headers });

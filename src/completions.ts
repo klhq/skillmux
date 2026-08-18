@@ -3,7 +3,6 @@ export type ShellType = "bash" | "zsh" | "fish";
 const TOP_LEVEL_COMMANDS: { name: string; description: string }[] = [
   { name: "context", description: "Manage connection contexts" },
   { name: "config", description: "Manage configuration" },
-  { name: "calibrate", description: "Manage policy calibration" },
   { name: "serve", description: "Start MCP server" },
   { name: "index", description: "Rebuild local search index" },
   { name: "sync", description: "Synchronize vault skills" },
@@ -44,9 +43,6 @@ _skillmux_completions() {
             ;;
         config)
             COMPREPLY=( $(compgen -W "init show get validate diff set status" -- "$cur") )
-            ;;
-        calibrate)
-            COMPREPLY=( $(compgen -W "run list show apply generate-dataset" -- "$cur") )
             ;;
         completions)
             COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )

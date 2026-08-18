@@ -71,7 +71,6 @@ const configSchema = z.object({
         model: z.string().min(1),
         api_key_env: z.string().min(1).optional(),
       }).strict().optional(),
-      calibration: z.object({ run_id: z.string().min(1) }).strict().optional(),
     }).strict(),
   ]),
   server: z.object({
@@ -276,6 +275,11 @@ export async function loadConfig(path?: string): Promise<Config> {
     if (isPlainObject(parsed.inference) && "thresholds" in parsed.inference) {
       throw new Error(
         "inference.thresholds is obsolete in 2.0. Threshold calibration was removed.",
+      );
+    }
+    if (isPlainObject(parsed.inference) && "calibration" in parsed.inference) {
+      throw new Error(
+        "inference.calibration is obsolete in 2.0 and should be deleted. Threshold calibration was removed; use skillmux eval for ranking evaluation.",
       );
     }
     if ("embedding" in parsed || "rerank" in parsed || "remote_timeout_ms" in parsed) {
