@@ -248,18 +248,16 @@ describe("zero-loss delivery (AC2)", () => {
 });
 
 describe("audit log contract", () => {
-  test("builds an audit row with the schema-required fields", () => {
+  test("builds an audit row with the canonical fields", () => {
     const row = buildAuditRow({
       id: 1,
       ts: "2026-07-14T21:22:00.000Z",
       query: "find me the best skill",
-      outcome: "ambiguous",
       retrieval: "hybrid",
       candidates: [
         { skill_id: "alpha-skill", score: null },
         { skill_id: "beta-skill", score: null },
       ],
-      selected_skill_id: null,
       latency_ms: 12,
     });
 
@@ -267,13 +265,11 @@ describe("audit log contract", () => {
       id: 1,
       ts: "2026-07-14T21:22:00.000Z",
       query: "find me the best skill",
-      outcome: "ambiguous",
       retrieval: "hybrid",
       candidates: [
         { skill_id: "alpha-skill", score: null },
         { skill_id: "beta-skill", score: null },
       ],
-      selected_skill_id: null,
       latency_ms: 12,
     });
   });

@@ -1593,10 +1593,8 @@ describe("skillmux report CLI", () => {
     insertAudit(db, {
       ts: new Date().toISOString(),
       query: "in window",
-      outcome: "matched",
       retrieval: "reranked",
       candidates: [{ skill_id: "first-skill", score: 0.9 }],
-      selected_skill_id: "first-skill",
       latency_ms: 4,
     });
     db.close();
@@ -1610,8 +1608,8 @@ describe("skillmux report CLI", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("matched=1 ambiguous=0 no_match=0");
-    expect(result.stdout).toContain("first-skill matched=1 candidate=1");
+    expect(result.stdout).toContain("total=1 empty_shortlist=0");
+    expect(result.stdout).toContain("first-skill candidate=1");
 
     rmSync(dbDir, { recursive: true, force: true });
   });
@@ -1655,7 +1653,7 @@ describe("skillmux report CLI", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("matched=0 ambiguous=0 no_match=0");
+    expect(result.stdout).toContain("total=0 empty_shortlist=0");
 
     await handle.stop();
     rmSync(root, { recursive: true, force: true });
@@ -1666,7 +1664,7 @@ describe("skillmux report CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
-      "outcomes: matched=0 ambiguous=0 no_match=0",
+      "requests: total=0 empty_shortlist=0",
     );
   });
 
@@ -1677,10 +1675,13 @@ describe("skillmux report CLI", () => {
     const parsed = JSON.parse(result.stdout);
     expect(parsed.schema_version).toBe(1);
     expect(parsed.ok).toBe(true);
-    expect(parsed.data.outcome_totals).toEqual({
-      matched: 0,
-      ambiguous: 0,
-      no_match: 0,
+    expect(parsed.data.total_requests).toBe(0);
+    expect(parsed.data.empty_shortlist_count).toBe(0);
+    expect(parsed.data.retrieval_totals).toEqual({
+      exact: 0,
+      reranked: 0,
+      hybrid: 0,
+      lexical: 0,
     });
     expect(Array.isArray(parsed.data.skills)).toBe(true);
   });

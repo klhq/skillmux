@@ -47,10 +47,8 @@ describe("GET /stats", () => {
     insertAudit(db, {
       ts: new Date().toISOString(),
       query: "in window",
-      outcome: "matched",
       retrieval: "reranked",
       candidates: [{ skill_id: "example-skill", score: 0.9 }],
-      selected_skill_id: "example-skill",
       latency_ms: 12,
     });
 
@@ -58,8 +56,14 @@ describe("GET /stats", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.outcome_totals).toEqual({ matched: 1, ambiguous: 0, no_match: 0 });
-    expect(body.skills).toEqual([{ skill_id: "example-skill", matched_count: 1, candidate_count: 1 }]);
+    expect(body.total_requests).toBe(1);
+    expect(body.empty_shortlist_count).toBe(0);
+    expect(body.empty_shortlist_rate).toBe(0);
+    expect(body.retrieval_totals).toEqual({ exact: 0, reranked: 1, hybrid: 0, lexical: 0 });
+    expect(body.degraded_count).toBe(0);
+    expect(body.average_latency_ms).toBe(12);
+    expect(body.skills).toEqual([{ skill_id: "example-skill", candidate_count: 1 }]);
+    expect(body.top_empty_shortlist_queries).toEqual([]);
 
     await handle.stop();
   });

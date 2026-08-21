@@ -5,22 +5,32 @@ export const SINCE_PATTERN = /^(\d+[hdwmy]|\d{4}-\d{2}-\d{2}([T ].+)?)$/;
 
 export interface SkillStat {
   skill_id: string;
-  matched_count: number;
   candidate_count: number;
 }
 
-export interface NoMatchQuery {
+export interface EmptyShortlistQuery {
   query: string;
   count: number;
+}
+
+export interface RetrievalTotals {
+  exact: number;
+  reranked: number;
+  hybrid: number;
+  lexical: number;
 }
 
 export interface StatsResponse {
   since: string;
   until: string;
-  outcome_totals: { matched: number; ambiguous: number; no_match: number };
-  ambiguous_rate: number;
+  total_requests: number;
+  empty_shortlist_count: number;
+  empty_shortlist_rate: number;
+  retrieval_totals: RetrievalTotals;
+  degraded_count: number;
+  average_latency_ms: number;
   skills: SkillStat[];
-  top_no_match_queries: NoMatchQuery[];
+  top_empty_shortlist_queries: EmptyShortlistQuery[];
 }
 
 const RELATIVE_WINDOW = /^(\d+)([hdwmy])$/;
@@ -47,58 +57,79 @@ export function parseSince(since: string, now: Date = new Date()): Date {
   return parsed;
 }
 
-export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsResponse {
-  const outcome_totals = { matched: 0, ambiguous: 0, no_match: 0 };
-  const skillStats = new Map<string, { matched_count: number; candidate_count: number }>();
-  const noMatchCounts = new Map<string, number>();
+function compareCodeUnits(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
 
-  function statFor(skillId: string) {
-    let stat = skillStats.get(skillId);
-    if (!stat) {
-      stat = { matched_count: 0, candidate_count: 0 };
-      skillStats.set(skillId, stat);
-    }
-    return stat;
-  }
+export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsResponse {
+  const retrieval_totals: RetrievalTotals = { exact: 0, reranked: 0, hybrid: 0, lexical: 0 };
+  const skillCounts = new Map<string, number>();
+  const emptyShortlistCounts = new Map<string, number>();
+  let empty_shortlist_count = 0;
+  let degraded_count = 0;
+  let total_latency_ms = 0;
 
   for (const row of rows) {
-    outcome_totals[row.outcome]++;
-
-    const seenInRow = new Set<string>();
-    for (const candidate of row.candidates) {
-      if (seenInRow.has(candidate.skill_id)) continue;
-      seenInRow.add(candidate.skill_id);
-      statFor(candidate.skill_id).candidate_count++;
+    if (row.retrieval in retrieval_totals) {
+      retrieval_totals[row.retrieval]++;
     }
 
-    if (row.outcome === "matched" && row.selected_skill_id) {
-      statFor(row.selected_skill_id).matched_count++;
+    if (row.degraded_from || row.degradation_reason) {
+      degraded_count++;
     }
 
-    if (row.outcome === "no_match") {
-      noMatchCounts.set(row.query, (noMatchCounts.get(row.query) ?? 0) + 1);
+    total_latency_ms += row.latency_ms;
+
+    if (row.candidates.length === 0) {
+      empty_shortlist_count++;
+      emptyShortlistCounts.set(row.query, (emptyShortlistCounts.get(row.query) ?? 0) + 1);
+    } else {
+      const seenInRow = new Set<string>();
+      for (const candidate of row.candidates) {
+        if (!candidate.skill_id) continue;
+        if (seenInRow.has(candidate.skill_id)) continue;
+        seenInRow.add(candidate.skill_id);
+        skillCounts.set(candidate.skill_id, (skillCounts.get(candidate.skill_id) ?? 0) + 1);
+      }
     }
   }
 
-  const total = outcome_totals.matched + outcome_totals.ambiguous + outcome_totals.no_match;
-  const ambiguous_rate = total > 0 ? outcome_totals.ambiguous / total : 0;
+  const total_requests = rows.length;
+  const empty_shortlist_rate = total_requests > 0 ? empty_shortlist_count / total_requests : 0;
+  const average_latency_ms = total_requests > 0 ? total_latency_ms / total_requests : 0;
 
-  const skills = [...skillStats.entries()]
-    .map(([skill_id, stat]) => ({ skill_id, ...stat }))
-    .sort((a, b) => b.matched_count - a.matched_count);
+  const skills: SkillStat[] = [...skillCounts.entries()]
+    .map(([skill_id, candidate_count]) => ({ skill_id, candidate_count }))
+    .sort((a, b) => {
+      if (b.candidate_count !== a.candidate_count) {
+        return b.candidate_count - a.candidate_count;
+      }
+      return compareCodeUnits(a.skill_id, b.skill_id);
+    });
 
-  const top_no_match_queries = [...noMatchCounts.entries()]
+  const top_empty_shortlist_queries: EmptyShortlistQuery[] = [...emptyShortlistCounts.entries()]
     .map(([query, count]) => ({ query, count }))
-    .sort((a, b) => b.count - a.count)
+    .sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return compareCodeUnits(a.query, b.query);
+    })
     .slice(0, 20);
 
   return {
     since: since.toISOString(),
     until: until.toISOString(),
-    outcome_totals,
-    ambiguous_rate,
+    total_requests,
+    empty_shortlist_count,
+    empty_shortlist_rate,
+    retrieval_totals,
+    degraded_count,
+    average_latency_ms,
     skills,
-    top_no_match_queries,
+    top_empty_shortlist_queries,
   };
 }
 
@@ -106,27 +137,60 @@ interface AuditTableRow {
   id: number;
   ts: string;
   query: string;
-  outcome: AuditRow["outcome"];
   retrieval: AuditRow["retrieval"];
+  degraded_from: string | null;
+  degradation_reason: string | null;
   candidates: string;
-  selected_skill_id: string | null;
   latency_ms: number;
 }
 
 export function queryAuditRows(db: Database, sinceIso: string): AuditRow[] {
   const rows = db
-    .query("SELECT id, ts, query, outcome, retrieval, candidates, selected_skill_id, latency_ms FROM audit WHERE ts >= ? ORDER BY ts ASC")
+    .query(
+      "SELECT id, ts, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms FROM audit WHERE ts >= ? ORDER BY ts ASC",
+    )
     .all(sinceIso) as AuditTableRow[];
-  return rows.map((row) => ({
-    id: row.id,
-    ts: row.ts,
-    query: row.query,
-    outcome: row.outcome,
-    retrieval: row.retrieval,
-    candidates: JSON.parse(row.candidates) as AuditCandidate[],
-    selected_skill_id: row.selected_skill_id,
-    latency_ms: row.latency_ms,
-  }));
+
+  return rows.map((row) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(row.candidates);
+    } catch {
+      throw new Error(`Failed to parse candidates JSON for audit row ${row.id}`);
+    }
+    if (!Array.isArray(parsed)) {
+      throw new Error(`Invalid candidates JSON for audit row ${row.id}: expected array, got ${typeof parsed}`);
+    }
+    const candidates: AuditCandidate[] = parsed.map((c: any, index: number) => {
+      if (!c || typeof c !== "object" || Array.isArray(c) || typeof c.skill_id !== "string") {
+        throw new Error(`Invalid candidate at index ${index} for audit row ${row.id}: missing or invalid skill_id`);
+      }
+      const score = c.score;
+      if (score !== null && (typeof score !== "number" || !Number.isFinite(score))) {
+        throw new Error(`Invalid candidate at index ${index} for audit row ${row.id}: missing or invalid score`);
+      }
+      return {
+        skill_id: c.skill_id,
+        score,
+      };
+    });
+
+    const result: AuditRow = {
+      id: row.id,
+      ts: row.ts,
+      query: row.query,
+      retrieval: row.retrieval,
+      candidates,
+      latency_ms: row.latency_ms,
+    };
+    if (row.degraded_from !== null && row.degraded_from !== undefined) {
+      result.degraded_from = row.degraded_from as AuditRow["degraded_from"];
+    }
+    if (row.degradation_reason !== null && row.degradation_reason !== undefined) {
+      result.degradation_reason = row.degradation_reason as AuditRow["degradation_reason"];
+    }
+    return result;
+  });
 }
 
 export function getStats(db: Database, since: string, now: Date = new Date()): StatsResponse {
@@ -139,8 +203,13 @@ export function renderStatsText(stats: StatsResponse): string {
   const lines: string[] = [];
   lines.push(`window: ${stats.since} .. ${stats.until}`);
   lines.push(
-    `outcomes: matched=${stats.outcome_totals.matched} ambiguous=${stats.outcome_totals.ambiguous} ` +
-      `no_match=${stats.outcome_totals.no_match} (ambiguous_rate=${stats.ambiguous_rate.toFixed(3)})`,
+    `requests: total=${stats.total_requests} empty_shortlist=${stats.empty_shortlist_count} ` +
+      `(empty_shortlist_rate=${stats.empty_shortlist_rate.toFixed(3)}) ` +
+      `degraded=${stats.degraded_count} avg_latency_ms=${stats.average_latency_ms.toFixed(1)}`,
+  );
+  lines.push(
+    `retrieval: exact=${stats.retrieval_totals.exact} reranked=${stats.retrieval_totals.reranked} ` +
+      `hybrid=${stats.retrieval_totals.hybrid} lexical=${stats.retrieval_totals.lexical}`,
   );
 
   lines.push("skills:");
@@ -148,15 +217,15 @@ export function renderStatsText(stats: StatsResponse): string {
     lines.push("  (none)");
   } else {
     for (const skill of stats.skills) {
-      lines.push(`  ${skill.skill_id} matched=${skill.matched_count} candidate=${skill.candidate_count}`);
+      lines.push(`  ${skill.skill_id} candidate=${skill.candidate_count}`);
     }
   }
 
-  lines.push("top no_match queries:");
-  if (stats.top_no_match_queries.length === 0) {
+  lines.push("top empty shortlist queries:");
+  if (stats.top_empty_shortlist_queries.length === 0) {
     lines.push("  (none)");
   } else {
-    for (const entry of stats.top_no_match_queries) {
+    for (const entry of stats.top_empty_shortlist_queries) {
       lines.push(`  "${entry.query}" (${entry.count})`);
     }
   }
