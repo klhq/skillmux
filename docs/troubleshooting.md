@@ -157,7 +157,7 @@ review. If the shortlist is empty (`candidates: []`) or missing an expected skil
 - write a concrete skill description with specific task vocabulary and user intents in `SKILL.md`;
 - verify embeddings are active with `skillmux doctor`;
 - increase candidate recall depth in `[recall]` (`k_lexical`, `k_vector`, or `k_rerank`);
-- evaluate ranking quality against a labelled dataset with `skillmux eval` (see [Migration to 2.0](migration-2.0.md)).
+- evaluate ranking quality against a labelled dataset with `skillmux eval` (see [Ranked-shortlist migration](ranked-shortlist-migration.md)).
 
 ### Server reports lexical mode
 

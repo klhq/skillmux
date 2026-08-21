@@ -62,7 +62,7 @@ deployed server only, never remote client skill directories. See
   server settings, local overlays, and container read-only configuration.
 - [CLI reference](cli.md): use host and container command surfaces,
   administrative contexts, JSON output, and exit codes.
-- [Migration to 2.0](migration-2.0.md): upgrade from 1.x to the 2.0 ranked-only
+- [Ranked-shortlist migration](ranked-shortlist-migration.md): upgrade to the ranked-only
   shortlist contract.
 - [Troubleshooting](troubleshooting.md): diagnose vault, sync, model, and server
   problems.

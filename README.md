@@ -279,7 +279,7 @@ Start with the [documentation hub](docs/README.md).
 | [Deployment](docs/deployment.md) | Docker, container command boundaries, HTTP surfaces and auth, CORS, rate limits, and comparable CLI, health, and metrics status |
 | [Configuration](docs/configuration.md) | Machine config, inference, HTTP surfaces, manifests, overlays, and container read-only configuration |
 | [CLI reference](docs/cli.md) | Host and container command surfaces, administrative contexts, automation, JSON output, and exit codes |
-| [Migration to 2.0](docs/migration-2.0.md) | Upgrade guide for the 2.0 ranked-only contract |
+| [Ranked-shortlist migration](docs/ranked-shortlist-migration.md) | Upgrade guide for the ranked-only contract |
 | [Troubleshooting](docs/troubleshooting.md) | `doctor`, deployment identity, common failures, and migration notes |
 | [MCP schema](docs/schema.json) | JSON Schema 2020-12 tool contract |
 

@@ -27,8 +27,8 @@ commands, target resolution, and automation envelopes, see
 [CLI reference](cli.md). For Linux CLI installation, see the
 [pinned checksum-verified download](getting-started.md#install-the-cli) or the
 [attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
-For ranking evaluation and upgrading from 1.x, see
-[Migration to 2.0](migration-2.0.md).
+For ranking evaluation and upgrading from earlier releases, see
+[Ranked-shortlist migration](ranked-shortlist-migration.md).
 
 ## Machine config bootstrap
 

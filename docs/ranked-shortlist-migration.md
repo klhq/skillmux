@@ -1,10 +1,10 @@
-# Migration to 2.0
+# Ranked-shortlist migration
 
-Skillmux 2.0 replaces threshold-based classification with ranked candidate retrieval. Instead of classifying a query as `matched`, `ambiguous`, or `no_match` and returning inline skill text on match, `resolve_skill` always returns a ranked shortlist of candidate summaries. The calling client reviews the shortlist and invokes `fetch_skill` to load the full instructions for the chosen skill.
+The ranked-shortlist release replaces threshold-based classification with ranked candidate retrieval. Instead of classifying a query as `matched`, `ambiguous`, or `no_match` and returning inline skill text on match, `resolve_skill` always returns a ranked shortlist of candidate summaries. The calling client reviews the shortlist and invokes `fetch_skill` to load the full instructions for the chosen skill.
 
 ## Upgrading configuration
 
-Threshold configuration tables and candidate limits from 1.x are obsolete. Threshold values do not map semantically to candidate list lengths; replace threshold tables with retrieval depth and output bounds.
+Legacy threshold configuration tables and candidate limits are obsolete. Threshold values do not map semantically to candidate list lengths; replace threshold tables with retrieval depth and output bounds.
 
 In `~/.config/skillmux/config.toml`, configure `[recall]` to control candidate generation and `[output]` to set candidate shortlist limits:
 
@@ -32,17 +32,17 @@ Existing `calibrate.sqlite3` databases in `state_dir` remain untouched on disk. 
 
 Startup fails with an explicit error when obsolete configuration keys are present:
 
-| Obsolete configuration key | Replacement | Error message |
+| Obsolete configuration key | Replacement | Migration guidance |
 | --- | --- | --- |
-| `[thresholds]` | `[output].top_k` | The `[thresholds]` table is obsolete in 2.0. Threshold calibration was removed; use `[output]` with `top_k`. |
-| `output.ambiguous_candidate_limit` | `output.top_k` | `output.ambiguous_candidate_limit` is obsolete in 2.0. Use `output.top_k` instead. |
-| `inference.thresholds` | Removed | `inference.thresholds` is obsolete in 2.0. Threshold calibration was removed. |
-| `inference.calibration` | `skillmux eval` | `inference.calibration` is obsolete in 2.0 and should be deleted. Threshold calibration was removed; use `skillmux eval` for ranking evaluation. |
-| `skillmux calibrate` | `skillmux eval` | `skillmux calibrate` was removed in 2.0. Threshold calibration was removed; use `skillmux eval` for ranking evaluation. |
+| `[thresholds]` | `[output].top_k` | The `[thresholds]` table is obsolete. Threshold calibration was removed; use `[output]` with `top_k`. |
+| `output.ambiguous_candidate_limit` | `output.top_k` | `output.ambiguous_candidate_limit` is obsolete. Use `output.top_k` instead. |
+| `inference.thresholds` | Removed | `inference.thresholds` is obsolete. Threshold calibration was removed. |
+| `inference.calibration` | `skillmux eval` | `inference.calibration` is obsolete and should be deleted. Threshold calibration was removed; use `skillmux eval` for ranking evaluation. |
+| `skillmux calibrate` | `skillmux eval` | `skillmux calibrate` was removed. Threshold calibration was removed; use `skillmux eval` for ranking evaluation. |
 
 ## Wire contract changes
 
-In 1.x, `resolve_skill` returned an `outcome` classification and delivered the complete `SKILL.md` body directly when a single match met threshold criteria:
+In the legacy classifier contract, `resolve_skill` returned an `outcome` classification and delivered the complete `SKILL.md` body directly when a single match met threshold criteria:
 
 ```json
 {
@@ -63,7 +63,7 @@ In 1.x, `resolve_skill` returned an `outcome` classification and delivered the c
 }
 ```
 
-In 2.0, `resolve_skill` returns ranked candidate summaries with descriptions and scores. The client reviews candidate descriptions and calls `fetch_skill` with the desired `skill_id` to retrieve instructions and supporting files:
+In the current contract, `resolve_skill` returns ranked candidate summaries with descriptions and scores. The client reviews candidate descriptions and calls `fetch_skill` with the desired `skill_id` to retrieve instructions and supporting files:
 
 ```json
 {
