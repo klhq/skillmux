@@ -27,9 +27,8 @@ commands, target resolution, and automation envelopes, see
 [CLI reference](cli.md). For Linux CLI installation, see the
 [pinned checksum-verified download](getting-started.md#install-the-cli) or the
 [attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
-For labelled datasets, threshold certification,
-reference values, and the apply lifecycle, see
-[Policy calibration](calibration.md).
+For ranking evaluation and upgrading from 1.x, see
+[Migration to 2.0](migration-2.0.md).
 
 ## Machine config bootstrap
 
@@ -70,7 +69,7 @@ loads it and cache it in `~/.cache/skillmux/models`. The full image
 already contains the model.
 
 Skillmux combines FTS5 and cosine result lists with reciprocal-rank fusion.
-Without a reranker, the calling model selects from the ordered shortlist.
+Skillmux returns the fused candidates as a ranked shortlist.
 
 Advanced local overrides:
 
@@ -120,9 +119,8 @@ Remote embedding `dimension` is required. `endpoint`, `api_key_env`, and the
 shared timeout reload live; model, dimension, device, and dtype require a
 restart. Changing only endpoint does not invalidate stored vectors.
 
-Reranker adapter and model form the calibration identity. Moving an unchanged
-deployment to another endpoint does not invalidate calibration; changing the
-adapter or model does.
+Reranker configuration pairs an adapter (such as `jina-v1` or `bifrost-v1`) with a
+model name and a complete endpoint URL.
 
 ## Configuration authority
 

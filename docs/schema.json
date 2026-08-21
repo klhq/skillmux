@@ -49,7 +49,7 @@
         },
         "score": {
           "type": ["number", "null"],
-          "description": "Final ordering score (null when retrieval lane produces uncalibrated ranking)."
+          "description": "Final ranking score (null when score values are unavailable for the retrieval lane)."
         }
       },
       "required": ["rank", "skill_id", "description", "score"],
@@ -98,7 +98,7 @@
     },
     "FetchSkillResult": {
       "type": "object",
-      "description": "AC5: verbatim delivery independent of any prior resolve outcome. Unknown skill_id raises ToolError with code SKILL_NOT_FOUND instead of returning this shape.",
+      "description": "AC5: verbatim delivery independent of any prior resolve_skill call. Unknown skill_id raises ToolError with code SKILL_NOT_FOUND instead of returning this shape.",
       "properties": {
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 512 },

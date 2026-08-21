@@ -231,18 +231,18 @@ Skillmux exposes two tools:
 
 | Tool | Input | Result |
 | --- | --- | --- |
-| `resolve_skill` | Natural-language task description | A matched skill, an ordered shortlist, or no match |
+| `resolve_skill` | Natural-language task description | A ranked shortlist of candidates |
 | `fetch_skill` | Exact `skill_id` | The current `SKILL.md` body, SHA-256 digest, and supporting-file paths |
 
 Skillmux uses the best available capability:
 
 1. SQLite FTS5 provides lexical retrieval and offline fallback.
 2. Local or remote embeddings add semantic recall.
-3. An optional reranker orders candidates and can produce calibrated automatic matches.
+3. An optional reranker scores and reorders candidates.
 
-Without calibrated reranker thresholds, Skillmux returns an ordered shortlist and lets the calling model choose. Endpoint failures degrade to a healthy lower retrieval mode instead of taking the MCP server down.
+Skillmux returns a ranked shortlist and lets the calling model choose. Endpoint failures degrade to a healthy lower retrieval mode instead of taking the MCP server down.
 
-Read [MCP routing](docs/mcp-routing.md) for transports, outcomes, client instructions, retrieval modes, and the wire contract.
+Read [MCP routing](docs/mcp-routing.md) for transports, client instructions, retrieval modes, and the wire contract.
 
 ## Supported clients
 
@@ -264,7 +264,7 @@ Skillmux preserves existing instruction files and unmanaged target content. Run 
 - **Managed ownership:** sync removes only entries recorded in the target's `.skillmux` marker.
 - **Current bytes:** MCP delivery hashes the file on disk and never serves a stale indexed body.
 - **Graceful retrieval:** embedding and reranker failures fall back without hiding the active capability.
-- **Auditable decisions:** each `resolve_skill` call records its outcome, candidates, scores, and latency in the state database.
+- **Auditable decisions:** each `resolve_skill` call records its query, retrieval capability, candidates, scores, and latency in the state database.
 
 ## Documentation
 
@@ -275,11 +275,11 @@ Start with the [documentation hub](docs/README.md).
 | [Getting started](docs/getting-started.md) | Native management, local MCP, and shared-service recipes |
 | [Concepts](docs/concepts.md) | Delivery tiers, deployment topologies, retrieval modes, and ownership |
 | [Managing skills](docs/skill-management.md) | Install, scan, pin, sync, report, overlays, and recovery |
-| [MCP routing](docs/mcp-routing.md) | Tools, outcomes, transports, retrieval, fallback, and integrity |
+| [MCP routing](docs/mcp-routing.md) | Tools, ranked candidate retrieval, transports, fallback, and integrity |
 | [Deployment](docs/deployment.md) | Docker, container command boundaries, HTTP surfaces and auth, CORS, rate limits, and comparable CLI, health, and metrics status |
 | [Configuration](docs/configuration.md) | Machine config, inference, HTTP surfaces, manifests, overlays, and container read-only configuration |
 | [CLI reference](docs/cli.md) | Host and container command surfaces, administrative contexts, automation, JSON output, and exit codes |
-| [Policy calibration](docs/calibration.md) | Labelled datasets, certification, and threshold application |
+| [Migration to 2.0](docs/migration-2.0.md) | Upgrade guide for the 2.0 ranked-only contract |
 | [Troubleshooting](docs/troubleshooting.md) | `doctor`, deployment identity, common failures, and migration notes |
 | [MCP schema](docs/schema.json) | JSON Schema 2020-12 tool contract |
 

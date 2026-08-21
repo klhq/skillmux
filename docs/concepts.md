@@ -168,21 +168,19 @@ Skillmux reports the active retrieval capability:
 | `reranked` | A configured reranker reorders the fused candidates |
 | `exact` | An exact skill ID resolves directly |
 
-A reranker does not enable automatic matches by itself. Skillmux needs
-calibrated `match_score`, `match_margin`, and `candidate_floor` thresholds
-before it returns a semantic result as `matched`.
+A reranker scores and reorders the fused candidates. Reranking does not classify
+outcomes or filter by score thresholds; Skillmux delivers the top-ranked candidates
+directly to the calling model.
 
-## Retrieval outcomes
+## Ranked shortlist retrieval
 
-`resolve_skill` returns one of three outcomes:
+`resolve_skill` always returns a ranked candidate list:
 
-- `matched`: one skill passed the calibrated policy, so Skillmux delivers its
-  `SKILL.md` body inline;
-- `ambiguous`: Skillmux returns an ordered candidate list and the calling model
-  chooses one with `fetch_skill`;
-- `no_match`: no candidate passed the policy and the agent continues without a
-  skill.
+- each candidate contains a `rank`, `skill_id`, `description`, and a nullable `score`;
+- `top_k` controls the maximum candidate count returned, bounded by `output.max_top_k`;
+- if no candidates match the query, `resolve_skill` returns an empty list (`candidates: []`);
+- the calling model reviews the candidate shortlist and calls `fetch_skill` with the chosen `skill_id` to retrieve complete instructions.
 
-Embedding or reranker failures reduce the active capability. Vault and index
-failures make the server unready because Skillmux can no longer guarantee
-valid retrieval.
+Embedding or reranker failures reduce the active capability and return
+structured degradation metadata. Vault and index failures make the server
+unready because Skillmux can no longer guarantee valid retrieval.

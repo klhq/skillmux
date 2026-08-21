@@ -24,7 +24,7 @@ CLI. Its `skillmux --help` surface is intentionally limited to `serve`,
 `index`, `doctor`, `report`, `scan`, `skill which`, and read-only `config`
 inspection (`show`, `get`, `validate`, `diff`, and `status`). Run `init`,
 `install`, pinning, `sync`, project or target management, model downloads,
-contexts, calibration, evaluation, and configuration changes on the host.
+contexts, evaluation, and configuration changes on the host.
 
 When the image rejects one of those commands, it exits with code 2. JSON mode
 uses `CONTAINER_COMMAND_UNSUPPORTED` and includes `rejected_command`,
@@ -267,8 +267,8 @@ whole call fails and the manifest file is left untouched. To pin into a
 
 Config changes are categorized into live-reloadable and restart-required settings:
 
-- **Reloadable**: `vault_path`, `recall.*`, `thresholds.*`, `inference.embedding.*`, `server.rate_limit.*`
-- **Restart Required**: `server.hostname`, `server.auth_enabled`, `server.auth_token_env`, `server.admin.enabled`, `server.admin.token_env`, `inference.mode`, `state_dir`
+- **Reloadable**: `config.environment_overrides`, `vault_path`, `recall.k_lexical`, `recall.k_vector`, `recall.k_rerank`, `output.top_k`, `output.max_top_k`, `inference.embedding.endpoint`, `inference.embedding.api_key_env`, `inference.reranker.adapter`, `inference.reranker.endpoint`, `inference.reranker.model`, `inference.reranker.api_key_env`, `inference.timeout_ms`, `server.rate_limit.enabled`, `server.rate_limit.requests_per_minute`, `server.rate_limit.trust_proxy`
+- **Restart Required**: `server.hostname`, `server.auth_enabled`, `server.auth_token_env`, `server.admin.enabled`, `server.admin.token_env`, `inference.mode`, `inference.bundle`, `inference.models_dir`, `state_dir`, `inference.embedding.model`, `inference.embedding.dimension`, `inference.embedding.device`, `inference.embedding.dtype`
 
 The config file is optional. `skillmux serve` starts with defaults if its
 config path or parent directory is absent. In that case reload is inactive

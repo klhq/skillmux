@@ -212,7 +212,7 @@ Register it with your MCP client:
 ```
 
 The client launches the process and closes it with the MCP session. Continue
-with [MCP routing](mcp-routing.md) for client behavior and retrieval outcomes.
+with [MCP routing](mcp-routing.md) for client behavior and ranked candidate retrieval.
 
 ## Run a shared MCP service
 

@@ -17,7 +17,7 @@ file or an existing `~/.config/skillmux` directory. If you need a specific
 vault, remote inference, or HTTP policy, create a config with `skillmux config
 init --vault ~/skills --yes`; otherwise the server uses its defaults. A missing
 optional config parent disables live reload until the next server start. For a
-malformed watched config, check the reported reload error—the running server
+malformed watched config, check the reported reload error: the running server
 continues with its last known good configuration.
 
 ## Docker rejected a CLI command
@@ -25,7 +25,7 @@ continues with its last known good configuration.
 The server image can inspect and serve a mounted vault, but it cannot manage
 agent directories or mutate host configuration. Its help lists the supported
 server commands. For `init`, `sync`, install or pin management, model
-downloads, contexts, calibration, evaluation, project/target/local-vault
+downloads, contexts, evaluation, project/target/local-vault
 management, or `config init`/`config set`, install and use the host CLI:
 
 ```sh
@@ -149,20 +149,15 @@ overlay.
 
 ## Retrieval failures
 
-### `resolve_skill` returns `ambiguous`
+### Candidates are missing or irrelevant
 
-Ambiguity is the expected result without calibrated reranker thresholds. The
-calling model should select a candidate and call `fetch_skill`.
+`resolve_skill` returns ranked candidate summaries for the calling model to
+review. If the shortlist is empty (`candidates: []`) or missing an expected skill:
 
-Improve a weak shortlist by:
-
-- writing a concrete skill description with task vocabulary;
-- enabling embeddings;
-- increasing recall depth when the relevant skill falls outside the fused
-  candidate set.
-
-Use a labelled dataset and [Policy calibration](calibration.md) before enabling
-automatic matches.
+- write a concrete skill description with specific task vocabulary and user intents in `SKILL.md`;
+- verify embeddings are active with `skillmux doctor`;
+- increase candidate recall depth in `[recall]` (`k_lexical`, `k_vector`, or `k_rerank`);
+- evaluate ranking quality against a labelled dataset with `skillmux eval` (see [Migration to 2.0](migration-2.0.md)).
 
 ### Server reports lexical mode
 
@@ -256,6 +251,9 @@ checking for a retry loop or shared-token traffic.
 
 Skillmux rejects removed fields with migration guidance:
 
+- replace obsolete `[thresholds]` table and `inference.thresholds` with `[output]` and `top_k`;
+- replace obsolete `output.ambiguous_candidate_limit` with `output.top_k`;
+- remove obsolete `inference.calibration` and use `skillmux eval` for ranking evaluation;
 - replace `[targets.<name>].project` with `project_groups = [...]`;
 - rename `[project.<group>].repos` to `paths`;
 - use `skillmux core pin|unpin` instead of removed `manifest pin|unpin`;
