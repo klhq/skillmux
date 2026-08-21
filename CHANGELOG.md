@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0](https://github.com/klhq/skillmux/compare/v1.6.0...v1.7.0) (2026-08-21)
+
+
+### Added
+
+* **calibration:** remove obsolete threshold calibration ([#125](https://github.com/klhq/skillmux/issues/125)) ([1432948](https://github.com/klhq/skillmux/commit/143294848c333c35186d70742ef59c230dc850bb))
+* **eval:** rank Skillmux 2.0 evaluation ([#124](https://github.com/klhq/skillmux/issues/124)) ([2fab68d](https://github.com/klhq/skillmux/commit/2fab68d73702913fea5a6e4d8f892c2802a65a88))
+* **ranking:** ranked-only Skillmux 2.0 runtime contract ([#122](https://github.com/klhq/skillmux/issues/122)) ([00810df](https://github.com/klhq/skillmux/commit/00810df92b7de60289dad41fe1fcb5a982686493))
+
+
+### Changed
+
+* **audit:** remove legacy classifier outcomes ([#126](https://github.com/klhq/skillmux/issues/126)) ([953edc4](https://github.com/klhq/skillmux/commit/953edc40147fb2f87eec5a57d53d6fa022566b77))
+
 ## [1.6.0](https://github.com/klhq/skillmux/compare/v1.5.2...v1.6.0) (2026-08-18)
 
 
