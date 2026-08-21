@@ -140,6 +140,32 @@ describe("computeStats", () => {
     ]);
   });
 
+  test("breaks ties using locale-independent code-unit ordering rather than locale-dependent collation", () => {
+    // In code-unit ordering: uppercase ('S'=83, 'Q'=81) precedes lowercase ('s'=115, 'q'=113).
+    // In standard locale collation: "skill-a" precedes "Skill-Z" and "query-a" precedes "Query-B".
+    const rows = [
+      auditRow({
+        candidates: [
+          { skill_id: "skill-a", score: 0.9 },
+          { skill_id: "Skill-Z", score: 0.8 },
+        ],
+      }),
+      auditRow({ candidates: [], query: "query-a" }),
+      auditRow({ candidates: [], query: "Query-B" }),
+    ];
+
+    const result = computeStats(rows, since, until);
+
+    expect(result.skills).toEqual([
+      { skill_id: "Skill-Z", candidate_count: 1 },
+      { skill_id: "skill-a", candidate_count: 1 },
+    ]);
+    expect(result.top_empty_shortlist_queries).toEqual([
+      { query: "Query-B", count: 1 },
+      { query: "query-a", count: 1 },
+    ]);
+  });
+
   test("caps top_empty_shortlist_queries at 20 entries", () => {
     const rows: AuditRow[] = [];
     for (let i = 0; i < 25; i++) {
@@ -190,16 +216,102 @@ describe("queryAuditRows", () => {
     rmSync(stateDir, { recursive: true, force: true });
   });
 
+  test("accepts score when it is null or a finite JSON number", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-valid-scores-"));
+    const db = openIndex(stateDir);
+
+    db.run(
+      `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
+      [
+        "2026-07-10T00:00:00.000Z",
+        "scores query",
+        "reranked",
+        JSON.stringify([
+          { skill_id: "with-null-score", score: null },
+          { skill_id: "with-float-score", score: 0.85 },
+          { skill_id: "with-zero-score", score: 0 },
+          { skill_id: "with-negative-score", score: -1.5 },
+        ]),
+        10,
+      ],
+    );
+
+    const rows = queryAuditRows(db, "2026-07-01T00:00:00.000Z");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.candidates).toEqual([
+      { skill_id: "with-null-score", score: null },
+      { skill_id: "with-float-score", score: 0.85 },
+      { skill_id: "with-zero-score", score: 0 },
+      { skill_id: "with-negative-score", score: -1.5 },
+    ]);
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  test.each([
+    { label: "missing score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1"}]' },
+    { label: "string score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":"0.9"}]' },
+    { label: "boolean true score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":true}]' },
+    { label: "boolean false score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":false}]' },
+    { label: "object score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":{"value":0.9}}]' },
+    { label: "array score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":[0.9]}]' },
+    { label: "non-finite positive score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":1e999}]' },
+    { label: "non-finite negative score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":-1e999}]' },
+  ])("throws clear error containing audit row id and candidate index when score is $label", ({ rawJson }) => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-invalid-score-"));
+    const db = openIndex(stateDir);
+
+    db.run(
+      `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
+      [42, "2026-07-10T00:00:00.000Z", "secret query", "lexical", rawJson, 10],
+    );
+
+    expect(() => queryAuditRows(db, "2026-07-01T00:00:00.000Z")).toThrow(
+      "Invalid candidate at index 1 for audit row 42: missing or invalid score",
+    );
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  test("does not leak raw candidates JSON or sensitive content in parse errors", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-leak-"));
+    const db = openIndex(stateDir);
+
+    const sensitiveSnippet = "SUPER_SECRET_USER_INPUT_DO_NOT_LEAK";
+    db.run(
+      `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
+      [99, "2026-07-10T00:00:00.000Z", "sensitive query", "lexical", `{ bad_json: "${sensitiveSnippet}" }`, 10],
+    );
+
+    let caughtError: Error | undefined;
+    try {
+      queryAuditRows(db, "2026-07-01T00:00:00.000Z");
+    } catch (err) {
+      caughtError = err as Error;
+    }
+
+    expect(caughtError).toBeDefined();
+    expect(caughtError!.message).toBe("Failed to parse candidates JSON for audit row 99");
+    expect(caughtError!.message).not.toContain(sensitiveSnippet);
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
   test("throws clearly on malformed candidates JSON rather than silently inventing data", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-malformed-"));
     const db = openIndex(stateDir);
 
     db.run(
-      `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
-      ["2026-07-10T00:00:00.000Z", "bad json query", "lexical", "NOT_VALID_JSON", 10],
+      `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
+      [7, "2026-07-10T00:00:00.000Z", "bad json query", "lexical", "NOT_VALID_JSON", 10],
     );
 
-    expect(() => queryAuditRows(db, "2026-07-01T00:00:00.000Z")).toThrow(/candidates/i);
+    expect(() => queryAuditRows(db, "2026-07-01T00:00:00.000Z")).toThrow(
+      "Failed to parse candidates JSON for audit row 7",
+    );
 
     db.close();
     rmSync(stateDir, { recursive: true, force: true });
@@ -210,11 +322,13 @@ describe("queryAuditRows", () => {
     const db = openIndex(stateDir);
 
     db.run(
-      `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
-      ["2026-07-10T00:00:00.000Z", "bad json query", "lexical", '{"not":"an_array"}', 10],
+      `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
+      [8, "2026-07-10T00:00:00.000Z", "bad json query", "lexical", '{"not":"an_array"}', 10],
     );
 
-    expect(() => queryAuditRows(db, "2026-07-01T00:00:00.000Z")).toThrow(/candidates/i);
+    expect(() => queryAuditRows(db, "2026-07-01T00:00:00.000Z")).toThrow(
+      "Invalid candidates JSON for audit row 8: expected array, got object",
+    );
 
     db.close();
     rmSync(stateDir, { recursive: true, force: true });

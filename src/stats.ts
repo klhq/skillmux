@@ -57,6 +57,12 @@ export function parseSince(since: string, now: Date = new Date()): Date {
   return parsed;
 }
 
+function compareCodeUnits(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
 export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsResponse {
   const retrieval_totals: RetrievalTotals = { exact: 0, reranked: 0, hybrid: 0, lexical: 0 };
   const skillCounts = new Map<string, number>();
@@ -100,7 +106,7 @@ export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsR
       if (b.candidate_count !== a.candidate_count) {
         return b.candidate_count - a.candidate_count;
       }
-      return a.skill_id.localeCompare(b.skill_id);
+      return compareCodeUnits(a.skill_id, b.skill_id);
     });
 
   const top_empty_shortlist_queries: EmptyShortlistQuery[] = [...emptyShortlistCounts.entries()]
@@ -109,7 +115,7 @@ export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsR
       if (b.count !== a.count) {
         return b.count - a.count;
       }
-      return a.query.localeCompare(b.query);
+      return compareCodeUnits(a.query, b.query);
     })
     .slice(0, 20);
 
@@ -150,18 +156,22 @@ export function queryAuditRows(db: Database, sinceIso: string): AuditRow[] {
     try {
       parsed = JSON.parse(row.candidates);
     } catch {
-      throw new Error(`Failed to parse candidates JSON for audit row ${row.id}: ${row.candidates}`);
+      throw new Error(`Failed to parse candidates JSON for audit row ${row.id}`);
     }
     if (!Array.isArray(parsed)) {
       throw new Error(`Invalid candidates JSON for audit row ${row.id}: expected array, got ${typeof parsed}`);
     }
     const candidates: AuditCandidate[] = parsed.map((c: any, index: number) => {
-      if (!c || typeof c !== "object" || typeof c.skill_id !== "string") {
+      if (!c || typeof c !== "object" || Array.isArray(c) || typeof c.skill_id !== "string") {
         throw new Error(`Invalid candidate at index ${index} for audit row ${row.id}: missing or invalid skill_id`);
+      }
+      const score = c.score;
+      if (score !== null && (typeof score !== "number" || !Number.isFinite(score))) {
+        throw new Error(`Invalid candidate at index ${index} for audit row ${row.id}: missing or invalid score`);
       }
       return {
         skill_id: c.skill_id,
-        score: typeof c.score === "number" ? c.score : null,
+        score,
       };
     });
 
