@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1](https://github.com/klhq/skillmux/compare/v1.7.0...v1.7.1) (2026-08-21)
+
+
+### Changed
+
+* **config:** neutralize migration error wording ([#128](https://github.com/klhq/skillmux/issues/128)) ([1fb130e](https://github.com/klhq/skillmux/commit/1fb130e3a6c3c3c084ca183c67ab7c8f984595a7))
+
 ## [1.7.0](https://github.com/klhq/skillmux/compare/v1.6.0...v1.7.0) (2026-08-21)
 
 

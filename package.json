@@ -1,6 +1,6 @@
 {
   "name": "@klhapp/skillmux",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Skill management and retrieval for AI agents: sync native skills across clients and route the long tail over MCP",
   "type": "module",
   "private": false,
