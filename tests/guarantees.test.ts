@@ -121,7 +121,7 @@ describe("sqlite concurrency", () => {
 });
 
 describe("audit log persistence (AC10)", () => {
-  test("every resolve_skill call appends a row with query, outcome, candidates and latency", async () => {
+  test("every resolve_skill call appends a canonical audit row with query, retrieval, candidates and latency without outcome", async () => {
     const { db } = await getRuntime();
     const countBefore = (db.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n;
 
@@ -135,14 +135,32 @@ describe("audit log persistence (AC10)", () => {
     expect(countAfter).toBe(countBefore + 1);
     const row = rows[0]!;
     expect(row.query).toBe("audit log persistence questions");
-    expect(row.outcome).toBe("ambiguous");
     expect(row.retrieval).toBe("reranked");
-    expect(row.selected_skill_id).toBeNull();
+    expect((row as any).outcome).toBeUndefined();
+    expect((row as any).selected_skill_id).toBeUndefined();
     expect(row.latency_ms).toBeGreaterThanOrEqual(0);
     const candidates = JSON.parse(row.candidates) as { skill_id: string; score: number | null }[];
     expect(candidates.length).toBeGreaterThanOrEqual(1);
     expect(candidates[0]!.skill_id).toBe("audit-target");
     expect(candidates[0]!.score).toBe(0.97);
+  });
+
+  test("stores only delivered candidates after top_k limiting rather than pre-limit retrieval pool", async () => {
+    const { db } = await getRuntime();
+
+    const result = await resolveSkill({ query: "audit bystander questions", top_k: 1 });
+    expect(result.candidates).toHaveLength(1);
+
+    const rows = db
+      .query("SELECT * FROM audit ORDER BY id DESC LIMIT 1")
+      .all() as (Omit<AuditRow, "candidates"> & { candidates: string })[];
+
+    const row = rows[0]!;
+    const auditCandidates = JSON.parse(row.candidates) as { skill_id: string; score: number | null }[];
+    expect(auditCandidates).toHaveLength(1);
+    expect(auditCandidates[0]!.skill_id).toBe(result.candidates[0]!.skill_id);
+    expect((row as any).outcome).toBeUndefined();
+    expect((row as any).selected_skill_id).toBeUndefined();
   });
 });
 

@@ -170,12 +170,10 @@ export interface AuditRow {
   id: number;
   ts: string;
   query: string;
-  outcome: "matched" | "ambiguous" | "no_match";
   retrieval: RetrievalCapability;
   degraded_from?: "reranked" | "hybrid" | null;
   degradation_reason?: DegradationReason | null;
   candidates: AuditCandidate[];
-  selected_skill_id: string | null;
   latency_ms: number;
 }
 

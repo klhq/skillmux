@@ -11,10 +11,8 @@ function auditRow(overrides: Partial<AuditRow>): AuditRow {
     id: 1,
     ts: "2026-07-10T00:00:00.000Z",
     query: "test query",
-    outcome: "no_match",
     retrieval: "lexical",
     candidates: [],
-    selected_skill_id: null,
     latency_ms: 5,
     ...overrides,
   };
@@ -50,89 +48,127 @@ describe("computeStats", () => {
   const since = new Date("2026-06-19T00:00:00.000Z");
   const until = new Date("2026-07-19T00:00:00.000Z");
 
-  test("tallies outcome_totals across rows", () => {
+  test("tallies total_requests, empty_shortlist_count, and empty_shortlist_rate across rows", () => {
     const rows = [
-      auditRow({ outcome: "matched", selected_skill_id: "writing-clearly", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
-      auditRow({ outcome: "ambiguous", candidates: [{ skill_id: "writing-clearly", score: 0.5 }, { skill_id: "code-review", score: 0.4 }] }),
-      auditRow({ outcome: "no_match" }),
+      auditRow({ candidates: [{ skill_id: "writing-clearly", score: 0.9 }], retrieval: "reranked", latency_ms: 10 }),
+      auditRow({ candidates: [{ skill_id: "writing-clearly", score: 0.5 }, { skill_id: "code-review", score: 0.4 }], retrieval: "hybrid", latency_ms: 20 }),
+      auditRow({ candidates: [], retrieval: "lexical", latency_ms: 6 }),
     ];
 
     const result = computeStats(rows, since, until);
 
-    expect(result.outcome_totals).toEqual({ matched: 1, ambiguous: 1, no_match: 1 });
+    expect(result.total_requests).toBe(3);
+    expect(result.empty_shortlist_count).toBe(1);
+    expect(result.empty_shortlist_rate).toBeCloseTo(1 / 3, 5);
+    expect(result.retrieval_totals).toEqual({ exact: 0, reranked: 1, hybrid: 1, lexical: 1 });
+    expect(result.degraded_count).toBe(0);
+    expect(result.average_latency_ms).toBe(12);
     expect(result.since).toBe(since.toISOString());
     expect(result.until).toBe(until.toISOString());
   });
 
-  test("computes ambiguous_rate as ambiguous over total, and 0 with no rows", () => {
-    const rows = [
-      auditRow({ outcome: "matched", selected_skill_id: "a", candidates: [{ skill_id: "a", score: 0.9 }] }),
-      auditRow({ outcome: "ambiguous", candidates: [{ skill_id: "a", score: 0.5 }] }),
-      auditRow({ outcome: "ambiguous", candidates: [{ skill_id: "a", score: 0.5 }] }),
-      auditRow({ outcome: "no_match" }),
-    ];
+  test("computes empty_shortlist_rate and average_latency_ms as 0 when rows are empty", () => {
+    const result = computeStats([], since, until);
 
-    expect(computeStats(rows, since, until).ambiguous_rate).toBe(0.5);
-    expect(computeStats([], since, until).ambiguous_rate).toBe(0);
+    expect(result.total_requests).toBe(0);
+    expect(result.empty_shortlist_count).toBe(0);
+    expect(result.empty_shortlist_rate).toBe(0);
+    expect(result.retrieval_totals).toEqual({ exact: 0, reranked: 0, hybrid: 0, lexical: 0 });
+    expect(result.degraded_count).toBe(0);
+    expect(result.average_latency_ms).toBe(0);
+    expect(result.skills).toEqual([]);
+    expect(result.top_empty_shortlist_queries).toEqual([]);
   });
 
-  test("aggregates per-skill matched_count and candidate_count, deduped within a row, sorted by matched_count desc", () => {
+  test("counts degraded requests when degraded_from or degradation_reason is present", () => {
+    const rows = [
+      auditRow({ degraded_from: "reranked", degradation_reason: "reranker_timeout", candidates: [{ skill_id: "a", score: 0.5 }] }),
+      auditRow({ degraded_from: null, degradation_reason: "embedding_timeout", candidates: [] }),
+      auditRow({ degraded_from: "hybrid", degradation_reason: null, candidates: [{ skill_id: "b", score: 0.3 }] }),
+      auditRow({ candidates: [{ skill_id: "c", score: 0.8 }] }),
+    ];
+
+    const result = computeStats(rows, since, until);
+    expect(result.degraded_count).toBe(3);
+  });
+
+  test("aggregates per-skill candidate_count deduplicated within a row and sorts by count desc then skill_id asc", () => {
     const rows = [
       auditRow({
-        outcome: "matched",
-        selected_skill_id: "writing-clearly",
-        candidates: [{ skill_id: "writing-clearly", score: 0.9 }, { skill_id: "code-review", score: 0.6 }],
+        candidates: [
+          { skill_id: "writing-clearly", score: 0.9 },
+          { skill_id: "code-review", score: 0.6 },
+          { skill_id: "writing-clearly", score: 0.8 }, // duplicate in legacy row
+        ],
       }),
       auditRow({
-        outcome: "ambiguous",
-        candidates: [{ skill_id: "code-review", score: 0.5 }, { skill_id: "writing-clearly", score: 0.5 }],
+        candidates: [
+          { skill_id: "beta-skill", score: 0.5 },
+          { skill_id: "alpha-skill", score: 0.5 },
+          { skill_id: "writing-clearly", score: 0.5 },
+        ],
       }),
     ];
 
     const result = computeStats(rows, since, until);
 
+    // writing-clearly has 2 requests, alpha-skill and beta-skill each have 1 request (tie broken alphabetically), code-review has 1 request
     expect(result.skills).toEqual([
-      { skill_id: "writing-clearly", matched_count: 1, candidate_count: 2 },
-      { skill_id: "code-review", matched_count: 0, candidate_count: 2 },
+      { skill_id: "writing-clearly", candidate_count: 2 },
+      { skill_id: "alpha-skill", candidate_count: 1 },
+      { skill_id: "beta-skill", candidate_count: 1 },
+      { skill_id: "code-review", candidate_count: 1 },
     ]);
   });
 
-  test("collects top_no_match_queries sorted by count desc, capped at 20 distinct queries", () => {
-    const rows = [
-      auditRow({ outcome: "no_match", query: "frequent query" }),
-      auditRow({ outcome: "no_match", query: "frequent query" }),
-      auditRow({ outcome: "no_match", query: "rare query" }),
+  test("collects top_empty_shortlist_queries sorted by count desc then query asc, capped at 20 distinct queries", () => {
+    const rows: AuditRow[] = [
+      auditRow({ candidates: [], query: "zeta query" }),
+      auditRow({ candidates: [], query: "alpha query" }),
+      auditRow({ candidates: [], query: "frequent query" }),
+      auditRow({ candidates: [], query: "frequent query" }),
+      auditRow({ candidates: [{ skill_id: "some-skill", score: 0.9 }], query: "non-empty query" }),
     ];
 
     const result = computeStats(rows, since, until);
 
-    expect(result.top_no_match_queries).toEqual([
+    // frequent query: 2; alpha query: 1; zeta query: 1 (alpha before zeta alphabetically)
+    expect(result.top_empty_shortlist_queries).toEqual([
       { query: "frequent query", count: 2 },
-      { query: "rare query", count: 1 },
+      { query: "alpha query", count: 1 },
+      { query: "zeta query", count: 1 },
     ]);
+  });
+
+  test("caps top_empty_shortlist_queries at 20 entries", () => {
+    const rows: AuditRow[] = [];
+    for (let i = 0; i < 25; i++) {
+      rows.push(auditRow({ candidates: [], query: `empty query ${String(i).padStart(2, "0")}` }));
+    }
+
+    const result = computeStats(rows, since, until);
+    expect(result.top_empty_shortlist_queries).toHaveLength(20);
   });
 });
 
 describe("queryAuditRows", () => {
-  test("reads rows at or after the since timestamp, parsing the JSON candidates column", () => {
+  test("reads rows at or after the since timestamp, parsing canonical columns and degradation data", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
     const db = openIndex(stateDir);
     insertAudit(db, {
       ts: "2026-06-01T00:00:00.000Z",
       query: "too old",
-      outcome: "no_match",
       retrieval: "lexical",
       candidates: [],
-      selected_skill_id: null,
       latency_ms: 3,
     });
     insertAudit(db, {
       ts: "2026-07-10T00:00:00.000Z",
       query: "in window",
-      outcome: "matched",
       retrieval: "reranked",
+      degraded_from: "reranked",
+      degradation_reason: "reranker_timeout",
       candidates: [{ skill_id: "writing-clearly", score: 0.9 }],
-      selected_skill_id: "writing-clearly",
       latency_ms: 12,
     });
 
@@ -141,10 +177,44 @@ describe("queryAuditRows", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       query: "in window",
-      outcome: "matched",
+      retrieval: "reranked",
+      degraded_from: "reranked",
+      degradation_reason: "reranker_timeout",
       candidates: [{ skill_id: "writing-clearly", score: 0.9 }],
-      selected_skill_id: "writing-clearly",
+      latency_ms: 12,
     });
+    expect((rows[0] as any).outcome).toBeUndefined();
+    expect((rows[0] as any).selected_skill_id).toBeUndefined();
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  test("throws clearly on malformed candidates JSON rather than silently inventing data", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-malformed-"));
+    const db = openIndex(stateDir);
+
+    db.run(
+      `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
+      ["2026-07-10T00:00:00.000Z", "bad json query", "lexical", "NOT_VALID_JSON", 10],
+    );
+
+    expect(() => queryAuditRows(db, "2026-07-01T00:00:00.000Z")).toThrow(/candidates/i);
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  test("throws clearly when candidates JSON is not an array", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-nonarray-"));
+    const db = openIndex(stateDir);
+
+    db.run(
+      `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
+      ["2026-07-10T00:00:00.000Z", "bad json query", "lexical", '{"not":"an_array"}', 10],
+    );
+
+    expect(() => queryAuditRows(db, "2026-07-01T00:00:00.000Z")).toThrow(/candidates/i);
 
     db.close();
     rmSync(stateDir, { recursive: true, force: true });
@@ -159,25 +229,24 @@ describe("getStats", () => {
     insertAudit(db, {
       ts: "2026-07-10T00:00:00.000Z",
       query: "in window",
-      outcome: "matched",
       retrieval: "reranked",
       candidates: [{ skill_id: "writing-clearly", score: 0.9 }],
-      selected_skill_id: "writing-clearly",
       latency_ms: 12,
     });
     insertAudit(db, {
       ts: "2026-01-01T00:00:00.000Z",
       query: "too old",
-      outcome: "no_match",
       retrieval: "lexical",
       candidates: [],
-      selected_skill_id: null,
       latency_ms: 3,
     });
 
     const result = getStats(db, "30d", now);
 
-    expect(result.outcome_totals).toEqual({ matched: 1, ambiguous: 0, no_match: 0 });
+    expect(result.total_requests).toBe(1);
+    expect(result.empty_shortlist_count).toBe(0);
+    expect(result.retrieval_totals).toEqual({ exact: 0, reranked: 1, hybrid: 0, lexical: 0 });
+    expect(result.skills).toEqual([{ skill_id: "writing-clearly", candidate_count: 1 }]);
     expect(result.until).toBe(now.toISOString());
 
     db.close();
@@ -186,11 +255,11 @@ describe("getStats", () => {
 });
 
 describe("renderStatsText", () => {
-  test("renders window, outcome totals, per-skill counts, and top no_match queries", () => {
+  test("renders window, requests, retrieval totals, per-skill counts, and top empty shortlist queries", () => {
     const stats = computeStats(
       [
-        auditRow({ outcome: "matched", selected_skill_id: "writing-clearly", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
-        auditRow({ outcome: "no_match", query: "obscure task" }),
+        auditRow({ retrieval: "reranked", latency_ms: 15, candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+        auditRow({ retrieval: "lexical", latency_ms: 5, candidates: [], query: "obscure task" }),
       ],
       new Date("2026-06-19T00:00:00.000Z"),
       new Date("2026-07-19T00:00:00.000Z"),
@@ -199,17 +268,19 @@ describe("renderStatsText", () => {
     const text = renderStatsText(stats);
 
     expect(text).toContain("window: 2026-06-19T00:00:00.000Z .. 2026-07-19T00:00:00.000Z");
-    expect(text).toContain("matched=1 ambiguous=0 no_match=1");
-    expect(text).toContain("writing-clearly matched=1 candidate=1");
+    expect(text).toContain("total=2 empty_shortlist=1");
+    expect(text).toContain("empty_shortlist_rate=0.500");
+    expect(text).toContain("exact=0 reranked=1 hybrid=0 lexical=1");
+    expect(text).toContain("writing-clearly candidate=1");
     expect(text).toContain(`"obscure task" (1)`);
   });
 
-  test("renders placeholders when there are no skills or no_match queries", () => {
+  test("renders placeholders when there are no skills or empty shortlist queries", () => {
     const stats = computeStats([], new Date("2026-06-19T00:00:00.000Z"), new Date("2026-07-19T00:00:00.000Z"));
 
     const text = renderStatsText(stats);
 
     expect(text).toContain("skills:\n  (none)");
-    expect(text).toContain("top no_match queries:\n  (none)");
+    expect(text).toContain("top empty shortlist queries:\n  (none)");
   });
 });

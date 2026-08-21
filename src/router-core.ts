@@ -409,12 +409,10 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
       id: 0, // assigned by SQLite
       ts: new Date().toISOString(),
       query: input.query,
-      outcome: candidates.length === 0 ? "no_match" : "ambiguous",
       retrieval,
       degraded_from: retrievalResult.degraded_from ?? null,
       degradation_reason: retrievalResult.degradation_reason ?? null,
-      candidates: rankedCandidates.map((c) => ({ skill_id: c.skill_id, score: c.score })),
-      selected_skill_id: null,
+      candidates: candidates.map((c) => ({ skill_id: c.skill_id, score: c.score })),
       latency_ms: Math.round(performance.now() - t0),
     }),
   );

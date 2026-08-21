@@ -9,8 +9,7 @@ describe("MetricsRegistry", () => {
 
     expect(body).toContain("# HELP skill_router_requests_total Total count of incoming MCP requests.");
     expect(body).toContain("# TYPE skill_router_requests_total counter");
-    expect(body).toContain("# HELP skill_router_resolve_outcomes_total Total count of resolve_skill query outcomes.");
-    expect(body).toContain("# TYPE skill_router_resolve_outcomes_total counter");
+    expect(body).not.toContain("skill_router_resolve_outcomes_total");
     expect(body).toContain("# HELP skill_router_resolve_latency_seconds Latency histogram of resolve_skill executions.");
     expect(body).toContain("# TYPE skill_router_resolve_latency_seconds histogram");
     expect(body).toContain("# HELP skill_router_errors_total Total count of server and query routing errors.");
@@ -63,21 +62,6 @@ describe("MetricsRegistry", () => {
 
     expect(body).toContain('skill_router_requests_total{method="resolve_skill"} 2');
     expect(body).toContain('skill_router_requests_total{method="fetch_skill"} 1');
-  });
-
-  test("increments resolve outcome counters by outcome label", () => {
-    const metrics = new MetricsRegistry();
-
-    metrics.recordResolveOutcome("matched");
-    metrics.recordResolveOutcome("ambiguous");
-    metrics.recordResolveOutcome("no_match");
-    metrics.recordResolveOutcome("matched");
-
-    const body = metrics.render();
-
-    expect(body).toContain('skill_router_resolve_outcomes_total{outcome="matched"} 2');
-    expect(body).toContain('skill_router_resolve_outcomes_total{outcome="ambiguous"} 1');
-    expect(body).toContain('skill_router_resolve_outcomes_total{outcome="no_match"} 1');
   });
 
   test("records resolve latency into the documented histogram buckets plus sum and count", () => {
