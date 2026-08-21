@@ -264,22 +264,22 @@ export async function loadConfig(path?: string): Promise<Config> {
     const parsed = Bun.TOML.parse(await file.text()) as Record<string, unknown>;
     if ("thresholds" in parsed) {
       throw new Error(
-        "The [thresholds] table is obsolete in 2.0. Threshold calibration was removed; use [output] with top_k.",
+        "The [thresholds] table is obsolete. Threshold calibration was removed; use [output] with top_k.",
       );
     }
     if (isPlainObject(parsed.output) && "ambiguous_candidate_limit" in parsed.output) {
       throw new Error(
-        "output.ambiguous_candidate_limit is obsolete in 2.0. Use output.top_k instead.",
+        "output.ambiguous_candidate_limit is obsolete. Use output.top_k instead.",
       );
     }
     if (isPlainObject(parsed.inference) && "thresholds" in parsed.inference) {
       throw new Error(
-        "inference.thresholds is obsolete in 2.0. Threshold calibration was removed.",
+        "inference.thresholds is obsolete. Threshold calibration was removed.",
       );
     }
     if (isPlainObject(parsed.inference) && "calibration" in parsed.inference) {
       throw new Error(
-        "inference.calibration is obsolete in 2.0 and should be deleted. Threshold calibration was removed; use skillmux eval for ranking evaluation.",
+        "inference.calibration is obsolete and should be deleted. Threshold calibration was removed; use skillmux eval for ranking evaluation.",
       );
     }
     if ("embedding" in parsed || "rerank" in parsed || "remote_timeout_ms" in parsed) {

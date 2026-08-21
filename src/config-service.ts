@@ -217,10 +217,10 @@ export function isEnvMasked(key: string, allowEnvOverrides: boolean = true): boo
 
 export function validateDottedKey(key: string): void {
   if (key === "output.ambiguous_candidate_limit") {
-    throw new Error("output.ambiguous_candidate_limit is obsolete in 2.0. Use output.top_k instead.");
+    throw new Error("output.ambiguous_candidate_limit is obsolete. Use output.top_k instead.");
   }
   if (key.startsWith("thresholds.") || key.startsWith("inference.thresholds.")) {
-    throw new Error("thresholds are obsolete in 2.0. Threshold calibration was removed; use output.top_k.");
+    throw new Error("thresholds are obsolete. Threshold calibration was removed; use output.top_k.");
   }
   const allowed = new Set([
     "config.environment_overrides",

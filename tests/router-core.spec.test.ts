@@ -107,7 +107,7 @@ afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("resolveSkill contract (2.0 ranked shortlist)", () => {
+describe("resolveSkill contract (ranked shortlist)", () => {
   test("accepts an object input with required query string and returns ranked candidates response", async () => {
     const result = await resolveSkill({ query: "route this task to a skill" });
     expect(result).toHaveProperty("retrieval");
