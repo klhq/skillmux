@@ -669,7 +669,7 @@ k_rerank = 0
   });
 });
 
-describe("output configuration and migration errors (2.0 ranked shortlist)", () => {
+describe("output configuration and migration errors (ranked shortlist)", () => {
   test("defaults output.top_k to 10 and output.max_top_k to 50", async () => {
     const path = await configFile(`
 vault_path = "~/skills"

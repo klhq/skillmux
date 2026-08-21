@@ -52,7 +52,7 @@ run_id = "cal_legacy_123"
     );
 
     await expect(loadConfig(configPath)).rejects.toThrow(
-      /inference\.calibration is obsolete in 2.0 and should be deleted/,
+      /inference\.calibration is obsolete and should be deleted/,
     );
   });
 
@@ -182,7 +182,7 @@ max_top_k = 10
     expect(readFileSync(sentinelPath)).toEqual(sentinelBytes);
   });
 
-  it("fails non-zero with a 2.0 migration message when 'skillmux calibrate' is invoked", async () => {
+  it("fails non-zero with a ranked-shortlist migration message when 'skillmux calibrate' is invoked", async () => {
     const proc = Bun.spawn(["bun", "run", "./src/cli.ts", "calibrate", "run"], {
       stdout: "pipe",
       stderr: "pipe",

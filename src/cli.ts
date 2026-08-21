@@ -270,7 +270,7 @@ async function main() {
         break;
       case "calibrate":
         throw new Error(
-          'skillmux calibrate was removed in 2.0. Threshold calibration was removed; use "skillmux eval" for ranking evaluation.',
+          'skillmux calibrate was removed. Threshold calibration was removed; use "skillmux eval" for ranking evaluation.',
         );
       case "completions":
         await handleCompletionsCommand(subCommand);
