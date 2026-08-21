@@ -113,7 +113,7 @@ The supported container commands are `serve`, `index`, `doctor`, `report`,
 
 The image rejects host-management commands, including `init`, `sync`,
 `install`, `project`, `target`, `core`, `local-vault`, `models download`,
-context management, calibration, evaluation, and configuration initialization
+context management, evaluation, and configuration initialization
 or mutation. Install the Skillmux CLI on the host when a command needs to
 manage a local vault or agent directory.
 
@@ -141,8 +141,8 @@ docker run -d \
   ghcr.io/klhq/skillmux:latest-slim
 ```
 
-Set `SKILLMUX_CONFIG` and mount a TOML file when you need reranking, calibrated
-thresholds, server policy, or API-key environment names:
+Set `SKILLMUX_CONFIG` and mount a TOML file when you need reranking, custom
+recall/output settings, server policy, or API-key environment names:
 
 ```sh
 docker run -d \
@@ -242,15 +242,18 @@ The HTTP server provides:
 | `GET /health/ready` | Vault, index, inference, active capability, version, runtime, and image variant |
 | `GET /health` | Compatibility alias for liveness |
 | `GET /metrics` | Prometheus text exposition |
-| `GET /stats` | Aggregated routing outcomes for `skillmux report` |
+| `GET /stats` | Aggregated routing statistics for `skillmux report` |
 | `POST /mcp` | Streamable HTTP MCP transport |
 | `/admin/v1/*` | Administrative configuration API (when enabled) |
 
 The Docker health check calls `/health/ready`.
 
-Prometheus metrics cover request totals, resolve outcomes, latency, errors,
-rate-limit rejections, and a `skill_router_deployment_info` gauge labelled with
-`version`, `runtime`, and `image_variant`. The values match `skillmux doctor`,
+`GET /stats` returns JSON aggregated from audit rows over a query window (using `?since=`, defaulting to 24 hours). The response contains `since`, `until`, `total_requests`, `empty_shortlist_count`, `empty_shortlist_rate`, `retrieval_totals` (counts for `exact`, `reranked`, `hybrid`, and `lexical`), `degraded_count`, `average_latency_ms`, per-skill candidate counts in `skills` (`skill_id`, `candidate_count`), and `top_empty_shortlist_queries` (`query`, `count`). See [Managing skills](skill-management.md#use-routing-data-to-tune-tiers) for using these statistics to tune delivery tiers.
+
+Prometheus metrics cover request totals, resolve latency histograms, errors,
+rate-limit rejections, degraded retrieval totals by stage and reason, readiness
+and active retrieval capability gauges, and a `skill_router_deployment_info` gauge
+labelled with `version`, `runtime`, and `image_variant`. The values match `skillmux doctor`,
 `skillmux config status`, and `/health/ready`; use `image_variant="none"` for
 a host runtime. These operational outputs never include credentials, API keys,
 or token values. Health and metrics do not require bearer authentication, but
@@ -286,7 +289,7 @@ their mounted vault checkout and do not manage host agent directories.
 
 ## Persistent data and backups
 
-Persist `state_dir` to retain the index, audit log, and calibration evidence.
+Persist `state_dir` to retain the index and audit log.
 Skill content remains in the server's vault checkout and should use its own
 backup or Git workflow.
 

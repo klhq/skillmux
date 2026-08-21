@@ -149,6 +149,6 @@
 
   <rect x="420" y="608" width="740" height="82" rx="14" fill="#0f172a"/>
   <text x="444" y="633" class="chip" fill="#cbd5e1">MCP TOOL CONTRACT · STDIO + HTTP</text>
-  <text x="444" y="655" class="mono mono-light" style="font-size: 12px">resolve_skill → retrieve + fuse → optional rerank → matched / ambiguous / no_match</text>
+  <text x="444" y="655" class="mono mono-light" style="font-size: 12px">resolve_skill → lexical + vector → RRF → optional rerank → top_k → ranked candidates</text>
   <text x="444" y="677" class="mono mono-light" style="font-size: 12px">fetch_skill → exact current SKILL.md + SHA-256</text>
 </svg>

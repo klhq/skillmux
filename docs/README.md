@@ -49,8 +49,8 @@ deployed server only, never remote client skill directories. See
   retrieval capability.
 - [Managing skills](skill-management.md): install, scan, pin, sync, inspect,
   and recover skills.
-- [MCP routing](mcp-routing.md): register stdio or HTTP MCP and understand
-  retrieval outcomes.
+- [MCP routing](mcp-routing.md): register stdio or HTTP MCP and route queries
+  to ranked candidate shortlists.
 
 ## Operate Skillmux
 
@@ -62,8 +62,8 @@ deployed server only, never remote client skill directories. See
   server settings, local overlays, and container read-only configuration.
 - [CLI reference](cli.md): use host and container command surfaces,
   administrative contexts, JSON output, and exit codes.
-- [Policy calibration](calibration.md): create labelled datasets and certify
-  reranker thresholds.
+- [Ranked-shortlist migration](ranked-shortlist-migration.md): upgrade to the ranked-only
+  shortlist contract.
 - [Troubleshooting](troubleshooting.md): diagnose vault, sync, model, and server
   problems.
 

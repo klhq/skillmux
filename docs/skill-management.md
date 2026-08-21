@@ -170,8 +170,13 @@ skillmux report --since 7d
 skillmux report --server http://host:3000 --since 7d
 ```
 
-Repeatedly matched skills may belong in core or a project group. Repeated
-`no_match` queries point to missing skills or weak skill descriptions.
+`skillmux report` aggregates total requests, empty shortlist count and rate,
+retrieval totals across lanes (`exact`, `reranked`, `hybrid`, `lexical`), degraded
+request counts, average latency in milliseconds, per-skill `candidate_count`, and
+`top_empty_shortlist_queries`.
+
+Skills with high candidate counts may belong in `[core]` or a project group.
+Top empty shortlist queries point to missing skills or weak skill descriptions.
 
 `--since` accepts windows such as `1h`, `7d`, and `1m`, plus absolute dates and
 timestamps.

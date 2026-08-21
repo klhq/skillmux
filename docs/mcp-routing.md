@@ -174,10 +174,10 @@ access.
 Each resolve request records:
 
 - timestamp and query;
-- retrieval capability and outcome;
+- retrieval capability;
+- degradation metadata (`degraded_from`, `degradation_reason`) when degraded;
 - candidates with scores;
-- selected skill ID, when present;
-- latency.
+- latency in milliseconds.
 
 Skillmux stores audit rows in the SQLite database under `state_dir`. Use
 `skillmux report` to summarize activity. Treat raw queries as private user
