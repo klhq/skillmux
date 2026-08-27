@@ -61,7 +61,10 @@ command to run; see the [container command contract](docs/deployment.md#containe
 ## One vault source of truth, three ways to use it
 
 <p align="center">
-  <img src="docs/assets/architecture.svg" alt="Three ways to use Skillmux: manage native skills, add local MCP retrieval, or run a shared MCP service" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
+    <img src="docs/assets/architecture-light.svg" alt="Three ways to use Skillmux: manage native skills, add local MCP retrieval, or run a shared MCP service" width="100%">
+  </picture>
 </p>
 
 “Local” describes where Skillmux runs. “Local inference” means the embedding
