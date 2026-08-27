@@ -3,6 +3,17 @@
 Skillmux supports three setup paths. Pick the result you want before choosing
 an installation.
 
+```mermaid
+flowchart LR
+    Q{What do you need?}
+    Q -->|Managed links in client skill directories| A[Manage native skills]
+    Q -->|Local stdio MCP| B[Add local MCP retrieval]
+    Q -->|Streamable HTTP MCP for several clients| C[Run a shared MCP service]
+    A --> A1[Skillmux CLI]
+    B --> B1[Skillmux CLI]
+    C --> C1[Skillmux server, full image]
+```
+
 | Goal | Skill delivery | Recommended installation |
 | --- | --- | --- |
 | [Manage native skills](#manage-native-skills) | Managed links in client skill directories | Skillmux CLI |

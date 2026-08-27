@@ -63,6 +63,16 @@ checkout over HTTP.
 
 ## Deployment topologies
 
+```mermaid
+flowchart TD
+    V[Git-backed vault source of truth]
+    V -->|client checkout| CLI[Skillmux CLI]
+    V -->|server checkout| SRV[Skillmux server]
+    CLI --> NM[Native management: filesystem links]
+    CLI --> LM[Local MCP: stdio]
+    SRV --> SM[Shared MCP: Streamable HTTP]
+```
+
 | Topology | Process location | Transport | Typical installation |
 | --- | --- | --- | --- |
 | Native management | Client machine | Filesystem links | Skillmux CLI |
