@@ -10,3 +10,8 @@ dist/
 # Internal planning docs — never published
 .agents/
 docs/sdd/
+
+# OpenWiki generated docs — local only
+openwiki/
+AGENTS.md
+CLAUDE.md
