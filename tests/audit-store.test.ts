@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { insertAudit, insertFetch, openAudit, openIndex } from "../src/db";
+import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit, openIndex } from "../src/db";
 import { queryAuditRows } from "../src/stats";
 
 // The pre-split shape: a canonical audit table inside index.sqlite3. openIndex
@@ -244,6 +244,31 @@ describe("audit store", () => {
       resolve_audit_id: null,
       rank_at_resolve: null,
     });
+  });
+
+  test("getAuditRowByRequestId returns the audit row's id and candidates for a known request_id (AC5)", () => {
+    db = openAudit(tmp);
+
+    insertAudit(db, {
+      ts: "2026-08-28T00:00:00.000Z",
+      request_id: "22222222-2222-4222-8222-222222222222",
+      query: "convert a spreadsheet to markdown",
+      retrieval: "hybrid",
+      candidates: [{ skill_id: "csv-formatter", score: 0.92 }],
+      latency_ms: 42,
+    });
+
+    const found = getAuditRowByRequestId(db, "22222222-2222-4222-8222-222222222222");
+
+    expect(found).not.toBeNull();
+    expect(found!.id).toBeGreaterThan(0);
+    expect(found!.candidates).toEqual([{ skill_id: "csv-formatter", score: 0.92 }]);
+  });
+
+  test("getAuditRowByRequestId returns null for an unknown or malformed request_id (AC7)", () => {
+    db = openAudit(tmp);
+
+    expect(getAuditRowByRequestId(db, "no-such-request-id")).toBeNull();
   });
 
   describe("audit table schema and legacy migration", () => {

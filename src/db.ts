@@ -341,6 +341,22 @@ export function insertAudit(db: Database, row: AuditInsert): void {
   );
 }
 
+/**
+ * Correlation lookup for AC5/AC7: looks up the resolve that produced
+ * `requestId`, or null when it names no known resolve (including malformed
+ * input, which is never validated at the boundary per AC7).
+ */
+export function getAuditRowByRequestId(
+  db: Database,
+  requestId: string,
+): { id: number; candidates: AuditCandidate[] } | null {
+  const row = db
+    .query("SELECT id, candidates FROM audit WHERE request_id = ?")
+    .get(requestId) as { id: number; candidates: string } | null;
+  if (!row) return null;
+  return { id: row.id, candidates: JSON.parse(row.candidates) as AuditCandidate[] };
+}
+
 export interface FetchInsert {
   ts: string;
   skill_id: string;
