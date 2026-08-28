@@ -1684,6 +1684,8 @@ describe("skillmux report CLI", () => {
       lexical: 0,
     });
     expect(Array.isArray(parsed.data.skills)).toBe(true);
+    expect(parsed.data.acceptance).toEqual({ available: false, uncorrelated_fetch_count: 0 });
+    expect(parsed.data.top_unused_shortlist_queries).toEqual([]);
   });
 });
 
