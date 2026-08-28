@@ -2,18 +2,31 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { insertAudit, openIndex } from "../src/db";
-import { computeStats, getStats, parseSince, queryAuditRows, renderStatsText } from "../src/stats";
-import type { AuditRow } from "../src/types";
+import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
+import { computeStats, getStats, parseSince, queryAuditRows, queryFetchRows, renderStatsText } from "../src/stats";
+import type { AuditRow, FetchAuditRow } from "../src/types";
 
 function auditRow(overrides: Partial<AuditRow>): AuditRow {
   return {
     id: 1,
     ts: "2026-07-10T00:00:00.000Z",
+    request_id: null,
     query: "test query",
     retrieval: "lexical",
     candidates: [],
     latency_ms: 5,
+    ...overrides,
+  };
+}
+
+function fetchRow(overrides: Partial<FetchAuditRow>): FetchAuditRow {
+  return {
+    id: 1,
+    ts: "2026-07-10T00:00:00.000Z",
+    skill_id: "writing-clearly",
+    request_id: null,
+    resolve_audit_id: null,
+    rank_at_resolve: null,
     ...overrides,
   };
 }
@@ -177,10 +190,76 @@ describe("computeStats", () => {
   });
 });
 
+describe("computeStats acceptance signal (AC9, AC10, AC11)", () => {
+  const since = new Date("2026-06-19T00:00:00.000Z");
+  const until = new Date("2026-07-19T00:00:00.000Z");
+
+  test("marks the acceptance signal unavailable when there are no correlated fetches", () => {
+    const rows = [auditRow({ id: 1, candidates: [{ skill_id: "writing-clearly", score: 0.9 }] })];
+    const fetches = [fetchRow({ resolve_audit_id: null })];
+
+    const result = computeStats(rows, since, until, fetches);
+
+    expect(result.acceptance).toEqual({ available: false, uncorrelated_fetch_count: 1 });
+  });
+
+  test("computes acceptance_rate, observed_mrr, and top1_acceptance_rate over resolves with candidates (AC9)", () => {
+    const rows = [
+      auditRow({ id: 1, query: "q1", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+      auditRow({ id: 2, query: "q2", candidates: [{ skill_id: "code-review", score: 0.8 }, { skill_id: "writing-clearly", score: 0.5 }] }),
+      auditRow({ id: 3, query: "q3", candidates: [{ skill_id: "code-review", score: 0.7 }] }),
+    ];
+    // resolve 1: fetched at rank 1 (top1). resolve 2: fetched candidate at rank 2. resolve 3: no fetch.
+    const fetches = [
+      fetchRow({ resolve_audit_id: 1, rank_at_resolve: 1, ts: "2026-07-10T00:00:01.000Z" }),
+      fetchRow({ resolve_audit_id: 2, rank_at_resolve: 2, ts: "2026-07-10T00:00:01.000Z" }),
+      fetchRow({ resolve_audit_id: null, ts: "2026-07-10T00:00:02.000Z" }),
+    ];
+
+    const result = computeStats(rows, since, until, fetches);
+
+    expect(result.acceptance).toEqual({
+      available: true,
+      resolves_with_candidates: 3,
+      accepted_count: 2,
+      acceptance_rate: 2 / 3,
+      observed_mrr: (1 / 1 + 1 / 2) / 2,
+      top1_acceptance_rate: 1 / 2,
+      uncorrelated_fetch_count: 1,
+    });
+  });
+
+  test("uses only the earliest fetch per resolve when a resolve was fetched more than once", () => {
+    const rows = [auditRow({ id: 1, query: "q1", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] })];
+    const fetches = [
+      fetchRow({ resolve_audit_id: 1, rank_at_resolve: 3, ts: "2026-07-10T00:00:02.000Z" }),
+      fetchRow({ resolve_audit_id: 1, rank_at_resolve: 1, ts: "2026-07-10T00:00:01.000Z" }),
+    ];
+
+    const result = computeStats(rows, since, until, fetches);
+
+    expect(result.acceptance).toMatchObject({ observed_mrr: 1, top1_acceptance_rate: 1 });
+  });
+
+  test("lists queries that returned candidates but received no correlated fetch, distinct from empty-shortlist queries (AC11)", () => {
+    const rows = [
+      auditRow({ id: 1, query: "unused query", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+      auditRow({ id: 2, query: "accepted query", candidates: [{ skill_id: "code-review", score: 0.8 }] }),
+      auditRow({ id: 3, query: "empty shortlist query", candidates: [] }),
+    ];
+    const fetches = [fetchRow({ resolve_audit_id: 2, rank_at_resolve: 1 })];
+
+    const result = computeStats(rows, since, until, fetches);
+
+    expect(result.top_unused_shortlist_queries).toEqual([{ query: "unused query", count: 1 }]);
+    expect(result.top_empty_shortlist_queries).toEqual([{ query: "empty shortlist query", count: 1 }]);
+  });
+});
+
 describe("queryAuditRows", () => {
   test("reads rows at or after the since timestamp, parsing canonical columns and degradation data", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
     insertAudit(db, {
       ts: "2026-06-01T00:00:00.000Z",
       query: "too old",
@@ -216,9 +295,28 @@ describe("queryAuditRows", () => {
     rmSync(stateDir, { recursive: true, force: true });
   });
 
+  test("loads a row written before request_id existed, defaulting the field to null (AC4)", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-no-request-id-"));
+    const db = openAudit(stateDir);
+
+    db.run(
+      `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
+      ["2026-07-10T00:00:00.000Z", "pre-request-id row", "lexical", JSON.stringify([]), 5],
+    );
+
+    const rows = queryAuditRows(db, "2026-07-01T00:00:00.000Z");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.query).toBe("pre-request-id row");
+    expect(rows[0]!.request_id).toBeNull();
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
   test("accepts score when it is null or a finite JSON number", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-valid-scores-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     db.run(
       `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
@@ -260,7 +358,7 @@ describe("queryAuditRows", () => {
     { label: "non-finite negative score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":-1e999}]' },
   ])("throws clear error containing audit row id and candidate index when score is $label", ({ rawJson }) => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-invalid-score-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     db.run(
       `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -277,7 +375,7 @@ describe("queryAuditRows", () => {
 
   test("does not leak raw candidates JSON or sensitive content in parse errors", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-leak-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     const sensitiveSnippet = "SUPER_SECRET_USER_INPUT_DO_NOT_LEAK";
     db.run(
@@ -302,7 +400,7 @@ describe("queryAuditRows", () => {
 
   test("throws clearly on malformed candidates JSON rather than silently inventing data", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-malformed-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     db.run(
       `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -319,7 +417,7 @@ describe("queryAuditRows", () => {
 
   test("throws clearly when candidates JSON is not an array", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-nonarray-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     db.run(
       `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -338,7 +436,7 @@ describe("queryAuditRows", () => {
 describe("getStats", () => {
   test("combines parseSince + queryAuditRows + computeStats against a real db", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
     const now = new Date("2026-07-19T00:00:00.000Z");
     insertAudit(db, {
       ts: "2026-07-10T00:00:00.000Z",
@@ -362,6 +460,65 @@ describe("getStats", () => {
     expect(result.retrieval_totals).toEqual({ exact: 0, reranked: 1, hybrid: 0, lexical: 0 });
     expect(result.skills).toEqual([{ skill_id: "writing-clearly", candidate_count: 1 }]);
     expect(result.until).toBe(now.toISOString());
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  test("correlates fetch rows to their resolve to populate the acceptance signal (AC9)", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
+    const db = openAudit(stateDir);
+    const now = new Date("2026-07-19T00:00:00.000Z");
+    insertAudit(db, {
+      ts: "2026-07-10T00:00:00.000Z",
+      request_id: "req-1",
+      query: "in window",
+      retrieval: "reranked",
+      candidates: [{ skill_id: "writing-clearly", score: 0.9 }],
+      latency_ms: 12,
+    });
+    const resolveId = getAuditRowByRequestId(db, "req-1")!.id;
+    insertFetch(db, {
+      ts: "2026-07-10T00:00:01.000Z",
+      skill_id: "writing-clearly",
+      request_id: "req-1",
+      resolve_audit_id: resolveId,
+      rank_at_resolve: 1,
+    });
+
+    const result = getStats(db, "30d", now);
+
+    expect(result.acceptance).toEqual({
+      available: true,
+      resolves_with_candidates: 1,
+      accepted_count: 1,
+      acceptance_rate: 1,
+      observed_mrr: 1,
+      top1_acceptance_rate: 1,
+      uncorrelated_fetch_count: 0,
+    });
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+});
+
+describe("queryFetchRows", () => {
+  test("reads fetch rows at or after the since timestamp", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
+    const db = openAudit(stateDir);
+    insertFetch(db, { ts: "2026-07-10T00:00:00.000Z", skill_id: "in-window", resolve_audit_id: 1, rank_at_resolve: 2 });
+    insertFetch(db, { ts: "2026-01-01T00:00:00.000Z", skill_id: "too-old", resolve_audit_id: null, rank_at_resolve: null });
+
+    const rows = queryFetchRows(db, "2026-06-01T00:00:00.000Z");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      skill_id: "in-window",
+      request_id: null,
+      resolve_audit_id: 1,
+      rank_at_resolve: 2,
+    });
 
     db.close();
     rmSync(stateDir, { recursive: true, force: true });
@@ -396,5 +553,58 @@ describe("renderStatsText", () => {
 
     expect(text).toContain("skills:\n  (none)");
     expect(text).toContain("top empty shortlist queries:\n  (none)");
+  });
+
+  test("renders the acceptance signal as unavailable, with the uncorrelated fetch count, when there are no correlated fetches (AC10)", () => {
+    const rows = [auditRow({ id: 1, candidates: [{ skill_id: "writing-clearly", score: 0.9 }] })];
+    const stats = computeStats(
+      rows,
+      new Date("2026-06-19T00:00:00.000Z"),
+      new Date("2026-07-19T00:00:00.000Z"),
+      [fetchRow({ resolve_audit_id: null })],
+    );
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain("acceptance: unavailable (uncorrelated_fetch_count=1)");
+  });
+
+  test("renders acceptance_rate, observed_mrr, and top1_acceptance_rate when the signal is available (AC9)", () => {
+    const rows = [auditRow({ id: 1, candidates: [{ skill_id: "writing-clearly", score: 0.9 }] })];
+    const stats = computeStats(
+      rows,
+      new Date("2026-06-19T00:00:00.000Z"),
+      new Date("2026-07-19T00:00:00.000Z"),
+      [fetchRow({ resolve_audit_id: 1, rank_at_resolve: 1 })],
+    );
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain(
+      "acceptance: acceptance_rate=1.000 observed_mrr=1.000 top1_acceptance_rate=1.000 (accepted=1/1, uncorrelated_fetch_count=0)",
+    );
+  });
+
+  test("renders top unused shortlist queries, distinct from top empty shortlist queries (AC11)", () => {
+    const rows = [
+      auditRow({ id: 1, query: "unused query", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+    ];
+    const stats = computeStats(
+      rows,
+      new Date("2026-06-19T00:00:00.000Z"),
+      new Date("2026-07-19T00:00:00.000Z"),
+    );
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain(`top unused shortlist queries:\n  "unused query" (1)`);
+  });
+
+  test("renders a placeholder when there are no unused shortlist queries", () => {
+    const stats = computeStats([], new Date("2026-06-19T00:00:00.000Z"), new Date("2026-07-19T00:00:00.000Z"));
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain("top unused shortlist queries:\n  (none)");
   });
 });

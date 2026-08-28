@@ -8,11 +8,15 @@ import {
   deleteSkill,
   findExactMatch,
   ftsSearch,
+  getAuditRowByRequestId,
   getIndexMeta,
   getSkillRow,
   ingestVault,
   insertAudit,
+  insertFetch,
+  openAudit,
   openIndex,
+  pruneAudit,
   replaceSkills,
   setIndexMeta,
   skillCount,
@@ -22,7 +26,7 @@ import {
   upsertVector,
   vectorTopK,
 } from "./db";
-import type { SkillRow } from "./db";
+import type { PruneResult, SkillRow } from "./db";
 import type {
   RankedCandidate,
   RetrievalCapability,
@@ -73,26 +77,45 @@ const defaultClients: Clients = {
 };
 
 let overrides: Overrides = {};
-let env: { config: Config; db: Database } | null = null;
+type Env = { config: Config; db: Database; auditDb: Database };
+
+let envPromise: Promise<Env> | null = null;
+let resolvedEnv: Env | null = null;
+let lastAuditPruneAt: number | null = null;
+
+const AUDIT_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /** Replace config/client overrides wholesale (tests, ops). Resets the cached index handle. */
 export function configure(opts: Overrides): void {
   overrides = opts;
-  env = null;
+  envPromise = null;
+  resolvedEnv = null;
+  lastAuditPruneAt = null;
 }
 
-async function getEnv(): Promise<{ config: Config; db: Database }> {
-  if (env) return env;
-  const config = overrides.config ?? (await loadConfig());
-  const db = openIndex(expandHome(config.state_dir));
-  if (skillCount(db) === 0) {
-    const vaultPath = expandHome(config.vault_path);
-    const localVaultPaths = config.local_vault_paths.map(expandHome);
-    ingestVault(db, await scanVaults(vaultPath, localVaultPaths));
-    setIndexMeta(db, "last_indexed_mtime", String(maxVaultMtime(vaultPath, localVaultPaths)));
-  }
-  env = { config, db };
-  return env;
+/**
+ * Memoizes the in-flight promise, not just the resolved value: startup fires
+ * initializeRuntime()'s getRuntime() and pruneAuditIfDue() back-to-back before
+ * either has awaited anything, so caching only the resolved env would let both
+ * open their own index/audit handles and race an ingestVault (AC14 regression).
+ */
+async function getEnv(): Promise<Env> {
+  if (envPromise) return envPromise;
+  envPromise = (async () => {
+    const config = overrides.config ?? (await loadConfig());
+    const stateDir = expandHome(config.state_dir);
+    const db = openIndex(stateDir);
+    const auditDb = openAudit(stateDir);
+    if (skillCount(db) === 0) {
+      const vaultPath = expandHome(config.vault_path);
+      const localVaultPaths = config.local_vault_paths.map(expandHome);
+      ingestVault(db, await scanVaults(vaultPath, localVaultPaths));
+      setIndexMeta(db, "last_indexed_mtime", String(maxVaultMtime(vaultPath, localVaultPaths)));
+    }
+    resolvedEnv = { config, db, auditDb };
+    return resolvedEnv;
+  })();
+  return envPromise;
 }
 
 function getClients(): Clients {
@@ -100,14 +123,21 @@ function getClients(): Clients {
 }
 
 /** Runtime accessor for the eval harness and CLI — not part of the MCP surface. */
-export async function getRuntime(): Promise<{ config: Config; db: Database; clients: Clients }> {
-  const { config, db } = await getEnv();
-  return { config, db, clients: getClients() };
+export async function getRuntime(): Promise<{
+  config: Config;
+  db: Database;
+  auditDb: Database;
+  clients: Clients;
+}> {
+  const { config, db, auditDb } = await getEnv();
+  return { config, db, auditDb, clients: getClients() };
 }
 
 export function closeRuntime(): void {
-  env?.db.close();
-  env = null;
+  resolvedEnv?.db.close();
+  resolvedEnv?.auditDb.close();
+  envPromise = null;
+  resolvedEnv = null;
 }
 
 /**
@@ -365,7 +395,7 @@ export async function startVaultWatcher(): Promise<() => void> {
 
 export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveResult> {
   const t0 = performance.now();
-  const { config, db } = await getEnv();
+  const { config, db, auditDb } = await getEnv();
   await syncVaultIfNeeded();
 
   if (input.top_k !== undefined) {
@@ -392,7 +422,10 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
       score: c.score,
     }));
 
+  const requestId = crypto.randomUUID();
+
   const result: ResolveResult = {
+    request_id: requestId,
     retrieval,
     ...(retrievalResult.degraded_from
       ? {
@@ -404,10 +437,11 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
   };
 
   insertAudit(
-    db,
+    auditDb,
     buildAuditRow({
       id: 0, // assigned by SQLite
       ts: new Date().toISOString(),
+      request_id: requestId,
       query: input.query,
       retrieval,
       degraded_from: retrievalResult.degraded_from ?? null,
@@ -592,11 +626,48 @@ export async function retrieveAndRerank(
   };
 }
 
+/**
+ * AC14: runs at most once per 24 hours per process. Callers must not await
+ * this on the startup or resolve path -- it is meant to be fired and left to
+ * resolve in the background so it never blocks readiness or a resolve.
+ */
+export async function pruneAuditIfDue(now: Date = new Date()): Promise<PruneResult | null> {
+  const { config, auditDb } = await getEnv();
+  const retentionDays = config.audit?.retention_days ?? 90;
+  if (retentionDays <= 0) return null;
+  if (lastAuditPruneAt !== null && now.getTime() - lastAuditPruneAt < AUDIT_PRUNE_INTERVAL_MS) {
+    return null;
+  }
+  lastAuditPruneAt = now.getTime();
+  return pruneAudit(auditDb, retentionDays, now);
+}
+
 export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {
-  const { config, db } = await getEnv();
+  const { config, db, auditDb } = await getEnv();
   await syncVaultIfNeeded();
   if (getSkillRow(db, input.skill_id) === null) {
     throw new Error(`SKILL_NOT_FOUND: no skill '${input.skill_id}' in the index`);
   }
-  return deliverSkill(db, config, input.skill_id);
+  const result = await deliverSkill(db, config, input.skill_id);
+
+  let resolveAuditId: number | null = null;
+  let rankAtResolve: number | null = null;
+  if (input.request_id) {
+    const resolveRow = getAuditRowByRequestId(auditDb, input.request_id);
+    if (resolveRow) {
+      resolveAuditId = resolveRow.id;
+      const index = resolveRow.candidates.findIndex((c) => c.skill_id === input.skill_id);
+      rankAtResolve = index === -1 ? null : index + 1;
+    }
+  }
+
+  insertFetch(auditDb, {
+    ts: new Date().toISOString(),
+    skill_id: input.skill_id,
+    request_id: input.request_id ?? null,
+    resolve_audit_id: resolveAuditId,
+    rank_at_resolve: rankAtResolve,
+  });
+
+  return result;
 }

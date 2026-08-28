@@ -2,7 +2,18 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { computeRankingMetrics, evalVault, loadEvalCases, parseEvalCases, type EvalCase } from "../src/eval";
+import {
+  buildPromotedCases,
+  computeRankingMetrics,
+  evalVault,
+  excludeExistingCases,
+  loadEvalCases,
+  normalizeQuery,
+  parseEvalCases,
+  queryPromotableFetches,
+  type EvalCase,
+} from "../src/eval";
+import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
 import { backfillEmbeddings, configure, rebuildIndex } from "../src/router-core";
 import type { Config } from "../src/types";
 
@@ -92,6 +103,77 @@ describe("ranking evaluation dataset parsing", () => {
     expect(() => parseEvalCases([
       { query: "duplicate label", relevant_skill_ids: ["skill-a", "skill-a"] },
     ])).toThrow(/duplicate/i);
+  });
+});
+
+describe("normalizeQuery", () => {
+  test("trims, collapses internal whitespace, and lowercases", () => {
+    expect(normalizeQuery("  Run   Docker Logs  ")).toBe("run docker logs");
+  });
+});
+
+describe("buildPromotedCases (AC17)", () => {
+  test("groups fetched skill ids by normalized query, deduplicated, as split: observed", () => {
+    const fetches = [
+      { query: "run docker logs", skill_id: "docker-manager" },
+      { query: "Run   Docker Logs", skill_id: "docker-manager" },
+      { query: "Run   Docker Logs", skill_id: "log-viewer" },
+      { query: "write clearly", skill_id: "writing-clearly" },
+    ];
+
+    const cases = buildPromotedCases(fetches);
+
+    expect(cases).toEqual([
+      { query: "run docker logs", split: "observed", relevant_skill_ids: ["docker-manager", "log-viewer"] },
+      { query: "write clearly", split: "observed", relevant_skill_ids: ["writing-clearly"] },
+    ]);
+  });
+});
+
+describe("excludeExistingCases (AC18)", () => {
+  test("skips cases whose normalized query already exists in the target file rather than rewriting them", () => {
+    const candidates: EvalCase[] = [
+      { query: "run docker logs", split: "observed", relevant_skill_ids: ["docker-manager"] },
+      { query: "new query", split: "observed", relevant_skill_ids: ["writing-clearly"] },
+    ];
+    const existing: EvalCase[] = [{ query: "Run Docker Logs", split: "tune", relevant_skill_ids: ["docker-manager"] }];
+
+    const result = excludeExistingCases(candidates, existing);
+
+    expect(result.cases).toEqual([{ query: "new query", split: "observed", relevant_skill_ids: ["writing-clearly"] }]);
+    expect(result.skipped).toBe(1);
+  });
+});
+
+describe("queryPromotableFetches (AC17)", () => {
+  test("joins fetches to their resolve's query, ignoring uncorrelated fetches and fetches before the window", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-"));
+    const db = openAudit(stateDir);
+    insertAudit(db, {
+      ts: "2026-07-10T00:00:00.000Z",
+      request_id: "req-1",
+      query: "run docker logs",
+      retrieval: "reranked",
+      candidates: [{ skill_id: "docker-manager", score: 0.9 }],
+      latency_ms: 12,
+    });
+    const resolveId = getAuditRowByRequestId(db, "req-1")!.id;
+    insertFetch(db, {
+      ts: "2026-07-10T00:00:01.000Z",
+      skill_id: "docker-manager",
+      request_id: "req-1",
+      resolve_audit_id: resolveId,
+      rank_at_resolve: 1,
+    });
+    insertFetch(db, { ts: "2026-07-10T00:00:02.000Z", skill_id: "orphan-skill", resolve_audit_id: null, rank_at_resolve: null });
+    insertFetch(db, { ts: "2026-01-01T00:00:00.000Z", skill_id: "docker-manager", resolve_audit_id: resolveId, rank_at_resolve: 1 });
+
+    const rows = queryPromotableFetches(db, "2026-06-01T00:00:00.000Z");
+
+    expect(rows).toEqual([{ query: "run docker logs", skill_id: "docker-manager" }]);
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
   });
 });
 

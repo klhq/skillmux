@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { AuditCandidate, AuditRow } from "./types";
 import type { VaultSkill } from "./vault";
@@ -10,6 +10,81 @@ export interface SkillRow {
   description: string;
   aliases: string;
   content_sha256: string;
+}
+
+export function openAudit(stateDir: string): Database {
+  mkdirSync(stateDir, { recursive: true });
+  const db = new Database(join(stateDir, "audit.sqlite3"), { create: true });
+  // auto_vacuum only takes on an empty database, so it must precede both the
+  // journal-mode switch and any CREATE TABLE. It is what lets a retention
+  // prune reclaim space without a full VACUUM.
+  db.run("PRAGMA auto_vacuum = INCREMENTAL");
+  db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA busy_timeout = 2000");
+  db.run(`CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    request_id TEXT,
+    query TEXT NOT NULL,
+    retrieval TEXT NOT NULL DEFAULT 'lexical',
+    degraded_from TEXT,
+    degradation_reason TEXT,
+    candidates TEXT NOT NULL,
+    latency_ms INTEGER NOT NULL
+  )`);
+  // CREATE TABLE IF NOT EXISTS no-ops on a table opened from before request_id
+  // existed (AC4), so add it explicitly when missing.
+  const auditColumns = new Set(
+    (db.query("PRAGMA table_info(audit)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!auditColumns.has("request_id")) {
+    db.run("ALTER TABLE audit ADD COLUMN request_id TEXT");
+  }
+  db.run(`CREATE TABLE IF NOT EXISTS fetch (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    request_id TEXT,
+    resolve_audit_id INTEGER,
+    rank_at_resolve INTEGER
+  )`);
+  adoptAuditFromIndex(db, stateDir);
+  return db;
+}
+
+// Audit rows used to live in index.sqlite3. Move any that remain there into the
+// audit store, then drop the old table so the index carries no user queries.
+function adoptAuditFromIndex(db: Database, stateDir: string): void {
+  const indexPath = join(stateDir, "index.sqlite3");
+  if (!existsSync(indexPath)) return;
+
+  db.run("ATTACH DATABASE ? AS legacy", [indexPath]);
+  try {
+    const legacyAudit = db
+      .query("SELECT name FROM legacy.sqlite_master WHERE type = 'table' AND name = 'audit'")
+      .get();
+    if (!legacyAudit) return;
+
+    // Older audit tables predate the retrieval columns and carry outcome /
+    // degraded / selected_skill_id instead. Select what is actually there and
+    // let the canonical defaults stand in for the rest.
+    const legacyColumns = new Set(
+      (db.query("PRAGMA legacy.table_info(audit)").all() as { name: string }[]).map((c) => c.name),
+    );
+    const retrieval = legacyColumns.has("retrieval") ? "COALESCE(retrieval, 'lexical')" : "'lexical'";
+    const degradedFrom = legacyColumns.has("degraded_from") ? "degraded_from" : "NULL";
+    const degradationReason = legacyColumns.has("degradation_reason") ? "degradation_reason" : "NULL";
+
+    // SQLite commits atomically across attached databases, so the copy and the
+    // drop either both land or neither does.
+    db.transaction(() => {
+      db.run(`INSERT INTO audit (ts, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms)
+        SELECT ts, query, ${retrieval}, ${degradedFrom}, ${degradationReason}, candidates, latency_ms FROM legacy.audit`);
+      db.run("DROP TABLE legacy.audit");
+    })();
+  } finally {
+    db.run("DETACH DATABASE legacy");
+  }
 }
 
 export function openIndex(stateDir: string): Database {
@@ -39,48 +114,7 @@ export function openIndex(stateDir: string): Database {
   if (!vectorColumns.some((column) => column.name === "embedding_fingerprint")) {
     db.run("ALTER TABLE vectors ADD COLUMN embedding_fingerprint TEXT NOT NULL DEFAULT ''");
   }
-  db.run(`CREATE TABLE IF NOT EXISTS audit (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts TEXT NOT NULL,
-    query TEXT NOT NULL,
-    retrieval TEXT NOT NULL DEFAULT 'lexical',
-    degraded_from TEXT,
-    degradation_reason TEXT,
-    candidates TEXT NOT NULL,
-    latency_ms INTEGER NOT NULL
-  )`);
-  const auditColumns = db.query("PRAGMA table_info(audit)").all() as { name: string }[];
-  const columnNames = new Set(auditColumns.map((column) => column.name));
-  const hasLegacyColumns =
-    columnNames.has("outcome") ||
-    columnNames.has("selected_skill_id") ||
-    columnNames.has("degraded");
-  const missingCanonicalColumns =
-    !columnNames.has("retrieval") ||
-    !columnNames.has("degraded_from") ||
-    !columnNames.has("degradation_reason");
-
-  if (hasLegacyColumns || missingCanonicalColumns) {
-    db.transaction(() => {
-      db.run(`CREATE TABLE audit_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ts TEXT NOT NULL,
-        query TEXT NOT NULL,
-        retrieval TEXT NOT NULL DEFAULT 'lexical',
-        degraded_from TEXT,
-        degradation_reason TEXT,
-        candidates TEXT NOT NULL,
-        latency_ms INTEGER NOT NULL
-      )`);
-      const retrievalExpr = columnNames.has("retrieval") ? "COALESCE(retrieval, 'lexical')" : "'lexical'";
-      const degradedFromExpr = columnNames.has("degraded_from") ? "degraded_from" : "NULL";
-      const degradationReasonExpr = columnNames.has("degradation_reason") ? "degradation_reason" : "NULL";
-      db.run(`INSERT INTO audit_new (id, ts, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms)
-        SELECT id, ts, query, ${retrievalExpr}, ${degradedFromExpr}, ${degradationReasonExpr}, candidates, latency_ms FROM audit`);
-      db.run("DROP TABLE audit");
-      db.run("ALTER TABLE audit_new RENAME TO audit");
-    })();
-  }
+  // Audit rows live in audit.sqlite3; openAudit adopts any left here.
   db.run(`CREATE TABLE IF NOT EXISTS index_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -281,6 +315,7 @@ export function vectorTopK(db: Database, query: Float32Array, k: number): SkillR
 
 export interface AuditInsert {
   ts: string;
+  request_id?: string | null;
   query: string;
   retrieval: AuditRow["retrieval"];
   degraded_from?: string | null;
@@ -291,10 +326,11 @@ export interface AuditInsert {
 
 export function insertAudit(db: Database, row: AuditInsert): void {
   db.run(
-    `INSERT INTO audit (ts, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO audit (ts, request_id, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.ts,
+      row.request_id ?? null,
       row.query,
       row.retrieval,
       row.degraded_from ?? null,
@@ -303,4 +339,75 @@ export function insertAudit(db: Database, row: AuditInsert): void {
       row.latency_ms,
     ],
   );
+}
+
+/**
+ * Correlation lookup for AC5/AC7: looks up the resolve that produced
+ * `requestId`, or null when it names no known resolve (including malformed
+ * input, which is never validated at the boundary per AC7).
+ */
+export function getAuditRowByRequestId(
+  db: Database,
+  requestId: string,
+): { id: number; candidates: AuditCandidate[] } | null {
+  const row = db
+    .query("SELECT id, candidates FROM audit WHERE request_id = ?")
+    .get(requestId) as { id: number; candidates: string } | null;
+  if (!row) return null;
+  return { id: row.id, candidates: JSON.parse(row.candidates) as AuditCandidate[] };
+}
+
+export interface FetchInsert {
+  ts: string;
+  skill_id: string;
+  request_id?: string | null;
+  resolve_audit_id?: number | null;
+  rank_at_resolve?: number | null;
+}
+
+export function insertFetch(db: Database, row: FetchInsert): void {
+  db.run(
+    `INSERT INTO fetch (ts, skill_id, request_id, resolve_audit_id, rank_at_resolve)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      row.ts,
+      row.skill_id,
+      row.request_id ?? null,
+      row.resolve_audit_id ?? null,
+      row.rank_at_resolve ?? null,
+    ],
+  );
+}
+
+export interface PruneResult {
+  audit_deleted: number;
+  fetch_deleted: number;
+}
+
+/**
+ * Deletes resolve and fetch rows with ts before `cutoffIso`, each by its own
+ * timestamp; no FK ties them, so a fetch outliving its resolve row simply
+ * reads back uncorrelated (AC7's existing null path). Reclaims the freed
+ * pages with an incremental vacuum, which only touches audit.sqlite3 (AC16).
+ */
+export function pruneAuditBefore(db: Database, cutoffIso: string): PruneResult {
+  const auditResult = db.run("DELETE FROM audit WHERE ts < ?", [cutoffIso]);
+  const fetchResult = db.run("DELETE FROM fetch WHERE ts < ?", [cutoffIso]);
+  db.run("PRAGMA incremental_vacuum");
+
+  return { audit_deleted: auditResult.changes, fetch_deleted: fetchResult.changes };
+}
+
+/** AC12: retentionDays <= 0 disables pruning entirely. */
+export function pruneAudit(db: Database, retentionDays: number, now: Date = new Date()): PruneResult {
+  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0 };
+  const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
+  return pruneAuditBefore(db, cutoff);
+}
+
+/** Dry-run counterpart of pruneAuditBefore: counts without deleting (AC15). */
+export function countPrunable(db: Database, cutoffIso: string): PruneResult {
+  const auditRow = db.query("SELECT count(*) AS n FROM audit WHERE ts < ?").get(cutoffIso) as { n: number };
+  const fetchRow = db.query("SELECT count(*) AS n FROM fetch WHERE ts < ?").get(cutoffIso) as { n: number };
+  return { audit_deleted: auditRow.n, fetch_deleted: fetchRow.n };
 }

@@ -12,6 +12,7 @@ import {
   backfillEmbeddings,
   configure,
   fetchSkill,
+  pruneAuditIfDue,
   resolveSkill,
 } from "./router-core";
 import { closeRuntime, getRuntime, startVaultWatcher } from "./router-core";
@@ -113,12 +114,16 @@ export function createMcpServer(): McpServer {
     {
       description:
         "Fetch a skill's SKILL.md verbatim by skill_id, with sha256 and supporting-file paths. " +
-        "Independent of any prior resolve_skill outcome.",
-      inputSchema: { skill_id: z.string().regex(SKILL_ID_PATTERN) },
+        "Independent of any prior resolve_skill outcome. Pass the request_id from a prior " +
+        "resolve_skill call to link this fetch to it for quality measurement.",
+      inputSchema: {
+        skill_id: z.string().regex(SKILL_ID_PATTERN),
+        request_id: z.string().min(1).max(128).optional(),
+      },
     },
-    async ({ skill_id }) => {
+    async ({ skill_id, request_id }) => {
       try {
-        const result = await fetchSkill({ skill_id });
+        const result = await fetchSkill({ skill_id, request_id });
         const { body, ...meta } = result;
         return {
           content: [{ type: "text" as const, text: body }],
@@ -174,6 +179,14 @@ export async function startServer(opts?: {
   const initPromise = initializeRuntime(readinessState)
     .then(() => metricsRegistry.setReadiness(readinessState.get()))
     .catch((err) => console.error("skillmux runtime init error:", err));
+
+  // AC14: fire-and-forget so this never delays readiness or blocks a resolve;
+  // not chained onto initPromise, which is awaited below for HTTP transport.
+  const runAuditPrune = () =>
+    pruneAuditIfDue().catch((err) => console.error("skillmux audit prune error:", err));
+  runAuditPrune();
+  const auditPruneInterval = setInterval(runAuditPrune, 24 * 60 * 60 * 1000);
+  auditPruneInterval.unref();
 
   const server = createMcpServer();
 
@@ -345,13 +358,13 @@ export async function startServer(opts?: {
               { status: 400, headers: { "Content-Type": "application/json" } },
             );
           }
-          const { db } = await getRuntime();
+          const { auditDb } = await getRuntime();
           const headers = new Headers({ "Content-Type": "application/json" });
           if (allowOriginHeader)
             headers.set("Access-Control-Allow-Origin", allowOriginHeader);
           for (const [key, value] of Object.entries(rateLimitResult.headers))
             headers.set(key, value);
-          return new Response(JSON.stringify(getStats(db, since)), {
+          return new Response(JSON.stringify(getStats(auditDb, since)), {
             status: 200,
             headers,
           });
@@ -521,6 +534,7 @@ export async function startServer(opts?: {
       async stop() {
         if (stopped) return;
         stopped = true;
+        clearInterval(auditPruneInterval);
         readinessState.set({ ...readinessState.get(), status: "stopping" });
         metricsRegistry.setReadiness(readinessState.get());
         bunServer.stop(true);
@@ -540,6 +554,7 @@ export async function startServer(opts?: {
       async stop() {
         if (stopped) return;
         stopped = true;
+        clearInterval(auditPruneInterval);
         readinessState.set({ ...readinessState.get(), status: "stopping" });
         metricsRegistry.setReadiness(readinessState.get());
         configWatcher?.stop();

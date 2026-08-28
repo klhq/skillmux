@@ -5,6 +5,7 @@ export function buildAuditRow(row: AuditRow): AuditRow {
   const built: AuditRow = {
     id: row.id,
     ts: row.ts,
+    request_id: row.request_id,
     query: row.query,
     retrieval: row.retrieval,
     candidates: row.candidates.map((c) => ({ skill_id: c.skill_id, score: c.score })),

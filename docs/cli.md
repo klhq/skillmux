@@ -21,10 +21,11 @@ or [Managing skills](skill-management.md).
 
 The Docker image is a shared-server runtime, not a replacement for the host
 CLI. Its `skillmux --help` surface is intentionally limited to `serve`,
-`index`, `doctor`, `report`, `scan`, `skill which`, and read-only `config`
-inspection (`show`, `get`, `validate`, `diff`, and `status`). Run `init`,
-`install`, pinning, `sync`, project or target management, model downloads,
-contexts, evaluation, and configuration changes on the host.
+`index`, `doctor`, `report`, `audit prune`, `eval promote`, `scan`,
+`skill which`, and read-only `config` inspection (`show`, `get`, `validate`,
+`diff`, and `status`). Run `init`, `install`, pinning, `sync`, project or
+target management, model downloads, contexts, and bare `eval` (vault ranking
+evaluation, which needs local embeddings and the vault) on the host.
 
 When the image rejects one of those commands, it exits with code 2. JSON mode
 uses `CONTAINER_COMMAND_UNSUPPORTED` and includes `rejected_command`,
@@ -284,6 +285,63 @@ Show which root actually serves a skill_id, and every root it shadows:
 ```sh
 skillmux skill which csv-formatter
 ```
+
+---
+
+## Observability and evaluation (`skillmux report`, `audit`, `eval`)
+
+`resolve_skill` records every request to an audit log; `fetch_skill` records
+what was actually opened and, when the caller passes back the `request_id`
+from a prior resolve, correlates the fetch to that resolve and its rank in
+the shortlist. `skillmux report` summarizes this data, `skillmux audit prune`
+reclaims space, and `skillmux eval promote` turns correlated fetches into
+eval cases.
+
+```sh
+# Summarize activity from the local state or a remote server
+skillmux report --since 7d
+skillmux report --server https://skillmux.internal:3000 --since 24h
+skillmux report --db ~/.local/state/skillmux/audit.sqlite3 --since 2026-08-01
+
+# Prune audit rows older than the configured retention window (default 90 days)
+skillmux audit prune --yes
+skillmux audit prune --older-than 30d --dry-run
+skillmux audit prune --older-than 30d --json
+
+# Promote observed, correlated fetches into an eval case file
+skillmux eval promote --since 7d --dry-run
+skillmux eval promote --since 7d --yes
+skillmux eval promote --since 7d --target eval/observed.json --yes
+```
+
+`report` reads `--server <url>`, `--db <path>` (an explicit SQLite file,
+opened read-only), or the configured local `state_dir` by default;
+`--server` and `--db` are mutually exclusive. Alongside request totals,
+empty-shortlist rate, retrieval-lane totals, degradation counts, and
+per-skill candidate counts, `report` prints an acceptance signal derived
+from correlated fetches: `acceptance_rate`, `observed_mrr` (reciprocal rank
+of the first fetched candidate), and `top1_acceptance_rate`, each computed
+over resolves that returned at least one candidate. When a window has no
+correlated fetches, `report` marks the signal `unavailable` and states the
+uncorrelated fetch count instead of printing a misleading `0.000`. It also
+lists the top queries that returned candidates but received no correlated
+fetch, distinct from the existing top empty-shortlist list.
+
+`audit prune` deletes resolve and fetch rows older than `--older-than` (same
+window syntax as `--since`), or `audit.retention_days` from configuration
+(default 90; `0` disables pruning). `--dry-run` reports counts without
+writing. Non-interactive runs require `--yes`. The server also prunes
+automatically once at startup and at most once per 24 hours while running;
+manual pruning is for on-demand cleanup or a tighter window.
+
+`eval promote` reads correlated fetches since `--since`, deduplicates them by
+normalized query, and writes `{ query, split: "observed", relevant_skill_ids
+}` cases to `--target` (default an `eval-observed.json` file under
+`state_dir`; never the hand-curated `eval/queries.json` unless given
+explicitly). It never rewrites a case for a query already present in the
+target file; skipped counts are reported in the summary. Because promoted
+cases carry raw user queries, `eval promote` always prints a stderr warning.
+Both `--dry-run` and `--yes` behave as elsewhere in the CLI.
 
 ---
 

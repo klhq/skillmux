@@ -1,9 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { z } from "zod";
-import { configure, fetchSkill, getRuntime, rebuildIndex, resolveSkill } from "../src/router-core";
+import { configure, fetchSkill, getRuntime, pruneAuditIfDue, rebuildIndex, resolveSkill } from "../src/router-core";
 import { createMcpServer } from "../src/server";
 import type { AuditRow, Config } from "../src/types";
 import { sha256Hex } from "../src/vault";
@@ -122,7 +122,7 @@ describe("sqlite concurrency", () => {
 
 describe("audit log persistence (AC10)", () => {
   test("every resolve_skill call appends a canonical audit row with query, retrieval, candidates and latency without outcome", async () => {
-    const { db } = await getRuntime();
+    const { auditDb: db } = await getRuntime();
     const countBefore = (db.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n;
 
     await resolveSkill({ query: "audit log persistence questions" });
@@ -146,7 +146,7 @@ describe("audit log persistence (AC10)", () => {
   });
 
   test("stores only delivered candidates after top_k limiting rather than pre-limit retrieval pool", async () => {
-    const { db } = await getRuntime();
+    const { auditDb: db } = await getRuntime();
 
     const result = await resolveSkill({ query: "audit bystander questions", top_k: 1 });
     expect(result.candidates).toHaveLength(1);
@@ -161,6 +161,150 @@ describe("audit log persistence (AC10)", () => {
     expect(auditCandidates[0]!.skill_id).toBe(result.candidates[0]!.skill_id);
     expect((row as any).outcome).toBeUndefined();
     expect((row as any).selected_skill_id).toBeUndefined();
+  });
+});
+
+describe("fetch outcome logging (AC5-AC8)", () => {
+  test("fetch_skill without a request_id records an uncorrelated fetch (AC6)", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    await fetchSkill({ skill_id: "audit-target" });
+
+    const row = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").get() as {
+      ts: string;
+      skill_id: string;
+      request_id: string | null;
+      resolve_audit_id: number | null;
+      rank_at_resolve: number | null;
+    };
+
+    expect(row.skill_id).toBe("audit-target");
+    expect(row.request_id).toBeNull();
+    expect(row.resolve_audit_id).toBeNull();
+    expect(row.rank_at_resolve).toBeNull();
+  });
+
+  test("fetch_skill with a known request_id links to that resolve and records the fetched skill's rank (AC5, AC8)", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    const resolved = await resolveSkill({ query: "audit log persistence questions" });
+    const resolveRow = db
+      .query("SELECT id FROM audit WHERE request_id = ?")
+      .get(resolved.request_id) as { id: number };
+
+    await fetchSkill({ skill_id: "audit-target", request_id: resolved.request_id });
+
+    const row = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").get() as {
+      request_id: string | null;
+      resolve_audit_id: number | null;
+      rank_at_resolve: number | null;
+    };
+
+    expect(row.request_id).toBe(resolved.request_id);
+    expect(row.resolve_audit_id).toBe(resolveRow.id);
+    expect(row.rank_at_resolve).toBe(
+      resolved.candidates.find((c) => c.skill_id === "audit-target")!.rank,
+    );
+  });
+
+  test("fetch_skill with an unknown or malformed request_id succeeds and records an uncorrelated fetch (AC7)", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    await expect(
+      fetchSkill({ skill_id: "audit-target", request_id: "not-a-real-request-id" }),
+    ).resolves.toMatchObject({ skill_id: "audit-target" });
+
+    const row = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").get() as {
+      request_id: string | null;
+      resolve_audit_id: number | null;
+      rank_at_resolve: number | null;
+    };
+
+    expect(row.request_id).toBe("not-a-real-request-id");
+    expect(row.resolve_audit_id).toBeNull();
+    expect(row.rank_at_resolve).toBeNull();
+  });
+
+  test("rank_at_resolve is null when the fetched skill is correlated but absent from the resolve's shortlist (AC8)", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    const resolved = await resolveSkill({ query: "audit log persistence questions", top_k: 1 });
+    expect(resolved.candidates.some((c) => c.skill_id === "bystander")).toBe(false);
+
+    await fetchSkill({ skill_id: "bystander", request_id: resolved.request_id });
+
+    const row = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").get() as {
+      resolve_audit_id: number | null;
+      rank_at_resolve: number | null;
+    };
+
+    expect(row.resolve_audit_id).not.toBeNull();
+    expect(row.rank_at_resolve).toBeNull();
+  });
+});
+
+describe("correlation (AC3)", () => {
+  test("resolve_skill mints a unique request_id shared with its audit row", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    const first = await resolveSkill({ query: "audit log persistence questions" });
+    const second = await resolveSkill({ query: "audit bystander questions" });
+
+    expect(first.request_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(second.request_id).not.toBe(first.request_id);
+
+    const row = db
+      .query("SELECT request_id FROM audit ORDER BY id DESC LIMIT 1")
+      .get() as { request_id: string | null };
+    expect(row.request_id).toBe(second.request_id);
+  });
+});
+
+describe("audit prune scheduling (AC14)", () => {
+  afterEach(() => {
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])),
+        rerank: async (_query, docs) =>
+          docs.map((d) => (d.skill_id === "audit-target" ? 0.97 : 0.1)),
+      },
+    });
+  });
+
+  test("prunes on the first call, then skips repeats within 24 hours, then prunes again after 24 hours", async () => {
+    configure({
+      config: { ...config, audit: { retention_days: 30 } },
+      clients: { embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])) },
+    });
+    const t0 = new Date("2026-08-28T00:00:00.000Z");
+
+    expect(await pruneAuditIfDue(t0)).not.toBeNull();
+    expect(await pruneAuditIfDue(new Date(t0.getTime() + 60_000))).toBeNull();
+    expect(await pruneAuditIfDue(new Date(t0.getTime() + 24 * 60 * 60 * 1000 + 1))).not.toBeNull();
+  });
+
+  test("never prunes when retention_days is 0 (AC12)", async () => {
+    configure({
+      config: { ...config, audit: { retention_days: 0 } },
+      clients: { embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])) },
+    });
+
+    expect(await pruneAuditIfDue(new Date())).toBeNull();
+  });
+
+  test("concurrent callers racing at startup share one env instead of opening the database twice", async () => {
+    configure({
+      config,
+      clients: { embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])) },
+    });
+
+    const [a, b] = await Promise.all([getRuntime(), getRuntime()]);
+
+    expect(a.db).toBe(b.db);
+    expect(a.auditDb).toBe(b.auditDb);
   });
 });
 

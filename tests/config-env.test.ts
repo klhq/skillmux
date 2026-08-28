@@ -419,6 +419,34 @@ requests_per_minute = 60
   });
 });
 
+describe("audit configuration (AC12)", () => {
+  test("defaults audit.retention_days to 90", async () => {
+    const config = await loadConfig("/does/not/exist/config.toml");
+
+    expect(config.audit?.retention_days).toBe(90);
+  });
+
+  test("loads a configured audit.retention_days, including 0 to disable pruning", async () => {
+    const path = await configFile(`
+[audit]
+retention_days = 0
+`);
+
+    const config = await loadConfig(path);
+
+    expect(config.audit?.retention_days).toBe(0);
+  });
+
+  test("rejects a negative audit.retention_days at config load", async () => {
+    const path = await configFile(`
+[audit]
+retention_days = -1
+`);
+
+    await expect(loadConfig(path)).rejects.toThrow();
+  });
+});
+
 describe("Shim 1: legacy XDG directory migration", () => {
   afterEach(() => {
     rmSync(fakeHome, { recursive: true, force: true });

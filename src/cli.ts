@@ -12,7 +12,7 @@ import {
   migrateLegacyPaths,
   resolveConfigPath,
 } from "./config";
-import { openIndex } from "./db";
+import { openAudit } from "./db";
 import { diagnose } from "./doctor";
 import { getEffectiveConfig } from "./config-service";
 import { evalVault } from "./eval";
@@ -106,7 +106,9 @@ import {
   suggestCorrection,
 } from "./output";
 import { generateCompletions, type ShellType } from "./completions";
+import { runAudit } from "./commands/audit";
 import { handleConfigCommand } from "./commands/config";
+import { runEvalPromote } from "./commands/eval";
 import { runCore } from "./commands/core";
 import { configuredTargetForSurface, runProject } from "./commands/project";
 import { confirmAction, confirmIfNeeded } from "./commands/shared";
@@ -124,6 +126,7 @@ const KNOWN_COMMANDS = [
   "target",
   "core",
   "report",
+  "audit",
   "scan",
   "install",
   "eval",
@@ -145,11 +148,14 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
       "local-vault",
       "models",
       "context",
-      "eval",
     ].includes(command)
   ) {
     return true;
   }
+
+  // eval promote only touches the mounted state_dir, unlike bare `eval`
+  // (vault ranking evaluation), which needs local embeddings and the vault.
+  if (command === "eval" && subCommand !== "promote") return true;
 
   return command === "config" && ["init", "set"].includes(subCommand);
 }
@@ -322,6 +328,9 @@ async function main() {
       case "report":
         await runReport(rawArgv.slice(1), { isJson });
         break;
+      case "audit":
+        await runAudit(subCommand, commandArgs, { isJson, dryRun: isDryRun });
+        break;
       case "scan":
         await runScan(rawArgv.slice(1), { isJson });
         break;
@@ -329,7 +338,13 @@ async function main() {
         await runInstall(rawArgv.slice(1), { isJson });
         break;
       case "eval":
-        await runEval({ isJson });
+        if (subCommand === "promote") {
+          await runEvalPromote(commandArgs, { isJson, dryRun: isDryRun });
+        } else if (subCommand === "") {
+          await runEval({ isJson });
+        } else {
+          throw new Error(`usage: skillmux eval [promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]]`);
+        }
         break;
       case "doctor":
         await runDoctor({ isJson });
@@ -359,7 +374,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|skill which|local-vault init|config show|models download>`;
+          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|audit prune|scan|install|eval|doctor|skill which|local-vault init|config show|models download>`;
         throw new Error(msg);
       }
     }
@@ -507,7 +522,7 @@ Default:
   serve --transport http
 
 Supported commands:
-  serve, index, doctor, report, scan, skill which
+  serve, index, doctor, report, audit prune, eval promote, scan, skill which
   config show|get|validate|diff|status
 
 Native skill management:
@@ -540,9 +555,14 @@ Init clients:
 Init targets:
   agent-skills, claude-code, codex, custom
 
+Operations:
+  skillmux report [--server <url> | --db <path>] --since <window> [--json]
+  skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
+  skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
+
 Commands:
-  serve, index, sync, init, project, target, core, report, scan, install, eval, doctor, skill,
-  local-vault, config, models, context, completions`);
+  serve, index, sync, init, project, target, core, report, audit, scan, install, eval, doctor,
+  skill, local-vault, config, models, context, completions`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1453,7 +1473,7 @@ async function runReport(
 
   const db = dbPath
     ? new Database(dbPath, { readonly: true })
-    : openIndex(expandHome((await loadConfig()).state_dir));
+    : openAudit(expandHome((await loadConfig()).state_dir));
   const stats = getStats(db, since);
   emitSuccess({ isJson: options.isJson }, stats, () =>
     console.log(renderStatsText(stats)),

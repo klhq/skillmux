@@ -107,6 +107,11 @@ export interface ConfigPolicy {
   environment_overrides?: boolean;
 }
 
+export interface AuditConfig {
+  /** Age in days beyond which audit rows are pruned. 0 disables pruning. */
+  retention_days: number;
+}
+
 export interface Config {
   config?: ConfigPolicy;
   vault_path: string;
@@ -116,6 +121,7 @@ export interface Config {
   output: OutputConfig;
   inference: InferenceConfig;
   server?: ServerConfig;
+  audit?: AuditConfig;
 }
 
 export interface RankedCandidate {
@@ -136,6 +142,7 @@ export type DegradationReason =
   | "reranker_protocol_error";
 
 export interface ResolveResult {
+  request_id: string;
   retrieval: RetrievalCapability;
   degraded_from?: "reranked" | "hybrid";
   degradation_reason?: DegradationReason;
@@ -151,6 +158,7 @@ export interface ResolveSkillInput {
 
 export interface FetchSkillInput {
   skill_id: string;
+  request_id?: string;
 }
 
 export interface FetchSkillResult {
@@ -169,12 +177,26 @@ export interface AuditCandidate {
 export interface AuditRow {
   id: number;
   ts: string;
+  /** Null for rows written before request_id existed (AC4). */
+  request_id: string | null;
   query: string;
   retrieval: RetrievalCapability;
   degraded_from?: "reranked" | "hybrid" | null;
   degradation_reason?: DegradationReason | null;
   candidates: AuditCandidate[];
   latency_ms: number;
+}
+
+export interface FetchAuditRow {
+  id: number;
+  ts: string;
+  skill_id: string;
+  /** Exactly as supplied by the caller, including an unknown value. Null when the caller sent none. */
+  request_id: string | null;
+  /** Null when the fetch is uncorrelated: no request_id, an unknown/malformed one, or a pruned resolve row. */
+  resolve_audit_id: number | null;
+  /** Rank of skill_id in the correlated resolve's shortlist. Null when uncorrelated or absent from the shortlist. */
+  rank_at_resolve: number | null;
 }
 
 export interface Clients {

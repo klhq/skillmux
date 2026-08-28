@@ -55,6 +55,18 @@
       "required": ["rank", "skill_id", "description", "score"],
       "additionalProperties": false
     },
+    "RequestId": {
+      "type": "string",
+      "description": "Per-resolve correlation id minted by resolve_skill. Lowercase UUIDv4.",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "InboundRequestId": {
+      "type": "string",
+      "description": "request_id as supplied by the caller to fetch_skill. Deliberately not pattern-validated: an unknown or malformed value must still succeed and record an uncorrelated fetch (AC7); correlation validity is decided by the server, not the schema.",
+      "minLength": 1,
+      "maxLength": 128
+    },
     "ResolveSkillInput": {
       "type": "object",
       "properties": {
@@ -76,6 +88,7 @@
       "type": "object",
       "description": "Ranked candidates response from resolve_skill.",
       "properties": {
+        "request_id": { "$ref": "#/$defs/RequestId" },
         "retrieval": { "enum": ["exact", "reranked", "hybrid", "lexical"] },
         "degraded_from": { "enum": ["reranked", "hybrid"] },
         "degradation_reason": { "$ref": "#/$defs/DegradationReason" },
@@ -85,13 +98,14 @@
           "description": "Shortlist of candidates in descending score order with contiguous 1-based ranks."
         }
       },
-      "required": ["retrieval", "candidates"],
+      "required": ["request_id", "retrieval", "candidates"],
       "additionalProperties": false
     },
     "FetchSkillInput": {
       "type": "object",
       "properties": {
-        "skill_id": { "$ref": "#/$defs/SkillId" }
+        "skill_id": { "$ref": "#/$defs/SkillId" },
+        "request_id": { "$ref": "#/$defs/InboundRequestId" }
       },
       "required": ["skill_id"],
       "additionalProperties": false
@@ -146,7 +160,7 @@
         },
         "state_dir": {
           "type": "string",
-          "description": "All router writes are confined here (AC9): index SQLite (incl. audit log), vector matrix.",
+          "description": "All router writes are confined here (AC9): index SQLite (index.sqlite3), audit SQLite (audit.sqlite3), vector matrix.",
           "default": "~/.local/state/skillmux"
         },
         "recall": {
@@ -179,9 +193,22 @@
           "additionalProperties": false
         },
         "inference": { "$ref": "#/$defs/InferenceConfig" },
-        "server": { "$ref": "#/$defs/ServerConfig" }
+        "server": { "$ref": "#/$defs/ServerConfig" },
+        "audit": { "$ref": "#/$defs/AuditConfig" }
       },
       "required": ["vault_path", "state_dir", "recall", "output", "inference"],
+      "additionalProperties": false
+    },
+    "AuditConfig": {
+      "type": "object",
+      "properties": {
+        "retention_days": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 90,
+          "description": "Age in days beyond which audit and fetch rows are pruned. 0 disables pruning and retains rows indefinitely."
+        }
+      },
       "additionalProperties": false
     },
     "InferenceConfig": {
