@@ -12,6 +12,7 @@ import {
   backfillEmbeddings,
   configure,
   fetchSkill,
+  pruneAuditIfDue,
   resolveSkill,
 } from "./router-core";
 import { closeRuntime, getRuntime, startVaultWatcher } from "./router-core";
@@ -178,6 +179,14 @@ export async function startServer(opts?: {
   const initPromise = initializeRuntime(readinessState)
     .then(() => metricsRegistry.setReadiness(readinessState.get()))
     .catch((err) => console.error("skillmux runtime init error:", err));
+
+  // AC14: fire-and-forget so this never delays readiness or blocks a resolve;
+  // not chained onto initPromise, which is awaited below for HTTP transport.
+  const runAuditPrune = () =>
+    pruneAuditIfDue().catch((err) => console.error("skillmux audit prune error:", err));
+  runAuditPrune();
+  const auditPruneInterval = setInterval(runAuditPrune, 24 * 60 * 60 * 1000);
+  auditPruneInterval.unref();
 
   const server = createMcpServer();
 
@@ -525,6 +534,7 @@ export async function startServer(opts?: {
       async stop() {
         if (stopped) return;
         stopped = true;
+        clearInterval(auditPruneInterval);
         readinessState.set({ ...readinessState.get(), status: "stopping" });
         metricsRegistry.setReadiness(readinessState.get());
         bunServer.stop(true);
@@ -544,6 +554,7 @@ export async function startServer(opts?: {
       async stop() {
         if (stopped) return;
         stopped = true;
+        clearInterval(auditPruneInterval);
         readinessState.set({ ...readinessState.get(), status: "stopping" });
         metricsRegistry.setReadiness(readinessState.get());
         configWatcher?.stop();
