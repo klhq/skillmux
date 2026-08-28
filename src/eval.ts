@@ -58,6 +58,57 @@ export function parseEvalCases(raw: unknown): EvalCase[] {
   return result;
 }
 
+/** AC17: dedup key for promoted cases. Collapses whitespace and case differences that are not meaningfully distinct queries. */
+export function normalizeQuery(query: string): string {
+  return query.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export interface ObservedFetch {
+  query: string;
+  skill_id: string;
+}
+
+/** AC17: groups fetched skill ids by normalized query into observed-split eval cases. */
+export function buildPromotedCases(fetches: ObservedFetch[]): EvalCase[] {
+  const byQuery = new Map<string, { query: string; skillIds: string[]; seen: Set<string> }>();
+  for (const fetch of fetches) {
+    const key = normalizeQuery(fetch.query);
+    if (!key) continue;
+    let entry = byQuery.get(key);
+    if (!entry) {
+      entry = { query: fetch.query, skillIds: [], seen: new Set() };
+      byQuery.set(key, entry);
+    }
+    if (!entry.seen.has(fetch.skill_id)) {
+      entry.seen.add(fetch.skill_id);
+      entry.skillIds.push(fetch.skill_id);
+    }
+  }
+  return [...byQuery.values()].map((entry) => ({
+    query: entry.query,
+    split: "observed",
+    relevant_skill_ids: entry.skillIds,
+  }));
+}
+
+/** AC18: never rewrites a case whose normalized query already exists in the target file. */
+export function excludeExistingCases(
+  cases: EvalCase[],
+  existing: EvalCase[],
+): { cases: EvalCase[]; skipped: number } {
+  const existingKeys = new Set(existing.map((c) => normalizeQuery(c.query)));
+  const kept: EvalCase[] = [];
+  let skipped = 0;
+  for (const c of cases) {
+    if (existingKeys.has(normalizeQuery(c.query))) {
+      skipped++;
+    } else {
+      kept.push(c);
+    }
+  }
+  return { cases: kept, skipped };
+}
+
 export interface EvalMetrics {
   recall_at_5: number;
   recall_at_10: number;
