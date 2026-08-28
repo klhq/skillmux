@@ -183,6 +183,29 @@ describe("fetch outcome logging (AC5-AC8)", () => {
     expect(row.resolve_audit_id).toBeNull();
     expect(row.rank_at_resolve).toBeNull();
   });
+
+  test("fetch_skill with a known request_id links to that resolve and records the fetched skill's rank (AC5, AC8)", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    const resolved = await resolveSkill({ query: "audit log persistence questions" });
+    const resolveRow = db
+      .query("SELECT id FROM audit WHERE request_id = ?")
+      .get(resolved.request_id) as { id: number };
+
+    await fetchSkill({ skill_id: "audit-target", request_id: resolved.request_id });
+
+    const row = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").get() as {
+      request_id: string | null;
+      resolve_audit_id: number | null;
+      rank_at_resolve: number | null;
+    };
+
+    expect(row.request_id).toBe(resolved.request_id);
+    expect(row.resolve_audit_id).toBe(resolveRow.id);
+    expect(row.rank_at_resolve).toBe(
+      resolved.candidates.find((c) => c.skill_id === "audit-target")!.rank,
+    );
+  });
 });
 
 describe("correlation (AC3)", () => {
