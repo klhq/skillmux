@@ -61,6 +61,12 @@
       "format": "uuid",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     },
+    "InboundRequestId": {
+      "type": "string",
+      "description": "request_id as supplied by the caller to fetch_skill. Deliberately not pattern-validated: an unknown or malformed value must still succeed and record an uncorrelated fetch (AC7); correlation validity is decided by the server, not the schema.",
+      "minLength": 1,
+      "maxLength": 128
+    },
     "ResolveSkillInput": {
       "type": "object",
       "properties": {
@@ -98,7 +104,8 @@
     "FetchSkillInput": {
       "type": "object",
       "properties": {
-        "skill_id": { "$ref": "#/$defs/SkillId" }
+        "skill_id": { "$ref": "#/$defs/SkillId" },
+        "request_id": { "$ref": "#/$defs/InboundRequestId" }
       },
       "required": ["skill_id"],
       "additionalProperties": false

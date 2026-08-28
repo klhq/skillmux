@@ -162,6 +162,40 @@ describe("MCP stdio server", () => {
     expect(limitTexts).toContain("Invalid top_k: 51 exceeds max_top_k of 50");
   });
 
+  test("fetch_skill accepts an optional request_id and links the recorded fetch to its resolve (AC5, AC7)", async () => {
+    const resolveResult = await client.callTool({
+      name: "resolve_skill",
+      arguments: { query: "stdio transport questions" },
+    });
+    const requestId = (resolveResult.structuredContent as Record<string, unknown>).request_id as string;
+
+    const correlated = await client.callTool({
+      name: "fetch_skill",
+      arguments: { skill_id: "stdio-skill", request_id: requestId },
+    });
+    expect(correlated.isError).toBeFalsy();
+
+    const malformed = await client.callTool({
+      name: "fetch_skill",
+      arguments: { skill_id: "stdio-skill", request_id: "not-a-real-request-id" },
+    });
+    expect(malformed.isError).toBeFalsy();
+
+    const { Database } = await import("bun:sqlite");
+    const auditDb = new Database(join(tmp, "state", "audit.sqlite3"));
+    const rows = auditDb.query("SELECT request_id, resolve_audit_id FROM fetch ORDER BY id ASC").all() as {
+      request_id: string | null;
+      resolve_audit_id: number | null;
+    }[];
+    auditDb.close();
+
+    const correlatedRow = rows.find((r) => r.request_id === requestId);
+    expect(correlatedRow?.resolve_audit_id).not.toBeNull();
+
+    const malformedRow = rows.find((r) => r.request_id === "not-a-real-request-id");
+    expect(malformedRow?.resolve_audit_id).toBeNull();
+  });
+
   test("fetch_skill with unknown skill_id returns a SKILL_NOT_FOUND tool error", async () => {
     const result = await client.callTool({
       name: "fetch_skill",

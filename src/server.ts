@@ -113,12 +113,16 @@ export function createMcpServer(): McpServer {
     {
       description:
         "Fetch a skill's SKILL.md verbatim by skill_id, with sha256 and supporting-file paths. " +
-        "Independent of any prior resolve_skill outcome.",
-      inputSchema: { skill_id: z.string().regex(SKILL_ID_PATTERN) },
+        "Independent of any prior resolve_skill outcome. Pass the request_id from a prior " +
+        "resolve_skill call to link this fetch to it for quality measurement.",
+      inputSchema: {
+        skill_id: z.string().regex(SKILL_ID_PATTERN),
+        request_id: z.string().min(1).max(128).optional(),
+      },
     },
-    async ({ skill_id }) => {
+    async ({ skill_id, request_id }) => {
       try {
-        const result = await fetchSkill({ skill_id });
+        const result = await fetchSkill({ skill_id, request_id });
         const { body, ...meta } = result;
         return {
           content: [{ type: "text" as const, text: body }],
