@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { insertAudit, openAudit, openIndex } from "../src/db";
+import { insertAudit, insertFetch, openAudit, openIndex } from "../src/db";
 import { queryAuditRows } from "../src/stats";
 
 // The pre-split shape: a canonical audit table inside index.sqlite3. openIndex
@@ -192,6 +192,60 @@ describe("audit store", () => {
     expect(rows[0]!.degraded_from).toBeUndefined();
     expect(rows[0]!.degradation_reason).toBeUndefined();
   });
+  test("should create a fetch table in audit.sqlite3", () => {
+    db = openAudit(tmp);
+
+    const fetchTables = db
+      .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'fetch'")
+      .all();
+
+    expect(fetchTables).toHaveLength(1);
+  });
+
+  test("should round-trip a fetch row through insertFetch (AC8)", () => {
+    db = openAudit(tmp);
+
+    insertFetch(db, {
+      ts: "2026-08-28T00:00:00.000Z",
+      skill_id: "csv-formatter",
+      request_id: "11111111-1111-4111-8111-111111111111",
+      resolve_audit_id: 7,
+      rank_at_resolve: 2,
+    });
+
+    const rows = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").all() as any[];
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      id: 1,
+      ts: "2026-08-28T00:00:00.000Z",
+      skill_id: "csv-formatter",
+      request_id: "11111111-1111-4111-8111-111111111111",
+      resolve_audit_id: 7,
+      rank_at_resolve: 2,
+    });
+  });
+
+  test("insertFetch defaults request_id, resolve_audit_id, and rank_at_resolve to null when omitted (AC6)", () => {
+    db = openAudit(tmp);
+
+    insertFetch(db, {
+      ts: "2026-08-28T00:00:00.000Z",
+      skill_id: "csv-formatter",
+    });
+
+    const rows = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").all() as any[];
+
+    expect(rows[0]).toEqual({
+      id: 1,
+      ts: "2026-08-28T00:00:00.000Z",
+      skill_id: "csv-formatter",
+      request_id: null,
+      resolve_audit_id: null,
+      rank_at_resolve: null,
+    });
+  });
+
   describe("audit table schema and legacy migration", () => {
     test("adoption normalizes a legacy audit schema with outcome NOT NULL CHECK and selected_skill_id", () => {
       const stateDir = mkdtempSync(join(tmpdir(), "skillmux-audit-adopt-"));

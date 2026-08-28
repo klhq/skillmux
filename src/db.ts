@@ -40,6 +40,14 @@ export function openAudit(stateDir: string): Database {
   if (!auditColumns.has("request_id")) {
     db.run("ALTER TABLE audit ADD COLUMN request_id TEXT");
   }
+  db.run(`CREATE TABLE IF NOT EXISTS fetch (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    request_id TEXT,
+    resolve_audit_id INTEGER,
+    rank_at_resolve INTEGER
+  )`);
   adoptAuditFromIndex(db, stateDir);
   return db;
 }
@@ -329,6 +337,28 @@ export function insertAudit(db: Database, row: AuditInsert): void {
       row.degradation_reason ?? null,
       JSON.stringify(row.candidates),
       row.latency_ms,
+    ],
+  );
+}
+
+export interface FetchInsert {
+  ts: string;
+  skill_id: string;
+  request_id?: string | null;
+  resolve_audit_id?: number | null;
+  rank_at_resolve?: number | null;
+}
+
+export function insertFetch(db: Database, row: FetchInsert): void {
+  db.run(
+    `INSERT INTO fetch (ts, skill_id, request_id, resolve_audit_id, rank_at_resolve)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      row.ts,
+      row.skill_id,
+      row.request_id ?? null,
+      row.resolve_audit_id ?? null,
+      row.rank_at_resolve ?? null,
     ],
   );
 }
