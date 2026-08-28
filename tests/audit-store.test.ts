@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit, openIndex } from "../src/db";
+import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit, openIndex, pruneAudit } from "../src/db";
 import { queryAuditRows } from "../src/stats";
 
 // The pre-split shape: a canonical audit table inside index.sqlite3. openIndex
@@ -269,6 +269,117 @@ describe("audit store", () => {
     db = openAudit(tmp);
 
     expect(getAuditRowByRequestId(db, "no-such-request-id")).toBeNull();
+  });
+
+  describe("pruneAudit (AC13, AC16)", () => {
+    test("does nothing when retention_days is 0", () => {
+      db = openAudit(tmp);
+      const now = new Date("2026-08-28T00:00:00.000Z");
+      insertAudit(db, {
+        ts: "2020-01-01T00:00:00.000Z",
+        query: "ancient query",
+        retrieval: "lexical",
+        candidates: [],
+        latency_ms: 1,
+      });
+      insertFetch(db, { ts: "2020-01-01T00:00:00.000Z", skill_id: "some-skill" });
+
+      const result = pruneAudit(db, 0, now);
+
+      expect(result).toEqual({ audit_deleted: 0, fetch_deleted: 0 });
+      expect((db.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n).toBe(1);
+      expect((db.query("SELECT count(*) AS n FROM fetch").get() as { n: number }).n).toBe(1);
+    });
+
+    test("deletes audit rows older than the retention window and keeps newer ones", () => {
+      db = openAudit(tmp);
+      const now = new Date("2026-08-28T00:00:00.000Z");
+      insertAudit(db, {
+        ts: "2026-01-01T00:00:00.000Z",
+        query: "old enough to prune",
+        retrieval: "lexical",
+        candidates: [],
+        latency_ms: 1,
+      });
+      insertAudit(db, {
+        ts: "2026-08-27T00:00:00.000Z",
+        query: "recent enough to keep",
+        retrieval: "lexical",
+        candidates: [],
+        latency_ms: 1,
+      });
+
+      const result = pruneAudit(db, 30, now);
+
+      expect(result.audit_deleted).toBe(1);
+      const remaining = db.query("SELECT query FROM audit").all() as { query: string }[];
+      expect(remaining.map((r) => r.query)).toEqual(["recent enough to keep"]);
+    });
+
+    test("deletes fetch rows older than the retention window independently of their resolve row's age (AC13)", () => {
+      db = openAudit(tmp);
+      const now = new Date("2026-08-28T00:00:00.000Z");
+      insertAudit(db, {
+        ts: "2026-08-27T00:00:00.000Z",
+        query: "recent resolve",
+        retrieval: "lexical",
+        candidates: [],
+        latency_ms: 1,
+      });
+      insertFetch(db, { ts: "2026-01-01T00:00:00.000Z", skill_id: "old-fetch" });
+      insertFetch(db, { ts: "2026-08-27T00:00:00.000Z", skill_id: "recent-fetch" });
+
+      const result = pruneAudit(db, 30, now);
+
+      expect(result.fetch_deleted).toBe(1);
+      const remaining = db.query("SELECT skill_id FROM fetch").all() as { skill_id: string }[];
+      expect(remaining.map((r) => r.skill_id)).toEqual(["recent-fetch"]);
+    });
+
+    test("a fetch whose resolve row has been pruned reports as uncorrelated rather than erroring (AC13)", () => {
+      db = openAudit(tmp);
+      const now = new Date("2026-08-28T00:00:00.000Z");
+      insertAudit(db, {
+        ts: "2026-01-01T00:00:00.000Z",
+        request_id: "33333333-3333-4333-8333-333333333333",
+        query: "pruned resolve",
+        retrieval: "lexical",
+        candidates: [{ skill_id: "some-skill", score: 0.5 }],
+        latency_ms: 1,
+      });
+      insertFetch(db, {
+        ts: "2026-08-27T00:00:00.000Z",
+        skill_id: "some-skill",
+        request_id: "33333333-3333-4333-8333-333333333333",
+        resolve_audit_id: 1,
+        rank_at_resolve: 1,
+      });
+
+      pruneAudit(db, 30, now);
+
+      expect(getAuditRowByRequestId(db, "33333333-3333-4333-8333-333333333333")).toBeNull();
+      const fetchRow = db.query("SELECT resolve_audit_id FROM fetch").get() as { resolve_audit_id: number };
+      expect(fetchRow.resolve_audit_id).toBe(1);
+    });
+
+    test("reclaims file space via incremental vacuum after deleting rows", () => {
+      db = openAudit(tmp);
+      const now = new Date("2026-08-28T00:00:00.000Z");
+      for (let i = 0; i < 200; i++) {
+        insertAudit(db, {
+          ts: "2020-01-01T00:00:00.000Z",
+          query: `bulk query ${i}`,
+          retrieval: "lexical",
+          candidates: [{ skill_id: "some-skill", score: 0.5 }],
+          latency_ms: 1,
+        });
+      }
+
+      pruneAudit(db, 30, now);
+
+      const freelist = db.query("PRAGMA freelist_count").get() as { freelist_count: number };
+      expect(freelist.freelist_count).toBe(0);
+    });
   });
 
   describe("audit table schema and legacy migration", () => {

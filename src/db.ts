@@ -378,3 +378,25 @@ export function insertFetch(db: Database, row: FetchInsert): void {
     ],
   );
 }
+
+export interface PruneResult {
+  audit_deleted: number;
+  fetch_deleted: number;
+}
+
+/**
+ * AC13: deletes resolve and fetch rows older than the retention window, each
+ * by its own timestamp; no FK ties them, so a fetch outliving its resolve row
+ * simply reads back uncorrelated (AC7's existing null path). AC16: reclaims
+ * the freed pages with an incremental vacuum, which only touches audit.sqlite3.
+ */
+export function pruneAudit(db: Database, retentionDays: number, now: Date = new Date()): PruneResult {
+  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0 };
+
+  const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
+  const auditResult = db.run("DELETE FROM audit WHERE ts < ?", [cutoff]);
+  const fetchResult = db.run("DELETE FROM fetch WHERE ts < ?", [cutoff]);
+  db.run("PRAGMA incremental_vacuum");
+
+  return { audit_deleted: auditResult.changes, fetch_deleted: fetchResult.changes };
+}
