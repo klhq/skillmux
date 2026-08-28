@@ -10,6 +10,7 @@ function auditRow(overrides: Partial<AuditRow>): AuditRow {
   return {
     id: 1,
     ts: "2026-07-10T00:00:00.000Z",
+    request_id: null,
     query: "test query",
     retrieval: "lexical",
     candidates: [],
@@ -211,6 +212,25 @@ describe("queryAuditRows", () => {
     });
     expect((rows[0] as any).outcome).toBeUndefined();
     expect((rows[0] as any).selected_skill_id).toBeUndefined();
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  test("loads a row written before request_id existed, defaulting the field to null (AC4)", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-no-request-id-"));
+    const db = openAudit(stateDir);
+
+    db.run(
+      `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
+      ["2026-07-10T00:00:00.000Z", "pre-request-id row", "lexical", JSON.stringify([]), 5],
+    );
+
+    const rows = queryAuditRows(db, "2026-07-01T00:00:00.000Z");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.query).toBe("pre-request-id row");
+    expect(rows[0]!.request_id).toBeNull();
 
     db.close();
     rmSync(stateDir, { recursive: true, force: true });

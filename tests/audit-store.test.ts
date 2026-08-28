@@ -114,6 +114,47 @@ describe("audit store", () => {
     expect(queryAuditRows(db, "2026-08-01T00:00:00.000Z")).toHaveLength(1);
   });
 
+  test("should add request_id to an existing audit.sqlite3 that predates it (AC4)", () => {
+    const preFeature = new Database(join(tmp, "audit.sqlite3"), { create: true });
+    preFeature.run(`CREATE TABLE IF NOT EXISTS audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts TEXT NOT NULL,
+      query TEXT NOT NULL,
+      retrieval TEXT NOT NULL DEFAULT 'lexical',
+      degraded_from TEXT,
+      degradation_reason TEXT,
+      candidates TEXT NOT NULL,
+      latency_ms INTEGER NOT NULL
+    )`);
+    preFeature.run(
+      "INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)",
+      ["2026-08-20T00:00:00.000Z", "written before request_id shipped", "lexical", "[]", 9],
+    );
+    preFeature.close();
+
+    db = openAudit(tmp);
+
+    const columns = (db.query("PRAGMA table_info(audit)").all() as { name: string }[]).map((c) => c.name);
+    expect(columns).toContain("request_id");
+
+    const rows = queryAuditRows(db, "2026-08-01T00:00:00.000Z");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.query).toBe("written before request_id shipped");
+    expect(rows[0]!.request_id).toBeNull();
+
+    insertAudit(db, {
+      ts: "2026-08-28T00:00:00.000Z",
+      request_id: "11111111-1111-4111-8111-111111111111",
+      query: "written after the migration",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 4,
+    });
+    const afterInsert = queryAuditRows(db, "2026-08-01T00:00:00.000Z");
+    expect(afterInsert).toHaveLength(2);
+    expect(afterInsert[1]!.request_id).toBe("11111111-1111-4111-8111-111111111111");
+  });
+
   test("should adopt a legacy audit table that predates the retrieval columns", () => {
     const legacy = new Database(join(tmp, "index.sqlite3"), { create: true });
     legacy.run(`CREATE TABLE audit (

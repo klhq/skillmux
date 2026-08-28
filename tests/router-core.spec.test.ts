@@ -252,6 +252,7 @@ describe("audit log contract", () => {
     const row = buildAuditRow({
       id: 1,
       ts: "2026-07-14T21:22:00.000Z",
+      request_id: "22222222-2222-4222-8222-222222222222",
       query: "find me the best skill",
       retrieval: "hybrid",
       candidates: [
@@ -264,6 +265,7 @@ describe("audit log contract", () => {
     expect(row).toEqual({
       id: 1,
       ts: "2026-07-14T21:22:00.000Z",
+      request_id: "22222222-2222-4222-8222-222222222222",
       query: "find me the best skill",
       retrieval: "hybrid",
       candidates: [
