@@ -385,18 +385,29 @@ export interface PruneResult {
 }
 
 /**
- * AC13: deletes resolve and fetch rows older than the retention window, each
- * by its own timestamp; no FK ties them, so a fetch outliving its resolve row
- * simply reads back uncorrelated (AC7's existing null path). AC16: reclaims
- * the freed pages with an incremental vacuum, which only touches audit.sqlite3.
+ * Deletes resolve and fetch rows with ts before `cutoffIso`, each by its own
+ * timestamp; no FK ties them, so a fetch outliving its resolve row simply
+ * reads back uncorrelated (AC7's existing null path). Reclaims the freed
+ * pages with an incremental vacuum, which only touches audit.sqlite3 (AC16).
  */
-export function pruneAudit(db: Database, retentionDays: number, now: Date = new Date()): PruneResult {
-  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0 };
-
-  const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
-  const auditResult = db.run("DELETE FROM audit WHERE ts < ?", [cutoff]);
-  const fetchResult = db.run("DELETE FROM fetch WHERE ts < ?", [cutoff]);
+export function pruneAuditBefore(db: Database, cutoffIso: string): PruneResult {
+  const auditResult = db.run("DELETE FROM audit WHERE ts < ?", [cutoffIso]);
+  const fetchResult = db.run("DELETE FROM fetch WHERE ts < ?", [cutoffIso]);
   db.run("PRAGMA incremental_vacuum");
 
   return { audit_deleted: auditResult.changes, fetch_deleted: fetchResult.changes };
+}
+
+/** AC12: retentionDays <= 0 disables pruning entirely. */
+export function pruneAudit(db: Database, retentionDays: number, now: Date = new Date()): PruneResult {
+  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0 };
+  const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
+  return pruneAuditBefore(db, cutoff);
+}
+
+/** Dry-run counterpart of pruneAuditBefore: counts without deleting (AC15). */
+export function countPrunable(db: Database, cutoffIso: string): PruneResult {
+  const auditRow = db.query("SELECT count(*) AS n FROM audit WHERE ts < ?").get(cutoffIso) as { n: number };
+  const fetchRow = db.query("SELECT count(*) AS n FROM fetch WHERE ts < ?").get(cutoffIso) as { n: number };
+  return { audit_deleted: auditRow.n, fetch_deleted: fetchRow.n };
 }

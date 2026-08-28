@@ -106,6 +106,7 @@ import {
   suggestCorrection,
 } from "./output";
 import { generateCompletions, type ShellType } from "./completions";
+import { runAudit } from "./commands/audit";
 import { handleConfigCommand } from "./commands/config";
 import { runCore } from "./commands/core";
 import { configuredTargetForSurface, runProject } from "./commands/project";
@@ -124,6 +125,7 @@ const KNOWN_COMMANDS = [
   "target",
   "core",
   "report",
+  "audit",
   "scan",
   "install",
   "eval",
@@ -322,6 +324,9 @@ async function main() {
       case "report":
         await runReport(rawArgv.slice(1), { isJson });
         break;
+      case "audit":
+        await runAudit(subCommand, commandArgs, { isJson, dryRun: isDryRun });
+        break;
       case "scan":
         await runScan(rawArgv.slice(1), { isJson });
         break;
@@ -359,7 +364,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|skill which|local-vault init|config show|models download>`;
+          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|audit prune|scan|install|eval|doctor|skill which|local-vault init|config show|models download>`;
         throw new Error(msg);
       }
     }
@@ -507,7 +512,7 @@ Default:
   serve --transport http
 
 Supported commands:
-  serve, index, doctor, report, scan, skill which
+  serve, index, doctor, report, audit prune, scan, skill which
   config show|get|validate|diff|status
 
 Native skill management:
@@ -540,9 +545,13 @@ Init clients:
 Init targets:
   agent-skills, claude-code, codex, custom
 
+Operations:
+  skillmux report [--server <url> | --db <path>] --since <window> [--json]
+  skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
+
 Commands:
-  serve, index, sync, init, project, target, core, report, scan, install, eval, doctor, skill,
-  local-vault, config, models, context, completions`);
+  serve, index, sync, init, project, target, core, report, audit, scan, install, eval, doctor,
+  skill, local-vault, config, models, context, completions`);
 }
 
 // ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
-import { insertAudit, openAudit } from "../src/db";
+import { insertAudit, insertFetch, openAudit } from "../src/db";
 import { startServer } from "../src/server";
 
 const tmp = mkdtempSync(join(tmpdir(), "skillmux-cli-"));
@@ -282,7 +282,7 @@ describe("skillmux Docker command policy", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Skillmux server image");
     expect(result.stdout).toContain("Default:\n  serve --transport http");
-    expect(result.stdout).toContain("serve, index, doctor, report, scan, skill which");
+    expect(result.stdout).toContain("serve, index, doctor, report, audit prune, scan, skill which");
     expect(result.stdout).toContain("config show|get|validate|diff|status");
     expect(result.stdout).toContain("Install the Skillmux CLI on the host for init, install, pinning, and sync.");
     expect(result.stdout).not.toContain("Setup:");
@@ -409,7 +409,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|scan|install|eval|doctor|skill which|local-vault init|config show|models download>",
+      "usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|audit prune|scan|install|eval|doctor|skill which|local-vault init|config show|models download>",
     );
   });
 
@@ -1684,6 +1684,183 @@ describe("skillmux report CLI", () => {
       lexical: 0,
     });
     expect(Array.isArray(parsed.data.skills)).toBe(true);
+  });
+});
+
+describe("skillmux audit prune CLI (AC15)", () => {
+  function privateConfig(pruneStateDir: string, auditToml = ""): string {
+    const path = join(pruneStateDir, "config.toml");
+    writeFileSync(
+      path,
+      [
+        `vault_path = "${vaultDir}"`,
+        `state_dir = "${join(pruneStateDir, "state")}"`,
+        `[recall]`,
+        `k_lexical = 50`,
+        `k_vector = 50`,
+        `k_rerank = 50`,
+        ``,
+        `[output]`,
+        `top_k = 10`,
+        `max_top_k = 50`,
+        ``,
+        `[inference]`,
+        `mode = "remote"`,
+        `timeout_ms = 200`,
+        ``,
+        `[inference.embedding]`,
+        `provider = "openai"`,
+        `endpoint = "http://127.0.0.1:9/v1/embeddings"`,
+        `model = "microsoft/harrier-oss-v1-0.6b"`,
+        `dimension = 1024`,
+        ``,
+        auditToml,
+      ].join("\n"),
+    );
+    return path;
+  }
+
+  function runAuditCli(pruneConfigPath: string, ...args: string[]) {
+    return runCliEnv(["audit", "prune", ...args], { SKILLMUX_CONFIG: pruneConfigPath });
+  }
+
+  test("requires --yes when run non-interactively", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-audit-prune-yes-"));
+    const pruneConfigPath = privateConfig(root);
+    const db = openAudit(join(root, "state"));
+    insertAudit(db, {
+      ts: "2020-01-01T00:00:00.000Z",
+      query: "ancient",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 1,
+    });
+    db.close();
+
+    const result = await runAuditCli(pruneConfigPath, "--older-than", "1d");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("requires --yes");
+
+    const check = openAudit(join(root, "state"));
+    expect((check.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n).toBe(1);
+    check.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("--dry-run reports counts without deleting rows or requiring --yes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-audit-prune-dryrun-"));
+    const pruneConfigPath = privateConfig(root);
+    const db = openAudit(join(root, "state"));
+    insertAudit(db, {
+      ts: "2020-01-01T00:00:00.000Z",
+      query: "ancient",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 1,
+    });
+    insertFetch(db, { ts: "2020-01-01T00:00:00.000Z", skill_id: "first-skill" });
+    db.close();
+
+    const result = await runAuditCli(pruneConfigPath, "--older-than", "1d", "--dry-run");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("audit=1");
+    expect(result.stdout).toContain("fetch=1");
+
+    const check = openAudit(join(root, "state"));
+    expect((check.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n).toBe(1);
+    expect((check.query("SELECT count(*) AS n FROM fetch").get() as { n: number }).n).toBe(1);
+    check.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("--older-than --yes deletes only rows older than the window and reports counts removed per table", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-audit-prune-live-"));
+    const pruneConfigPath = privateConfig(root);
+    const db = openAudit(join(root, "state"));
+    insertAudit(db, {
+      ts: "2020-01-01T00:00:00.000Z",
+      query: "old enough to prune",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 1,
+    });
+    insertAudit(db, {
+      ts: new Date().toISOString(),
+      query: "recent enough to keep",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 1,
+    });
+    insertFetch(db, { ts: "2020-01-01T00:00:00.000Z", skill_id: "old-fetch" });
+    insertFetch(db, { ts: new Date().toISOString(), skill_id: "recent-fetch" });
+    db.close();
+
+    const result = await runAuditCli(pruneConfigPath, "--older-than", "1d", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("audit=1");
+    expect(result.stdout).toContain("fetch=1");
+
+    const check = openAudit(join(root, "state"));
+    expect((check.query("SELECT query FROM audit").all() as { query: string }[]).map((r) => r.query)).toEqual([
+      "recent enough to keep",
+    ]);
+    expect((check.query("SELECT skill_id FROM fetch").all() as { skill_id: string }[]).map((r) => r.skill_id)).toEqual([
+      "recent-fetch",
+    ]);
+    check.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("--json wraps the prune result in a schema_version:1 envelope", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-audit-prune-json-"));
+    const pruneConfigPath = privateConfig(root);
+    const db = openAudit(join(root, "state"));
+    insertAudit(db, {
+      ts: "2020-01-01T00:00:00.000Z",
+      query: "ancient",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 1,
+    });
+    db.close();
+
+    const result = await runAuditCli(pruneConfigPath, "--older-than", "1d", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.audit_deleted).toBe(1);
+    expect(parsed.data.fetch_deleted).toBe(0);
+    expect(parsed.data.dry_run).toBe(false);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("defaults to the configured audit.retention_days when --older-than is omitted", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-audit-prune-default-"));
+    const pruneConfigPath = privateConfig(root, "[audit]\nretention_days = 30\n");
+    const db = openAudit(join(root, "state"));
+    insertAudit(db, {
+      ts: "2020-01-01T00:00:00.000Z",
+      query: "ancient",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 1,
+    });
+    db.close();
+
+    const result = await runAuditCli(pruneConfigPath, "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("audit=1");
+
+    const check = openAudit(join(root, "state"));
+    expect((check.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n).toBe(0);
+    check.close();
+    rmSync(root, { recursive: true, force: true });
   });
 });
 
