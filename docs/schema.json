@@ -193,9 +193,22 @@
           "additionalProperties": false
         },
         "inference": { "$ref": "#/$defs/InferenceConfig" },
-        "server": { "$ref": "#/$defs/ServerConfig" }
+        "server": { "$ref": "#/$defs/ServerConfig" },
+        "audit": { "$ref": "#/$defs/AuditConfig" }
       },
       "required": ["vault_path", "state_dir", "recall", "output", "inference"],
+      "additionalProperties": false
+    },
+    "AuditConfig": {
+      "type": "object",
+      "properties": {
+        "retention_days": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 90,
+          "description": "Age in days beyond which audit and fetch rows are pruned. 0 disables pruning and retains rows indefinitely."
+        }
+      },
       "additionalProperties": false
     },
     "InferenceConfig": {

@@ -88,6 +88,9 @@ const configSchema = z.object({
       token_env: z.string().min(1),
     }).strict().optional(),
   }).strict().optional(),
+  audit: z.object({
+    retention_days: z.number().int().min(0).default(90),
+  }).strict().default({ retention_days: 90 }),
 }).strict().refine((cfg) => {
   const hasReranker = cfg.inference.mode === "remote" && !!cfg.inference.reranker;
   if (hasReranker && cfg.output.max_top_k > cfg.recall.k_rerank) {
@@ -138,6 +141,9 @@ const DEFAULTS: Config = {
       enabled: false,
       requests_per_minute: 60,
     },
+  },
+  audit: {
+    retention_days: 90,
   },
 };
 

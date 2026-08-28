@@ -107,6 +107,11 @@ export interface ConfigPolicy {
   environment_overrides?: boolean;
 }
 
+export interface AuditConfig {
+  /** Age in days beyond which audit rows are pruned. 0 disables pruning. */
+  retention_days: number;
+}
+
 export interface Config {
   config?: ConfigPolicy;
   vault_path: string;
@@ -116,6 +121,7 @@ export interface Config {
   output: OutputConfig;
   inference: InferenceConfig;
   server?: ServerConfig;
+  audit?: AuditConfig;
 }
 
 export interface RankedCandidate {
