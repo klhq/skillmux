@@ -48,7 +48,7 @@ jq -e \
 # accidentally advertising the host CLI command surface.
 docker run --rm "$IMAGE" --help >"$WORKDIR/help.out"
 grep -Fq "Skillmux server image" "$WORKDIR/help.out"
-grep -Fq "serve, index, doctor, report, scan, skill which" "$WORKDIR/help.out"
+grep -Fq "serve, index, doctor, report, audit prune, eval promote, scan, skill which" "$WORKDIR/help.out"
 grep -Fq "config show|get|validate|diff|status" "$WORKDIR/help.out"
 if grep -Fq "project, target, core" "$WORKDIR/help.out"; then
   echo "Docker help advertised host-management commands" >&2
