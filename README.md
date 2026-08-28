@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/klhq/skillmux/main/docs/assets/logo.png" alt="skillmux" width="400">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/klhq/skillmux/main/docs/assets/logo-dark.png">
+    <img src="https://raw.githubusercontent.com/klhq/skillmux/main/docs/assets/logo-light.png" alt="skillmux" width="400">
+  </picture>
 </p>
 
 <p align="center">
@@ -9,9 +12,12 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-Skillmux manages [`SKILL.md`](https://agentskills.io) collections across AI
-coding clients. Keep one **vault source of truth**—the logical skill
-collection—pin a small set into native skill directories, and retrieve the
+<p align="center"><strong>One skill vault. Every AI coding client. Nothing lost in translation.</strong></p>
+
+Every AI coding client wants its own skill folder and its own format. Skillmux
+manages [`SKILL.md`](https://agentskills.io) collections across all of them
+from one place. Keep one **vault source of truth** (the logical skill
+collection), pin a small set into native skill directories, and retrieve the
 rest through MCP. A **vault checkout** is a physical copy of that collection.
 On one machine, `~/skills` can be both the source of truth and its checkout.
 
@@ -55,7 +61,10 @@ command to run; see the [container command contract](docs/deployment.md#containe
 ## One vault source of truth, three ways to use it
 
 <p align="center">
-  <img src="docs/assets/architecture.svg" alt="Three ways to use Skillmux: manage native skills, add local MCP retrieval, or run a shared MCP service" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
+    <img src="docs/assets/architecture-light.svg" alt="Three ways to use Skillmux: manage native skills, add local MCP retrieval, or run a shared MCP service" width="100%">
+  </picture>
 </p>
 
 “Local” describes where Skillmux runs. “Local inference” means the embedding

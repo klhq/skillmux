@@ -203,9 +203,9 @@ enabled = false
 token_env = "SKILLMUX_ADMIN_TOKEN"
 ```
 
-Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`) — a zero-config `skillmux serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
+Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`), so a zero-config `skillmux serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
 
-Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, `auth_enabled = true` with a token, and populate `allowed_origins` with the specific origins that need browser access. `rate_limit.trust_proxy` should stay `false` unless a trusted reverse proxy sets `X-Forwarded-For` — it's otherwise a client-controlled, spoofable header and trusting it defeats per-client rate limiting.
+Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, `auth_enabled = true` with a token, and populate `allowed_origins` with the specific origins that need browser access. `rate_limit.trust_proxy` should stay `false` unless a trusted reverse proxy sets `X-Forwarded-For`: it's otherwise a client-controlled, spoofable header, and trusting it defeats per-client rate limiting.
 
 `server.auth_token_env` names the MCP token for AI clients calling `/mcp`.
 `server.admin.token_env` names a distinct administrative token for operators
@@ -242,13 +242,13 @@ skills = ["pdf-extractor"]           # must not overlap [core]
 [targets.claude-code]
 dir = "/Users/you/.claude/skills"
 host = "workhorse"                    # optional; init adds the current hostname
-project_groups = ["repo1"]           # which [project.*] groups materialize into this target — [] means none
+project_groups = ["repo1"]           # which [project.*] groups materialize into this target; [] means none
 ```
 
-- `[core].skills` — symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills; `sync` fails if a listed skill id isn't actually in the vault.
-- `[project.<group>].skills` — symlinked only into `<path>/<relative path from $HOME to the target dir>`, for each `paths` entry, and only for targets whose `project_groups` names that group. `paths` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
-- `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`) — `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
-- `[targets.<name>]` — one entry per adopted surface. `skillmux init --target <name> --yes` writes these and scopes newly added targets to the current hostname. Hand-editing is fine as long as `sync` is still allowed to own the directory (see below). An optional `host` limits the target to an exact machine-hostname match; omit it for a global, backward-compatible target. A host mismatch is reported and skipped before any target filesystem operation. `project_groups` is an explicit list, not a boolean — a target only receives the specific groups it names, never every group in the manifest.
+- `[core].skills`: symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills; `sync` fails if a listed skill id isn't actually in the vault.
+- `[project.<group>].skills`: symlinked only into `<path>/<relative path from $HOME to the target dir>`, for each `paths` entry, and only for targets whose `project_groups` names that group. `paths` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
+- `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`). `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
+- `[targets.<name>]`: one entry per adopted surface. `skillmux init --target <name> --yes` writes these and scopes newly added targets to the current hostname. Hand-editing is fine as long as `sync` is still allowed to own the directory (see below). An optional `host` limits the target to an exact machine-hostname match; omit it for a global, backward-compatible target. A host mismatch is reported and skipped before any target filesystem operation. `project_groups` is an explicit list, not a boolean: a target only receives the specific groups it names, never every group in the manifest.
 
 **Pin/unpin without hand-editing.** `skillmux core pin`/`unpin` mutate `[core]` for you, and `skillmux project pin`/`unpin` mutate `[project.*]`, validating with the same rules `sync` enforces (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under the 25-skill cap) before writing anything:
 
@@ -261,16 +261,16 @@ skillmux core unpin csv-formatter pdf-extractor --yes                    # unpin
 skillmux project unpin repo1 pdf-extractor --yes                         # remove from a group (group stays, even if empty)
 ```
 
-Both commands accept one or more `skill_id` arguments per call; all of them are validated and applied against a single in-memory manifest before anything is written, so if any one of them is already pinned elsewhere (or, for unpin, not currently pinned), the whole call fails and the manifest file is left untouched — no partial pins. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
+Both commands accept one or more `skill_id` arguments per call; all of them are validated and applied against a single in-memory manifest before anything is written, so if any one of them is already pinned elsewhere (or, for unpin, not currently pinned), the whole call fails and the manifest file is left untouched: no partial pins. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
 
-> **Breaking change:** `skillmux manifest pin`/`unpin` is removed. `[core]` pinning is now `skillmux core pin`/`unpin`; `[project.*]` pinning was already available as `skillmux project pin`/`unpin` and is now the only way to do it — there's no more `--path`-based inline group creation from a pin call, use `project add-path` to create the group first.
+> **Breaking change:** `skillmux manifest pin`/`unpin` is removed. `[core]` pinning is now `skillmux core pin`/`unpin`; `[project.*]` pinning was already available as `skillmux project pin`/`unpin` and is now the only way to do it. There's no more `--path`-based inline group creation from a pin call; use `project add-path` to create the group first.
 >
 > **Breaking change:** `[targets.<name>].project` (a boolean) has been replaced by `project_groups` (an array of `[project.*]` names). A manifest still using the old field fails to parse with an error pointing at the new one. To migrate, replace `project = true` with `project_groups = [...]` listing every group that target previously received (previously *all* groups, unconditionally); replace `project = false` with `project_groups = []`.
 >
-> **Breaking change:** `[project.<group>].repos` has been renamed to `paths` — it was never required to be a git repository, just a local directory, and the old name collided in meaning with `skillmux install <repo>`'s unrelated git-source `repo` concept. A manifest still using `repos` fails to parse with an error pointing at `paths`; migrate by renaming the key (values are unchanged).
+> **Breaking change:** `[project.<group>].repos` has been renamed to `paths`. It was never required to be a git repository, just a local directory, and the old name collided in meaning with `skillmux install <repo>`'s unrelated git-source `repo` concept. A manifest still using `repos` fails to parse with an error pointing at `paths`; migrate by renaming the key (values are unchanged).
 
 Every `[core]`/`[project.*]` skill_id must resolve from the configured
-`vault_path` checkout — pinning a skill that only exists in a
+`vault_path` checkout. Pinning a skill that only exists in a
 `local_vault_paths` entry (see below) fails `sync` with a distinct error, since
 the manifest is meant to be portable across machines and a machine-local
 override wouldn't exist elsewhere. `doctor` validates the manifest as part of
@@ -286,7 +286,7 @@ Skillmux created. Sync removes only those tracked entries, preserves unrelated
 content, and rejects a desired skill that collides with an unmanaged entry
 before changing anything.
 
-`sync` refuses to touch a directory that exists but has no marker — run
+`sync` refuses to touch a directory that exists but has no marker; run
 `skillmux init --target <name> --yes` first, which either creates the
 directory fresh or adopts an existing one in place (contents untouched).
 `sync --restore-monolith` likewise refuses a `local_vault` marker or any
@@ -302,34 +302,34 @@ cannot be inferred.
 
 ### Local vault overlays
 
-`local_vault_paths` (in `config.toml`, alongside `vault_path`) lets one machine layer override-only skills on top of the shared vault — a skill being authored locally, a machine-specific script, or a patched copy of an upstream skill — without touching `vault_path` itself:
+`local_vault_paths` (in `config.toml`, alongside `vault_path`) lets one machine layer override-only skills on top of the shared vault (a skill being authored locally, a machine-specific script, or a patched copy of an upstream skill) without touching `vault_path` itself:
 
 ```toml
 vault_path = "~/skills"                 # configured checkout; owns skillmux.toml and the sync git hook
 local_vault_paths = ["~/skills-local"]   # optional, default []: override-only, checked first
 ```
 
-- **Resolution order**: for any given `skill_id`, `local_vault_paths` entries are checked first, in array order; `vault_path` is the fallback. This applies everywhere a skill's on-disk location matters — indexing, `resolve_skill`/`fetch_skill` delivery, and `sync`'s symlink target.
+- **Resolution order**: for any given `skill_id`, `local_vault_paths` entries are checked first, in array order; `vault_path` is the fallback. This applies everywhere a skill's on-disk location matters: indexing, `resolve_skill`/`fetch_skill` delivery, and `sync`'s symlink target.
 - **`vault_path` keeps its exact existing meaning.** `skillmux.toml` and the `sync --install-hook` git hook only ever live in `vault_path`; `skillmux doctor` warns if it finds a stray manifest inside a `local_vault_paths` entry instead.
-- **`[core]`/`[project.*]` pins must resolve from `vault_path`.** Since the manifest is meant to be portable, `sync`/`doctor` reject a pin backed only by a `local_vault_paths` entry — see the manifest section above.
+- **`[core]`/`[project.*]` pins must resolve from `vault_path`.** Since the manifest is meant to be portable, `sync`/`doctor` reject a pin backed only by a `local_vault_paths` entry; see the manifest section above.
 - **Not yet covered**: `startVaultWatcher`'s live filesystem watch still only watches `vault_path`; a change inside a `local_vault_paths` entry is picked up lazily (on the next `resolve_skill`/`fetch_skill`/`sync` call, via the same mtime staleness check `vault_path` already uses), not instantly.
 
-**Visibility.** A `skill_id` present in more than one root is silently resolved via the precedence above with no output during normal use — two commands make that resolution visible on demand:
+**Visibility.** A `skill_id` present in more than one root is silently resolved via the precedence above with no output during normal use. Two commands make that resolution visible on demand:
 
-- `skillmux skill which <skill_id>` — prints which root actually serves that skill, and names every root it shadows:
+- `skillmux skill which <skill_id>`: prints which root actually serves that skill, and names every root it shadows:
   ```
   $ skillmux skill which my-skill
   my-skill: serving from /home/user/skills-local
     shadows: /home/user/skills
   ```
   Exits non-zero with `<skill_id>: not found in vault_path or local_vault_paths` if no root has it.
-- `skillmux doctor` reports every shadowed skill_id as an informational check (`shadowed:<skill_id>`, always `ok`) alongside its existing vault/manifest/embedding checks — so a scan of `doctor` output surfaces every override in one place, not just the one you thought to ask about.
+- `skillmux doctor` reports every shadowed skill_id as an informational check (`shadowed:<skill_id>`, always `ok`) alongside its existing vault/manifest/embedding checks, so a scan of `doctor` output surfaces every override in one place, not just the one you thought to ask about.
 
-**Discoverability.** A `local_vault_paths` entry is otherwise just a bare directory — nothing on disk says it belongs to skillmux or which `vault_path` it overlays. `skillmux local-vault init <path>` writes a `.skillmux` marker recording that relationship:
+**Discoverability.** A `local_vault_paths` entry is otherwise just a bare directory. Nothing on disk says it belongs to skillmux or which `vault_path` it overlays. `skillmux local-vault init <path>` writes a `.skillmux` marker recording that relationship:
 
 ```sh
 skillmux local-vault init ~/skills-local
 # wrote /home/user/skills-local/.skillmux (role: local_vault, vault_path: /home/user/skills)
 ```
 
-`<path>` must already be one of the configured `local_vault_paths` entries and must exist on disk — the command only ever writes the marker, it never adds the path to `config.toml` for you. `skillmux doctor` reports each entry's marker status (`local_vault_marker:<path>`): `ok: false` if no marker exists yet (with the exact `local-vault init` command to fix it), or if the marker's recorded `vault_path` no longer matches the one currently configured (drift — e.g. after copying the directory to a machine with a different `vault_path`).
+`<path>` must already be one of the configured `local_vault_paths` entries and must exist on disk; the command only ever writes the marker, it never adds the path to `config.toml` for you. `skillmux doctor` reports each entry's marker status (`local_vault_marker:<path>`): `ok: false` if no marker exists yet (with the exact `local-vault init` command to fix it), or if the marker's recorded `vault_path` no longer matches the one currently configured (drift: e.g. after copying the directory to a machine with a different `vault_path`).

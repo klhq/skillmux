@@ -122,6 +122,18 @@ Give the calling client these rules:
 
 ## Retrieval pipeline
 
+```mermaid
+flowchart LR
+    Q[Query] --> L[Lexical: FTS5 + BM25]
+    Q --> E[Embeddings: local or remote]
+    L --> F[Reciprocal-rank fusion]
+    E --> F
+    F --> RR[Optional reranker]
+    RR --> K[Ranked candidates: top_k]
+    F -. reranker unavailable .-> K
+    Q -. embedding unavailable: lexical only .-> K
+```
+
 Skillmux builds candidates in stages:
 
 1. SQLite FTS5 ranks lexical matches with BM25.
