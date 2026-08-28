@@ -16,6 +16,7 @@ import {
   insertFetch,
   openAudit,
   openIndex,
+  pruneAudit,
   replaceSkills,
   setIndexMeta,
   skillCount,
@@ -25,7 +26,7 @@ import {
   upsertVector,
   vectorTopK,
 } from "./db";
-import type { SkillRow } from "./db";
+import type { PruneResult, SkillRow } from "./db";
 import type {
   RankedCandidate,
   RetrievalCapability,
@@ -77,11 +78,15 @@ const defaultClients: Clients = {
 
 let overrides: Overrides = {};
 let env: { config: Config; db: Database; auditDb: Database } | null = null;
+let lastAuditPruneAt: number | null = null;
+
+const AUDIT_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /** Replace config/client overrides wholesale (tests, ops). Resets the cached index handle. */
 export function configure(opts: Overrides): void {
   overrides = opts;
   env = null;
+  lastAuditPruneAt = null;
 }
 
 async function getEnv(): Promise<{ config: Config; db: Database; auditDb: Database }> {
@@ -605,6 +610,22 @@ export async function retrieveAndRerank(
       reranked_rank: rerankedRanks.get(row.skill_id) ?? null,
     })),
   };
+}
+
+/**
+ * AC14: runs at most once per 24 hours per process. Callers must not await
+ * this on the startup or resolve path -- it is meant to be fired and left to
+ * resolve in the background so it never blocks readiness or a resolve.
+ */
+export async function pruneAuditIfDue(now: Date = new Date()): Promise<PruneResult | null> {
+  const { config, auditDb } = await getEnv();
+  const retentionDays = config.audit?.retention_days ?? 90;
+  if (retentionDays <= 0) return null;
+  if (lastAuditPruneAt !== null && now.getTime() - lastAuditPruneAt < AUDIT_PRUNE_INTERVAL_MS) {
+    return null;
+  }
+  lastAuditPruneAt = now.getTime();
+  return pruneAudit(auditDb, retentionDays, now);
 }
 
 export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {

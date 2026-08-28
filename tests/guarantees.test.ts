@@ -1,9 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { z } from "zod";
-import { configure, fetchSkill, getRuntime, rebuildIndex, resolveSkill } from "../src/router-core";
+import { configure, fetchSkill, getRuntime, pruneAuditIfDue, rebuildIndex, resolveSkill } from "../src/router-core";
 import { createMcpServer } from "../src/server";
 import type { AuditRow, Config } from "../src/types";
 import { sha256Hex } from "../src/vault";
@@ -259,6 +259,40 @@ describe("correlation (AC3)", () => {
       .query("SELECT request_id FROM audit ORDER BY id DESC LIMIT 1")
       .get() as { request_id: string | null };
     expect(row.request_id).toBe(second.request_id);
+  });
+});
+
+describe("audit prune scheduling (AC14)", () => {
+  afterEach(() => {
+    configure({
+      config,
+      clients: {
+        embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])),
+        rerank: async (_query, docs) =>
+          docs.map((d) => (d.skill_id === "audit-target" ? 0.97 : 0.1)),
+      },
+    });
+  });
+
+  test("prunes on the first call, then skips repeats within 24 hours, then prunes again after 24 hours", async () => {
+    configure({
+      config: { ...config, audit: { retention_days: 30 } },
+      clients: { embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])) },
+    });
+    const t0 = new Date("2026-08-28T00:00:00.000Z");
+
+    expect(await pruneAuditIfDue(t0)).not.toBeNull();
+    expect(await pruneAuditIfDue(new Date(t0.getTime() + 60_000))).toBeNull();
+    expect(await pruneAuditIfDue(new Date(t0.getTime() + 24 * 60 * 60 * 1000 + 1))).not.toBeNull();
+  });
+
+  test("never prunes when retention_days is 0 (AC12)", async () => {
+    configure({
+      config: { ...config, audit: { retention_days: 0 } },
+      clients: { embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])) },
+    });
+
+    expect(await pruneAuditIfDue(new Date())).toBeNull();
   });
 });
 
