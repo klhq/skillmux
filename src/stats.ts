@@ -315,5 +315,26 @@ export function renderStatsText(stats: StatsResponse): string {
     }
   }
 
+  if (stats.acceptance.available) {
+    lines.push(
+      `acceptance: acceptance_rate=${stats.acceptance.acceptance_rate.toFixed(3)} ` +
+        `observed_mrr=${stats.acceptance.observed_mrr.toFixed(3)} ` +
+        `top1_acceptance_rate=${stats.acceptance.top1_acceptance_rate.toFixed(3)} ` +
+        `(accepted=${stats.acceptance.accepted_count}/${stats.acceptance.resolves_with_candidates}, ` +
+        `uncorrelated_fetch_count=${stats.acceptance.uncorrelated_fetch_count})`,
+    );
+  } else {
+    lines.push(`acceptance: unavailable (uncorrelated_fetch_count=${stats.acceptance.uncorrelated_fetch_count})`);
+  }
+
+  lines.push("top unused shortlist queries:");
+  if (stats.top_unused_shortlist_queries.length === 0) {
+    lines.push("  (none)");
+  } else {
+    for (const entry of stats.top_unused_shortlist_queries) {
+      lines.push(`  "${entry.query}" (${entry.count})`);
+    }
+  }
+
   return lines.join("\n");
 }

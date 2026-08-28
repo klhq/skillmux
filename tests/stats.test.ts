@@ -554,4 +554,57 @@ describe("renderStatsText", () => {
     expect(text).toContain("skills:\n  (none)");
     expect(text).toContain("top empty shortlist queries:\n  (none)");
   });
+
+  test("renders the acceptance signal as unavailable, with the uncorrelated fetch count, when there are no correlated fetches (AC10)", () => {
+    const rows = [auditRow({ id: 1, candidates: [{ skill_id: "writing-clearly", score: 0.9 }] })];
+    const stats = computeStats(
+      rows,
+      new Date("2026-06-19T00:00:00.000Z"),
+      new Date("2026-07-19T00:00:00.000Z"),
+      [fetchRow({ resolve_audit_id: null })],
+    );
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain("acceptance: unavailable (uncorrelated_fetch_count=1)");
+  });
+
+  test("renders acceptance_rate, observed_mrr, and top1_acceptance_rate when the signal is available (AC9)", () => {
+    const rows = [auditRow({ id: 1, candidates: [{ skill_id: "writing-clearly", score: 0.9 }] })];
+    const stats = computeStats(
+      rows,
+      new Date("2026-06-19T00:00:00.000Z"),
+      new Date("2026-07-19T00:00:00.000Z"),
+      [fetchRow({ resolve_audit_id: 1, rank_at_resolve: 1 })],
+    );
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain(
+      "acceptance: acceptance_rate=1.000 observed_mrr=1.000 top1_acceptance_rate=1.000 (accepted=1/1, uncorrelated_fetch_count=0)",
+    );
+  });
+
+  test("renders top unused shortlist queries, distinct from top empty shortlist queries (AC11)", () => {
+    const rows = [
+      auditRow({ id: 1, query: "unused query", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+    ];
+    const stats = computeStats(
+      rows,
+      new Date("2026-06-19T00:00:00.000Z"),
+      new Date("2026-07-19T00:00:00.000Z"),
+    );
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain(`top unused shortlist queries:\n  "unused query" (1)`);
+  });
+
+  test("renders a placeholder when there are no unused shortlist queries", () => {
+    const stats = computeStats([], new Date("2026-06-19T00:00:00.000Z"), new Date("2026-07-19T00:00:00.000Z"));
+
+    const text = renderStatsText(stats);
+
+    expect(text).toContain("top unused shortlist queries:\n  (none)");
+  });
 });
