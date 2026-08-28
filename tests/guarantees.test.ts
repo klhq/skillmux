@@ -206,6 +206,41 @@ describe("fetch outcome logging (AC5-AC8)", () => {
       resolved.candidates.find((c) => c.skill_id === "audit-target")!.rank,
     );
   });
+
+  test("fetch_skill with an unknown or malformed request_id succeeds and records an uncorrelated fetch (AC7)", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    await expect(
+      fetchSkill({ skill_id: "audit-target", request_id: "not-a-real-request-id" }),
+    ).resolves.toMatchObject({ skill_id: "audit-target" });
+
+    const row = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").get() as {
+      request_id: string | null;
+      resolve_audit_id: number | null;
+      rank_at_resolve: number | null;
+    };
+
+    expect(row.request_id).toBe("not-a-real-request-id");
+    expect(row.resolve_audit_id).toBeNull();
+    expect(row.rank_at_resolve).toBeNull();
+  });
+
+  test("rank_at_resolve is null when the fetched skill is correlated but absent from the resolve's shortlist (AC8)", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    const resolved = await resolveSkill({ query: "audit log persistence questions", top_k: 1 });
+    expect(resolved.candidates.some((c) => c.skill_id === "bystander")).toBe(false);
+
+    await fetchSkill({ skill_id: "bystander", request_id: resolved.request_id });
+
+    const row = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").get() as {
+      resolve_audit_id: number | null;
+      rank_at_resolve: number | null;
+    };
+
+    expect(row.resolve_audit_id).not.toBeNull();
+    expect(row.rank_at_resolve).toBeNull();
+  });
 });
 
 describe("correlation (AC3)", () => {
