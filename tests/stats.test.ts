@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { insertAudit, openAudit } from "../src/db";
 import { computeStats, getStats, parseSince, queryAuditRows, renderStatsText } from "../src/stats";
-import type { AuditRow } from "../src/types";
+import type { AuditRow, FetchAuditRow } from "../src/types";
 
 function auditRow(overrides: Partial<AuditRow>): AuditRow {
   return {
@@ -15,6 +15,18 @@ function auditRow(overrides: Partial<AuditRow>): AuditRow {
     retrieval: "lexical",
     candidates: [],
     latency_ms: 5,
+    ...overrides,
+  };
+}
+
+function fetchRow(overrides: Partial<FetchAuditRow>): FetchAuditRow {
+  return {
+    id: 1,
+    ts: "2026-07-10T00:00:00.000Z",
+    skill_id: "writing-clearly",
+    request_id: null,
+    resolve_audit_id: null,
+    rank_at_resolve: null,
     ...overrides,
   };
 }
@@ -175,6 +187,72 @@ describe("computeStats", () => {
 
     const result = computeStats(rows, since, until);
     expect(result.top_empty_shortlist_queries).toHaveLength(20);
+  });
+});
+
+describe("computeStats acceptance signal (AC9, AC10, AC11)", () => {
+  const since = new Date("2026-06-19T00:00:00.000Z");
+  const until = new Date("2026-07-19T00:00:00.000Z");
+
+  test("marks the acceptance signal unavailable when there are no correlated fetches", () => {
+    const rows = [auditRow({ id: 1, candidates: [{ skill_id: "writing-clearly", score: 0.9 }] })];
+    const fetches = [fetchRow({ resolve_audit_id: null })];
+
+    const result = computeStats(rows, since, until, fetches);
+
+    expect(result.acceptance).toEqual({ available: false, uncorrelated_fetch_count: 1 });
+  });
+
+  test("computes acceptance_rate, observed_mrr, and top1_acceptance_rate over resolves with candidates (AC9)", () => {
+    const rows = [
+      auditRow({ id: 1, query: "q1", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+      auditRow({ id: 2, query: "q2", candidates: [{ skill_id: "code-review", score: 0.8 }, { skill_id: "writing-clearly", score: 0.5 }] }),
+      auditRow({ id: 3, query: "q3", candidates: [{ skill_id: "code-review", score: 0.7 }] }),
+    ];
+    // resolve 1: fetched at rank 1 (top1). resolve 2: fetched candidate at rank 2. resolve 3: no fetch.
+    const fetches = [
+      fetchRow({ resolve_audit_id: 1, rank_at_resolve: 1, ts: "2026-07-10T00:00:01.000Z" }),
+      fetchRow({ resolve_audit_id: 2, rank_at_resolve: 2, ts: "2026-07-10T00:00:01.000Z" }),
+      fetchRow({ resolve_audit_id: null, ts: "2026-07-10T00:00:02.000Z" }),
+    ];
+
+    const result = computeStats(rows, since, until, fetches);
+
+    expect(result.acceptance).toEqual({
+      available: true,
+      resolves_with_candidates: 3,
+      accepted_count: 2,
+      acceptance_rate: 2 / 3,
+      observed_mrr: (1 / 1 + 1 / 2) / 2,
+      top1_acceptance_rate: 1 / 2,
+      uncorrelated_fetch_count: 1,
+    });
+  });
+
+  test("uses only the earliest fetch per resolve when a resolve was fetched more than once", () => {
+    const rows = [auditRow({ id: 1, query: "q1", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] })];
+    const fetches = [
+      fetchRow({ resolve_audit_id: 1, rank_at_resolve: 3, ts: "2026-07-10T00:00:02.000Z" }),
+      fetchRow({ resolve_audit_id: 1, rank_at_resolve: 1, ts: "2026-07-10T00:00:01.000Z" }),
+    ];
+
+    const result = computeStats(rows, since, until, fetches);
+
+    expect(result.acceptance).toMatchObject({ observed_mrr: 1, top1_acceptance_rate: 1 });
+  });
+
+  test("lists queries that returned candidates but received no correlated fetch, distinct from empty-shortlist queries (AC11)", () => {
+    const rows = [
+      auditRow({ id: 1, query: "unused query", candidates: [{ skill_id: "writing-clearly", score: 0.9 }] }),
+      auditRow({ id: 2, query: "accepted query", candidates: [{ skill_id: "code-review", score: 0.8 }] }),
+      auditRow({ id: 3, query: "empty shortlist query", candidates: [] }),
+    ];
+    const fetches = [fetchRow({ resolve_audit_id: 2, rank_at_resolve: 1 })];
+
+    const result = computeStats(rows, since, until, fetches);
+
+    expect(result.top_unused_shortlist_queries).toEqual([{ query: "unused query", count: 1 }]);
+    expect(result.top_empty_shortlist_queries).toEqual([{ query: "empty shortlist query", count: 1 }]);
   });
 });
 

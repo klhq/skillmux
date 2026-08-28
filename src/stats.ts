@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import type { AuditCandidate, AuditRow } from "./types";
+import type { AuditCandidate, AuditRow, FetchAuditRow } from "./types";
 
 export const SINCE_PATTERN = /^(\d+[hdwmy]|\d{4}-\d{2}-\d{2}([T ].+)?)$/;
 
@@ -20,6 +20,18 @@ export interface RetrievalTotals {
   lexical: number;
 }
 
+export type AcceptanceSignal =
+  | { available: false; uncorrelated_fetch_count: number }
+  | {
+      available: true;
+      resolves_with_candidates: number;
+      accepted_count: number;
+      acceptance_rate: number;
+      observed_mrr: number;
+      top1_acceptance_rate: number;
+      uncorrelated_fetch_count: number;
+    };
+
 export interface StatsResponse {
   since: string;
   until: string;
@@ -31,6 +43,8 @@ export interface StatsResponse {
   average_latency_ms: number;
   skills: SkillStat[];
   top_empty_shortlist_queries: EmptyShortlistQuery[];
+  acceptance: AcceptanceSignal;
+  top_unused_shortlist_queries: EmptyShortlistQuery[];
 }
 
 const RELATIVE_WINDOW = /^(\d+)([hdwmy])$/;
@@ -63,10 +77,16 @@ function compareCodeUnits(a: string, b: string): number {
   return 0;
 }
 
-export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsResponse {
+export function computeStats(
+  rows: AuditRow[],
+  since: Date,
+  until: Date,
+  fetchRows: FetchAuditRow[] = [],
+): StatsResponse {
   const retrieval_totals: RetrievalTotals = { exact: 0, reranked: 0, hybrid: 0, lexical: 0 };
   const skillCounts = new Map<string, number>();
   const emptyShortlistCounts = new Map<string, number>();
+  const resolvesWithCandidates = new Map<number, AuditRow>();
   let empty_shortlist_count = 0;
   let degraded_count = 0;
   let total_latency_ms = 0;
@@ -86,6 +106,7 @@ export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsR
       empty_shortlist_count++;
       emptyShortlistCounts.set(row.query, (emptyShortlistCounts.get(row.query) ?? 0) + 1);
     } else {
+      resolvesWithCandidates.set(row.id, row);
       const seenInRow = new Set<string>();
       for (const candidate of row.candidates) {
         if (!candidate.skill_id) continue;
@@ -94,6 +115,52 @@ export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsR
         skillCounts.set(candidate.skill_id, (skillCounts.get(candidate.skill_id) ?? 0) + 1);
       }
     }
+  }
+
+  let uncorrelated_fetch_count = 0;
+  const firstFetchByResolve = new Map<number, FetchAuditRow>();
+  for (const fetch of fetchRows) {
+    if (fetch.resolve_audit_id === null) {
+      uncorrelated_fetch_count++;
+      continue;
+    }
+    if (!resolvesWithCandidates.has(fetch.resolve_audit_id)) continue;
+    const existing = firstFetchByResolve.get(fetch.resolve_audit_id);
+    if (!existing || fetch.ts < existing.ts) {
+      firstFetchByResolve.set(fetch.resolve_audit_id, fetch);
+    }
+  }
+
+  const acceptedResolveIds = new Set(firstFetchByResolve.keys());
+  const accepted_count = acceptedResolveIds.size;
+  const acceptance: AcceptanceSignal =
+    accepted_count > 0
+      ? (() => {
+          let reciprocalRankSum = 0;
+          let top1Count = 0;
+          for (const fetch of firstFetchByResolve.values()) {
+            const rank = fetch.rank_at_resolve;
+            if (rank !== null) {
+              reciprocalRankSum += 1 / rank;
+              if (rank === 1) top1Count++;
+            }
+          }
+          return {
+            available: true as const,
+            resolves_with_candidates: resolvesWithCandidates.size,
+            accepted_count,
+            acceptance_rate: accepted_count / resolvesWithCandidates.size,
+            observed_mrr: reciprocalRankSum / accepted_count,
+            top1_acceptance_rate: top1Count / accepted_count,
+            uncorrelated_fetch_count,
+          };
+        })()
+      : { available: false as const, uncorrelated_fetch_count };
+
+  const unusedShortlistCounts = new Map<string, number>();
+  for (const [id, row] of resolvesWithCandidates) {
+    if (acceptedResolveIds.has(id)) continue;
+    unusedShortlistCounts.set(row.query, (unusedShortlistCounts.get(row.query) ?? 0) + 1);
   }
 
   const total_requests = rows.length;
@@ -109,15 +176,8 @@ export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsR
       return compareCodeUnits(a.skill_id, b.skill_id);
     });
 
-  const top_empty_shortlist_queries: EmptyShortlistQuery[] = [...emptyShortlistCounts.entries()]
-    .map(([query, count]) => ({ query, count }))
-    .sort((a, b) => {
-      if (b.count !== a.count) {
-        return b.count - a.count;
-      }
-      return compareCodeUnits(a.query, b.query);
-    })
-    .slice(0, 20);
+  const top_empty_shortlist_queries = topQueryCounts(emptyShortlistCounts);
+  const top_unused_shortlist_queries = topQueryCounts(unusedShortlistCounts);
 
   return {
     since: since.toISOString(),
@@ -130,7 +190,21 @@ export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsR
     average_latency_ms,
     skills,
     top_empty_shortlist_queries,
+    acceptance,
+    top_unused_shortlist_queries,
   };
+}
+
+function topQueryCounts(counts: Map<string, number>): EmptyShortlistQuery[] {
+  return [...counts.entries()]
+    .map(([query, count]) => ({ query, count }))
+    .sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return compareCodeUnits(a.query, b.query);
+    })
+    .slice(0, 20);
 }
 
 interface AuditTableRow {
