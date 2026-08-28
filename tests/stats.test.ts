@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { insertAudit, openAudit } from "../src/db";
-import { computeStats, getStats, parseSince, queryAuditRows, renderStatsText } from "../src/stats";
+import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
+import { computeStats, getStats, parseSince, queryAuditRows, queryFetchRows, renderStatsText } from "../src/stats";
 import type { AuditRow, FetchAuditRow } from "../src/types";
 
 function auditRow(overrides: Partial<AuditRow>): AuditRow {
@@ -460,6 +460,65 @@ describe("getStats", () => {
     expect(result.retrieval_totals).toEqual({ exact: 0, reranked: 1, hybrid: 0, lexical: 0 });
     expect(result.skills).toEqual([{ skill_id: "writing-clearly", candidate_count: 1 }]);
     expect(result.until).toBe(now.toISOString());
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  test("correlates fetch rows to their resolve to populate the acceptance signal (AC9)", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
+    const db = openAudit(stateDir);
+    const now = new Date("2026-07-19T00:00:00.000Z");
+    insertAudit(db, {
+      ts: "2026-07-10T00:00:00.000Z",
+      request_id: "req-1",
+      query: "in window",
+      retrieval: "reranked",
+      candidates: [{ skill_id: "writing-clearly", score: 0.9 }],
+      latency_ms: 12,
+    });
+    const resolveId = getAuditRowByRequestId(db, "req-1")!.id;
+    insertFetch(db, {
+      ts: "2026-07-10T00:00:01.000Z",
+      skill_id: "writing-clearly",
+      request_id: "req-1",
+      resolve_audit_id: resolveId,
+      rank_at_resolve: 1,
+    });
+
+    const result = getStats(db, "30d", now);
+
+    expect(result.acceptance).toEqual({
+      available: true,
+      resolves_with_candidates: 1,
+      accepted_count: 1,
+      acceptance_rate: 1,
+      observed_mrr: 1,
+      top1_acceptance_rate: 1,
+      uncorrelated_fetch_count: 0,
+    });
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+});
+
+describe("queryFetchRows", () => {
+  test("reads fetch rows at or after the since timestamp", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
+    const db = openAudit(stateDir);
+    insertFetch(db, { ts: "2026-07-10T00:00:00.000Z", skill_id: "in-window", resolve_audit_id: 1, rank_at_resolve: 2 });
+    insertFetch(db, { ts: "2026-01-01T00:00:00.000Z", skill_id: "too-old", resolve_audit_id: null, rank_at_resolve: null });
+
+    const rows = queryFetchRows(db, "2026-06-01T00:00:00.000Z");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      skill_id: "in-window",
+      request_id: null,
+      resolve_audit_id: 1,
+      rank_at_resolve: 2,
+    });
 
     db.close();
     rmSync(stateDir, { recursive: true, force: true });

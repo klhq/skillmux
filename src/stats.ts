@@ -269,10 +269,19 @@ export function queryAuditRows(db: Database, sinceIso: string): AuditRow[] {
   });
 }
 
+export function queryFetchRows(db: Database, sinceIso: string): FetchAuditRow[] {
+  return db
+    .query(
+      "SELECT id, ts, skill_id, request_id, resolve_audit_id, rank_at_resolve FROM fetch WHERE ts >= ? ORDER BY ts ASC",
+    )
+    .all(sinceIso) as FetchAuditRow[];
+}
+
 export function getStats(db: Database, since: string, now: Date = new Date()): StatsResponse {
   const sinceDate = parseSince(since, now);
   const rows = queryAuditRows(db, sinceDate.toISOString());
-  return computeStats(rows, sinceDate, now);
+  const fetchRows = queryFetchRows(db, sinceDate.toISOString());
+  return computeStats(rows, sinceDate, now, fetchRows);
 }
 
 export function renderStatsText(stats: StatsResponse): string {
