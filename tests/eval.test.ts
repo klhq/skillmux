@@ -10,8 +10,10 @@ import {
   loadEvalCases,
   normalizeQuery,
   parseEvalCases,
+  queryPromotableFetches,
   type EvalCase,
 } from "../src/eval";
+import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
 import { backfillEmbeddings, configure, rebuildIndex } from "../src/router-core";
 import type { Config } from "../src/types";
 
@@ -140,6 +142,38 @@ describe("excludeExistingCases (AC18)", () => {
 
     expect(result.cases).toEqual([{ query: "new query", split: "observed", relevant_skill_ids: ["writing-clearly"] }]);
     expect(result.skipped).toBe(1);
+  });
+});
+
+describe("queryPromotableFetches (AC17)", () => {
+  test("joins fetches to their resolve's query, ignoring uncorrelated fetches and fetches before the window", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-"));
+    const db = openAudit(stateDir);
+    insertAudit(db, {
+      ts: "2026-07-10T00:00:00.000Z",
+      request_id: "req-1",
+      query: "run docker logs",
+      retrieval: "reranked",
+      candidates: [{ skill_id: "docker-manager", score: 0.9 }],
+      latency_ms: 12,
+    });
+    const resolveId = getAuditRowByRequestId(db, "req-1")!.id;
+    insertFetch(db, {
+      ts: "2026-07-10T00:00:01.000Z",
+      skill_id: "docker-manager",
+      request_id: "req-1",
+      resolve_audit_id: resolveId,
+      rank_at_resolve: 1,
+    });
+    insertFetch(db, { ts: "2026-07-10T00:00:02.000Z", skill_id: "orphan-skill", resolve_audit_id: null, rank_at_resolve: null });
+    insertFetch(db, { ts: "2026-01-01T00:00:00.000Z", skill_id: "docker-manager", resolve_audit_id: resolveId, rank_at_resolve: 1 });
+
+    const rows = queryPromotableFetches(db, "2026-06-01T00:00:00.000Z");
+
+    expect(rows).toEqual([{ query: "run docker logs", skill_id: "docker-manager" }]);
+
+    db.close();
+    rmSync(stateDir, { recursive: true, force: true });
   });
 });
 

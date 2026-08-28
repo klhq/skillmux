@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -107,6 +108,23 @@ export function excludeExistingCases(
     }
   }
   return { cases: kept, skipped };
+}
+
+/**
+ * AC17: joins fetches to the resolve that produced them for promotion. Only
+ * correlated fetches (a known resolve_audit_id) carry a query to promote;
+ * uncorrelated fetches have no resolve to join against and are excluded.
+ */
+export function queryPromotableFetches(db: Database, sinceIso: string): ObservedFetch[] {
+  return db
+    .query(
+      `SELECT audit.query AS query, fetch.skill_id AS skill_id
+       FROM fetch
+       JOIN audit ON fetch.resolve_audit_id = audit.id
+       WHERE fetch.ts >= ?
+       ORDER BY fetch.ts ASC`,
+    )
+    .all(sinceIso) as ObservedFetch[];
 }
 
 export interface EvalMetrics {
