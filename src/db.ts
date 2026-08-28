@@ -24,6 +24,7 @@ export function openAudit(stateDir: string): Database {
   db.run(`CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
+    request_id TEXT,
     query TEXT NOT NULL,
     retrieval TEXT NOT NULL DEFAULT 'lexical',
     degraded_from TEXT,
@@ -31,6 +32,14 @@ export function openAudit(stateDir: string): Database {
     candidates TEXT NOT NULL,
     latency_ms INTEGER NOT NULL
   )`);
+  // CREATE TABLE IF NOT EXISTS no-ops on a table opened from before request_id
+  // existed (AC4), so add it explicitly when missing.
+  const auditColumns = new Set(
+    (db.query("PRAGMA table_info(audit)").all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!auditColumns.has("request_id")) {
+    db.run("ALTER TABLE audit ADD COLUMN request_id TEXT");
+  }
   adoptAuditFromIndex(db, stateDir);
   return db;
 }
@@ -298,6 +307,7 @@ export function vectorTopK(db: Database, query: Float32Array, k: number): SkillR
 
 export interface AuditInsert {
   ts: string;
+  request_id?: string | null;
   query: string;
   retrieval: AuditRow["retrieval"];
   degraded_from?: string | null;
@@ -308,10 +318,11 @@ export interface AuditInsert {
 
 export function insertAudit(db: Database, row: AuditInsert): void {
   db.run(
-    `INSERT INTO audit (ts, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO audit (ts, request_id, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       row.ts,
+      row.request_id ?? null,
       row.query,
       row.retrieval,
       row.degraded_from ?? null,

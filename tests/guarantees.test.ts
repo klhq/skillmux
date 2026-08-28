@@ -164,6 +164,25 @@ describe("audit log persistence (AC10)", () => {
   });
 });
 
+describe("correlation (AC3)", () => {
+  test("resolve_skill mints a unique request_id shared with its audit row", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    const first = await resolveSkill({ query: "audit log persistence questions" });
+    const second = await resolveSkill({ query: "audit bystander questions" });
+
+    expect(first.request_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(second.request_id).not.toBe(first.request_id);
+
+    const row = db
+      .query("SELECT request_id FROM audit ORDER BY id DESC LIMIT 1")
+      .get() as { request_id: string | null };
+    expect(row.request_id).toBe(second.request_id);
+  });
+});
+
 // Tool inputSchemas are compiled into sampling grammars by constrained
 // decoders. llama.cpp caps repetition expansion at MAX_REPETITION_THRESHOLD
 // (2000, src/llama-grammar.cpp); a schema above it is rejected at sampler init

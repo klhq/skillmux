@@ -136,6 +136,7 @@ export function computeStats(rows: AuditRow[], since: Date, until: Date): StatsR
 interface AuditTableRow {
   id: number;
   ts: string;
+  request_id: string | null;
   query: string;
   retrieval: AuditRow["retrieval"];
   degraded_from: string | null;
@@ -147,7 +148,7 @@ interface AuditTableRow {
 export function queryAuditRows(db: Database, sinceIso: string): AuditRow[] {
   const rows = db
     .query(
-      "SELECT id, ts, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms FROM audit WHERE ts >= ? ORDER BY ts ASC",
+      "SELECT id, ts, request_id, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms FROM audit WHERE ts >= ? ORDER BY ts ASC",
     )
     .all(sinceIso) as AuditTableRow[];
 
@@ -178,6 +179,7 @@ export function queryAuditRows(db: Database, sinceIso: string): AuditRow[] {
     const result: AuditRow = {
       id: row.id,
       ts: row.ts,
+      request_id: row.request_id,
       query: row.query,
       retrieval: row.retrieval,
       candidates,

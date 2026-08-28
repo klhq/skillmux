@@ -136,6 +136,7 @@ export type DegradationReason =
   | "reranker_protocol_error";
 
 export interface ResolveResult {
+  request_id: string;
   retrieval: RetrievalCapability;
   degraded_from?: "reranked" | "hybrid";
   degradation_reason?: DegradationReason;
@@ -169,6 +170,8 @@ export interface AuditCandidate {
 export interface AuditRow {
   id: number;
   ts: string;
+  /** Null for rows written before request_id existed (AC4). */
+  request_id: string | null;
   query: string;
   retrieval: RetrievalCapability;
   degraded_from?: "reranked" | "hybrid" | null;

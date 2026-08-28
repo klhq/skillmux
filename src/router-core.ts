@@ -401,7 +401,10 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
       score: c.score,
     }));
 
+  const requestId = crypto.randomUUID();
+
   const result: ResolveResult = {
+    request_id: requestId,
     retrieval,
     ...(retrievalResult.degraded_from
       ? {
@@ -417,6 +420,7 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
     buildAuditRow({
       id: 0, // assigned by SQLite
       ts: new Date().toISOString(),
+      request_id: requestId,
       query: input.query,
       retrieval,
       degraded_from: retrievalResult.degraded_from ?? null,

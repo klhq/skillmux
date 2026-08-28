@@ -252,6 +252,7 @@ describe("audit store", () => {
       expect(rows[0]).toEqual({
         id: 1,
         ts: "2026-07-01T10:00:00.000Z",
+        request_id: null,
         query: "matched query",
         retrieval: "reranked",
         degraded_from: null,
@@ -263,6 +264,7 @@ describe("audit store", () => {
       expect(rows[1]).toEqual({
         id: 2,
         ts: "2026-07-01T11:00:00.000Z",
+        request_id: null,
         query: "ambiguous query",
         retrieval: "hybrid",
         degraded_from: "reranked",
@@ -277,6 +279,7 @@ describe("audit store", () => {
       expect(rows[2]).toEqual({
         id: 3,
         ts: "2026-07-01T12:00:00.000Z",
+        request_id: null,
         query: "no match query",
         retrieval: "lexical",
         degraded_from: null,
@@ -312,6 +315,7 @@ describe("audit store", () => {
       expect(finalRows[3]).toEqual({
         id: 4,
         ts: "2026-07-01T13:00:00.000Z",
+        request_id: null,
         query: "new insert after migration",
         retrieval: "exact",
         degraded_from: null,
