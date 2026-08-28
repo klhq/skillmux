@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0](https://github.com/klhq/skillmux/compare/v1.7.1...v1.8.0) (2026-08-28)
+
+
+### Added
+
+* **audit:** add fetch-outcome routing quality flywheel ([#131](https://github.com/klhq/skillmux/issues/131)) ([c55e5ec](https://github.com/klhq/skillmux/commit/c55e5ec794453ccbdbf7ffe9263684356d2a71de))
+
 ## [1.7.1](https://github.com/klhq/skillmux/compare/v1.7.0...v1.7.1) (2026-08-21)
 
 
