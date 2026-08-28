@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
-import { insertAudit, insertFetch, openAudit } from "../src/db";
+import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
 import { startServer } from "../src/server";
 
 const tmp = mkdtempSync(join(tmpdir(), "skillmux-cli-"));
@@ -282,7 +282,7 @@ describe("skillmux Docker command policy", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Skillmux server image");
     expect(result.stdout).toContain("Default:\n  serve --transport http");
-    expect(result.stdout).toContain("serve, index, doctor, report, audit prune, scan, skill which");
+    expect(result.stdout).toContain("serve, index, doctor, report, audit prune, eval promote, scan, skill which");
     expect(result.stdout).toContain("config show|get|validate|diff|status");
     expect(result.stdout).toContain("Install the Skillmux CLI on the host for init, install, pinning, and sync.");
     expect(result.stdout).not.toContain("Setup:");
@@ -1860,6 +1860,155 @@ describe("skillmux audit prune CLI (AC15)", () => {
     const check = openAudit(join(root, "state"));
     expect((check.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n).toBe(0);
     check.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("skillmux eval promote CLI (AC17, AC18)", () => {
+  function privateConfig(promoteStateDir: string): string {
+    const path = join(promoteStateDir, "config.toml");
+    writeFileSync(
+      path,
+      [
+        `vault_path = "${vaultDir}"`,
+        `state_dir = "${join(promoteStateDir, "state")}"`,
+        `[recall]`,
+        `k_lexical = 50`,
+        `k_vector = 50`,
+        `k_rerank = 50`,
+        ``,
+        `[output]`,
+        `top_k = 10`,
+        `max_top_k = 50`,
+        ``,
+        `[inference]`,
+        `mode = "remote"`,
+        `timeout_ms = 200`,
+        ``,
+        `[inference.embedding]`,
+        `provider = "openai"`,
+        `endpoint = "http://127.0.0.1:9/v1/embeddings"`,
+        `model = "microsoft/harrier-oss-v1-0.6b"`,
+        `dimension = 1024`,
+      ].join("\n"),
+    );
+    return path;
+  }
+
+  function seedCorrelatedFetch(root: string, query: string, skillId: string, requestId: string): void {
+    const db = openAudit(join(root, "state"));
+    insertAudit(db, {
+      ts: new Date().toISOString(),
+      request_id: requestId,
+      query,
+      retrieval: "lexical",
+      candidates: [{ skill_id: skillId, score: 0.9 }],
+      latency_ms: 5,
+    });
+    const resolveId = getAuditRowByRequestId(db, requestId)!.id;
+    insertFetch(db, {
+      ts: new Date().toISOString(),
+      skill_id: skillId,
+      request_id: requestId,
+      resolve_audit_id: resolveId,
+      rank_at_resolve: 1,
+    });
+    db.close();
+  }
+
+  function runPromoteCli(promoteConfigPath: string, ...args: string[]) {
+    return runCliEnv(["eval", "promote", ...args], { SKILLMUX_CONFIG: promoteConfigPath });
+  }
+
+  test("requires --yes when run non-interactively", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-yes-"));
+    const promoteConfigPath = privateConfig(root);
+    seedCorrelatedFetch(root, "run docker logs", "docker-manager", "req-1");
+
+    const result = await runPromoteCli(promoteConfigPath, "--since", "30d");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("requires --yes");
+    expect(existsSync(join(root, "state", "eval-observed.json"))).toBe(false);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("--dry-run reports the promotable count without writing the target file", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-dryrun-"));
+    const promoteConfigPath = privateConfig(root);
+    seedCorrelatedFetch(root, "run docker logs", "docker-manager", "req-1");
+
+    const result = await runPromoteCli(promoteConfigPath, "--since", "30d", "--dry-run");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("would write 1 case");
+    expect(existsSync(join(root, "state", "eval-observed.json"))).toBe(false);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("writes observed-split cases shaped for parseEvalCases to a path other than eval/queries.json by default", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-write-"));
+    const promoteConfigPath = privateConfig(root);
+    seedCorrelatedFetch(root, "run docker logs", "docker-manager", "req-1");
+
+    const result = await runPromoteCli(promoteConfigPath, "--since", "30d", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("wrote 1 case");
+
+    const targetPath = join(root, "state", "eval-observed.json");
+    expect(targetPath).not.toBe(join(process.cwd(), "eval", "queries.json"));
+    const written = JSON.parse(readFileSync(targetPath, "utf-8"));
+    expect(written).toEqual([{ query: "run docker logs", split: "observed", relevant_skill_ids: ["docker-manager"] }]);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("never rewrites a case whose query already exists in the target file (AC18)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-dedupe-"));
+    const promoteConfigPath = privateConfig(root);
+    seedCorrelatedFetch(root, "run docker logs", "docker-manager", "req-1");
+    mkdirSync(join(root, "state"), { recursive: true });
+    const targetPath = join(root, "state", "eval-observed.json");
+    writeFileSync(
+      targetPath,
+      JSON.stringify([{ query: "run docker logs", split: "observed", relevant_skill_ids: ["old-skill"] }]),
+    );
+
+    const result = await runPromoteCli(promoteConfigPath, "--since", "30d", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("wrote 0 case");
+    expect(result.stdout).toContain("skipped_existing=1");
+    const written = JSON.parse(readFileSync(targetPath, "utf-8"));
+    expect(written).toEqual([{ query: "run docker logs", split: "observed", relevant_skill_ids: ["old-skill"] }]);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("warns that promoted cases contain raw user queries", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-warn-"));
+    const promoteConfigPath = privateConfig(root);
+    seedCorrelatedFetch(root, "run docker logs", "docker-manager", "req-1");
+
+    const result = await runPromoteCli(promoteConfigPath, "--since", "30d", "--yes");
+
+    expect(result.stderr).toContain("raw user queries");
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("--json wraps the promote result in a schema_version:1 envelope", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-json-"));
+    const promoteConfigPath = privateConfig(root);
+    seedCorrelatedFetch(root, "run docker logs", "docker-manager", "req-1");
+
+    const result = await runPromoteCli(promoteConfigPath, "--since", "30d", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.promoted).toBe(1);
+    expect(parsed.data.skipped_existing).toBe(0);
+    expect(parsed.data.dry_run).toBe(false);
     rmSync(root, { recursive: true, force: true });
   });
 });

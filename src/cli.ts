@@ -108,6 +108,7 @@ import {
 import { generateCompletions, type ShellType } from "./completions";
 import { runAudit } from "./commands/audit";
 import { handleConfigCommand } from "./commands/config";
+import { runEvalPromote } from "./commands/eval";
 import { runCore } from "./commands/core";
 import { configuredTargetForSurface, runProject } from "./commands/project";
 import { confirmAction, confirmIfNeeded } from "./commands/shared";
@@ -147,11 +148,14 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
       "local-vault",
       "models",
       "context",
-      "eval",
     ].includes(command)
   ) {
     return true;
   }
+
+  // eval promote only touches the mounted state_dir, unlike bare `eval`
+  // (vault ranking evaluation), which needs local embeddings and the vault.
+  if (command === "eval" && subCommand !== "promote") return true;
 
   return command === "config" && ["init", "set"].includes(subCommand);
 }
@@ -334,7 +338,13 @@ async function main() {
         await runInstall(rawArgv.slice(1), { isJson });
         break;
       case "eval":
-        await runEval({ isJson });
+        if (subCommand === "promote") {
+          await runEvalPromote(commandArgs, { isJson, dryRun: isDryRun });
+        } else if (subCommand === "") {
+          await runEval({ isJson });
+        } else {
+          throw new Error(`usage: skillmux eval [promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]]`);
+        }
         break;
       case "doctor":
         await runDoctor({ isJson });
@@ -512,7 +522,7 @@ Default:
   serve --transport http
 
 Supported commands:
-  serve, index, doctor, report, audit prune, scan, skill which
+  serve, index, doctor, report, audit prune, eval promote, scan, skill which
   config show|get|validate|diff|status
 
 Native skill management:
@@ -548,6 +558,7 @@ Init targets:
 Operations:
   skillmux report [--server <url> | --db <path>] --since <window> [--json]
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
+  skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
 
 Commands:
   serve, index, sync, init, project, target, core, report, audit, scan, install, eval, doctor,
