@@ -12,7 +12,7 @@ import {
   migrateLegacyPaths,
   resolveConfigPath,
 } from "./config";
-import { openIndex } from "./db";
+import { openAudit } from "./db";
 import { diagnose } from "./doctor";
 import { getEffectiveConfig } from "./config-service";
 import { evalVault } from "./eval";
@@ -1453,7 +1453,7 @@ async function runReport(
 
   const db = dbPath
     ? new Database(dbPath, { readonly: true })
-    : openIndex(expandHome((await loadConfig()).state_dir));
+    : openAudit(expandHome((await loadConfig()).state_dir));
   const stats = getStats(db, since);
   emitSuccess({ isJson: options.isJson }, stats, () =>
     console.log(renderStatsText(stats)),

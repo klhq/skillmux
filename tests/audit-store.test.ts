@@ -1,0 +1,327 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Database } from "bun:sqlite";
+import { insertAudit, openAudit, openIndex } from "../src/db";
+import { queryAuditRows } from "../src/stats";
+
+// The pre-split shape: a canonical audit table inside index.sqlite3. openIndex
+// no longer produces this, so tests that exercise adoption build it directly.
+function seedPreSplitAudit(stateDir: string, query: string): void {
+  const index = new Database(join(stateDir, "index.sqlite3"), { create: true });
+  index.run(`CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    query TEXT NOT NULL,
+    retrieval TEXT NOT NULL DEFAULT 'lexical',
+    degraded_from TEXT,
+    degradation_reason TEXT,
+    candidates TEXT NOT NULL,
+    latency_ms INTEGER NOT NULL
+  )`);
+  index.run(
+    "INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)",
+    ["2026-08-27T00:00:00.000Z", query, "lexical", "[]", 7],
+  );
+  index.close();
+}
+
+describe("audit store", () => {
+  let tmp: string;
+  let db: Database | undefined;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "skillmux-audit-store-test-"));
+  });
+
+  afterEach(() => {
+    db?.close();
+    db = undefined;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("should create audit.sqlite3 in state_dir with WAL journaling and incremental auto-vacuum", () => {
+    db = openAudit(tmp);
+
+    expect(existsSync(join(tmp, "audit.sqlite3"))).toBe(true);
+
+    const journalMode = db.query("PRAGMA journal_mode").get() as { journal_mode: string };
+    expect(journalMode.journal_mode).toBe("wal");
+
+    // 2 is INCREMENTAL. It can only be set on an empty database, so this
+    // asserts the pragma ran before any table was created.
+    const autoVacuum = db.query("PRAGMA auto_vacuum").get() as { auto_vacuum: number };
+    expect(autoVacuum.auto_vacuum).toBe(2);
+  });
+
+  test("should leave the index database free of any audit table", () => {
+    const index = openIndex(tmp);
+    const auditTables = index
+      .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit'")
+      .all();
+    index.close();
+
+    expect(auditTables).toHaveLength(0);
+  });
+
+  test("should round-trip a resolve audit row through the audit store", () => {
+    db = openAudit(tmp);
+
+    insertAudit(db, {
+      ts: "2026-08-28T00:00:00.000Z",
+      query: "convert a spreadsheet to markdown",
+      retrieval: "hybrid",
+      candidates: [{ skill_id: "csv-formatter", score: 0.92 }],
+      latency_ms: 42,
+    });
+
+    const rows = queryAuditRows(db, "2026-08-01T00:00:00.000Z");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.query).toBe("convert a spreadsheet to markdown");
+    expect(rows[0]!.retrieval).toBe("hybrid");
+    expect(rows[0]!.candidates).toEqual([{ skill_id: "csv-formatter", score: 0.92 }]);
+    expect(rows[0]!.latency_ms).toBe(42);
+  });
+
+  test("should move pre-existing audit rows out of index.sqlite3 on first open", () => {
+    seedPreSplitAudit(tmp, "written before the split");
+
+    db = openAudit(tmp);
+
+    const rows = queryAuditRows(db, "2026-08-01T00:00:00.000Z");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.query).toBe("written before the split");
+
+    const index = new Database(join(tmp, "index.sqlite3"));
+    const remaining = index
+      .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit'")
+      .all();
+    index.close();
+    expect(remaining).toHaveLength(0);
+  });
+
+  test("should not duplicate rows when the audit store is opened again", () => {
+    seedPreSplitAudit(tmp, "written before the split");
+
+    openAudit(tmp).close();
+    // Reopening the index recreates its own tables; the audit store must not
+    // treat that as a fresh legacy table to adopt.
+    openIndex(tmp).close();
+    db = openAudit(tmp);
+
+    expect(queryAuditRows(db, "2026-08-01T00:00:00.000Z")).toHaveLength(1);
+  });
+
+  test("should adopt a legacy audit table that predates the retrieval columns", () => {
+    const legacy = new Database(join(tmp, "index.sqlite3"), { create: true });
+    legacy.run(`CREATE TABLE audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts TEXT NOT NULL,
+      query TEXT NOT NULL,
+      outcome TEXT NOT NULL CHECK (outcome IN ('matched', 'ambiguous', 'no_match')),
+      degraded INTEGER NOT NULL,
+      candidates TEXT NOT NULL,
+      selected_skill_id TEXT,
+      latency_ms INTEGER NOT NULL
+    )`);
+    legacy.run(
+      `INSERT INTO audit (ts, query, outcome, degraded, candidates, selected_skill_id, latency_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "2026-07-01T10:00:00.000Z",
+        "matched query",
+        "matched",
+        0,
+        JSON.stringify([{ skill_id: "matched-skill", score: 0.95 }]),
+        "matched-skill",
+        15,
+      ],
+    );
+    legacy.close();
+
+    db = openAudit(tmp);
+
+    const rows = queryAuditRows(db, "2026-07-01T00:00:00.000Z");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.query).toBe("matched query");
+    expect(rows[0]!.retrieval).toBe("lexical");
+    // queryAuditRows omits these keys rather than nulling them (src/stats.ts:186).
+    expect(rows[0]!.degraded_from).toBeUndefined();
+    expect(rows[0]!.degradation_reason).toBeUndefined();
+  });
+  describe("audit table schema and legacy migration", () => {
+    test("adoption normalizes a legacy audit schema with outcome NOT NULL CHECK and selected_skill_id", () => {
+      const stateDir = mkdtempSync(join(tmpdir(), "skillmux-audit-adopt-"));
+      const dbPath = join(stateDir, "index.sqlite3");
+
+      // 1. Create a database directly with the exact legacy audit schema
+      const legacyDb = new Database(dbPath, { create: true });
+      legacyDb.run(`CREATE TABLE audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts TEXT NOT NULL,
+        query TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('matched', 'ambiguous', 'no_match')),
+        degraded INTEGER NOT NULL,
+        retrieval TEXT NOT NULL DEFAULT 'lexical',
+        degraded_from TEXT,
+        degradation_reason TEXT,
+        candidates TEXT NOT NULL,
+        selected_skill_id TEXT,
+        latency_ms INTEGER NOT NULL
+      )`);
+
+      // 2. Insert representative legacy rows: matched, ambiguous, and no_match
+      legacyDb.run(
+        `INSERT INTO audit (ts, query, outcome, degraded, retrieval, degraded_from, degradation_reason, candidates, selected_skill_id, latency_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "2026-07-01T10:00:00.000Z",
+          "matched query",
+          "matched",
+          0,
+          "reranked",
+          null,
+          null,
+          JSON.stringify([{ skill_id: "matched-skill", score: 0.95 }]),
+          "matched-skill",
+          15,
+        ],
+      );
+      legacyDb.run(
+        `INSERT INTO audit (ts, query, outcome, degraded, retrieval, degraded_from, degradation_reason, candidates, selected_skill_id, latency_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "2026-07-01T11:00:00.000Z",
+          "ambiguous query",
+          "ambiguous",
+          1,
+          "hybrid",
+          "reranked",
+          "reranker_timeout",
+          JSON.stringify([
+            { skill_id: "alpha-skill", score: 0.7 },
+            { skill_id: "beta-skill", score: 0.6 },
+          ]),
+          null,
+          25,
+        ],
+      );
+      legacyDb.run(
+        `INSERT INTO audit (ts, query, outcome, degraded, retrieval, degraded_from, degradation_reason, candidates, selected_skill_id, latency_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "2026-07-01T12:00:00.000Z",
+          "no match query",
+          "no_match",
+          0,
+          "lexical",
+          null,
+          null,
+          JSON.stringify([]),
+          null,
+          5,
+        ],
+      );
+      legacyDb.close();
+
+      // 3. Open the audit store, which adopts and normalizes the legacy table
+      const migratedDb = openAudit(stateDir);
+
+      // Verify columns in canonical table (no outcome, no selected_skill_id, no degraded)
+      const columns = migratedDb.query("PRAGMA table_info(audit)").all() as { name: string }[];
+      const columnNames = columns.map((c) => c.name);
+      expect(columnNames).toContain("id");
+      expect(columnNames).toContain("ts");
+      expect(columnNames).toContain("query");
+      expect(columnNames).toContain("retrieval");
+      expect(columnNames).toContain("degraded_from");
+      expect(columnNames).toContain("degradation_reason");
+      expect(columnNames).toContain("candidates");
+      expect(columnNames).toContain("latency_ms");
+
+      expect(columnNames).not.toContain("outcome");
+      expect(columnNames).not.toContain("selected_skill_id");
+      expect(columnNames).not.toContain("degraded");
+
+      // Verify preserved data
+      const rows = migratedDb.query("SELECT * FROM audit ORDER BY id ASC").all() as any[];
+      expect(rows).toHaveLength(3);
+
+      expect(rows[0]).toEqual({
+        id: 1,
+        ts: "2026-07-01T10:00:00.000Z",
+        query: "matched query",
+        retrieval: "reranked",
+        degraded_from: null,
+        degradation_reason: null,
+        candidates: JSON.stringify([{ skill_id: "matched-skill", score: 0.95 }]),
+        latency_ms: 15,
+      });
+
+      expect(rows[1]).toEqual({
+        id: 2,
+        ts: "2026-07-01T11:00:00.000Z",
+        query: "ambiguous query",
+        retrieval: "hybrid",
+        degraded_from: "reranked",
+        degradation_reason: "reranker_timeout",
+        candidates: JSON.stringify([
+          { skill_id: "alpha-skill", score: 0.7 },
+          { skill_id: "beta-skill", score: 0.6 },
+        ]),
+        latency_ms: 25,
+      });
+
+      expect(rows[2]).toEqual({
+        id: 3,
+        ts: "2026-07-01T12:00:00.000Z",
+        query: "no match query",
+        retrieval: "lexical",
+        degraded_from: null,
+        degradation_reason: null,
+        candidates: JSON.stringify([]),
+        latency_ms: 5,
+      });
+
+      migratedDb.close();
+
+      // 4. Verify idempotent reopen
+      const reopenedDb = openAudit(stateDir);
+      const reopenedColumns = (reopenedDb.query("PRAGMA table_info(audit)").all() as { name: string }[]).map(
+        (c) => c.name,
+      );
+      expect(reopenedColumns).not.toContain("outcome");
+      expect(reopenedColumns).not.toContain("selected_skill_id");
+
+      const reopenedRows = reopenedDb.query("SELECT * FROM audit ORDER BY id ASC").all();
+      expect(reopenedRows).toHaveLength(3);
+
+      // 5. Verify continued inserts with insertAudit
+      insertAudit(reopenedDb, {
+        ts: "2026-07-01T13:00:00.000Z",
+        query: "new insert after migration",
+        retrieval: "exact",
+        candidates: [{ skill_id: "new-skill", score: 1.0 }],
+        latency_ms: 2,
+      });
+
+      const finalRows = reopenedDb.query("SELECT * FROM audit ORDER BY id ASC").all() as any[];
+      expect(finalRows).toHaveLength(4);
+      expect(finalRows[3]).toEqual({
+        id: 4,
+        ts: "2026-07-01T13:00:00.000Z",
+        query: "new insert after migration",
+        retrieval: "exact",
+        degraded_from: null,
+        degradation_reason: null,
+        candidates: JSON.stringify([{ skill_id: "new-skill", score: 1.0 }]),
+        latency_ms: 2,
+      });
+
+      reopenedDb.close();
+      rmSync(stateDir, { recursive: true, force: true });
+    });
+  });
+});

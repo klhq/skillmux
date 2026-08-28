@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { AuditCandidate, AuditRow } from "./types";
 import type { VaultSkill } from "./vault";
@@ -10,6 +10,64 @@ export interface SkillRow {
   description: string;
   aliases: string;
   content_sha256: string;
+}
+
+export function openAudit(stateDir: string): Database {
+  mkdirSync(stateDir, { recursive: true });
+  const db = new Database(join(stateDir, "audit.sqlite3"), { create: true });
+  // auto_vacuum only takes on an empty database, so it must precede both the
+  // journal-mode switch and any CREATE TABLE. It is what lets a retention
+  // prune reclaim space without a full VACUUM.
+  db.run("PRAGMA auto_vacuum = INCREMENTAL");
+  db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA busy_timeout = 2000");
+  db.run(`CREATE TABLE IF NOT EXISTS audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    query TEXT NOT NULL,
+    retrieval TEXT NOT NULL DEFAULT 'lexical',
+    degraded_from TEXT,
+    degradation_reason TEXT,
+    candidates TEXT NOT NULL,
+    latency_ms INTEGER NOT NULL
+  )`);
+  adoptAuditFromIndex(db, stateDir);
+  return db;
+}
+
+// Audit rows used to live in index.sqlite3. Move any that remain there into the
+// audit store, then drop the old table so the index carries no user queries.
+function adoptAuditFromIndex(db: Database, stateDir: string): void {
+  const indexPath = join(stateDir, "index.sqlite3");
+  if (!existsSync(indexPath)) return;
+
+  db.run("ATTACH DATABASE ? AS legacy", [indexPath]);
+  try {
+    const legacyAudit = db
+      .query("SELECT name FROM legacy.sqlite_master WHERE type = 'table' AND name = 'audit'")
+      .get();
+    if (!legacyAudit) return;
+
+    // Older audit tables predate the retrieval columns and carry outcome /
+    // degraded / selected_skill_id instead. Select what is actually there and
+    // let the canonical defaults stand in for the rest.
+    const legacyColumns = new Set(
+      (db.query("PRAGMA legacy.table_info(audit)").all() as { name: string }[]).map((c) => c.name),
+    );
+    const retrieval = legacyColumns.has("retrieval") ? "COALESCE(retrieval, 'lexical')" : "'lexical'";
+    const degradedFrom = legacyColumns.has("degraded_from") ? "degraded_from" : "NULL";
+    const degradationReason = legacyColumns.has("degradation_reason") ? "degradation_reason" : "NULL";
+
+    // SQLite commits atomically across attached databases, so the copy and the
+    // drop either both land or neither does.
+    db.transaction(() => {
+      db.run(`INSERT INTO audit (ts, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms)
+        SELECT ts, query, ${retrieval}, ${degradedFrom}, ${degradationReason}, candidates, latency_ms FROM legacy.audit`);
+      db.run("DROP TABLE legacy.audit");
+    })();
+  } finally {
+    db.run("DETACH DATABASE legacy");
+  }
 }
 
 export function openIndex(stateDir: string): Database {
@@ -39,48 +97,7 @@ export function openIndex(stateDir: string): Database {
   if (!vectorColumns.some((column) => column.name === "embedding_fingerprint")) {
     db.run("ALTER TABLE vectors ADD COLUMN embedding_fingerprint TEXT NOT NULL DEFAULT ''");
   }
-  db.run(`CREATE TABLE IF NOT EXISTS audit (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts TEXT NOT NULL,
-    query TEXT NOT NULL,
-    retrieval TEXT NOT NULL DEFAULT 'lexical',
-    degraded_from TEXT,
-    degradation_reason TEXT,
-    candidates TEXT NOT NULL,
-    latency_ms INTEGER NOT NULL
-  )`);
-  const auditColumns = db.query("PRAGMA table_info(audit)").all() as { name: string }[];
-  const columnNames = new Set(auditColumns.map((column) => column.name));
-  const hasLegacyColumns =
-    columnNames.has("outcome") ||
-    columnNames.has("selected_skill_id") ||
-    columnNames.has("degraded");
-  const missingCanonicalColumns =
-    !columnNames.has("retrieval") ||
-    !columnNames.has("degraded_from") ||
-    !columnNames.has("degradation_reason");
-
-  if (hasLegacyColumns || missingCanonicalColumns) {
-    db.transaction(() => {
-      db.run(`CREATE TABLE audit_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ts TEXT NOT NULL,
-        query TEXT NOT NULL,
-        retrieval TEXT NOT NULL DEFAULT 'lexical',
-        degraded_from TEXT,
-        degradation_reason TEXT,
-        candidates TEXT NOT NULL,
-        latency_ms INTEGER NOT NULL
-      )`);
-      const retrievalExpr = columnNames.has("retrieval") ? "COALESCE(retrieval, 'lexical')" : "'lexical'";
-      const degradedFromExpr = columnNames.has("degraded_from") ? "degraded_from" : "NULL";
-      const degradationReasonExpr = columnNames.has("degradation_reason") ? "degradation_reason" : "NULL";
-      db.run(`INSERT INTO audit_new (id, ts, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms)
-        SELECT id, ts, query, ${retrievalExpr}, ${degradedFromExpr}, ${degradationReasonExpr}, candidates, latency_ms FROM audit`);
-      db.run("DROP TABLE audit");
-      db.run("ALTER TABLE audit_new RENAME TO audit");
-    })();
-  }
+  // Audit rows live in audit.sqlite3; openAudit adopts any left here.
   db.run(`CREATE TABLE IF NOT EXISTS index_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

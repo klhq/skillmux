@@ -146,7 +146,7 @@
         },
         "state_dir": {
           "type": "string",
-          "description": "All router writes are confined here (AC9): index SQLite (incl. audit log), vector matrix.",
+          "description": "All router writes are confined here (AC9): index SQLite (index.sqlite3), audit SQLite (audit.sqlite3), vector matrix.",
           "default": "~/.local/state/skillmux"
         },
         "recall": {

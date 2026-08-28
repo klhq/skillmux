@@ -12,6 +12,7 @@ import {
   getSkillRow,
   ingestVault,
   insertAudit,
+  openAudit,
   openIndex,
   replaceSkills,
   setIndexMeta,
@@ -73,7 +74,7 @@ const defaultClients: Clients = {
 };
 
 let overrides: Overrides = {};
-let env: { config: Config; db: Database } | null = null;
+let env: { config: Config; db: Database; auditDb: Database } | null = null;
 
 /** Replace config/client overrides wholesale (tests, ops). Resets the cached index handle. */
 export function configure(opts: Overrides): void {
@@ -81,17 +82,19 @@ export function configure(opts: Overrides): void {
   env = null;
 }
 
-async function getEnv(): Promise<{ config: Config; db: Database }> {
+async function getEnv(): Promise<{ config: Config; db: Database; auditDb: Database }> {
   if (env) return env;
   const config = overrides.config ?? (await loadConfig());
-  const db = openIndex(expandHome(config.state_dir));
+  const stateDir = expandHome(config.state_dir);
+  const db = openIndex(stateDir);
+  const auditDb = openAudit(stateDir);
   if (skillCount(db) === 0) {
     const vaultPath = expandHome(config.vault_path);
     const localVaultPaths = config.local_vault_paths.map(expandHome);
     ingestVault(db, await scanVaults(vaultPath, localVaultPaths));
     setIndexMeta(db, "last_indexed_mtime", String(maxVaultMtime(vaultPath, localVaultPaths)));
   }
-  env = { config, db };
+  env = { config, db, auditDb };
   return env;
 }
 
@@ -100,13 +103,19 @@ function getClients(): Clients {
 }
 
 /** Runtime accessor for the eval harness and CLI — not part of the MCP surface. */
-export async function getRuntime(): Promise<{ config: Config; db: Database; clients: Clients }> {
-  const { config, db } = await getEnv();
-  return { config, db, clients: getClients() };
+export async function getRuntime(): Promise<{
+  config: Config;
+  db: Database;
+  auditDb: Database;
+  clients: Clients;
+}> {
+  const { config, db, auditDb } = await getEnv();
+  return { config, db, auditDb, clients: getClients() };
 }
 
 export function closeRuntime(): void {
   env?.db.close();
+  env?.auditDb.close();
   env = null;
 }
 
@@ -365,7 +374,7 @@ export async function startVaultWatcher(): Promise<() => void> {
 
 export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveResult> {
   const t0 = performance.now();
-  const { config, db } = await getEnv();
+  const { config, db, auditDb } = await getEnv();
   await syncVaultIfNeeded();
 
   if (input.top_k !== undefined) {
@@ -404,7 +413,7 @@ export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveRes
   };
 
   insertAudit(
-    db,
+    auditDb,
     buildAuditRow({
       id: 0, // assigned by SQLite
       ts: new Date().toISOString(),

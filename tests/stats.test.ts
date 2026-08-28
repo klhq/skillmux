@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { insertAudit, openIndex } from "../src/db";
+import { insertAudit, openAudit } from "../src/db";
 import { computeStats, getStats, parseSince, queryAuditRows, renderStatsText } from "../src/stats";
 import type { AuditRow } from "../src/types";
 
@@ -180,7 +180,7 @@ describe("computeStats", () => {
 describe("queryAuditRows", () => {
   test("reads rows at or after the since timestamp, parsing canonical columns and degradation data", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
     insertAudit(db, {
       ts: "2026-06-01T00:00:00.000Z",
       query: "too old",
@@ -218,7 +218,7 @@ describe("queryAuditRows", () => {
 
   test("accepts score when it is null or a finite JSON number", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-valid-scores-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     db.run(
       `INSERT INTO audit (ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?)`,
@@ -260,7 +260,7 @@ describe("queryAuditRows", () => {
     { label: "non-finite negative score", rawJson: '[{"skill_id":"valid-first","score":0.5},{"skill_id":"skill-1","score":-1e999}]' },
   ])("throws clear error containing audit row id and candidate index when score is $label", ({ rawJson }) => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-invalid-score-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     db.run(
       `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -277,7 +277,7 @@ describe("queryAuditRows", () => {
 
   test("does not leak raw candidates JSON or sensitive content in parse errors", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-leak-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     const sensitiveSnippet = "SUPER_SECRET_USER_INPUT_DO_NOT_LEAK";
     db.run(
@@ -302,7 +302,7 @@ describe("queryAuditRows", () => {
 
   test("throws clearly on malformed candidates JSON rather than silently inventing data", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-malformed-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     db.run(
       `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -319,7 +319,7 @@ describe("queryAuditRows", () => {
 
   test("throws clearly when candidates JSON is not an array", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-nonarray-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
 
     db.run(
       `INSERT INTO audit (id, ts, query, retrieval, candidates, latency_ms) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -338,7 +338,7 @@ describe("queryAuditRows", () => {
 describe("getStats", () => {
   test("combines parseSince + queryAuditRows + computeStats against a real db", () => {
     const stateDir = mkdtempSync(join(tmpdir(), "skillmux-stats-"));
-    const db = openIndex(stateDir);
+    const db = openAudit(stateDir);
     const now = new Date("2026-07-19T00:00:00.000Z");
     insertAudit(db, {
       ts: "2026-07-10T00:00:00.000Z",

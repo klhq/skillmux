@@ -122,7 +122,7 @@ describe("sqlite concurrency", () => {
 
 describe("audit log persistence (AC10)", () => {
   test("every resolve_skill call appends a canonical audit row with query, retrieval, candidates and latency without outcome", async () => {
-    const { db } = await getRuntime();
+    const { auditDb: db } = await getRuntime();
     const countBefore = (db.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n;
 
     await resolveSkill({ query: "audit log persistence questions" });
@@ -146,7 +146,7 @@ describe("audit log persistence (AC10)", () => {
   });
 
   test("stores only delivered candidates after top_k limiting rather than pre-limit retrieval pool", async () => {
-    const { db } = await getRuntime();
+    const { auditDb: db } = await getRuntime();
 
     const result = await resolveSkill({ query: "audit bystander questions", top_k: 1 });
     expect(result.candidates).toHaveLength(1);

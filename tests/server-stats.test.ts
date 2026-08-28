@@ -43,7 +43,7 @@ describe("GET /stats", () => {
     const clients = { embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])) };
     const handle = await startServer({ transport: "http", port: 0, config, clients });
 
-    const { db } = await getRuntime();
+    const { auditDb: db } = await getRuntime();
     insertAudit(db, {
       ts: new Date().toISOString(),
       query: "in window",

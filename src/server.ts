@@ -345,13 +345,13 @@ export async function startServer(opts?: {
               { status: 400, headers: { "Content-Type": "application/json" } },
             );
           }
-          const { db } = await getRuntime();
+          const { auditDb } = await getRuntime();
           const headers = new Headers({ "Content-Type": "application/json" });
           if (allowOriginHeader)
             headers.set("Access-Control-Allow-Origin", allowOriginHeader);
           for (const [key, value] of Object.entries(rateLimitResult.headers))
             headers.set(key, value);
-          return new Response(JSON.stringify(getStats(db, since)), {
+          return new Response(JSON.stringify(getStats(auditDb, since)), {
             status: 200,
             headers,
           });

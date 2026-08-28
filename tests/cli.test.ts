@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
-import { insertAudit, openIndex } from "../src/db";
+import { insertAudit, openAudit } from "../src/db";
 import { startServer } from "../src/server";
 
 const tmp = mkdtempSync(join(tmpdir(), "skillmux-cli-"));
@@ -1589,7 +1589,7 @@ describe("skillmux report CLI", () => {
 
   test("--db <path> renders a report from a local sqlite audit db", async () => {
     const dbDir = mkdtempSync(join(tmpdir(), "skillmux-report-db-"));
-    const db = openIndex(dbDir);
+    const db = openAudit(dbDir);
     insertAudit(db, {
       ts: new Date().toISOString(),
       query: "in window",
@@ -1602,7 +1602,7 @@ describe("skillmux report CLI", () => {
     const result = await runCli(
       "report",
       "--db",
-      join(dbDir, "index.sqlite3"),
+      join(dbDir, "audit.sqlite3"),
       "--since",
       "30d",
     );
