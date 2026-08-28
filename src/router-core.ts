@@ -12,6 +12,7 @@ import {
   getSkillRow,
   ingestVault,
   insertAudit,
+  insertFetch,
   openAudit,
   openIndex,
   replaceSkills,
@@ -606,10 +607,18 @@ export async function retrieveAndRerank(
 }
 
 export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {
-  const { config, db } = await getEnv();
+  const { config, db, auditDb } = await getEnv();
   await syncVaultIfNeeded();
   if (getSkillRow(db, input.skill_id) === null) {
     throw new Error(`SKILL_NOT_FOUND: no skill '${input.skill_id}' in the index`);
   }
-  return deliverSkill(db, config, input.skill_id);
+  const result = await deliverSkill(db, config, input.skill_id);
+
+  insertFetch(auditDb, {
+    ts: new Date().toISOString(),
+    skill_id: input.skill_id,
+    request_id: input.request_id ?? null,
+  });
+
+  return result;
 }

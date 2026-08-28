@@ -164,6 +164,27 @@ describe("audit log persistence (AC10)", () => {
   });
 });
 
+describe("fetch outcome logging (AC5-AC8)", () => {
+  test("fetch_skill without a request_id records an uncorrelated fetch (AC6)", async () => {
+    const { auditDb: db } = await getRuntime();
+
+    await fetchSkill({ skill_id: "audit-target" });
+
+    const row = db.query("SELECT * FROM fetch ORDER BY id DESC LIMIT 1").get() as {
+      ts: string;
+      skill_id: string;
+      request_id: string | null;
+      resolve_audit_id: number | null;
+      rank_at_resolve: number | null;
+    };
+
+    expect(row.skill_id).toBe("audit-target");
+    expect(row.request_id).toBeNull();
+    expect(row.resolve_audit_id).toBeNull();
+    expect(row.rank_at_resolve).toBeNull();
+  });
+});
+
 describe("correlation (AC3)", () => {
   test("resolve_skill mints a unique request_id shared with its audit row", async () => {
     const { auditDb: db } = await getRuntime();

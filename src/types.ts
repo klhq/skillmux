@@ -152,6 +152,7 @@ export interface ResolveSkillInput {
 
 export interface FetchSkillInput {
   skill_id: string;
+  request_id?: string;
 }
 
 export interface FetchSkillResult {
@@ -178,6 +179,18 @@ export interface AuditRow {
   degradation_reason?: DegradationReason | null;
   candidates: AuditCandidate[];
   latency_ms: number;
+}
+
+export interface FetchAuditRow {
+  id: number;
+  ts: string;
+  skill_id: string;
+  /** Exactly as supplied by the caller, including an unknown value. Null when the caller sent none. */
+  request_id: string | null;
+  /** Null when the fetch is uncorrelated: no request_id, an unknown/malformed one, or a pruned resolve row. */
+  resolve_audit_id: number | null;
+  /** Rank of skill_id in the correlated resolve's shortlist. Null when uncorrelated or absent from the shortlist. */
+  rank_at_resolve: number | null;
 }
 
 export interface Clients {
