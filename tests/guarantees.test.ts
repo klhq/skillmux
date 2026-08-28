@@ -294,6 +294,18 @@ describe("audit prune scheduling (AC14)", () => {
 
     expect(await pruneAuditIfDue(new Date())).toBeNull();
   });
+
+  test("concurrent callers racing at startup share one env instead of opening the database twice", async () => {
+    configure({
+      config,
+      clients: { embed: async (texts) => texts.map(() => Float32Array.from([1, 0, 0])) },
+    });
+
+    const [a, b] = await Promise.all([getRuntime(), getRuntime()]);
+
+    expect(a.db).toBe(b.db);
+    expect(a.auditDb).toBe(b.auditDb);
+  });
 });
 
 // Tool inputSchemas are compiled into sampling grammars by constrained

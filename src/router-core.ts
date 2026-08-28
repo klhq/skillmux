@@ -77,7 +77,10 @@ const defaultClients: Clients = {
 };
 
 let overrides: Overrides = {};
-let env: { config: Config; db: Database; auditDb: Database } | null = null;
+type Env = { config: Config; db: Database; auditDb: Database };
+
+let envPromise: Promise<Env> | null = null;
+let resolvedEnv: Env | null = null;
 let lastAuditPruneAt: number | null = null;
 
 const AUDIT_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -85,24 +88,34 @@ const AUDIT_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** Replace config/client overrides wholesale (tests, ops). Resets the cached index handle. */
 export function configure(opts: Overrides): void {
   overrides = opts;
-  env = null;
+  envPromise = null;
+  resolvedEnv = null;
   lastAuditPruneAt = null;
 }
 
-async function getEnv(): Promise<{ config: Config; db: Database; auditDb: Database }> {
-  if (env) return env;
-  const config = overrides.config ?? (await loadConfig());
-  const stateDir = expandHome(config.state_dir);
-  const db = openIndex(stateDir);
-  const auditDb = openAudit(stateDir);
-  if (skillCount(db) === 0) {
-    const vaultPath = expandHome(config.vault_path);
-    const localVaultPaths = config.local_vault_paths.map(expandHome);
-    ingestVault(db, await scanVaults(vaultPath, localVaultPaths));
-    setIndexMeta(db, "last_indexed_mtime", String(maxVaultMtime(vaultPath, localVaultPaths)));
-  }
-  env = { config, db, auditDb };
-  return env;
+/**
+ * Memoizes the in-flight promise, not just the resolved value: startup fires
+ * initializeRuntime()'s getRuntime() and pruneAuditIfDue() back-to-back before
+ * either has awaited anything, so caching only the resolved env would let both
+ * open their own index/audit handles and race an ingestVault (AC14 regression).
+ */
+async function getEnv(): Promise<Env> {
+  if (envPromise) return envPromise;
+  envPromise = (async () => {
+    const config = overrides.config ?? (await loadConfig());
+    const stateDir = expandHome(config.state_dir);
+    const db = openIndex(stateDir);
+    const auditDb = openAudit(stateDir);
+    if (skillCount(db) === 0) {
+      const vaultPath = expandHome(config.vault_path);
+      const localVaultPaths = config.local_vault_paths.map(expandHome);
+      ingestVault(db, await scanVaults(vaultPath, localVaultPaths));
+      setIndexMeta(db, "last_indexed_mtime", String(maxVaultMtime(vaultPath, localVaultPaths)));
+    }
+    resolvedEnv = { config, db, auditDb };
+    return resolvedEnv;
+  })();
+  return envPromise;
 }
 
 function getClients(): Clients {
@@ -121,9 +134,10 @@ export async function getRuntime(): Promise<{
 }
 
 export function closeRuntime(): void {
-  env?.db.close();
-  env?.auditDb.close();
-  env = null;
+  resolvedEnv?.db.close();
+  resolvedEnv?.auditDb.close();
+  envPromise = null;
+  resolvedEnv = null;
 }
 
 /**
