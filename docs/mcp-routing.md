@@ -79,6 +79,7 @@ Skillmux returns a ranked candidates response:
 
 ```json
 {
+  "request_id": "3fae2b8e-6c2d-4b1a-9d7a-2b6c5b6a9e10",
   "retrieval": "reranked",
   "candidates": [
     {
@@ -91,6 +92,7 @@ Skillmux returns a ranked candidates response:
 }
 ```
 
+- `request_id`: a unique id minted for this resolve. Pass it back to `fetch_skill` to correlate a fetch outcome with this resolve and the fetched skill's rank in this shortlist.
 - `retrieval`: the effective retrieval capability (`reranked`, `hybrid`, or `lexical`).
 - `candidates`: zero through effective `top_k` candidates ordered by descending score with contiguous 1-based ranks.
 - If reranking or embedding fails, degradation metadata (`degraded_from`, `degradation_reason`) is included.
@@ -101,13 +103,18 @@ Input:
 
 ```json
 {
-  "skill_id": "csv-formatter"
+  "skill_id": "csv-formatter",
+  "request_id": "3fae2b8e-6c2d-4b1a-9d7a-2b6c5b6a9e10"
 }
 ```
 
 The response contains the current `SKILL.md` body as text content.
 `structuredContent` contains the skill ID, title, content SHA-256, and
-supporting-file paths. Fetch does not depend on an earlier resolve call.
+supporting-file paths. `request_id` is optional. When it names a resolve that
+minted it, the recorded fetch outcome links to that resolve and its rank in
+the shortlist. An absent, unknown, or malformed `request_id` still succeeds
+and records an uncorrelated fetch — delivery never fails because telemetry
+could not correlate. Fetch does not depend on an earlier resolve call.
 
 The complete wire contract lives in [schema.json](schema.json).
 
@@ -117,8 +124,11 @@ Give the calling client these rules:
 
 1. Call `resolve_skill` when a task may benefit from a specialized workflow.
 2. Review the returned ranked candidates shortlist.
-3. If a relevant candidate exists, call `fetch_skill` with its `skill_id` to retrieve complete instructions.
+3. If a relevant candidate exists, call `fetch_skill` with its `skill_id` to retrieve complete instructions, passing back the resolve's `request_id` when the client retains it.
 4. If no candidate is relevant (or `candidates` is empty), continue under your normal workflow.
+
+Passing `request_id` is optional and never required for delivery, but it is
+what lets Skillmux measure whether a returned shortlist was actually used.
 
 ## Retrieval pipeline
 
@@ -173,12 +183,24 @@ access.
 
 Each resolve request records:
 
-- timestamp and query;
+- timestamp, `request_id`, and query;
 - retrieval capability;
 - degradation metadata (`degraded_from`, `degradation_reason`) when degraded;
 - candidates with scores;
 - latency in milliseconds.
 
-Skillmux stores audit rows in the SQLite database under `state_dir`. Use
-`skillmux report` to summarize activity. Treat raw queries as private user
-data when backing up or sharing the database.
+Each fetch request records:
+
+- timestamp and `skill_id`;
+- the `request_id` supplied by the caller, or null when absent, unknown, or malformed;
+- the originating resolve's audit row id, or null when the fetch is uncorrelated;
+- `rank_at_resolve`: the fetched skill's rank in that resolve's shortlist, or null when the fetch is uncorrelated or the skill was absent from that shortlist.
+
+Skillmux stores audit rows in `audit.sqlite3` under `state_dir`, a file
+separate from the retrieval index. Use `skillmux report` to summarize
+activity, `skillmux audit prune` to reclaim space under
+`audit.retention_days` (default 90 days), and `skillmux eval promote` to turn
+correlated fetches into eval cases — see [CLI
+reference](cli.md#observability-and-evaluation-skillmux-report-audit-eval)
+for all three. Treat raw queries as private user data when backing up or
+sharing the database.

@@ -248,7 +248,7 @@ The HTTP server provides:
 
 The Docker health check calls `/health/ready`.
 
-`GET /stats` returns JSON aggregated from audit rows over a query window (using `?since=`, defaulting to 24 hours). The response contains `since`, `until`, `total_requests`, `empty_shortlist_count`, `empty_shortlist_rate`, `retrieval_totals` (counts for `exact`, `reranked`, `hybrid`, and `lexical`), `degraded_count`, `average_latency_ms`, per-skill candidate counts in `skills` (`skill_id`, `candidate_count`), and `top_empty_shortlist_queries` (`query`, `count`). See [Managing skills](skill-management.md#use-routing-data-to-tune-tiers) for using these statistics to tune delivery tiers.
+`GET /stats` returns JSON aggregated from audit rows over a query window (using `?since=`, defaulting to 24 hours). The response contains `since`, `until`, `total_requests`, `empty_shortlist_count`, `empty_shortlist_rate`, `retrieval_totals` (counts for `exact`, `reranked`, `hybrid`, and `lexical`), `degraded_count`, `average_latency_ms`, per-skill candidate counts in `skills` (`skill_id`, `candidate_count`), `top_empty_shortlist_queries` (`query`, `count`), an `acceptance` signal derived from fetches correlated to their resolve (`acceptance_rate`, `observed_mrr`, `top1_acceptance_rate`, `accepted_count`, `resolves_with_candidates`, and `uncorrelated_fetch_count`, or `available: false` with just the uncorrelated count when a window has no correlated fetches), and `top_unused_shortlist_queries` (`query`, `count`) for queries that returned candidates but received no correlated fetch. See [Managing skills](skill-management.md#use-routing-data-to-tune-tiers) for using these statistics to tune delivery tiers.
 
 Prometheus metrics cover request totals, resolve latency histograms, errors,
 rate-limit rejections, degraded retrieval totals by stage and reason, readiness
@@ -289,13 +289,26 @@ their mounted vault checkout and do not manage host agent directories.
 
 ## Persistent data and backups
 
-Persist `state_dir` to retain the index and audit log.
-Skill content remains in the server's vault checkout and should use its own
-backup or Git workflow.
+Persist `state_dir` to retain both state files it holds: `index.sqlite3`
+(retrieval index and vector matrix) and `audit.sqlite3` (resolve and fetch
+audit rows). Skill content remains in the server's vault checkout and should
+use its own backup or Git workflow.
 
-Treat the state database as sensitive because audit rows can contain raw user
+The two files are independent and can be backed up on different schedules.
+Copying or backing up `index.sqlite3` alone never carries raw user queries;
+only `audit.sqlite3` does. `audit.sqlite3` is created with WAL journaling and
+incremental auto-vacuum, so `skillmux audit prune` reclaims space without
+taking a lock on `index.sqlite3`. On first startup after an upgrade from a
+version that kept audit rows inside `index.sqlite3`, Skillmux migrates them
+into `audit.sqlite3` once, transactionally; the migration is idempotent, so
+it is safe to leave running unattended.
+
+Treat `audit.sqlite3` as sensitive because its rows can contain raw user
 queries. Stop the process or use SQLite-safe backup tooling before copying a
-live database.
+live database. `audit.retention_days` (default 90; `0` disables pruning) ages
+out old rows automatically at startup and at most once per 24 hours while the
+server runs; see [CLI reference](cli.md#observability-and-evaluation-skillmux-report-audit-eval)
+for the on-demand `skillmux audit prune` command.
 
 ## Native pins with shared retrieval
 
