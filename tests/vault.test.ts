@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -88,6 +88,36 @@ description: Unterminated
 
     const files = listSupportingFiles(tmp, skillId);
     expect(files).toEqual(["doc.txt", "scripts/helper.py"]);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("security: listSupportingFiles excludes symlinks instead of following them", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-vault-test-symlink-"));
+    const skillId = "test-skill";
+    const skillDir = join(tmp, skillId);
+    mkdirSync(skillDir, { recursive: true });
+
+    writeFileSync(join(skillDir, "SKILL.md"), "main file");
+    writeFileSync(join(skillDir, "doc.txt"), "text file");
+    symlinkSync("/etc/passwd", join(skillDir, "escape"));
+
+    const files = listSupportingFiles(tmp, skillId);
+    expect(files).toEqual(["doc.txt"]);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("security: listSupportingFiles rejects a skillId that would traverse outside the vault", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-vault-test-traversal-"));
+    const vaultPath = join(tmp, "vault");
+    mkdirSync(vaultPath, { recursive: true });
+    const secretDir = join(tmp, "secret");
+    mkdirSync(secretDir, { recursive: true });
+    writeFileSync(join(secretDir, "id_rsa"), "not a real key");
+
+    expect(listSupportingFiles(vaultPath, "../secret")).toEqual([]);
+    expect(listSupportingFiles(vaultPath, "..")).toEqual([]);
 
     rmSync(tmp, { recursive: true, force: true });
   });
