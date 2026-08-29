@@ -162,8 +162,14 @@ interface ScanContentTarget {
   content: string;
 }
 
+/** Refuses (returns null for) a symlinked path instead of following it — every
+ *  caller feeds vault content into scan findings, so a symlink swapped in after
+ *  an earlier symlink-filtering pass (e.g. listSupportingFiles' walk, which runs
+ *  before this read, not at it) must still be caught right here, not trusted to
+ *  have stayed excluded. Same defense-in-depth pattern as readSkill/hashSkillContent. */
 export async function readTextFileOrNull(path: string): Promise<string | null> {
   try {
+    if (lstatSync(path).isSymbolicLink()) return null;
     const bytes = await Bun.file(path).bytes();
     return decodeUtf8Strict(bytes);
   } catch {
@@ -197,13 +203,7 @@ async function resolveScanTargets(rootPath: string): Promise<ResolvedScanTargets
   if (existsSync(join(rootPath, "SKILL.md"))) {
     const skillId = basename(rootPath);
     const vaultPath = dirname(rootPath);
-    const skillMdPath = join(rootPath, "SKILL.md");
-    // Single-skill-dir mode is reachable directly against an already-installed vault
-    // dir (`skillmux scan <vault>/<skillId>`), not just a freshly cloned, pre-vetted
-    // candidate — same threat model as readSkill/hashSkillContent's guards, so a
-    // swapped-in symlinked SKILL.md must be refused (flagged unparseable) rather
-    // than followed and its target's bytes fed into scan findings.
-    const body = lstatSync(skillMdPath).isSymbolicLink() ? null : await readTextFileOrNull(skillMdPath);
+    const body = await readTextFileOrNull(join(rootPath, "SKILL.md"));
     if (body === null) return { targets: [], unparseable: [skillId] };
     return { targets: await collectSkillTargets(vaultPath, skillId, body), unparseable: [] };
   }
