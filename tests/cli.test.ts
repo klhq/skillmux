@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
 import { hashSkillContent, readSkillOrigin } from "../src/provenance";
 import { startServer } from "../src/server";
+import { buildConfirmPrompt } from "../src/commands/update";
 import { readSkillmuxMarker, syncTarget } from "../src/sync";
 
 const tmp = mkdtempSync(join(tmpdir(), "skillmux-cli-"));
@@ -2440,6 +2441,18 @@ describe("skillmux update CLI", () => {
     return Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: fixtureDir, env: GIT_ENV }).stdout.toString().trim();
   }
 
+  test("security: confirmation prompt shows source_url alongside skill_id, not just the id", () => {
+    const prompt = buildConfirmPrompt([
+      {
+        skillId: "fixture-update-single",
+        origin: { source_url: "https://example.com/owner/repo.git" },
+      } as never,
+    ]);
+
+    expect(prompt).toContain("fixture-update-single");
+    expect(prompt).toContain("https://example.com/owner/repo.git");
+  });
+
   test("AC11: fails clearly for a skill-id with no provenance recorded", async () => {
     writeSkill("update-no-origin", "d");
 
@@ -2481,6 +2494,7 @@ describe("skillmux update CLI", () => {
     expect(parsed.data.skills).toHaveLength(1);
     expect(parsed.data.skills[0]).toMatchObject({
       skill_id: "fixture-update-dryrun",
+      source_url: `file://${fixtureDir}`,
       new_commit: newCommit,
       content_changed: true,
       status: "would_update",
