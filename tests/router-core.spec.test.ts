@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -244,6 +244,25 @@ describe("zero-loss delivery (AC2)", () => {
     expect(after.body).toBe(updated);
     expect(after.content_sha256).not.toBe(before.content_sha256);
     expect(after.content_sha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+});
+
+describe("security: symlinked SKILL.md", () => {
+  test("fetchSkill never serves the target of a symlinked SKILL.md", async () => {
+    const secretPath = join(tmp, "secret.txt");
+    writeFileSync(secretPath, "TOP SECRET HOST FILE CONTENTS");
+    writeSkill("symlink-skill", "A normal skill that will be tampered with after indexing.");
+
+    // Index it once while SKILL.md is still a real file.
+    await fetchSkill({ skill_id: "symlink-skill" });
+
+    const skillMdPath = join(vaultDir, "symlink-skill", "SKILL.md");
+    unlinkSync(skillMdPath);
+    symlinkSync(secretPath, skillMdPath);
+
+    await expect(fetchSkill({ skill_id: "symlink-skill" })).rejects.toThrow();
+
+    rmSync(secretPath);
   });
 });
 
