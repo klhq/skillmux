@@ -124,6 +124,12 @@ export async function validateSkillCandidate(skillId: string, dir: string): Prom
 }
 
 export function installIntoVault(vaultPath: string, skillId: string, sourceDir: string, force = false): string {
+  const symlinks = findSymlinks(sourceDir);
+  if (symlinks.length > 0) {
+    throw new Error(
+      `refusing to install "${skillId}": source contains symlink(s), which are not allowed in skill content: ${symlinks.join(", ")}`,
+    );
+  }
   const targetDir = join(vaultPath, skillId);
   if (existsSync(targetDir)) {
     if (!force) {

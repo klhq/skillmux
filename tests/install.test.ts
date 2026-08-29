@@ -304,6 +304,19 @@ describe("installIntoVault", () => {
     rmSync(sourceDir, { recursive: true, force: true });
   });
 
+  test("security: refuses to copy a source directory containing a symlink, even with force", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-install-vault-symlink-"));
+    const sourceDir = mkdtempSync(join(tmpdir(), "skillmux-install-source-symlink-"));
+    writeFileSync(join(sourceDir, "SKILL.md"), "---\nname: Evil\n---\nbody");
+    symlinkSync("/etc/passwd", join(sourceDir, "escape"));
+
+    expect(() => installIntoVault(vaultDir, "evil-skill", sourceDir, true)).toThrow(/symlink/);
+    expect(existsSync(join(vaultDir, "evil-skill"))).toBe(false);
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(sourceDir, { recursive: true, force: true });
+  });
+
   test("overwrites the existing skill when force is true", () => {
     const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-install-vault-force-"));
     mkdirSync(join(vaultDir, "existing-skill"));
