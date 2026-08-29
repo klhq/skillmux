@@ -3,6 +3,10 @@ import { join, relative } from "node:path";
 
 export const SKILL_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,127}$/;
 
+/** Provenance sidecar filename (see provenance.ts). Kept here, not re-imported from
+ *  provenance.ts, so listSupportingFiles can exclude it without a circular import. */
+export const SKILLMUX_ORIGIN_FILENAME = ".skillmux-origin";
+
 export interface VaultSkill {
   skill_id: string;
   title: string;
@@ -124,7 +128,8 @@ export function findShadowedSkills(vaultPath: string, localVaultPaths: string[])
   return shadowed.sort((a, b) => a.skill_id.localeCompare(b.skill_id));
 }
 
-/** Relative paths of everything under the skill dir except SKILL.md itself, sorted. */
+/** Relative paths of everything under the skill dir except SKILL.md and the
+ *  provenance sidecar, sorted. */
 export function listSupportingFiles(vaultPath: string, skillId: string): string[] {
   const root = join(vaultPath, skillId);
   const files: string[] = [];
@@ -134,7 +139,7 @@ export function listSupportingFiles(vaultPath: string, skillId: string): string[
       if (entry.isDirectory()) walk(abs);
       else if (statSync(abs).isFile()) {
         const rel = relative(root, abs);
-        if (rel !== "SKILL.md") files.push(rel);
+        if (rel !== "SKILL.md" && rel !== SKILLMUX_ORIGIN_FILENAME) files.push(rel);
       }
     }
   };

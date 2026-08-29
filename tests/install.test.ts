@@ -6,6 +6,8 @@ import {
   cloneToTemp,
   deriveRepoName,
   installIntoVault,
+  remoteHeadCommit,
+  resolveCloneCommit,
   resolveRepoSource,
   resolveSkillDir,
   validateSkillCandidate,
@@ -95,6 +97,43 @@ describe("cloneToTemp", () => {
     const nonexistentDir = join(tmpdir(), "skillmux-install-does-not-exist-12345");
 
     await expect(cloneToTemp(`file://${nonexistentDir}`)).rejects.toThrow(/git clone failed/);
+  });
+});
+
+describe("resolveCloneCommit", () => {
+  test("returns the 40-char commit SHA at HEAD of a cloned repo", () => {
+    const fixtureDir = initFixtureRepo();
+    const expected = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: fixtureDir, env: GIT_ENV })
+      .stdout.toString()
+      .trim();
+
+    const commit = resolveCloneCommit(fixtureDir);
+
+    expect(commit).toBe(expected);
+    expect(commit).toMatch(/^[0-9a-f]{40}$/);
+
+    rmSync(fixtureDir, { recursive: true, force: true });
+  });
+});
+
+describe("remoteHeadCommit", () => {
+  test("returns the default branch HEAD commit SHA via git ls-remote, without a full clone", async () => {
+    const fixtureDir = initFixtureRepo();
+    const expected = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: fixtureDir, env: GIT_ENV })
+      .stdout.toString()
+      .trim();
+
+    const commit = await remoteHeadCommit(`file://${fixtureDir}`);
+
+    expect(commit).toBe(expected);
+
+    rmSync(fixtureDir, { recursive: true, force: true });
+  });
+
+  test("throws a clear error for an unreachable repo", async () => {
+    const nonexistentDir = join(tmpdir(), "skillmux-install-remote-does-not-exist-12345");
+
+    await expect(remoteHeadCommit(`file://${nonexistentDir}`)).rejects.toThrow(/git ls-remote failed/);
   });
 });
 
