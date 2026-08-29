@@ -2406,6 +2406,31 @@ describe("skillmux outdated CLI", () => {
     rmSync(join(vaultDir, "fixture-outdated-ok"), { recursive: true, force: true });
     rmSync(brokenSkillDir, { recursive: true, force: true });
   });
+
+  test("a malformed .skillmux-origin sidecar is reported as check_failed, not a whole-command crash", async () => {
+    const fixtureDir = join(tmp, "fixture-outdated-alongside-malformed");
+    initFixtureRepo(fixtureDir, "---\nname: Alongside\ndescription: d\n---\nbody");
+    await runCli("install", `file://${fixtureDir}`);
+
+    const malformedSkillDir = join(vaultDir, "outdated-malformed-sidecar");
+    mkdirSync(malformedSkillDir, { recursive: true });
+    writeFileSync(join(malformedSkillDir, "SKILL.md"), "---\nname: Malformed\ndescription: d\n---\nbody");
+    writeFileSync(join(malformedSkillDir, ".skillmux-origin"), "{not valid json");
+
+    const result = await runCli("outdated", "--json");
+
+    expect(result.exitCode).toBe(1);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.data.checks_failed).toBe(1);
+    const malformed = parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "outdated-malformed-sidecar");
+    expect(malformed.status).toBe("check_failed");
+    expect(typeof malformed.reason).toBe("string");
+    const ok = parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "fixture-outdated-alongside-malformed");
+    expect(ok.status).toBe("up_to_date");
+
+    rmSync(join(vaultDir, "fixture-outdated-alongside-malformed"), { recursive: true, force: true });
+    rmSync(malformedSkillDir, { recursive: true, force: true });
+  });
 });
 
 describe("skillmux update CLI", () => {
@@ -2608,6 +2633,20 @@ describe("skillmux update CLI", () => {
 
     rmSync(targetParent, { recursive: true, force: true });
     rmSync(join(vaultDir, "fixture-update-ac12"), { recursive: true, force: true });
+  });
+
+  test("rejects an invalid --fail-on value", async () => {
+    const result = await runCli("update", "some-skill", "--fail-on", "critical");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--fail-on must be low, medium, or high");
+  });
+
+  test("rejects more than one <skill-id> argument", async () => {
+    const result = await runCli("update", "skill-a", "skill-b");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("skillmux update accepts at most one <skill-id> argument");
   });
 });
 

@@ -28,7 +28,14 @@ async function resolveCandidateOrigins(
   skillId: string | undefined,
 ): Promise<{ skillId: string; origin: SkillOrigin }[]> {
   if (skillId) {
-    const origin = readSkillOrigin(join(vaultPath, skillId));
+    let origin: SkillOrigin | null;
+    try {
+      origin = readSkillOrigin(join(vaultPath, skillId));
+    } catch (error) {
+      throw new Error(
+        `"${skillId}" has a corrupt .skillmux-origin sidecar: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     if (!origin) {
       throw new Error(`"${skillId}" has no origin recorded — was this skill installed via "skillmux install"?`);
     }

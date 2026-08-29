@@ -25,7 +25,24 @@ function vaultSkillIds(vaultPath: string): string[] {
 export async function checkOutdated(vaultPath: string): Promise<OutdatedCheckResult[]> {
   const results: OutdatedCheckResult[] = [];
   for (const skillId of vaultSkillIds(vaultPath)) {
-    const origin = readSkillOrigin(join(vaultPath, skillId));
+    let origin: ReturnType<typeof readSkillOrigin>;
+    try {
+      origin = readSkillOrigin(join(vaultPath, skillId));
+    } catch (error) {
+      // A corrupt or unreadable sidecar is this skill's problem alone — never
+      // let it abort the check for every other skill in the vault (AC3/AC4's
+      // per-skill isolation applies to local parse failures too, not just
+      // unreachable remotes).
+      results.push({
+        skill_id: skillId,
+        source_url: "",
+        recorded_commit: "",
+        remote_commit: null,
+        status: "check_failed",
+        reason: `.skillmux-origin: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      continue;
+    }
     if (!origin) continue;
 
     let remoteCommit: string | null = null;
