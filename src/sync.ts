@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
+import { findSymlinks } from "./install";
 import { resolveSkillRoot } from "./vault";
 
 export const SKILLMUX_MARKER_FILENAME = ".skillmux";
@@ -101,10 +102,31 @@ export interface SyncTargetParams {
 export interface SyncTargetResult {
   added: string[];
   removed: string[];
+  /** Core skills whose directory contains an internal symlink and were refused —
+   *  syncTarget symlinks the whole skill directory into the target, so an internal
+   *  symlink would otherwise be exposed to the agent regardless of how it got into
+   *  the vault (install/update already reject them, but a shared git-backed vault
+   *  can still be tampered with directly). */
+  skipped: string[];
 }
 
 export interface SyncTargetOptions {
   dryRun?: boolean;
+}
+
+/** Splits `skillIds` into those safe to symlink into a target and those refused
+ *  for containing an internal symlink (see SyncTargetResult.skipped). */
+function partitionSyncable(
+  skillIds: string[],
+  skillSource: (skillId: string) => string,
+): { syncable: string[]; skipped: string[] } {
+  const syncable: string[] = [];
+  const skipped: string[] = [];
+  for (const skillId of skillIds) {
+    if (findSymlinks(join(skillSource(skillId), skillId)).length > 0) skipped.push(skillId);
+    else syncable.push(skillId);
+  }
+  return { syncable, skipped };
 }
 
 export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions = {}): SyncTargetResult {
@@ -113,13 +135,14 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   const skillSource = (skillId: string) => resolveSkillRoot(skillId, vaultPath, localVaultPaths) ?? vaultPath;
 
   if (!existsSync(targetDir)) {
-    if (dryRun) return { added: [...coreSkillIds], removed: [] };
+    const { syncable, skipped } = partitionSyncable(coreSkillIds, skillSource);
+    if (dryRun) return { added: syncable, removed: [], skipped };
     mkdirSync(targetDir, { recursive: true });
-    for (const skillId of coreSkillIds) {
+    for (const skillId of syncable) {
       symlinkSync(join(skillSource(skillId), skillId), join(targetDir, skillId));
     }
-    writeTargetMarker(targetDir, targetName, vaultPath, coreSkillIds);
-    return { added: [...coreSkillIds], removed: [] };
+    writeTargetMarker(targetDir, targetName, vaultPath, syncable);
+    return { added: syncable, removed: [], skipped };
   }
 
   let marker = readSkillmuxMarker(targetDir);
@@ -167,14 +190,21 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   }
 
   const removed = [...managedEntries].filter((name) => existing.includes(name) && !desired.has(name));
-  const added = coreSkillIds.filter((skillId) => !existing.includes(skillId));
-  if (dryRun) return { added, removed };
+  const addedCandidates = coreSkillIds.filter((skillId) => !existing.includes(skillId));
+  const { syncable: added, skipped } = partitionSyncable(addedCandidates, skillSource);
+  if (dryRun) return { added, removed, skipped };
 
   for (const name of removed) unlinkSync(join(targetDir, name));
   for (const skillId of added) symlinkSync(join(skillSource(skillId), skillId), join(targetDir, skillId));
-  writeTargetMarker(targetDir, targetName, vaultPath, coreSkillIds, marker.created_at);
+  writeTargetMarker(
+    targetDir,
+    targetName,
+    vaultPath,
+    coreSkillIds.filter((skillId) => !skipped.includes(skillId)),
+    marker.created_at,
+  );
 
-  return { added, removed };
+  return { added, removed, skipped };
 }
 
 export interface AdoptTargetResult {

@@ -843,6 +843,11 @@ async function runSync(args: string[]): Promise<void> {
     console.log(
       `${targetName}: +${result.added.length} -${result.removed.length}${suffix}`,
     );
+    if (result.skipped.length > 0) {
+      console.log(
+        `  warning: refused to sync ${result.skipped.join(", ")} — skill directory contains a symlink`,
+      );
+    }
 
     if (target.project_groups.length > 0) {
       const allGroups = manifest.project ?? {};
@@ -857,6 +862,11 @@ async function runSync(args: string[]): Promise<void> {
         console.log(
           `  ${projectResult.group} -> ${projectResult.pinDir}: +${projectResult.added.length} -${projectResult.removed.length}${suffix}`,
         );
+        if (projectResult.skipped.length > 0) {
+          console.log(
+            `    warning: refused to sync ${projectResult.skipped.join(", ")} — skill directory contains a symlink`,
+          );
+        }
       }
     }
   }
