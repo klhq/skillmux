@@ -1,0 +1,133 @@
+import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { hashSkillContent, readSkillOrigin, writeSkillOrigin } from "../src/provenance";
+
+function makeSkillDir(): string {
+  const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-provenance-"));
+  const skillDir = join(vaultDir, "my-skill");
+  mkdirSync(skillDir, { recursive: true });
+  return skillDir;
+}
+
+describe("hashSkillContent", () => {
+  test("returns a 64-char lowercase hex sha256 digest for a skill directory", () => {
+    const skillDir = makeSkillDir();
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: My Skill\n---\nbody");
+
+    const hash = hashSkillContent(skillDir);
+
+    expect(hash).toMatch(/^[a-f0-9]{64}$/);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("changes when SKILL.md content changes", () => {
+    const skillDir = makeSkillDir();
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: My Skill\n---\nbody");
+    const before = hashSkillContent(skillDir);
+
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: My Skill\n---\nedited body");
+
+    expect(hashSkillContent(skillDir)).not.toBe(before);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("changes when a supporting file's content changes", () => {
+    const skillDir = makeSkillDir();
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: My Skill\n---\nbody");
+    writeFileSync(join(skillDir, "reference.md"), "v1");
+    const before = hashSkillContent(skillDir);
+
+    writeFileSync(join(skillDir, "reference.md"), "v2");
+
+    expect(hashSkillContent(skillDir)).not.toBe(before);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("AC2: is unaffected by the presence or content of the .skillmux-origin sidecar itself", () => {
+    const skillDir = makeSkillDir();
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: My Skill\n---\nbody");
+    const before = hashSkillContent(skillDir);
+
+    writeFileSync(join(skillDir, ".skillmux-origin"), JSON.stringify({ anything: "goes here" }));
+
+    expect(hashSkillContent(skillDir)).toBe(before);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+});
+
+describe("writeSkillOrigin / readSkillOrigin", () => {
+  test("round-trips the fields written, stamping schema_version 1", () => {
+    const skillDir = makeSkillDir();
+
+    writeSkillOrigin(skillDir, {
+      source_url: "https://github.com/owner/repo.git",
+      skill_path: "skills/my-skill",
+      commit: "a".repeat(40),
+      installed_at: "2026-08-29T00:00:00.000Z",
+      content_hash: "b".repeat(64),
+    });
+    const origin = readSkillOrigin(skillDir);
+
+    expect(origin).toEqual({
+      schema_version: 1,
+      source_url: "https://github.com/owner/repo.git",
+      skill_path: "skills/my-skill",
+      commit: "a".repeat(40),
+      installed_at: "2026-08-29T00:00:00.000Z",
+      content_hash: "b".repeat(64),
+    });
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("returns null when no sidecar file exists", () => {
+    const skillDir = makeSkillDir();
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: My Skill\n---\nbody");
+
+    expect(readSkillOrigin(skillDir)).toBeNull();
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("throws a clear error for an unsupported schema_version", () => {
+    const skillDir = makeSkillDir();
+    writeFileSync(join(skillDir, ".skillmux-origin"), JSON.stringify({ schema_version: 2 }));
+
+    expect(() => readSkillOrigin(skillDir)).toThrow(/schema_version/);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("--force reinstall overwrites a prior sidecar with fresh values (AC1)", () => {
+    const skillDir = makeSkillDir();
+    writeSkillOrigin(skillDir, {
+      source_url: "https://github.com/owner/repo.git",
+      commit: "a".repeat(40),
+      installed_at: "2026-08-29T00:00:00.000Z",
+      content_hash: "b".repeat(64),
+    });
+
+    writeSkillOrigin(skillDir, {
+      source_url: "https://github.com/owner/repo.git",
+      commit: "c".repeat(40),
+      installed_at: "2026-08-29T01:00:00.000Z",
+      content_hash: "d".repeat(64),
+    });
+
+    expect(readSkillOrigin(skillDir)).toEqual({
+      schema_version: 1,
+      source_url: "https://github.com/owner/repo.git",
+      commit: "c".repeat(40),
+      installed_at: "2026-08-29T01:00:00.000Z",
+      content_hash: "d".repeat(64),
+    });
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+});
