@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
 
@@ -11,6 +11,10 @@ describe("CLI Integration & Parity (AC1, AC2, AC3, AC11, AC12)", () => {
   const configPath = join(TEST_DIR, "config.toml");
   Bun.write(configPath, `vault_path = "${join(TEST_DIR, "vault")}"\nstate_dir = "${join(TEST_DIR, "state")}"\n`);
   const env = { ...process.env, SKILLMUX_CONFIG: configPath };
+
+  afterAll(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
 
   it("context list displays built-in local context", async () => {
     const proc = Bun.spawn(["bun", CLI_PATH, "context", "list"], {
