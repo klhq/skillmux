@@ -107,6 +107,20 @@ description: Unterminated
 
     rmSync(tmp, { recursive: true, force: true });
   });
+
+  test("security: listSupportingFiles rejects a skillId that would traverse outside the vault", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-vault-test-traversal-"));
+    const vaultPath = join(tmp, "vault");
+    mkdirSync(vaultPath, { recursive: true });
+    const secretDir = join(tmp, "secret");
+    mkdirSync(secretDir, { recursive: true });
+    writeFileSync(join(secretDir, "id_rsa"), "not a real key");
+
+    expect(listSupportingFiles(vaultPath, "../secret")).toEqual([]);
+    expect(listSupportingFiles(vaultPath, "..")).toEqual([]);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
 });
 
 describe("vaultResolutionOrder", () => {

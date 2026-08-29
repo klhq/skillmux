@@ -133,8 +133,15 @@ export function findShadowedSkills(vaultPath: string, localVaultPaths: string[])
  *  install/sync already refuse a skill containing one, but a symlink can still
  *  reach the vault directly (a shared git-backed vault pulled in, or a hand-edit),
  *  and this function otherwise feeds skill content straight into content
- *  scanning (scan.ts) and drift hashing (provenance.ts). */
+ *  scanning (scan.ts) and drift hashing (provenance.ts). `skillId` must be a
+ *  single path segment — not the stricter SKILL_ID_PATTERN, since scanPath's
+ *  ad-hoc single-directory mode legitimately passes an arbitrary, not-yet-
+ *  normalized directory name — so `..`/`.`/a path separator is rejected to
+ *  keep the walk inside `vaultPath` without breaking that mode. */
 export function listSupportingFiles(vaultPath: string, skillId: string): string[] {
+  if (skillId === "" || skillId === "." || skillId === ".." || skillId.includes("/") || skillId.includes("\\")) {
+    return [];
+  }
   const root = join(vaultPath, skillId);
   const files: string[] = [];
   const walk = (dir: string) => {
