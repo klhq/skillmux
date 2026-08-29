@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   cloneToTemp,
   deriveRepoName,
+  findSymlinks,
   installIntoVault,
   remoteHeadCommit,
   resolveCloneCommit,
@@ -184,6 +185,39 @@ describe("resolveSkillDir", () => {
   });
 });
 
+describe("findSymlinks", () => {
+  test("finds a symlink nested inside a subdirectory, reported as a path relative to the scanned dir", () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-install-symlinks-"));
+    mkdirSync(join(dir, "assets"));
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: x\n---\nbody");
+    symlinkSync("/etc/passwd", join(dir, "assets", "escape"));
+
+    expect(findSymlinks(dir)).toEqual([join("assets", "escape")]);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns an empty array for a directory containing only regular files", () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-install-symlinks-clean-"));
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: x\n---\nbody");
+
+    expect(findSymlinks(dir)).toEqual([]);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("ignores symlinks inside a .git directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-install-symlinks-git-"));
+    mkdirSync(join(dir, ".git"));
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: x\n---\nbody");
+    symlinkSync("/etc/passwd", join(dir, ".git", "escape"));
+
+    expect(findSymlinks(dir)).toEqual([]);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe("validateSkillCandidate", () => {
   test("scans SKILL.md content and labels findings with the resolved skill_id", async () => {
     const dir = mkdtempSync(join(tmpdir(), "skillmux-install-validate-"));
@@ -206,6 +240,16 @@ describe("validateSkillCandidate", () => {
     writeFileSync(join(dir, "SKILL.md"), "---\nname: [unclosed\n");
 
     await expect(validateSkillCandidate("broken-skill", dir)).rejects.toThrow();
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("security: aborts with a clear error when the candidate contains a symlink", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-install-validate-symlink-"));
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: Evil\n---\nbody");
+    symlinkSync("/etc/passwd", join(dir, "escape"));
+
+    await expect(validateSkillCandidate("evil-skill", dir)).rejects.toThrow(/symlink/);
 
     rmSync(dir, { recursive: true, force: true });
   });
@@ -265,6 +309,19 @@ describe("installIntoVault", () => {
 
     expect(() => installIntoVault(vaultDir, "existing-skill", sourceDir)).toThrow(/existing-skill.*--force/s);
     expect(readFileSync(join(vaultDir, "existing-skill", "SKILL.md"), "utf-8")).toContain("original");
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(sourceDir, { recursive: true, force: true });
+  });
+
+  test("security: refuses to copy a source directory containing a symlink, even with force", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-install-vault-symlink-"));
+    const sourceDir = mkdtempSync(join(tmpdir(), "skillmux-install-source-symlink-"));
+    writeFileSync(join(sourceDir, "SKILL.md"), "---\nname: Evil\n---\nbody");
+    symlinkSync("/etc/passwd", join(sourceDir, "escape"));
+
+    expect(() => installIntoVault(vaultDir, "evil-skill", sourceDir, true)).toThrow(/symlink/);
+    expect(existsSync(join(vaultDir, "evil-skill"))).toBe(false);
 
     rmSync(vaultDir, { recursive: true, force: true });
     rmSync(sourceDir, { recursive: true, force: true });
