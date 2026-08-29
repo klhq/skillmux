@@ -2583,6 +2583,31 @@ describe("skillmux update CLI", () => {
     rmSync(skillDir, { recursive: true, force: true });
   });
 
+  test("performance: a locally-drifted skill is skipped without fetching the update (skill_path is never resolved)", async () => {
+    const fixtureDir = join(tmp, "fixture-update-drift-perf");
+    initFixtureRepo(fixtureDir, "---\nname: DriftPerf\ndescription: d\n---\nbody v1");
+    await runCli("install", `file://${fixtureDir}`);
+    const skillDir = join(vaultDir, "fixture-update-drift-perf");
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: DriftPerf\ndescription: d\n---\nhand-edited");
+    bumpUpstream(fixtureDir, "---\nname: DriftPerf\ndescription: d\n---\nbody v2");
+
+    // A tampered skill_path that resolveSkillDir would reject if buildPlan ever
+    // reached it for this candidate. It must not be reached: the drift check is
+    // purely local and should short-circuit before any fetch is attempted.
+    const originPath = join(skillDir, ".skillmux-origin");
+    const origin = JSON.parse(readFileSync(originPath, "utf-8"));
+    origin.skill_path = "../../etc";
+    writeFileSync(originPath, JSON.stringify(origin));
+
+    const result = await runCli("update", "fixture-update-drift-perf", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.data.skills[0].status).toBe("skipped_drift");
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
   test("AC8: skips a skill whose fetched update fails the scan gate, reporting findings", async () => {
     const fixtureDir = join(tmp, "fixture-update-risky");
     initFixtureRepo(fixtureDir, "---\nname: Risky\ndescription: d\n---\nbody v1");

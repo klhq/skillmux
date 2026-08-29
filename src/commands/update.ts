@@ -1,7 +1,14 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
-import { cloneToTemp, installIntoVault, resolveCloneCommit, resolveSkillDir, validateSkillCandidate } from "../install";
+import {
+  cloneToTemp,
+  installIntoVault,
+  remoteHeadCommit,
+  resolveCloneCommit,
+  resolveSkillDir,
+  validateSkillCandidate,
+} from "../install";
 import { emitSuccess } from "../output";
 import { hashSkillContent, readSkillOrigin, writeSkillOrigin } from "../provenance";
 import type { SkillOrigin } from "../provenance";
@@ -18,8 +25,8 @@ interface UpdatePlanItem {
   contentChanged: boolean;
   kind: UpdateKind;
   findings?: ScanFinding[];
-  cloneDir: string;
-  fetchedDir: string;
+  cloneDir: string | null;
+  fetchedDir: string | null;
   origin: SkillOrigin;
 }
 
@@ -56,6 +63,24 @@ async function buildPlan(
   const plan: UpdatePlanItem[] = [];
   for (const { skillId, origin } of candidates) {
     const skillDir = join(vaultPath, skillId);
+    const currentHash = hashSkillContent(skillDir);
+
+    // Drift is a purely local comparison — check it before fetching anything,
+    // so a drifted (and therefore skipped) skill never pays for a clone.
+    if (currentHash !== origin.content_hash && !force) {
+      plan.push({
+        skillId,
+        oldCommit: origin.commit,
+        newCommit: await remoteHeadCommit(origin.source_url),
+        contentChanged: false,
+        kind: "skip_drift",
+        cloneDir: null,
+        fetchedDir: null,
+        origin,
+      });
+      continue;
+    }
+
     const cloneDir = await cloneToTemp(origin.source_url);
     const resolved = resolveSkillDir(cloneDir, skillId, origin.skill_path);
     const base = {
@@ -66,12 +91,6 @@ async function buildPlan(
       fetchedDir: resolved.dir,
       origin,
     };
-    const currentHash = hashSkillContent(skillDir);
-
-    if (currentHash !== origin.content_hash && !force) {
-      plan.push({ ...base, contentChanged: false, kind: "skip_drift" });
-      continue;
-    }
 
     const { findings } = await validateSkillCandidate(skillId, resolved.dir);
     if (scanExitCode(findings, failOn) !== 0) {
@@ -162,7 +181,9 @@ export async function runUpdate(args: string[], options: { isJson: boolean }): P
       if (!proceed) return;
 
       for (const item of toWrite) {
-        const targetDir = installIntoVault(vaultPath, item.skillId, item.fetchedDir, true);
+        // toWrite is filtered to kind === "update", which is only ever set after
+        // a successful clone above, so fetchedDir is always populated here.
+        const targetDir = installIntoVault(vaultPath, item.skillId, item.fetchedDir as string, true);
         writeSkillOrigin(targetDir, {
           source_url: item.origin.source_url,
           skill_path: item.origin.skill_path,
@@ -193,6 +214,8 @@ export async function runUpdate(args: string[], options: { isJson: boolean }): P
       }
     });
   } finally {
-    for (const item of plan) rmSync(item.cloneDir, { recursive: true, force: true });
+    for (const item of plan) {
+      if (item.cloneDir) rmSync(item.cloneDir, { recursive: true, force: true });
+    }
   }
 }
