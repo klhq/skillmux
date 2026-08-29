@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   cloneToTemp,
   deriveRepoName,
+  findSymlinks,
   installIntoVault,
   remoteHeadCommit,
   resolveCloneCommit,
@@ -181,6 +182,39 @@ describe("resolveSkillDir", () => {
     expect(() => resolveSkillDir(cloneDir, "skillshare")).toThrow(/alpha-skill.*beta-skill/s);
 
     rmSync(cloneDir, { recursive: true, force: true });
+  });
+});
+
+describe("findSymlinks", () => {
+  test("finds a symlink nested inside a subdirectory, reported as a path relative to the scanned dir", () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-install-symlinks-"));
+    mkdirSync(join(dir, "assets"));
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: x\n---\nbody");
+    symlinkSync("/etc/passwd", join(dir, "assets", "escape"));
+
+    expect(findSymlinks(dir)).toEqual([join("assets", "escape")]);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("returns an empty array for a directory containing only regular files", () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-install-symlinks-clean-"));
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: x\n---\nbody");
+
+    expect(findSymlinks(dir)).toEqual([]);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("ignores symlinks inside a .git directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-install-symlinks-git-"));
+    mkdirSync(join(dir, ".git"));
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: x\n---\nbody");
+    symlinkSync("/etc/passwd", join(dir, ".git", "escape"));
+
+    expect(findSymlinks(dir)).toEqual([]);
+
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

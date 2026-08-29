@@ -1,6 +1,6 @@
 import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { type ScanFinding, readTextFileOrNull, scanContent } from "./scan";
 import { decodeUtf8Strict, listSupportingFiles, parseSkillMd } from "./vault";
 
@@ -72,6 +72,27 @@ export async function remoteHeadCommit(url: string, ref = "HEAD"): Promise<strin
     throw new Error(`git ls-remote returned an unparseable SHA for ${url}: ${line}`);
   }
   return sha;
+}
+
+/** Recursively finds symlinks under `dir` (skipping `.git`), without following them.
+ *  A skill's content must be regular files only — a symlink here is how a malicious
+ *  skill smuggles an escape out of the vault once `skillmux sync` exposes it inside
+ *  an agent's native skill directory. */
+export function findSymlinks(dir: string): string[] {
+  const found: string[] = [];
+  const walk = (current: string) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (entry.name === ".git") continue;
+      const abs = join(current, entry.name);
+      if (entry.isSymbolicLink()) {
+        found.push(relative(dir, abs));
+      } else if (entry.isDirectory()) {
+        walk(abs);
+      }
+    }
+  };
+  walk(dir);
+  return found.sort();
 }
 
 export interface ValidationResult {
