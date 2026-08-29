@@ -48,6 +48,7 @@ import {
   validateSkillCandidate,
 } from "./install";
 import { runOutdated } from "./commands/outdated";
+import { runUpdate } from "./commands/update";
 import { hashSkillContent, writeSkillOrigin } from "./provenance";
 import {
   parseManifest,
@@ -346,6 +347,9 @@ async function main() {
         break;
       case "outdated":
         await runOutdated(rawArgv.slice(1), { isJson });
+        break;
+      case "update":
+        await runUpdate(rawArgv.slice(1), { isJson });
         break;
       case "eval":
         if (subCommand === "promote") {
