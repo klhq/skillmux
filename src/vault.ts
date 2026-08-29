@@ -129,12 +129,17 @@ export function findShadowedSkills(vaultPath: string, localVaultPaths: string[])
 }
 
 /** Relative paths of everything under the skill dir except SKILL.md and the
- *  provenance sidecar, sorted. */
+ *  provenance sidecar, sorted. Symlinks are excluded rather than followed —
+ *  install/sync already refuse a skill containing one, but a symlink can still
+ *  reach the vault directly (a shared git-backed vault pulled in, or a hand-edit),
+ *  and this function otherwise feeds skill content straight into content
+ *  scanning (scan.ts) and drift hashing (provenance.ts). */
 export function listSupportingFiles(vaultPath: string, skillId: string): string[] {
   const root = join(vaultPath, skillId);
   const files: string[] = [];
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
       const abs = join(dir, entry.name);
       if (entry.isDirectory()) walk(abs);
       else if (statSync(abs).isFile()) {
