@@ -42,10 +42,12 @@ import {
   cloneToTemp,
   deriveRepoName,
   installIntoVault,
+  resolveCloneCommit,
   resolveRepoSource,
   resolveSkillDir,
   validateSkillCandidate,
 } from "./install";
+import { hashSkillContent, writeSkillOrigin } from "./provenance";
 import {
   parseManifest,
   resolveManifestPath,
@@ -1612,12 +1614,20 @@ async function runInstall(
       return;
     }
 
+    const commit = resolveCloneCommit(cloneDir);
     const targetDir = installIntoVault(
       vaultPath,
       resolved.skillId,
       resolved.dir,
       force,
     );
+    writeSkillOrigin(targetDir, {
+      source_url: source.url,
+      skill_path: source.skillPath,
+      commit,
+      installed_at: new Date().toISOString(),
+      content_hash: hashSkillContent(targetDir),
+    });
     emitSuccess(
       { isJson: options.isJson },
       { skill_id: resolved.skillId, installed_at: targetDir },

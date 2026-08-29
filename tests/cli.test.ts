@@ -13,6 +13,7 @@ import {
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
+import { hashSkillContent, readSkillOrigin } from "../src/provenance";
 import { startServer } from "../src/server";
 
 const tmp = mkdtempSync(join(tmpdir(), "skillmux-cli-"));
@@ -2142,6 +2143,56 @@ describe("skillmux install CLI", () => {
       recursive: true,
       force: true,
     });
+  });
+
+  test("AC1: writes a .skillmux-origin sidecar recording source, commit, and content hash", async () => {
+    const fixtureDir = join(tmp, "fixture-origin");
+    initFixtureRepo(
+      fixtureDir,
+      "---\nname: Origin\ndescription: d\n---\nbody",
+    );
+    const expectedCommit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: fixtureDir, env: GIT_ENV })
+      .stdout.toString()
+      .trim();
+
+    const result = await runCli("install", `file://${fixtureDir}`);
+
+    expect(result.exitCode).toBe(0);
+    const skillDir = join(vaultDir, "fixture-origin");
+    const origin = readSkillOrigin(skillDir);
+    expect(origin).not.toBeNull();
+    expect(origin?.source_url).toBe(`file://${fixtureDir}`);
+    expect(origin?.commit).toBe(expectedCommit);
+    expect(origin?.content_hash).toBe(hashSkillContent(skillDir));
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("AC1: --force reinstall overwrites the sidecar with fresh values", async () => {
+    const fixtureDir = join(tmp, "fixture-origin-force");
+    initFixtureRepo(
+      fixtureDir,
+      "---\nname: Origin Force\ndescription: d\n---\nbody v1",
+    );
+    await runCli("install", `file://${fixtureDir}`);
+    const skillDir = join(vaultDir, "fixture-origin-force");
+    const firstOrigin = readSkillOrigin(skillDir);
+
+    writeFileSync(join(fixtureDir, "SKILL.md"), "---\nname: Origin Force\ndescription: d\n---\nbody v2");
+    Bun.spawnSync(["git", "commit", "-aqm", "v2"], { cwd: fixtureDir, env: GIT_ENV });
+    const expectedCommit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: fixtureDir, env: GIT_ENV })
+      .stdout.toString()
+      .trim();
+
+    const result = await runCli("install", `file://${fixtureDir}`, "--force");
+
+    expect(result.exitCode).toBe(0);
+    const secondOrigin = readSkillOrigin(skillDir);
+    expect(secondOrigin?.commit).toBe(expectedCommit);
+    expect(secondOrigin?.commit).not.toBe(firstOrigin?.commit);
+    expect(secondOrigin?.content_hash).toBe(hashSkillContent(skillDir));
+
+    rmSync(skillDir, { recursive: true, force: true });
   });
 
   test("--json wraps the install result in a schema_version:1 envelope", async () => {

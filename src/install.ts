@@ -49,6 +49,31 @@ export async function cloneToTemp(url: string): Promise<string> {
   return dir;
 }
 
+export function resolveCloneCommit(cloneDir: string): string {
+  const proc = Bun.spawnSync(["git", "-C", cloneDir, "rev-parse", "HEAD"], { stdout: "pipe", stderr: "pipe" });
+  if (proc.exitCode !== 0) {
+    throw new Error(`git rev-parse HEAD failed in ${cloneDir}: ${proc.stderr.toString().trim()}`);
+  }
+  return proc.stdout.toString().trim();
+}
+
+export async function remoteHeadCommit(url: string, ref = "HEAD"): Promise<string> {
+  const proc = Bun.spawn(["git", "ls-remote", url, ref], { stdout: "pipe", stderr: "pipe" });
+  const exitCode = await proc.exited;
+  const stdout = await new Response(proc.stdout).text();
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    throw new Error(`git ls-remote failed for ${url}: ${stderr.trim()}`);
+  }
+  const line = stdout.split("\n").find((l) => l.trim().length > 0);
+  if (!line) throw new Error(`git ls-remote returned no ref "${ref}" for ${url}`);
+  const sha = line.split("\t")[0]?.trim();
+  if (!sha || !/^[0-9a-f]{40}$/.test(sha)) {
+    throw new Error(`git ls-remote returned an unparseable SHA for ${url}: ${line}`);
+  }
+  return sha;
+}
+
 export interface ValidationResult {
   findings: ScanFinding[];
 }
