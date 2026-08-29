@@ -162,6 +162,14 @@ describe("resolveSkillDir", () => {
     rmSync(cloneDir, { recursive: true, force: true });
   });
 
+  test("security: rejects a skillPath containing .. segments (blocks escaping the clone dir via a tampered sidecar)", () => {
+    const cloneDir = mkdtempSync(join(tmpdir(), "skillmux-install-clonedir-"));
+
+    expect(() => resolveSkillDir(cloneDir, "skillshare", "../../etc")).toThrow(/skill_path/);
+
+    rmSync(cloneDir, { recursive: true, force: true });
+  });
+
   test("errors listing discovered skill dirs when root has no SKILL.md and no path was given", () => {
     const cloneDir = mkdtempSync(join(tmpdir(), "skillmux-install-clonedir-"));
     for (const id of ["alpha-skill", "beta-skill"]) {

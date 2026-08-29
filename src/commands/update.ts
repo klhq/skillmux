@@ -89,6 +89,11 @@ async function buildPlan(
   return plan;
 }
 
+export function buildConfirmPrompt(toWrite: Pick<UpdatePlanItem, "skillId" | "origin">[]): string {
+  const lines = toWrite.map((item) => `  ${item.skillId} <- ${item.origin.source_url}`);
+  return `update:\n${lines.join("\n")}\n?`;
+}
+
 function statusFor(kind: UpdateKind, dryRun: boolean): string {
   switch (kind) {
     case "update":
@@ -151,7 +156,7 @@ export async function runUpdate(args: string[], options: { isJson: boolean }): P
       const proceed = await confirmIfNeeded({
         confirmed: yes,
         isJson: options.isJson,
-        prompt: `update ${toWrite.map((item) => item.skillId).join(", ")}?`,
+        prompt: buildConfirmPrompt(toWrite),
         nonInteractiveError: "skillmux update requires --yes when run non-interactively",
       });
       if (!proceed) return;
@@ -170,6 +175,7 @@ export async function runUpdate(args: string[], options: { isJson: boolean }): P
 
     const skills = plan.map((item) => ({
       skill_id: item.skillId,
+      source_url: item.origin.source_url,
       old_commit: item.oldCommit,
       new_commit: item.newCommit,
       content_changed: item.contentChanged,
