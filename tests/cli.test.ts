@@ -2652,6 +2652,43 @@ describe("skillmux update CLI", () => {
     rmSync(currentDir, { recursive: true, force: true });
   });
 
+  test("security: a symlinked SKILL.md in one vault skill doesn't abort the batch for other skills", async () => {
+    const staleFixture = join(tmp, "fixture-update-symlink-batch-stale");
+    initFixtureRepo(staleFixture, "---\nname: SymlinkBatchStale\ndescription: d\n---\nbody v1");
+    await runCli("install", `file://${staleFixture}`);
+    const staleDir = join(vaultDir, "fixture-update-symlink-batch-stale");
+    const newCommit = bumpUpstream(staleFixture, "---\nname: SymlinkBatchStale\ndescription: d\n---\nbody v2");
+
+    const tamperedFixture = join(tmp, "fixture-update-symlink-tampered");
+    initFixtureRepo(tamperedFixture, "---\nname: SymlinkTampered\ndescription: d\n---\nbody v1");
+    await runCli("install", `file://${tamperedFixture}`);
+    const tamperedDir = join(vaultDir, "fixture-update-symlink-tampered");
+    bumpUpstream(tamperedFixture, "---\nname: SymlinkTampered\ndescription: d\n---\nbody v2");
+    const secretPath = join(tmp, "fixture-update-symlink-secret.txt");
+    writeFileSync(secretPath, "TOP SECRET HOST FILE CONTENTS");
+    rmSync(join(tamperedDir, "SKILL.md"));
+    symlinkSync(secretPath, join(tamperedDir, "SKILL.md"));
+
+    const result = await runCli("update", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    const stale = parsed.data.skills.find(
+      (s: { skill_id: string }) => s.skill_id === "fixture-update-symlink-batch-stale",
+    );
+    const tampered = parsed.data.skills.find(
+      (s: { skill_id: string }) => s.skill_id === "fixture-update-symlink-tampered",
+    );
+    expect(stale).toMatchObject({ status: "updated", new_commit: newCommit });
+    expect(readFileSync(join(staleDir, "SKILL.md"), "utf-8")).toContain("body v2");
+    expect(tampered.status).not.toBe("updated");
+    expect(lstatSync(join(tamperedDir, "SKILL.md")).isSymbolicLink()).toBe(true);
+
+    rmSync(staleDir, { recursive: true, force: true });
+    rmSync(tamperedDir, { recursive: true, force: true });
+    rmSync(secretPath, { force: true });
+  });
+
   test("AC12: never touches a sync target directory or its .skillmux marker", async () => {
     const targetParent = mkdtempSync(join(tmpdir(), "skillmux-update-target-"));
     const targetDir = join(targetParent, "skills");

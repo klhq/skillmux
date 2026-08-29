@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hashSkillContent, readSkillOrigin, writeSkillOrigin } from "../src/provenance";
@@ -56,6 +56,17 @@ describe("hashSkillContent", () => {
     writeFileSync(join(skillDir, ".skillmux-origin"), JSON.stringify({ anything: "goes here" }));
 
     expect(hashSkillContent(skillDir)).toBe(before);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("security: refuses to hash a symlinked SKILL.md instead of following it", () => {
+    const skillDir = makeSkillDir();
+    const secretPath = join(skillDir, "..", "secret.txt");
+    writeFileSync(secretPath, "TOP SECRET HOST FILE CONTENTS");
+    symlinkSync(secretPath, join(skillDir, "SKILL.md"));
+
+    expect(() => hashSkillContent(skillDir)).toThrow();
 
     rmSync(skillDir, { recursive: true, force: true });
   });

@@ -16,7 +16,7 @@ import { type ScanFinding, type ScanSeverity, scanExitCode } from "../scan";
 import { confirmIfNeeded } from "./shared";
 import { checkOutdated } from "./outdated";
 
-type UpdateKind = "update" | "up_to_date" | "skip_drift" | "skip_scan_failed";
+type UpdateKind = "update" | "up_to_date" | "skip_drift" | "skip_scan_failed" | "skip_read_error";
 
 interface UpdatePlanItem {
   skillId: string;
@@ -25,6 +25,7 @@ interface UpdatePlanItem {
   contentChanged: boolean;
   kind: UpdateKind;
   findings?: ScanFinding[];
+  reason?: string;
   cloneDir: string | null;
   fetchedDir: string | null;
   origin: SkillOrigin;
@@ -63,7 +64,27 @@ async function buildPlan(
   const plan: UpdatePlanItem[] = [];
   for (const { skillId, origin } of candidates) {
     const skillDir = join(vaultPath, skillId);
-    const currentHash = hashSkillContent(skillDir);
+    let currentHash: string;
+    try {
+      currentHash = hashSkillContent(skillDir);
+    } catch (error) {
+      // A skill whose on-disk content can't be safely read (e.g. SKILL.md was
+      // swapped for a symlink after install — same threat model as AC7's drift
+      // check) is this skill's problem alone, matching checkOutdated's per-skill
+      // isolation: never let it abort the batch for every other candidate.
+      plan.push({
+        skillId,
+        oldCommit: origin.commit,
+        newCommit: origin.commit,
+        contentChanged: false,
+        kind: "skip_read_error",
+        reason: error instanceof Error ? error.message : String(error),
+        cloneDir: null,
+        fetchedDir: null,
+        origin,
+      });
+      continue;
+    }
 
     // Drift is a purely local comparison — check it before fetching anything,
     // so a drifted (and therefore skipped) skill never pays for a clone.
@@ -121,6 +142,8 @@ function statusFor(kind: UpdateKind, dryRun: boolean): string {
       return dryRun ? "would_skip_drift" : "skipped_drift";
     case "skip_scan_failed":
       return dryRun ? "would_skip_scan_failed" : "skipped_scan_failed";
+    case "skip_read_error":
+      return "skipped_read_error";
     default:
       return "up_to_date";
   }
@@ -202,6 +225,7 @@ export async function runUpdate(args: string[], options: { isJson: boolean }): P
       content_changed: item.contentChanged,
       status: statusFor(item.kind, dryRun),
       ...(item.findings ? { findings: item.findings } : {}),
+      ...(item.reason ? { reason: item.reason } : {}),
     }));
 
     emitSuccess({ isJson: options.isJson }, { dry_run: dryRun, skills }, () => {

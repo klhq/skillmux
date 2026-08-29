@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { isGitUrl } from "./install";
 import { SKILLMUX_ORIGIN_FILENAME, listSupportingFiles } from "./vault";
@@ -53,16 +53,25 @@ export function writeSkillOrigin(
 }
 
 /** Deterministic sha256 over every file in a skill directory (SKILL.md plus every
- *  file listSupportingFiles returns), used for local-drift detection. */
+ *  file listSupportingFiles returns), used for local-drift detection. listSupportingFiles
+ *  already excludes symlinks it finds, but SKILL.md is read separately (same reason
+ *  readSkill/deliverSkill guard it independently in vault.ts/router-core.ts) — this is
+ *  a local, already-installed vault dir, not the freshly cloned candidate that
+ *  validateSkillCandidate has vetted, so a swapped-in symlinked SKILL.md must be
+ *  refused here rather than followed. */
 export function hashSkillContent(dir: string): string {
   const vaultPath = dirname(dir);
   const skillId = basename(dir);
   const hasher = new Bun.CryptoHasher("sha256");
   const files = ["SKILL.md", ...listSupportingFiles(vaultPath, skillId)];
   for (const rel of files) {
+    const path = join(dir, rel);
+    if (lstatSync(path).isSymbolicLink()) {
+      throw new Error(`refusing to hash ${skillId}/${rel}: it is a symlink`);
+    }
     hasher.update(rel);
     hasher.update("\0");
-    hasher.update(readFileSync(join(dir, rel)));
+    hasher.update(readFileSync(path));
     hasher.update("\0");
   }
   return hasher.digest("hex");
