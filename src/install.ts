@@ -100,6 +100,13 @@ export interface ValidationResult {
 }
 
 export async function validateSkillCandidate(skillId: string, dir: string): Promise<ValidationResult> {
+  const symlinks = findSymlinks(dir);
+  if (symlinks.length > 0) {
+    throw new Error(
+      `"${skillId}" contains symlink(s), which are not allowed in skill content: ${symlinks.join(", ")}`,
+    );
+  }
+
   const bytes = await Bun.file(join(dir, "SKILL.md")).bytes();
   const body = decodeUtf8Strict(bytes);
   parseSkillMd(skillId, body);

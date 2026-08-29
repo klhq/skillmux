@@ -244,6 +244,16 @@ describe("validateSkillCandidate", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("security: aborts with a clear error when the candidate contains a symlink", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-install-validate-symlink-"));
+    writeFileSync(join(dir, "SKILL.md"), "---\nname: Evil\n---\nbody");
+    symlinkSync("/etc/passwd", join(dir, "escape"));
+
+    await expect(validateSkillCandidate("evil-skill", dir)).rejects.toThrow(/symlink/);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("also scans supporting files and reports their relative path", async () => {
     const dir = mkdtempSync(join(tmpdir(), "skillmux-install-validate-supporting-"));
     writeFileSync(join(dir, "SKILL.md"), "---\nname: Ref\n---\nbody");
