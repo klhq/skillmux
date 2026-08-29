@@ -121,6 +121,9 @@ export interface ResolvedSkillDir {
 
 export function resolveSkillDir(cloneDir: string, fallbackName: string, skillPath?: string): ResolvedSkillDir {
   if (skillPath) {
+    if (skillPath.startsWith("/") || skillPath.split("/").includes("..")) {
+      throw new Error(`invalid skill_path "${skillPath}": must be a relative path within the repo`);
+    }
     return { skillId: basename(skillPath), dir: join(cloneDir, skillPath) };
   }
   if (existsSync(join(cloneDir, "SKILL.md"))) {
