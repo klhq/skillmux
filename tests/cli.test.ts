@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -15,6 +16,7 @@ import { join } from "node:path";
 import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
 import { hashSkillContent, readSkillOrigin } from "../src/provenance";
 import { startServer } from "../src/server";
+import { readSkillmuxMarker, syncTarget } from "../src/sync";
 
 const tmp = mkdtempSync(join(tmpdir(), "skillmux-cli-"));
 const vaultDir = join(tmp, "vault");
@@ -2564,6 +2566,28 @@ describe("skillmux update CLI", () => {
 
     rmSync(staleDir, { recursive: true, force: true });
     rmSync(currentDir, { recursive: true, force: true });
+  });
+
+  test("AC12: never touches a sync target directory or its .skillmux marker", async () => {
+    const targetParent = mkdtempSync(join(tmpdir(), "skillmux-update-target-"));
+    const targetDir = join(targetParent, "skills");
+    syncTarget({ vaultPath: vaultDir, targetDir, targetName: "ac12-target", coreSkillIds: [] });
+    const markerBefore = readSkillmuxMarker(targetDir);
+    const entriesBefore = readdirSync(targetDir).sort();
+
+    const fixtureDir = join(tmp, "fixture-update-ac12");
+    initFixtureRepo(fixtureDir, "---\nname: AC12\ndescription: d\n---\nbody v1");
+    await runCli("install", `file://${fixtureDir}`);
+    bumpUpstream(fixtureDir, "---\nname: AC12\ndescription: d\n---\nbody v2");
+
+    const result = await runCli("update", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    expect(readSkillmuxMarker(targetDir)).toEqual(markerBefore);
+    expect(readdirSync(targetDir).sort()).toEqual(entriesBefore);
+
+    rmSync(targetParent, { recursive: true, force: true });
+    rmSync(join(vaultDir, "fixture-update-ac12"), { recursive: true, force: true });
   });
 });
 

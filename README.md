@@ -213,6 +213,7 @@ Useful management commands:
 
 ```sh
 skillmux scan ~/skills
+skillmux outdated
 skillmux core pin csv-formatter --yes
 skillmux project pin my-project code-context --yes
 skillmux skill which csv-formatter

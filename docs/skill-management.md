@@ -55,6 +55,38 @@ With no path, `scan` checks the configured vault. `--json` wraps the result in
 the standard CLI automation envelope, while `--format json` selects the
 scanner's raw JSON rendering.
 
+## Check and pull upstream updates
+
+Every skill `install` places in the vault gets a `.skillmux-origin` sidecar
+recording the source repo, resolved commit, and a content hash. Check which
+installed skills have moved upstream:
+
+```sh
+skillmux outdated
+skillmux outdated --json
+```
+
+Skills you authored by hand, or installed before this sidecar existed, carry
+no `.skillmux-origin` and are silently omitted — `outdated` only reports on
+skills it can trace back to a source. A repo that has become unreachable is
+reported per-skill as `check_failed` with a reason; it does not stop the rest
+of the check.
+
+Pull an update for one skill, or every outdated skill at once:
+
+```sh
+skillmux update csv-formatter --dry-run
+skillmux update csv-formatter --yes
+skillmux update --yes
+```
+
+`--dry-run` reports the old and new commit and whether content actually
+changed, without writing anything. A real update re-runs the same scan
+`install` does (`--fail-on` applies the same way) and refuses to overwrite a
+skill whose on-disk content has drifted from what was last installed —
+someone may have hand-edited it. Pass `--force` to overwrite anyway. Like
+`audit prune`, a non-interactive or `--json` run needs `--yes`.
+
 ## Plan client delivery
 
 Use product names for common clients:
