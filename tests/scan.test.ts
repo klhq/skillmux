@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderScanJson, renderScanText, scanContent, scanExitCode, scanPath } from "../src/scan";
@@ -213,6 +213,25 @@ describe("scanPath", () => {
     expect(result.findings).toContainEqual(
       expect.objectContaining({ skill_id: "broken-skill", rule_id: "unparseable-skill", severity: "medium" }),
     );
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("security: refuses to scan a symlinked SKILL.md in single-skill-dir mode instead of following it", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-scan-symlink-single-"));
+    const skillDir = join(vaultDir, "tampered-skill");
+    mkdirSync(skillDir, { recursive: true });
+    const secretPath = join(vaultDir, "secret.txt");
+    writeFileSync(secretPath, "TOP SECRET HOST FILE CONTENTS");
+    symlinkSync(secretPath, join(skillDir, "SKILL.md"));
+
+    const result = await scanPath(skillDir);
+
+    expect(result.scanned).toBe(1);
+    expect(result.findings).toContainEqual(
+      expect.objectContaining({ skill_id: "tampered-skill", rule_id: "unparseable-skill", severity: "medium" }),
+    );
+    expect(result.findings.every((f) => !f.message?.includes("TOP SECRET"))).toBe(true);
 
     rmSync(vaultDir, { recursive: true, force: true });
   });

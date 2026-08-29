@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { decodeUtf8Strict, listSupportingFiles, scanVault } from "./vault";
 
@@ -197,7 +197,13 @@ async function resolveScanTargets(rootPath: string): Promise<ResolvedScanTargets
   if (existsSync(join(rootPath, "SKILL.md"))) {
     const skillId = basename(rootPath);
     const vaultPath = dirname(rootPath);
-    const body = await readTextFileOrNull(join(rootPath, "SKILL.md"));
+    const skillMdPath = join(rootPath, "SKILL.md");
+    // Single-skill-dir mode is reachable directly against an already-installed vault
+    // dir (`skillmux scan <vault>/<skillId>`), not just a freshly cloned, pre-vetted
+    // candidate — same threat model as readSkill/hashSkillContent's guards, so a
+    // swapped-in symlinked SKILL.md must be refused (flagged unparseable) rather
+    // than followed and its target's bytes fed into scan findings.
+    const body = lstatSync(skillMdPath).isSymbolicLink() ? null : await readTextFileOrNull(skillMdPath);
     if (body === null) return { targets: [], unparseable: [skillId] };
     return { targets: await collectSkillTargets(vaultPath, skillId, body), unparseable: [] };
   }
