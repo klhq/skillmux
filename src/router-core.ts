@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { existsSync, watch } from "node:fs";
+import { existsSync, lstatSync, watch } from "node:fs";
 import { join } from "node:path";
 import { buildAuditRow } from "./audit";
 import { embeddingDimension, embeddingFingerprint, expandHome, loadConfig } from "./config";
@@ -161,8 +161,13 @@ async function deliverSkill(db: Database, config: Config, skillId: string): Prom
   let raw = "";
   for (let i = 0; i < candidates.length; i++) {
     const candidate = candidates[i]!;
-    const file = Bun.file(join(candidate, skillId, "SKILL.md"));
+    const path = join(candidate, skillId, "SKILL.md");
+    const file = Bun.file(path);
     if (!(await file.exists())) continue;
+    // A symlinked SKILL.md must never be read here: this is the direct "zero-loss
+    // delivery" read path that bypasses the index and readSkill's own symlink guard
+    // (vault.ts), and its `body` is served straight into the agent's context.
+    if (lstatSync(path).isSymbolicLink()) continue;
     const candidateBytes = await file.bytes();
     const candidateRaw = decodeUtf8Strict(candidateBytes);
     if (i < candidates.length - 1) {

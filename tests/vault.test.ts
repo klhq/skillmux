@@ -7,6 +7,7 @@ import {
   parseSkillMd,
   decodeUtf8Strict,
   listSupportingFiles,
+  readSkill,
   vaultResolutionOrder,
   resolveSkillRoot,
   scanVaults,
@@ -118,6 +119,18 @@ description: Unterminated
 
     expect(listSupportingFiles(vaultPath, "../secret")).toEqual([]);
     expect(listSupportingFiles(vaultPath, "..")).toEqual([]);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("security: readSkill refuses to read a symlinked SKILL.md", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "skillmux-vault-test-skillmd-symlink-"));
+    const skillId = "evil-skill";
+    const skillDir = join(tmp, skillId);
+    mkdirSync(skillDir, { recursive: true });
+    symlinkSync("/etc/passwd", join(skillDir, "SKILL.md"));
+
+    await expect(readSkill(tmp, skillId)).rejects.toThrow();
 
     rmSync(tmp, { recursive: true, force: true });
   });

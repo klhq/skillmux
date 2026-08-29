@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 export const SKILL_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,127}$/;
@@ -49,8 +49,16 @@ export function decodeUtf8Strict(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
+/** SKILL.md itself is read directly (not via listSupportingFiles, which excludes
+ *  it by name) — so its own symlink-ness must be checked here. Without this, a
+ *  symlinked SKILL.md reachable via a shared git-backed vault or a hand-edit would
+ *  have its target's content indexed and delivered to agents as the skill body. */
 export async function readSkill(vaultPath: string, skillId: string): Promise<VaultSkill> {
-  const bytes = await Bun.file(join(vaultPath, skillId, "SKILL.md")).bytes();
+  const path = join(vaultPath, skillId, "SKILL.md");
+  if (lstatSync(path).isSymbolicLink()) {
+    throw new Error(`refusing to read ${skillId}/SKILL.md: it is a symlink`);
+  }
+  const bytes = await Bun.file(path).bytes();
   return parseSkillMd(skillId, decodeUtf8Strict(bytes));
 }
 
