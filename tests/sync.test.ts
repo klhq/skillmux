@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -252,6 +262,53 @@ describe("syncTarget", () => {
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
   });
+
+  test("security: skips a core skill whose directory contains an internal symlink, on a fresh target", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-symlink-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    mkdirSync(join(vaultPath, "evil-skill"));
+    symlinkSync("/etc/passwd", join(vaultPath, "evil-skill", "escape"));
+    const targetDir = join(tmpDir("skillmux-sync-target-symlink-"), "claude");
+
+    const result = syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "claude",
+      coreSkillIds: ["writing-clearly", "evil-skill"],
+    });
+
+    expect(result.added).toEqual(["writing-clearly"]);
+    expect(result.skipped).toEqual(["evil-skill"]);
+    expect(existsSync(join(targetDir, "evil-skill"))).toBe(false);
+    expect(readSkillmuxMarker(targetDir)?.managed_entries).toEqual(["writing-clearly"]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("security: skips a core skill whose directory contains an internal symlink, on an incremental sync", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-symlink-inc-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    mkdirSync(join(vaultPath, "evil-skill"));
+    symlinkSync("/etc/passwd", join(vaultPath, "evil-skill", "escape"));
+    const targetDir = join(tmpDir("skillmux-sync-target-symlink-inc-"), "claude");
+
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
+    const result = syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "claude",
+      coreSkillIds: ["writing-clearly", "evil-skill"],
+    });
+
+    expect(result.added).toEqual([]);
+    expect(result.skipped).toEqual(["evil-skill"]);
+    expect(existsSync(join(targetDir, "evil-skill"))).toBe(false);
+    expect(readSkillmuxMarker(targetDir)?.managed_entries).toEqual(["writing-clearly"]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
 });
 
 describe("restoreMonolith", () => {
@@ -352,6 +409,7 @@ describe("syncProjectTargets", () => {
         pinDir: resolveProjectPinDir(targetDir, existingPath),
         added: ["terraform-plans"],
         removed: [],
+        skipped: [],
       },
     ]);
     expect(readlinkSync(join(existingPath, ".claude", "skills", "terraform-plans"))).toBe(
