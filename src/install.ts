@@ -12,7 +12,7 @@ export interface RepoSource {
 const GIT_URL_PREFIXES = ["http://", "https://", "git://", "ssh://", "file://"];
 const SCP_LIKE_URL_PATTERN = /^[^/\s]+@[^/\s]+:/;
 
-function isGitUrl(repo: string): boolean {
+export function isGitUrl(repo: string): boolean {
   return GIT_URL_PREFIXES.some((prefix) => repo.startsWith(prefix)) || SCP_LIKE_URL_PATTERN.test(repo);
 }
 

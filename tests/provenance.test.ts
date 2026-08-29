@@ -104,6 +104,24 @@ describe("writeSkillOrigin / readSkillOrigin", () => {
     rmSync(skillDir, { recursive: true, force: true });
   });
 
+  test("security: rejects a source_url that isn't a recognized git protocol (blocks ext:: / argument injection via a tampered sidecar)", () => {
+    const skillDir = makeSkillDir();
+    writeFileSync(
+      join(skillDir, ".skillmux-origin"),
+      JSON.stringify({
+        schema_version: 1,
+        source_url: "ext::sh -c touch /tmp/pwned",
+        commit: "a".repeat(40),
+        installed_at: "2026-08-29T00:00:00.000Z",
+        content_hash: "b".repeat(64),
+      }),
+    );
+
+    expect(() => readSkillOrigin(skillDir)).toThrow(/source_url/);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
   test("--force reinstall overwrites a prior sidecar with fresh values (AC1)", () => {
     const skillDir = makeSkillDir();
     writeSkillOrigin(skillDir, {

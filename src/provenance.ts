@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { isGitUrl } from "./install";
 import { SKILLMUX_ORIGIN_FILENAME, listSupportingFiles } from "./vault";
 
 export { SKILLMUX_ORIGIN_FILENAME };
@@ -17,6 +18,9 @@ function validateOrigin(origin: SkillOrigin, path: string): SkillOrigin {
   if (origin.schema_version !== 1) throw new Error(`${path}: unsupported .skillmux-origin schema_version`);
   if (typeof origin.source_url !== "string" || origin.source_url.length === 0) {
     throw new Error(`${path}: .skillmux-origin is missing source_url`);
+  }
+  if (!isGitUrl(origin.source_url)) {
+    throw new Error(`${path}: .skillmux-origin has a source_url that is not a recognized git protocol`);
   }
   if (typeof origin.commit !== "string" || !/^[0-9a-f]{40}$/.test(origin.commit)) {
     throw new Error(`${path}: .skillmux-origin has an invalid commit`);
