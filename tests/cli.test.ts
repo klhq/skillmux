@@ -2465,6 +2465,26 @@ describe("skillmux update CLI", () => {
     rmSync(skillDir, { recursive: true, force: true });
   });
 
+  test("AC9: --dry-run also works for a batch (no skill-id) invocation", async () => {
+    const fixtureDir = join(tmp, "fixture-update-batch-dryrun");
+    initFixtureRepo(fixtureDir, "---\nname: BatchDry\ndescription: d\n---\nbody v1");
+    await runCli("install", `file://${fixtureDir}`);
+    const skillDir = join(vaultDir, "fixture-update-batch-dryrun");
+    const before = readFileSync(join(skillDir, "SKILL.md"), "utf-8");
+    const newCommit = bumpUpstream(fixtureDir, "---\nname: BatchDry\ndescription: d\n---\nbody v2");
+
+    const result = await runCli("update", "--dry-run", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.data.dry_run).toBe(true);
+    const skill = parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "fixture-update-batch-dryrun");
+    expect(skill).toMatchObject({ new_commit: newCommit, content_changed: true, status: "would_update" });
+    expect(readFileSync(join(skillDir, "SKILL.md"), "utf-8")).toBe(before);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
   test("AC6, AC10: --yes updates a single named skill, overwriting content and the sidecar", async () => {
     const fixtureDir = join(tmp, "fixture-update-single");
     initFixtureRepo(fixtureDir, "---\nname: Single\ndescription: d\n---\nbody v1");
