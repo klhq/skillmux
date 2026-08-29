@@ -338,6 +338,8 @@ describe("skillmux Docker command policy", () => {
     const cases = [
       ["sync"],
       ["install", "owner/repo"],
+      ["outdated"],
+      ["update"],
       ["project", "list"],
       ["target", "list"],
       ["core", "pin", "first-skill"],
@@ -410,7 +412,7 @@ describe("skillmux CLI usage", () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|audit prune|scan|install|eval|doctor|skill which|local-vault init|config show|models download>",
+      "usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|audit prune|scan|install|outdated|update|eval|doctor|skill which|local-vault init|config show|models download>",
     );
   });
 
@@ -2308,6 +2310,99 @@ describe("skillmux install CLI", () => {
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("--fail-on must be low, medium, or high");
+  });
+});
+
+describe("skillmux outdated CLI", () => {
+  test("AC3: reports no skills when nothing in the vault carries provenance", async () => {
+    writeSkill("outdated-no-sidecar", "d");
+
+    const result = await runCli("outdated", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "outdated-no-sidecar")).toBeUndefined();
+
+    rmSync(join(vaultDir, "outdated-no-sidecar"), { recursive: true, force: true });
+  });
+
+  test("AC3: reports up_to_date when the recorded commit matches remote HEAD", async () => {
+    const fixtureDir = join(tmp, "fixture-outdated-current");
+    initFixtureRepo(fixtureDir, "---\nname: Current\ndescription: d\n---\nbody");
+    const commit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: fixtureDir, env: GIT_ENV })
+      .stdout.toString()
+      .trim();
+    await runCli("install", `file://${fixtureDir}`);
+
+    const result = await runCli("outdated", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    const skill = parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "fixture-outdated-current");
+    expect(skill).toMatchObject({
+      status: "up_to_date",
+      recorded_commit: commit,
+      remote_commit: commit,
+      reason: null,
+    });
+
+    rmSync(join(vaultDir, "fixture-outdated-current"), { recursive: true, force: true });
+  });
+
+  test("AC3: reports outdated when the source repo's remote HEAD has moved on", async () => {
+    const fixtureDir = join(tmp, "fixture-outdated-stale");
+    initFixtureRepo(fixtureDir, "---\nname: Stale\ndescription: d\n---\nbody v1");
+    await runCli("install", `file://${fixtureDir}`);
+
+    writeFileSync(join(fixtureDir, "SKILL.md"), "---\nname: Stale\ndescription: d\n---\nbody v2");
+    Bun.spawnSync(["git", "commit", "-aqm", "v2"], { cwd: fixtureDir, env: GIT_ENV });
+    const newCommit = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: fixtureDir, env: GIT_ENV })
+      .stdout.toString()
+      .trim();
+
+    const result = await runCli("outdated", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    const skill = parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "fixture-outdated-stale");
+    expect(skill).toMatchObject({ status: "outdated", remote_commit: newCommit });
+    expect(skill.recorded_commit).not.toBe(newCommit);
+
+    rmSync(join(vaultDir, "fixture-outdated-stale"), { recursive: true, force: true });
+  });
+
+  test("AC4: a per-skill check failure is reported without aborting the rest, and drives checks_failed / exit code", async () => {
+    const fixtureDir = join(tmp, "fixture-outdated-ok");
+    initFixtureRepo(fixtureDir, "---\nname: OK\ndescription: d\n---\nbody");
+    await runCli("install", `file://${fixtureDir}`);
+
+    const brokenSkillDir = join(vaultDir, "outdated-broken");
+    mkdirSync(brokenSkillDir, { recursive: true });
+    writeFileSync(join(brokenSkillDir, "SKILL.md"), "---\nname: Broken\ndescription: d\n---\nbody");
+    writeFileSync(
+      join(brokenSkillDir, ".skillmux-origin"),
+      JSON.stringify({
+        schema_version: 1,
+        source_url: `file://${join(tmp, "does-not-exist-source")}`,
+        commit: "a".repeat(40),
+        installed_at: new Date().toISOString(),
+        content_hash: "b".repeat(64),
+      }),
+    );
+
+    const result = await runCli("outdated", "--json");
+
+    expect(result.exitCode).toBe(1);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.data.checks_failed).toBe(1);
+    const broken = parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "outdated-broken");
+    expect(broken.status).toBe("check_failed");
+    expect(typeof broken.reason).toBe("string");
+    const ok = parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "fixture-outdated-ok");
+    expect(ok.status).toBe("up_to_date");
+
+    rmSync(join(vaultDir, "fixture-outdated-ok"), { recursive: true, force: true });
+    rmSync(brokenSkillDir, { recursive: true, force: true });
   });
 });
 

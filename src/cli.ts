@@ -47,6 +47,7 @@ import {
   resolveSkillDir,
   validateSkillCandidate,
 } from "./install";
+import { runOutdated } from "./commands/outdated";
 import { hashSkillContent, writeSkillOrigin } from "./provenance";
 import {
   parseManifest,
@@ -131,6 +132,8 @@ const KNOWN_COMMANDS = [
   "audit",
   "scan",
   "install",
+  "outdated",
+  "update",
   "eval",
   "doctor",
   "models",
@@ -144,6 +147,8 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
       "init",
       "sync",
       "install",
+      "outdated",
+      "update",
       "project",
       "target",
       "core",
@@ -339,6 +344,9 @@ async function main() {
       case "install":
         await runInstall(rawArgv.slice(1), { isJson });
         break;
+      case "outdated":
+        await runOutdated(rawArgv.slice(1), { isJson });
+        break;
       case "eval":
         if (subCommand === "promote") {
           await runEvalPromote(commandArgs, { isJson, dryRun: isDryRun });
@@ -376,7 +384,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|audit prune|scan|install|eval|doctor|skill which|local-vault init|config show|models download>`;
+          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|audit prune|scan|install|outdated|update|eval|doctor|skill which|local-vault init|config show|models download>`;
         throw new Error(msg);
       }
     }
@@ -561,10 +569,12 @@ Operations:
   skillmux report [--server <url> | --db <path>] --since <window> [--json]
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
   skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
+  skillmux outdated [--json]
+  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--fail-on low|medium|high] [--json]
 
 Commands:
-  serve, index, sync, init, project, target, core, report, audit, scan, install, eval, doctor,
-  skill, local-vault, config, models, context, completions`);
+  serve, index, sync, init, project, target, core, report, audit, scan, install, outdated, update,
+  eval, doctor, skill, local-vault, config, models, context, completions`);
 }
 
 // ---------------------------------------------------------------------------
