@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -88,11 +88,14 @@ function resolveAuthToken(envName: string): string {
   return "";
 }
 
-function safeTokenEquals(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+// SMX-94: comparing raw buffers made length itself observable — a
+// mismatched-length pair returns before ever reaching timingSafeEqual.
+// Hashing both sides to a fixed 32-byte digest first means every
+// comparison takes the same constant-time path regardless of input length.
+export function safeTokenEquals(a: string, b: string): boolean {
+  const hashA = createHash("sha256").update(a).digest();
+  const hashB = createHash("sha256").update(b).digest();
+  return timingSafeEqual(hashA, hashB);
 }
 
 export function createMcpServer(): McpServer {
