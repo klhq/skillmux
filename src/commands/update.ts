@@ -4,6 +4,7 @@ import { expandHome, loadConfig } from "../config";
 import {
   cloneToTemp,
   installIntoVault,
+  isLocalFileUrl,
   remoteHeadCommit,
   resolveCloneCommit,
   resolveSkillDir,
@@ -34,6 +35,7 @@ interface UpdatePlanItem {
 async function resolveCandidateOrigins(
   vaultPath: string,
   skillId: string | undefined,
+  allowLocalSource: boolean,
 ): Promise<{ skillId: string; origin: SkillOrigin }[]> {
   if (skillId) {
     let origin: SkillOrigin | null;
@@ -47,9 +49,12 @@ async function resolveCandidateOrigins(
     if (!origin) {
       throw new Error(`"${skillId}" has no origin recorded — was this skill installed via "skillmux install"?`);
     }
+    if (!allowLocalSource && isLocalFileUrl(origin.source_url)) {
+      throw new Error(`"${skillId}" has a local (file://) source — pass --allow-local-source to update it`);
+    }
     return [{ skillId, origin }];
   }
-  const outdated = await checkOutdated(vaultPath);
+  const outdated = await checkOutdated(vaultPath, { allowLocalSource });
   return outdated
     .filter((result) => result.status === "outdated")
     .map((result) => ({ skillId: result.skill_id, origin: readSkillOrigin(join(vaultPath, result.skill_id))! }));
@@ -155,17 +160,20 @@ function parseUpdateArgs(args: string[]): {
   dryRun: boolean;
   force: boolean;
   failOn?: ScanSeverity;
+  allowLocalSource: boolean;
 } {
   let skillId: string | undefined;
   let yes = false;
   let dryRun = false;
   let force = false;
   let failOn: ScanSeverity | undefined;
+  let allowLocalSource = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--yes") yes = true;
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--force") force = true;
+    else if (arg === "--allow-local-source") allowLocalSource = true;
     else if (arg === "--fail-on") {
       const value = args[++i];
       if (value !== "low" && value !== "medium" && value !== "high") {
@@ -182,14 +190,14 @@ function parseUpdateArgs(args: string[]): {
       skillId = arg;
     }
   }
-  return { skillId, yes, dryRun, force, failOn };
+  return { skillId, yes, dryRun, force, failOn, allowLocalSource };
 }
 
 export async function runUpdate(args: string[], options: { isJson: boolean }): Promise<void> {
-  const { skillId, yes, dryRun, force, failOn } = parseUpdateArgs(args);
+  const { skillId, yes, dryRun, force, failOn, allowLocalSource } = parseUpdateArgs(args);
   const vaultPath = expandHome((await loadConfig()).vault_path);
 
-  const candidates = await resolveCandidateOrigins(vaultPath, skillId);
+  const candidates = await resolveCandidateOrigins(vaultPath, skillId, allowLocalSource);
   const plan = await buildPlan(vaultPath, candidates, failOn, force);
   try {
     const toWrite = plan.filter((item) => item.kind === "update");

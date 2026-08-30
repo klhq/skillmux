@@ -16,6 +16,17 @@ export function isGitUrl(repo: string): boolean {
   return GIT_URL_PREFIXES.some((prefix) => repo.startsWith(prefix)) || SCP_LIKE_URL_PATTERN.test(repo);
 }
 
+/** A `file://` source_url reaches the local filesystem directly, not just a network
+ *  remote. That's fine when the user typed it themselves at `skillmux install` time,
+ *  but a `.skillmux-origin` sidecar is vault content — readable and writable by
+ *  whatever populated the vault (a shared git-backed vault pulled in, or a hand-edit),
+ *  same threat model as every other vault-content read this codebase guards. `skillmux
+ *  outdated`/`update` must not blindly git-clone/ls-remote whatever local path a
+ *  forged sidecar names. */
+export function isLocalFileUrl(url: string): boolean {
+  return url.startsWith("file://");
+}
+
 export function resolveRepoSource(repo: string): RepoSource {
   if (isGitUrl(repo)) return { url: repo };
 

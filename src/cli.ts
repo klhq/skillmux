@@ -573,8 +573,8 @@ Operations:
   skillmux report [--server <url> | --db <path>] --since <window> [--json]
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
   skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
-  skillmux outdated [--json]
-  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--fail-on low|medium|high] [--json]
+  skillmux outdated [--allow-local-source] [--json]
+  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high] [--json]
 
 Commands:
   serve, index, sync, init, project, target, core, report, audit, scan, install, outdated, update,
