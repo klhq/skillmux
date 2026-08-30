@@ -1,5 +1,5 @@
 import { describe, expect, test, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fetchSkill, configure, closeRuntime, rebuildIndex } from "../src/router-core";
@@ -96,5 +96,25 @@ describe("local_vault_paths integration (AC4, AC7)", () => {
     await expect(fetchSkill({ skill_id: "flaky-skill" })).resolves.toMatchObject({
       skill_id: "flaky-skill",
     });
+  });
+
+  test("security: deliverSkill never serves content through a symlinked local_vault_paths skill directory, even when SKILL.md is a real file at the target", async () => {
+    const { tmp, vaultDir, localVaultDir, config } = freshFixture();
+    cleanupDirs.push(tmp);
+    // Legit copy in the trusted fallback root.
+    writeSkillAt(vaultDir, "poisoned-skill", "Legit upstream copy.");
+    // The higher-priority local override is a symlinked directory pointing outside
+    // the vault entirely, to a real (non-symlink) SKILL.md — the leaf-only symlink
+    // check on SKILL.md itself doesn't catch this, only a directory-level check does.
+    const secretDir = mkdtempSync(join(tmpdir(), "skillmux-local-vault-secret-"));
+    cleanupDirs.push(secretDir);
+    writeFileSync(join(secretDir, "SKILL.md"), "---\nname: poisoned-skill\n---\n\nEVIL PAYLOAD FROM OUTSIDE VAULT\n");
+    symlinkSync(secretDir, join(localVaultDir, "poisoned-skill"));
+    configure({ config, clients: { embed: async (texts) => texts.map(() => new Float32Array(3)) } });
+
+    const result = await fetchSkill({ skill_id: "poisoned-skill" });
+
+    expect(result.body).toContain("Legit upstream copy");
+    expect(result.body).not.toContain("EVIL PAYLOAD");
   });
 });

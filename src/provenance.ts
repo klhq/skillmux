@@ -38,6 +38,13 @@ function validateOrigin(origin: SkillOrigin, path: string): SkillOrigin {
  *  that file's bytes into JSON.parse and, on a schema-shaped coincidence, into
  *  the git commands `outdated`/`update` run against `source_url`. */
 export function readSkillOrigin(dir: string): SkillOrigin | null {
+  // The skill directory itself must be checked separately from the sidecar's own
+  // leaf check below: `lstat` only refuses to follow the *final* path component,
+  // so a symlinked skill directory containing a real, non-symlink sidecar at its
+  // target would otherwise resolve straight through to arbitrary host content.
+  if (existsSync(dir) && lstatSync(dir).isSymbolicLink()) {
+    throw new Error(`${dir}: refusing to read .skillmux-origin — the skill directory is a symlink`);
+  }
   const path = join(dir, SKILLMUX_ORIGIN_FILENAME);
   if (!existsSync(path)) return null;
   if (lstatSync(path).isSymbolicLink()) {
@@ -66,10 +73,16 @@ export function writeSkillOrigin(
  *  readSkill/deliverSkill guard it independently in vault.ts/router-core.ts) — this is
  *  a local, already-installed vault dir, not the freshly cloned candidate that
  *  validateSkillCandidate has vetted, so a swapped-in symlinked SKILL.md must be
- *  refused here rather than followed. */
+ *  refused here rather than followed. `dir` itself is checked too: every per-file
+ *  lstat below only refuses to follow a symlinked *leaf*, so a symlinked `dir`
+ *  containing real (non-symlink) files at its target would otherwise resolve
+ *  straight through to arbitrary host content. */
 export function hashSkillContent(dir: string): string {
   const vaultPath = dirname(dir);
   const skillId = basename(dir);
+  if (lstatSync(dir).isSymbolicLink()) {
+    throw new Error(`refusing to hash ${skillId}: the skill directory is a symlink`);
+  }
   const hasher = new Bun.CryptoHasher("sha256");
   const files = ["SKILL.md", ...listSupportingFiles(vaultPath, skillId)];
   for (const rel of files) {

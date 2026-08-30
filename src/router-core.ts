@@ -161,13 +161,20 @@ async function deliverSkill(db: Database, config: Config, skillId: string): Prom
   let raw = "";
   for (let i = 0; i < candidates.length; i++) {
     const candidate = candidates[i]!;
-    const path = join(candidate, skillId, "SKILL.md");
+    const skillDir = join(candidate, skillId);
+    const path = join(skillDir, "SKILL.md");
     const file = Bun.file(path);
     if (!(await file.exists())) continue;
     // A symlinked SKILL.md must never be read here: this is the direct "zero-loss
     // delivery" read path that bypasses the index and readSkill's own symlink guard
     // (vault.ts), and its `body` is served straight into the agent's context.
-    if (lstatSync(path).isSymbolicLink()) continue;
+    //
+    // The skill directory itself must be checked too, separately from SKILL.md's
+    // leaf check above: `lstat` only refuses to follow the *final* path component,
+    // so a symlinked skill directory (e.g. a tampered local_vault_paths override)
+    // containing a real, non-symlink SKILL.md at its target silently passes the
+    // leaf check while still resolving straight through to arbitrary host content.
+    if (lstatSync(skillDir).isSymbolicLink() || lstatSync(path).isSymbolicLink()) continue;
     const candidateBytes = await file.bytes();
     const candidateRaw = decodeUtf8Strict(candidateBytes);
     if (i < candidates.length - 1) {
