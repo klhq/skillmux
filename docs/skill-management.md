@@ -42,6 +42,17 @@ skillmux install owner/repo --fail-on high
 The scanner detects suspicious prompt-injection patterns, secrets, and risky
 instructions. Findings remain advisory unless you pass `--fail-on`.
 
+`install` refuses a `file://` source by default — a `file://` URL reaches the
+local filesystem directly, so honoring one unconditionally would let anything
+that can hand `skillmux install` a string (a webpage, another tool's output,
+an instruction an agent was told to follow) pull an arbitrary local
+repository into the shared vault. Pass `--allow-local-source` when installing
+from a local repo is a deliberate, interactive choice:
+
+```sh
+skillmux install file:///path/to/local/repo --allow-local-source
+```
+
 ## Scan a vault or candidate
 
 ```sh
