@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { type ScanFinding, readTextFileOrNull, scanContent } from "./scan";
@@ -77,9 +77,15 @@ export async function remoteHeadCommit(url: string, ref = "HEAD"): Promise<strin
 /** Recursively finds symlinks under `dir` (skipping `.git`), without following them.
  *  A skill's content must be regular files only — a symlink here is how a malicious
  *  skill smuggles an escape out of the vault once `skillmux sync` exposes it inside
- *  an agent's native skill directory. */
+ *  an agent's native skill directory. `dir` itself is checked too: a `skill_path`
+ *  can point straight at a directory that git committed *as a symlink* (git supports
+ *  storing symlink blobs) — walking its descendants alone would silently resolve
+ *  through it and report the target's real files as clean. */
 export function findSymlinks(dir: string): string[] {
   const found: string[] = [];
+  if (lstatSync(dir).isSymbolicLink()) {
+    return ["(the skill directory itself is a symlink)"];
+  }
   const walk = (current: string) => {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       if (entry.name === ".git") continue;
