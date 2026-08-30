@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderScanJson, renderScanText, scanContent, scanExitCode, scanPath } from "../src/scan";
+import { readTextFileOrNull, renderScanJson, renderScanText, scanContent, scanExitCode, scanPath } from "../src/scan";
 import type { ScanFinding, ScanResult } from "../src/scan";
 
 function writeSkill(vaultDir: string, id: string, body: string) {
@@ -109,6 +109,30 @@ describe("scanContent — suspicious-url rule", () => {
     const matches = scanContent("See https://docs.example.com/guide for setup instructions.");
 
     expect(matches.filter((m) => m.rule_id === "suspicious-url")).toEqual([]);
+  });
+});
+
+describe("readTextFileOrNull", () => {
+  test("returns file content for an ordinary file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-scan-readtext-"));
+    const path = join(dir, "reference.md");
+    writeFileSync(path, "hello");
+
+    expect(await readTextFileOrNull(path)).toBe("hello");
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("security: refuses to read a symlinked file instead of following it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillmux-scan-readtext-symlink-"));
+    const secretPath = join(dir, "secret.txt");
+    writeFileSync(secretPath, "TOP SECRET HOST FILE CONTENTS");
+    const linkPath = join(dir, "reference.md");
+    symlinkSync(secretPath, linkPath);
+
+    expect(await readTextFileOrNull(linkPath)).toBeNull();
+
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 
