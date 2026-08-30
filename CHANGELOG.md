@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0](https://github.com/klhq/skillmux/compare/v1.8.0...v1.9.0) (2026-08-30)
+
+
+### Added
+
+* track skill provenance and add outdated/update commands ([#133](https://github.com/klhq/skillmux/issues/133)) ([4d4f8c9](https://github.com/klhq/skillmux/commit/4d4f8c94a7e34e1ad030f9904995d02fa5fa2712))
+
+
+### Fixed
+
+* **install:** guard findSymlinks against a symlinked skill_path directory itself ([#146](https://github.com/klhq/skillmux/issues/146)) ([a264afc](https://github.com/klhq/skillmux/commit/a264afc19710206c4f77c61e3a9dccafb54c2894))
+* **install:** prevent symlink smuggling in skill content ([#136](https://github.com/klhq/skillmux/issues/136)) ([2df318c](https://github.com/klhq/skillmux/commit/2df318cfdc974b0f7b9042c3d68fa4fece9109d9))
+* **provenance:** refuse to hash a symlinked SKILL.md instead of following it ([#141](https://github.com/klhq/skillmux/issues/141)) ([74d1b9c](https://github.com/klhq/skillmux/commit/74d1b9c2f8fb2891ce743ccf09b9632fea58aa84))
+* **provenance:** refuse to read a symlinked .skillmux-origin sidecar ([#144](https://github.com/klhq/skillmux/issues/144)) ([c9c0b32](https://github.com/klhq/skillmux/commit/c9c0b327f8cf26e1a9cd9971263cfa4f35235de3))
+* **scan:** guard readTextFileOrNull against symlinks at every call site ([#143](https://github.com/klhq/skillmux/issues/143)) ([6692060](https://github.com/klhq/skillmux/commit/66920601bb4969911063407afa3dbffcf09c00be))
+* **scan:** refuse to scan a symlinked SKILL.md in single-skill-dir mode ([#142](https://github.com/klhq/skillmux/issues/142)) ([b20cd66](https://github.com/klhq/skillmux/commit/b20cd6621a30067643034dd155383afab3540cf2))
+* **security:** validate provenance sidecar values before they reach git subprocess calls ([#135](https://github.com/klhq/skillmux/issues/135)) ([01d643a](https://github.com/klhq/skillmux/commit/01d643a789e353d0d944b7b467f3c9f0894718ce))
+* **sync:** skip symlinking core skill dirs with internal links ([#137](https://github.com/klhq/skillmux/issues/137)) ([f992b39](https://github.com/klhq/skillmux/commit/f992b39720dcdd3e946c6628817bd11b54380f40))
+* **update:** skip file:// source_url in outdated/update by default ([#147](https://github.com/klhq/skillmux/issues/147)) ([9b127d0](https://github.com/klhq/skillmux/commit/9b127d0a65f89cfd32e6ed8d75155ba388349fae))
+* **vault:** guard against a symlinked skill directory, not just its leaf files ([#145](https://github.com/klhq/skillmux/issues/145)) ([63d34e3](https://github.com/klhq/skillmux/commit/63d34e32bc4d91221f03fbbfdf22d3a0fdc7a492))
+* **vault:** refuse to read a symlinked SKILL.md ([#140](https://github.com/klhq/skillmux/issues/140)) ([3220fe3](https://github.com/klhq/skillmux/commit/3220fe393a81922f76729284d156644662f177f2))
+* **vault:** secure listSupportingFiles against symlinks and traversal ([#138](https://github.com/klhq/skillmux/issues/138)) ([6343a30](https://github.com/klhq/skillmux/commit/6343a30747844c5f83b810cbfe3d19ed569ca7cd))
+
+
+### Changed
+
+* **update:** skip cloning drifted skills before fetching ([1b247b6](https://github.com/klhq/skillmux/commit/1b247b6379b021692c839a77d44a81bd736f2bea))
+
 ## [1.8.0](https://github.com/klhq/skillmux/compare/v1.7.1...v1.8.0) (2026-08-28)
 
 
