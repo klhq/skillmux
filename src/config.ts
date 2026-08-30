@@ -170,6 +170,18 @@ export function expandHome(path: string): string {
   return path.startsWith("~") ? join(homedir(), path.slice(1)) : path;
 }
 
+/**
+ * True only for hostnames the HTTP server can bind while staying unreachable
+ * from outside this machine. Deliberately narrower than adapters.ts's
+ * isLoopbackHost, which treats "0.0.0.0" as loopback for a different question
+ * (whether an admin *client* is talking to the local machine) — here "0.0.0.0"
+ * (and any other wildcard/public address) must read as non-loopback, since
+ * binding it is exactly what makes the server reachable from outside (SMX-91).
+ */
+export function isLoopbackBindHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "::1" || hostname === "127.0.0.1" || hostname.startsWith("127.");
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

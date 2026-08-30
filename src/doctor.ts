@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { createClients, RemoteInferenceError } from "./clients";
-import { embeddingDimension, expandHome } from "./config";
+import { embeddingDimension, expandHome, isLoopbackBindHost } from "./config";
 import { describeDeployment, type DeploymentIdentity } from "./deployment";
 import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
 import { readSkillmuxMarker } from "./sync";
@@ -50,6 +50,24 @@ export async function diagnose(
     checks.push({ name: `config_source:${key}`, ok: true, detail: source });
   }
   checks.push({ name: "vault", ok: existsSync(expandHome(config.vault_path)), detail: expandHome(config.vault_path) });
+
+  // SMX-91: `serve --transport http` itself refuses to start over this combination
+  // (assertSafeBindPosture in server.ts) unless SKILLMUX_ALLOW_INSECURE_BIND is set —
+  // surface it here too so it's visible without having to start the HTTP server first.
+  if (config.server) {
+    const hostname = config.server.hostname ?? "127.0.0.1";
+    const bindIsSafe = isLoopbackBindHost(hostname) || config.server.auth_enabled;
+    checks.push({
+      name: "server_bind_posture",
+      ok: bindIsSafe,
+      detail: bindIsSafe
+        ? `${hostname}, auth_enabled=${config.server.auth_enabled}`
+        : `${hostname} is reachable beyond this machine with auth_enabled=false — ` +
+          "MCP tools and /stats would be open to anyone who can reach this port; " +
+          "set server.auth_enabled=true or bind a loopback hostname",
+      failure_kind: bindIsSafe ? undefined : "configuration",
+    });
+  }
 
   for (const localPath of config.local_vault_paths) {
     const expanded = expandHome(localPath);
