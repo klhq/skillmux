@@ -2488,6 +2488,41 @@ describe("skillmux update CLI", () => {
     expect(prompt).toContain("https://example.com/owner/repo.git");
   });
 
+  test("security: rejects a skill-id containing path traversal, refusing to touch a directory outside the vault", async () => {
+    // skillId flows straight into join(vaultPath, skillId) throughout update.ts
+    // (readSkillOrigin, hashSkillContent's target dir, and critically
+    // installIntoVault's rmSync(targetDir, {recursive:true,...}) + cpSync). A
+    // "../"-shaped skillId escapes the vault entirely. Confirmed end-to-end
+    // before this fix: this exact setup deleted the victim dir's sentinel file
+    // and replaced its contents with the fetched fixture repo's SKILL.md.
+    const fixtureDir = join(tmp, "fixture-update-traversal");
+    initFixtureRepo(fixtureDir, "---\nname: Fetched\ndescription: d\n---\nattacker content");
+
+    const victimDir = join(tmp, "traversal-victim");
+    mkdirSync(victimDir, { recursive: true });
+    writeFileSync(join(victimDir, "SENTINEL.txt"), "must survive");
+    writeFileSync(join(victimDir, "SKILL.md"), "---\nname: Victim\ndescription: d\n---\nvictim body");
+    writeFileSync(
+      join(victimDir, ".skillmux-origin"),
+      JSON.stringify({
+        schema_version: 1,
+        source_url: `file://${fixtureDir}`,
+        commit: "a".repeat(40),
+        installed_at: "2026-08-29T00:00:00.000Z",
+        content_hash: hashSkillContent(victimDir),
+      }),
+    );
+
+    const result = await runCli("update", "../traversal-victim", "--yes", "--allow-local-source", "--json");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(existsSync(join(victimDir, "SENTINEL.txt"))).toBe(true);
+    expect(readFileSync(join(victimDir, "SENTINEL.txt"), "utf-8")).toBe("must survive");
+
+    rmSync(fixtureDir, { recursive: true, force: true });
+    rmSync(victimDir, { recursive: true, force: true });
+  });
+
   test("AC11: fails clearly for a skill-id with no provenance recorded", async () => {
     writeSkill("update-no-origin", "d");
 
