@@ -54,17 +54,23 @@ export async function diagnose(
   // SMX-91: `serve --transport http` itself refuses to start over this combination
   // (assertSafeBindPosture in server.ts) unless SKILLMUX_ALLOW_INSECURE_BIND is set —
   // surface it here too so it's visible without having to start the HTTP server first.
+  // An operator who has already set that env var has made an informed choice, so
+  // doctor treats it the same way the server does (ok, not a standing failure) —
+  // it doesn't re-litigate a decision the server itself already accepted.
   if (config.server) {
     const hostname = config.server.hostname ?? "127.0.0.1";
-    const bindIsSafe = isLoopbackBindHost(hostname) || config.server.auth_enabled;
+    const insecureBindAcknowledged = environment.SKILLMUX_ALLOW_INSECURE_BIND === "true";
+    const bindIsSafe = isLoopbackBindHost(hostname) || config.server.auth_enabled || insecureBindAcknowledged;
     checks.push({
       name: "server_bind_posture",
       ok: bindIsSafe,
-      detail: bindIsSafe
-        ? `${hostname}, auth_enabled=${config.server.auth_enabled}`
-        : `${hostname} is reachable beyond this machine with auth_enabled=false — ` +
+      detail: !bindIsSafe
+        ? `${hostname} is reachable beyond this machine with auth_enabled=false — ` +
           "MCP tools and /stats would be open to anyone who can reach this port; " +
-          "set server.auth_enabled=true or bind a loopback hostname",
+          "set server.auth_enabled=true, bind a loopback hostname, or set SKILLMUX_ALLOW_INSECURE_BIND=true"
+        : insecureBindAcknowledged && !isLoopbackBindHost(hostname) && !config.server.auth_enabled
+          ? `${hostname}, auth_enabled=false, acknowledged via SKILLMUX_ALLOW_INSECURE_BIND`
+          : `${hostname}, auth_enabled=${config.server.auth_enabled}`,
       failure_kind: bindIsSafe ? undefined : "configuration",
     });
   }

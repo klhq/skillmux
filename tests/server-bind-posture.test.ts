@@ -149,6 +149,28 @@ describe("skillmux doctor server_bind_posture check (SMX-91)", () => {
     expect(report.checks.find((check) => check.name === "server_bind_posture")).toMatchObject({ ok: true });
   });
 
+  test("passes when SKILLMUX_ALLOW_INSECURE_BIND=true acknowledges the same posture the server accepts", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-doctor-bind-posture-acked-"));
+    dirs.push(root);
+    const config = makeConfig(root, {
+      auth_enabled: false,
+      auth_token_env: "SKILLMUX_AUTH_TOKEN",
+      allowed_origins: [],
+      hostname: "0.0.0.0",
+    });
+
+    const report = await diagnose(config, {
+      RUNNING_IN_DOCKER: "true",
+      SKILLMUX_IMAGE_VARIANT: "slim",
+      SKILLMUX_ALLOW_INSECURE_BIND: "true",
+    });
+
+    expect(report.checks.find((check) => check.name === "server_bind_posture")).toMatchObject({
+      ok: true,
+      detail: expect.stringContaining("acknowledged via SKILLMUX_ALLOW_INSECURE_BIND"),
+    });
+  });
+
   test("passes when the hostname is loopback", async () => {
     const root = mkdtempSync(join(tmpdir(), "skillmux-doctor-bind-posture-loopback-"));
     dirs.push(root);
