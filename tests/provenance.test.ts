@@ -106,6 +106,17 @@ describe("writeSkillOrigin / readSkillOrigin", () => {
     rmSync(skillDir, { recursive: true, force: true });
   });
 
+  test("security: refuses to read a symlinked .skillmux-origin instead of following it", () => {
+    const skillDir = makeSkillDir();
+    const secretPath = join(skillDir, "..", "secret.txt");
+    writeFileSync(secretPath, "TOP SECRET HOST FILE CONTENTS");
+    symlinkSync(secretPath, join(skillDir, ".skillmux-origin"));
+
+    expect(() => readSkillOrigin(skillDir)).toThrow(/symlink/);
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
   test("throws a clear error for an unsupported schema_version", () => {
     const skillDir = makeSkillDir();
     writeFileSync(join(skillDir, ".skillmux-origin"), JSON.stringify({ schema_version: 2 }));

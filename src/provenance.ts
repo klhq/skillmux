@@ -32,9 +32,17 @@ function validateOrigin(origin: SkillOrigin, path: string): SkillOrigin {
   return origin;
 }
 
+/** Same defense-in-depth as readSkill/hashSkillContent: a tampered vault entry
+ *  (shared git-backed vault pulled in, or a hand-edit) could symlink the sidecar
+ *  itself to an arbitrary host file — refuse to follow it rather than feeding
+ *  that file's bytes into JSON.parse and, on a schema-shaped coincidence, into
+ *  the git commands `outdated`/`update` run against `source_url`. */
 export function readSkillOrigin(dir: string): SkillOrigin | null {
   const path = join(dir, SKILLMUX_ORIGIN_FILENAME);
   if (!existsSync(path)) return null;
+  if (lstatSync(path).isSymbolicLink()) {
+    throw new Error(`${path}: refusing to read .skillmux-origin — it is a symlink`);
+  }
   return validateOrigin(JSON.parse(readFileSync(path, "utf-8")), path);
 }
 
