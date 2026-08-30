@@ -192,6 +192,49 @@ describe("RateLimiter", () => {
     expect(second.allowed).toBe(false);
   });
 
+  test("caps the bucket map at max_buckets by evicting the oldest entry (SMX-93)", () => {
+    const limiter = new RateLimiter({ enabled: true, requests_per_minute: 1, max_buckets: 2 });
+    const nowMs = 1_700_000_000_000;
+    const server = { requestIP: () => null };
+    const reqFor = (id: string) =>
+      new Request("http://localhost/", { headers: { authorization: `Bearer ${id}` } });
+    const check = (id: string) => limiter.check({ nowMs, auth_enabled: true, req: reqFor(id), server });
+
+    expect(check("a").allowed).toBe(true); // bucket a created, exhausted
+    expect(check("b").allowed).toBe(true); // bucket b created, exhausted; map at capacity {a, b}
+    expect(check("c").allowed).toBe(true); // new id at capacity: evicts oldest (a); map is now {b, c}
+    expect(check("a").allowed).toBe(true); // a's bucket was evicted, so it gets a fresh one
+  });
+
+  test("touching a bucket protects it from eviction ahead of idler ones (LRU, SMX-93)", () => {
+    const limiter = new RateLimiter({ enabled: true, requests_per_minute: 1, max_buckets: 2 });
+    const nowMs = 1_700_000_000_000;
+    const server = { requestIP: () => null };
+    const reqFor = (id: string) =>
+      new Request("http://localhost/", { headers: { authorization: `Bearer ${id}` } });
+    const check = (id: string) => limiter.check({ nowMs, auth_enabled: true, req: reqFor(id), server });
+
+    expect(check("a").allowed).toBe(true); // bucket a created, exhausted
+    expect(check("b").allowed).toBe(true); // bucket b created, exhausted; map at capacity {a, b}
+    expect(check("a").allowed).toBe(false); // touch a: still exhausted, but now most-recently-used
+    expect(check("c").allowed).toBe(true); // new id at capacity: evicts LRU (b), not a; map is now {a, c}
+    expect(check("a").allowed).toBe(false); // a survived eviction: still the same exhausted bucket
+    expect(check("b").allowed).toBe(true); // b's bucket was evicted, so it gets a fresh one
+  });
+
+  test("does not evict buckets while under max_buckets capacity", () => {
+    const limiter = new RateLimiter({ enabled: true, requests_per_minute: 1, max_buckets: 10_000 });
+    const nowMs = 1_700_000_000_000;
+    const server = { requestIP: () => null };
+    const reqFor = (id: string) =>
+      new Request("http://localhost/", { headers: { authorization: `Bearer ${id}` } });
+    const check = (id: string) => limiter.check({ nowMs, auth_enabled: true, req: reqFor(id), server });
+
+    expect(check("a").allowed).toBe(true);
+    for (let i = 0; i < 100; i++) check(`filler-${i}`);
+    expect(check("a").allowed).toBe(false); // a's bucket must still be the original exhausted one
+  });
+
   test("returns rate limit headers on allowed responses", () => {
     const limiter = new RateLimiter({ enabled: true, requests_per_minute: 60 });
 

@@ -3,6 +3,14 @@ interface Bucket {
   lastRefillMs: number;
 }
 
+// SMX-93: bounds memory even when an attacker (behind a trust_proxy-honored
+// reverse proxy) mints unbounded distinct X-Forwarded-For values, or a
+// long-running deployment simply accumulates many distinct legitimate
+// clients over time. Past this many entries, the least-recently-used
+// bucket is evicted to make room — active clients are never evicted ahead
+// of idle ones.
+const DEFAULT_MAX_BUCKETS = 10_000;
+
 export interface RateLimitCheckInput {
   nowMs: number;
   auth_enabled: boolean;
@@ -22,12 +30,19 @@ export class RateLimiter {
   private enabled: boolean;
   private requests_per_minute: number;
   private trust_proxy: boolean;
+  private max_buckets: number;
   private buckets = new Map<string, Bucket>();
 
-  constructor(config: { enabled: boolean; requests_per_minute: number; trust_proxy?: boolean }) {
+  constructor(config: {
+    enabled: boolean;
+    requests_per_minute: number;
+    trust_proxy?: boolean;
+    max_buckets?: number;
+  }) {
     this.enabled = config.enabled;
     this.requests_per_minute = config.requests_per_minute;
     this.trust_proxy = config.trust_proxy ?? false;
+    this.max_buckets = config.max_buckets ?? DEFAULT_MAX_BUCKETS;
   }
 
   check(input: RateLimitCheckInput): RateLimitCheckResult {
@@ -59,7 +74,19 @@ export class RateLimiter {
 
     // 2. Retrieve or initialize bucket
     let bucket = this.buckets.get(id);
-    if (!bucket) {
+    if (bucket) {
+      // Map iteration order is insertion order, so re-inserting on touch
+      // marks this entry as most-recently-used and moves it out of the
+      // eviction path below.
+      this.buckets.delete(id);
+      this.buckets.set(id, bucket);
+    } else {
+      if (this.buckets.size >= this.max_buckets) {
+        const oldestId = this.buckets.keys().next().value;
+        if (oldestId !== undefined) {
+          this.buckets.delete(oldestId);
+        }
+      }
       bucket = {
         tokens: this.requests_per_minute,
         lastRefillMs: input.nowMs,
