@@ -397,7 +397,12 @@ export async function runProject(
   writeManifestAtomic(manifestPath, updated);
   if (request.sync) {
     try {
-      await options.sync([]);
+      // Reaching here already required approval above (request.yes, or an
+      // accepted interactive confirmAction) — that approval covers whatever
+      // new target/pin directories this project setup implies, so the
+      // downstream sync's own new-target confirmation gate would just be a
+      // redundant (and, non-interactively, silently-skipping) re-ask.
+      await options.sync(["--yes"]);
     } catch (error) {
       throw new Error(
         `project configuration was saved, but sync failed; fix the reported issue and run "skillmux sync": ${
