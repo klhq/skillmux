@@ -177,14 +177,32 @@ export interface ResolvedSkillDir {
   dir: string;
 }
 
+/** The returned skillId is joined straight into vaultPath by installIntoVault's callers
+ *  and fed to a real rmSync(recursive)+cpSync overwrite. Both branches below can produce
+ *  "." or ".." for a crafted-but-plausible input: `skill_path` of "." (e.g. `skillmux
+ *  install owner/repo/.`) survives the ".." segment check since "." isn't "..", and its
+ *  basename is "." too; `fallbackName` comes from deriveRepoName(url), which can return
+ *  ".." for a url whose last "/"- or ":"-delimited segment is literally "..". Verified
+ *  end-to-end against the real CLI binary: the former makes `install --force` wipe the
+ *  entire vault, the latter makes it wipe the vault's parent directory. Neither can ever
+ *  legitimately be a skill id, so reject both outright rather than let them reach a join. */
+function rejectTraversalSkillId(skillId: string): void {
+  if (skillId === "." || skillId === "..") {
+    throw new Error(`invalid skill id "${skillId}"`);
+  }
+}
+
 export function resolveSkillDir(cloneDir: string, fallbackName: string, skillPath?: string): ResolvedSkillDir {
   if (skillPath) {
     if (skillPath.startsWith("/") || skillPath.split("/").includes("..")) {
       throw new Error(`invalid skill_path "${skillPath}": must be a relative path within the repo`);
     }
-    return { skillId: basename(skillPath), dir: join(cloneDir, skillPath) };
+    const skillId = basename(skillPath);
+    rejectTraversalSkillId(skillId);
+    return { skillId, dir: join(cloneDir, skillPath) };
   }
   if (existsSync(join(cloneDir, "SKILL.md"))) {
+    rejectTraversalSkillId(fallbackName);
     return { skillId: fallbackName, dir: cloneDir };
   }
   const discovered = readdirSync(cloneDir, { withFileTypes: true })

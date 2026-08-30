@@ -183,6 +183,33 @@ describe("resolveSkillDir", () => {
     rmSync(cloneDir, { recursive: true, force: true });
   });
 
+  test("security: rejects a skillPath of '.', whose basename resolves to the whole vault directory once joined with vaultPath", () => {
+    // `skillmux install owner/repo/.` reaches this with skillPath="." — basename(".")
+    // is "." too, and installIntoVault's join(vaultPath, ".") is vaultPath itself, so
+    // an unvalidated "." here means `install --force` deletes and replaces the entire
+    // vault, not just one skill. Verified end-to-end against the real CLI binary.
+    const cloneDir = mkdtempSync(join(tmpdir(), "skillmux-install-clonedir-"));
+
+    expect(() => resolveSkillDir(cloneDir, "skillshare", ".")).toThrow(/skill id/);
+
+    rmSync(cloneDir, { recursive: true, force: true });
+  });
+
+  test("security: rejects a fallback name of '..' derived from a crafted repo url, which would become the vault's parent directory", () => {
+    // deriveRepoName(url) can return ".." for a url whose last "/"- or ":"-delimited
+    // segment is literally ".." (e.g. a git host that ignores the URL path and just
+    // serves whatever repo it wants). That string flows straight through here as
+    // fallbackName when the repo has no skillPath — verified end-to-end against the
+    // real CLI binary that `install <url> --force` then deletes and replaces
+    // dirname(vaultPath).
+    const cloneDir = mkdtempSync(join(tmpdir(), "skillmux-install-clonedir-"));
+    writeFileSync(join(cloneDir, "SKILL.md"), "---\nname: x\n---\nbody");
+
+    expect(() => resolveSkillDir(cloneDir, "..")).toThrow(/skill id/);
+
+    rmSync(cloneDir, { recursive: true, force: true });
+  });
+
   test("errors listing discovered skill dirs when root has no SKILL.md and no path was given", () => {
     const cloneDir = mkdtempSync(join(tmpdir(), "skillmux-install-clonedir-"));
     for (const id of ["alpha-skill", "beta-skill"]) {
