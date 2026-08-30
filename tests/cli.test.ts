@@ -454,9 +454,37 @@ describe("skillmux sync CLI", () => {
       ].join("\n"),
     );
 
-    const result = await runCli("sync");
+    const result = await runCli("sync", "--yes");
 
     expect(result.exitCode).toBe(0);
+    expect(existsSync(join(targetDir, "first-skill"))).toBe(true);
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(true);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("security: refuses to create a new target directory non-interactively without --yes, then creates it once approved", async () => {
+    const targetDir = join(tmp, "sync-target-unapproved");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.test]`,
+        `dir = "${targetDir}"`,
+        `host = "${hostname()}"`,
+      ].join("\n"),
+    );
+
+    const withoutYes = await runCli("sync");
+    expect(withoutYes.exitCode).toBe(0);
+    expect(withoutYes.stdout).toContain("requires approval");
+    expect(existsSync(targetDir)).toBe(false);
+
+    const withYes = await runCli("sync", "--yes");
+    expect(withYes.exitCode).toBe(0);
     expect(existsSync(join(targetDir, "first-skill"))).toBe(true);
     expect(existsSync(join(targetDir, ".skillmux"))).toBe(true);
 
@@ -521,7 +549,7 @@ describe("skillmux sync CLI", () => {
       ].join("\n"),
     );
 
-    const result = await runCliEnv(["sync"], { HOME: fakeHome });
+    const result = await runCliEnv(["sync", "--yes"], { HOME: fakeHome });
 
     expect(result.exitCode).toBe(0);
     expect(existsSync(join(repoA, "only-a", "skills", "skill-a"))).toBe(true);

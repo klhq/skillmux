@@ -82,10 +82,12 @@ import {
 import { getStats, renderStatsText, type StatsResponse } from "./stats";
 import {
   installPostMergeHook,
+  resolveProjectPinDir,
   restoreMonolith as restoreMonolithTarget,
   syncProjectTargets,
   syncTarget,
   writeLocalVaultMarker,
+  type ProjectGroupInput,
 } from "./sync";
 import { scanVault, vaultResolutionOrder } from "./vault";
 
@@ -771,21 +773,45 @@ function parseSyncArgs(args: string[]): {
   dryRun: boolean;
   restoreMonolith: boolean;
   installHook: boolean;
+  yes: boolean;
 } {
   let dryRun = false;
   let restoreMonolith = false;
   let installHook = false;
+  let yes = false;
   for (const arg of args) {
     if (arg === "--dry-run") dryRun = true;
     else if (arg === "--restore-monolith") restoreMonolith = true;
     else if (arg === "--install-hook") installHook = true;
+    else if (arg === "--yes") yes = true;
     else throw new Error(`unknown sync option: ${arg}`);
   }
-  return { dryRun, restoreMonolith, installHook };
+  return { dryRun, restoreMonolith, installHook, yes };
+}
+
+/**
+ * A target directory that doesn't exist yet is about to be created by `sync`.
+ * `manifest.targets[*].dir` is vault content — readable and writable by whatever
+ * populated the vault (a shared git-backed vault pulled in, or a hand-edit) — and
+ * `sync` can run unattended via the `--install-hook` post-merge hook. Without this
+ * gate, a tampered manifest naming a brand-new path gets that directory silently
+ * created (and populated with symlinks) the next time anyone pulls. Creation for
+ * an as-yet-unseen directory therefore requires either `--yes` or an interactive
+ * confirmation; once the directory exists, later syncs never hit this path again.
+ */
+async function confirmNewSyncTarget(label: string, dir: string, yes: boolean): Promise<boolean> {
+  if (yes) return true;
+  if (!isInteractive()) {
+    console.log(
+      `${label}: skipped — ${dir} does not exist yet; creating it requires approval. Re-run "skillmux sync --yes", or run "skillmux sync" interactively, once you've confirmed this target is expected.`,
+    );
+    return false;
+  }
+  return confirmAction(`${label}: create new target directory ${dir}?`);
 }
 
 async function runSync(args: string[]): Promise<void> {
-  const { dryRun, restoreMonolith, installHook } = parseSyncArgs(args);
+  const { dryRun, restoreMonolith, installHook, yes } = parseSyncArgs(args);
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
 
@@ -829,6 +855,16 @@ async function runSync(args: string[]): Promise<void> {
       continue;
     }
 
+    if (!dryRun && !existsSync(targetDir)) {
+      const approved = await confirmNewSyncTarget(targetName, targetDir, yes);
+      if (!approved) {
+        if (isInteractive()) {
+          console.log(`${targetName}: skipped — creating ${targetDir} was not approved`);
+        }
+        continue;
+      }
+    }
+
     const suffix = dryRun ? " (dry-run)" : "";
     const result = syncTarget(
       {
@@ -851,9 +887,24 @@ async function runSync(args: string[]): Promise<void> {
 
     if (target.project_groups.length > 0) {
       const allGroups = manifest.project ?? {};
-      const projectGroups = Object.fromEntries(
-        target.project_groups.map((name) => [name, allGroups[name]!]),
-      );
+      const projectGroups: Record<string, ProjectGroupInput> = {};
+      for (const groupName of target.project_groups) {
+        const group = allGroups[groupName]!;
+        const approvedPaths: string[] = [];
+        for (const path of group.paths) {
+          // Mirror syncProjectTargets' own `if (!existsSync(path)) continue` so we
+          // never prompt for a project path it would silently skip anyway.
+          if (!existsSync(path)) continue;
+          const pinDir = resolveProjectPinDir(targetDir, path);
+          if (dryRun || existsSync(pinDir)) {
+            approvedPaths.push(path);
+            continue;
+          }
+          const approved = await confirmNewSyncTarget(`${targetName}/${groupName}`, pinDir, yes);
+          if (approved) approvedPaths.push(path);
+        }
+        projectGroups[groupName] = { ...group, paths: approvedPaths };
+      }
       const projectResults = syncProjectTargets(
         { vaultPath, targetDir, targetName, projectGroups, localVaultPaths },
         { dryRun },
@@ -1437,7 +1488,12 @@ async function runInit(
   ) {
     console.log(`\n${printLastMile()}`);
   }
-  if (guided && sync && confirmedTargets.length > 0) await runSync([]);
+  // Reaching this point already required approval above (--yes, or an accepted
+  // confirmAction naming these exact targets/dirs) — that approval covers whatever
+  // new target directories this init just adopted, so runSync's own new-target
+  // confirmation gate would just be a redundant (and non-interactively,
+  // silently-skipping) re-ask.
+  if (guided && sync && confirmedTargets.length > 0) await runSync(["--yes"]);
 }
 
 function parseReportArgs(args: string[]): {
