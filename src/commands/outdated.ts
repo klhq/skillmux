@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
-import { remoteHeadCommit } from "../install";
+import { isLocalFileUrl, remoteHeadCommit } from "../install";
 import { emitSuccess } from "../output";
 import { readSkillOrigin } from "../provenance";
 import { SKILL_ID_PATTERN } from "../vault";
@@ -11,7 +11,7 @@ export interface OutdatedCheckResult {
   source_url: string;
   recorded_commit: string;
   remote_commit: string | null;
-  status: "up_to_date" | "outdated" | "check_failed";
+  status: "up_to_date" | "outdated" | "check_failed" | "local_source_skipped";
   reason: string | null;
 }
 
@@ -22,7 +22,10 @@ function vaultSkillIds(vaultPath: string): string[] {
     .sort();
 }
 
-export async function checkOutdated(vaultPath: string): Promise<OutdatedCheckResult[]> {
+export async function checkOutdated(
+  vaultPath: string,
+  options: { allowLocalSource?: boolean } = {},
+): Promise<OutdatedCheckResult[]> {
   const results: OutdatedCheckResult[] = [];
   for (const skillId of vaultSkillIds(vaultPath)) {
     let origin: ReturnType<typeof readSkillOrigin>;
@@ -44,6 +47,18 @@ export async function checkOutdated(vaultPath: string): Promise<OutdatedCheckRes
       continue;
     }
     if (!origin) continue;
+
+    if (!options.allowLocalSource && isLocalFileUrl(origin.source_url)) {
+      results.push({
+        skill_id: skillId,
+        source_url: origin.source_url,
+        recorded_commit: origin.commit,
+        remote_commit: null,
+        status: "local_source_skipped",
+        reason: "source_url is a local file:// path — skipped by default; pass --allow-local-source to check it",
+      });
+      continue;
+    }
 
     let remoteCommit: string | null = null;
     let status: OutdatedCheckResult["status"];
@@ -69,13 +84,18 @@ export async function checkOutdated(vaultPath: string): Promise<OutdatedCheckRes
 }
 
 export async function runOutdated(args: string[], options: { isJson: boolean }): Promise<void> {
+  let allowLocalSource = false;
   for (const arg of args) {
     if (arg === "--json") continue;
+    if (arg === "--allow-local-source") {
+      allowLocalSource = true;
+      continue;
+    }
     throw new Error(`unknown outdated option: ${arg}`);
   }
 
   const vaultPath = expandHome((await loadConfig()).vault_path);
-  const skills = await checkOutdated(vaultPath);
+  const skills = await checkOutdated(vaultPath, { allowLocalSource });
   const checksFailed = skills.filter((s) => s.status === "check_failed").length;
   process.exitCode = checksFailed > 0 ? 1 : 0;
 
