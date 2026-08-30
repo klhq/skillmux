@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1](https://github.com/klhq/skillmux/compare/v1.9.0...v1.9.1) (2026-08-30)
+
+
+### Fixed
+
+* **install:** reject '.' / '..' skill ids derived during install (path traversal) ([#151](https://github.com/klhq/skillmux/issues/151)) ([2426613](https://github.com/klhq/skillmux/commit/2426613b79c67e2afa267de946492b6b020011bb))
+* **install:** reject scp-like git URLs starting with '-' (argument injection RCE) ([#148](https://github.com/klhq/skillmux/issues/148)) ([6a9db28](https://github.com/klhq/skillmux/commit/6a9db28670201237dd17455592fa30cbce43b58f))
+* **sync:** require approval before creating a new target directory ([#152](https://github.com/klhq/skillmux/issues/152)) ([6fcfd1a](https://github.com/klhq/skillmux/commit/6fcfd1a8beed87e5f88e2bd24b84a94a3adb3d89))
+* **update:** validate skill-id against SKILL_ID_PATTERN before path-joining it ([#150](https://github.com/klhq/skillmux/issues/150)) ([0bfa807](https://github.com/klhq/skillmux/commit/0bfa8071a80ea4f70b2e6974cb2cb439666f8357))
+
 ## [1.9.0](https://github.com/klhq/skillmux/compare/v1.8.0...v1.9.0) (2026-08-30)
 
 
