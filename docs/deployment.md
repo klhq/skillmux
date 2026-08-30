@@ -232,6 +232,16 @@ Keep `trust_proxy = false` unless a trusted reverse proxy overwrites
 `X-Forwarded-For`. A client can spoof that header when it reaches Skillmux
 directly.
 
+`skillmux serve --transport http` enforces this itself: it refuses to bind a
+non-loopback hostname (including Docker's default `0.0.0.0`) while
+`auth_enabled` is `false`, since that combination leaves `/mcp` and `/stats`
+open to anyone who can reach the port. `skillmux doctor` flags the same
+combination as `server_bind_posture`. If you're relying on network-level
+isolation instead of application auth — e.g. a container with no published
+port, reachable only inside a private Docker network — set
+`SKILLMUX_ALLOW_INSECURE_BIND=true` to start anyway; the server logs a loud
+warning each time it does.
+
 ## Health and metrics
 
 The HTTP server provides:

@@ -30,7 +30,11 @@ docker run --rm "$IMAGE" config validate >/dev/null
 
 # Doctor identifies the image variant and the retrieval lane it can actually
 # use. Slim stays healthy without a bundled model; full verifies GTE-small.
+# SKILLMUX_ALLOW_INSECURE_BIND matches the server run below (SMX-91) — this
+# container is never published beyond 127.0.0.1, so doctor's server_bind_posture
+# check would otherwise flag the same acknowledged, non-exposed posture.
 docker run --rm \
+  -e SKILLMUX_ALLOW_INSECURE_BIND=true \
   -v "$VAULT:/vault:ro" \
   -v "$DATA:/data" \
   "$IMAGE" doctor --json >"$WORKDIR/doctor.json"
@@ -85,7 +89,12 @@ docker run --rm --no-healthcheck -i \
   "$IMAGE" serve --transport stdio </dev/null
 
 # The default command starts HTTP and becomes ready without a config directory.
+# The container publishes only to 127.0.0.1 here (no real external exposure),
+# so this is exactly the network-isolation case SKILLMUX_ALLOW_INSECURE_BIND
+# exists for (src/server.ts: assertSafeBindPosture, SMX-91) — the server
+# otherwise refuses to bind 0.0.0.0 with auth disabled.
 docker run -d --name "$CONTAINER" -p 127.0.0.1::3000 \
+  -e SKILLMUX_ALLOW_INSECURE_BIND=true \
   -v "$VAULT:/vault:ro" \
   -v "$DATA:/data" \
   "$IMAGE" >/dev/null

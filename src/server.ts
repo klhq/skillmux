@@ -4,7 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { createClients } from "./clients";
-import { loadConfig, resolveConfigPath } from "./config";
+import { isLoopbackBindHost, loadConfig, resolveConfigPath } from "./config";
 import { describeDeployment } from "./deployment";
 import { ConfigWatcher, type ReloadStatus } from "./config-watcher";
 import { RuntimeSnapshotManager } from "./snapshot";
@@ -38,6 +38,35 @@ export interface ServerHandle {
   port?: number;
   reloadStatus(): ReloadStatus;
   stop(): Promise<void>;
+}
+
+/**
+ * Docker's documented deployment mode auto-switches hostname to "0.0.0.0"
+ * (config.ts's RUNNING_IN_DOCKER override) while server.auth_enabled still
+ * defaults to false and allowed_origins defaults to [] — which only blocks
+ * requests that carry an Origin header, so a plain server-to-server/curl
+ * request sails through unauthenticated. That default combination leaves MCP
+ * tools (resolve_skill/fetch_skill) and /stats (raw historical query text)
+ * open to anyone who can reach the port — the documented common case, not an
+ * edge case (SMX-91). Refuse to start rather than silently exposing it;
+ * SKILLMUX_ALLOW_INSECURE_BIND is the explicit, logged escape hatch for
+ * operators who rely on network-level isolation instead of application auth.
+ */
+export function assertSafeBindPosture(
+  hostname: string,
+  authEnabled: boolean,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  if (isLoopbackBindHost(hostname) || authEnabled) return;
+  const message =
+    `refusing to bind "${hostname}" (reachable beyond this machine) with server.auth_enabled=false — ` +
+    "MCP tools (resolve_skill/fetch_skill) and /stats would be open to anyone who can reach this port. " +
+    "Set server.auth_enabled=true (with SKILLMUX_AUTH_TOKEN) or bind a loopback hostname instead. " +
+    "To start anyway — e.g. when network isolation is the intended boundary — set SKILLMUX_ALLOW_INSECURE_BIND=true.";
+  if (env.SKILLMUX_ALLOW_INSECURE_BIND !== "true") {
+    throw new Error(`skillmux: ${message}`);
+  }
+  console.error(`skillmux: WARNING — ${message}`);
 }
 
 let warnedAuthToken = false;
@@ -206,6 +235,7 @@ export async function startServer(opts?: {
 
     const port = opts?.port ?? Number(process.env.PORT || 3000);
     const hostname = config.server?.hostname ?? "127.0.0.1";
+    assertSafeBindPosture(hostname, config.server?.auth_enabled ?? false);
     const bunServer = Bun.serve({
       port,
       hostname,
