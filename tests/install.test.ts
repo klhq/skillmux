@@ -69,6 +69,18 @@ describe("resolveRepoSource", () => {
   test("rejects a bare name with no owner segment", () => {
     expect(() => resolveRepoSource("skillshare")).toThrow(/owner\/repo/);
   });
+
+  test("security: rejects an scp-like url starting with '-', which git's own CLI parses as an option instead of a repository", () => {
+    // Verified against git 2.55: passed as the sole positional argument to `git
+    // ls-remote`/`git clone`, a string starting with `-` and shaped like scp
+    // syntax (user@host:path) is read as an option, not a repo. Specifically,
+    // `--upload-pack=<cmd>@host:path` makes git run `<cmd>` as a local shell
+    // command (`${IFS}`-obfuscated to dodge naive space-based filtering) instead
+    // of contacting a remote — this is real command execution, not a parse quirk.
+    const malicious = "--upload-pack=touch${IFS}PWNED@host:repo.git";
+
+    expect(() => resolveRepoSource(malicious)).toThrow(/owner\/repo/);
+  });
 });
 
 describe("deriveRepoName", () => {
