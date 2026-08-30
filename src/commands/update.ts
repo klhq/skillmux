@@ -14,6 +14,7 @@ import { emitSuccess } from "../output";
 import { hashSkillContent, readSkillOrigin, writeSkillOrigin } from "../provenance";
 import type { SkillOrigin } from "../provenance";
 import { type ScanFinding, type ScanSeverity, scanExitCode } from "../scan";
+import { SKILL_ID_PATTERN } from "../vault";
 import { confirmIfNeeded } from "./shared";
 import { checkOutdated } from "./outdated";
 
@@ -38,6 +39,16 @@ async function resolveCandidateOrigins(
   allowLocalSource: boolean,
 ): Promise<{ skillId: string; origin: SkillOrigin }[]> {
   if (skillId) {
+    // skillId (the CLI's positional <skill-id>) is joined straight into vaultPath
+    // below, and that join ultimately reaches installIntoVault's rmSync(recursive)
+    // + cpSync on the write path — a "../"-shaped value escapes the vault and lets
+    // `skillmux update` delete and overwrite an arbitrary directory on disk. Batch
+    // mode never hits this because checkOutdated only enumerates real vault entries
+    // (already SKILL_ID_PATTERN-filtered); the explicit single-skill path is the
+    // only one that takes this string directly from argv, so validate it here.
+    if (!SKILL_ID_PATTERN.test(skillId)) {
+      throw new Error(`invalid skill id "${skillId}": expected lowercase letters, digits, and hyphens only`);
+    }
     let origin: SkillOrigin | null;
     try {
       origin = readSkillOrigin(join(vaultPath, skillId));
