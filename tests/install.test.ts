@@ -216,6 +216,19 @@ describe("findSymlinks", () => {
 
     rmSync(dir, { recursive: true, force: true });
   });
+
+  test("security: reports the scanned directory itself when it is a symlink, not just its descendants", () => {
+    const parent = mkdtempSync(join(tmpdir(), "skillmux-install-symlinks-rootdir-"));
+    const target = mkdtempSync(join(tmpdir(), "skillmux-install-symlinks-target-"));
+    writeFileSync(join(target, "SKILL.md"), "---\nname: x\n---\nbody");
+    const symlinkedDir = join(parent, "evil");
+    symlinkSync(target, symlinkedDir);
+
+    expect(findSymlinks(symlinkedDir)).not.toEqual([]);
+
+    rmSync(parent, { recursive: true, force: true });
+    rmSync(target, { recursive: true, force: true });
+  });
 });
 
 describe("validateSkillCandidate", () => {
@@ -266,6 +279,19 @@ describe("validateSkillCandidate", () => {
     );
 
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("security: aborts when the candidate directory itself is a symlink (e.g. a git-committed symlinked skill_path), not just when it contains one", async () => {
+    const cloneDir = mkdtempSync(join(tmpdir(), "skillmux-install-validate-clonesymlink-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "skillmux-install-validate-outside-"));
+    writeFileSync(join(outsideDir, "SKILL.md"), "---\nname: Evil\n---\nEVIL PAYLOAD FROM OUTSIDE CLONE");
+    const skillDir = join(cloneDir, "evil");
+    symlinkSync(outsideDir, skillDir);
+
+    await expect(validateSkillCandidate("evil", skillDir)).rejects.toThrow(/symlink/);
+
+    rmSync(cloneDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
   });
 });
 
@@ -325,6 +351,22 @@ describe("installIntoVault", () => {
 
     rmSync(vaultDir, { recursive: true, force: true });
     rmSync(sourceDir, { recursive: true, force: true });
+  });
+
+  test("security: refuses to copy through a symlinked source directory itself, even when it contains only real files at its target", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-install-vault-dirsymlink-"));
+    const cloneDir = mkdtempSync(join(tmpdir(), "skillmux-install-clonesymlink-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "skillmux-install-outside-"));
+    writeFileSync(join(outsideDir, "SKILL.md"), "---\nname: Evil\n---\nEVIL PAYLOAD FROM OUTSIDE CLONE");
+    const sourceDir = join(cloneDir, "evil");
+    symlinkSync(outsideDir, sourceDir);
+
+    expect(() => installIntoVault(vaultDir, "evil-skill", sourceDir)).toThrow(/symlink/);
+    expect(existsSync(join(vaultDir, "evil-skill"))).toBe(false);
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(cloneDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
   });
 
   test("overwrites the existing skill when force is true", () => {
