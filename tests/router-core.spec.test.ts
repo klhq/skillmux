@@ -264,6 +264,23 @@ describe("security: symlinked SKILL.md", () => {
 
     rmSync(secretPath);
   });
+
+  test("fetchSkill never serves content through a symlinked skill directory, even when SKILL.md itself is a real file at the target", async () => {
+    const secretDir = mkdtempSync(join(tmpdir(), "skillmux-test-secretdir-"));
+    writeFileSync(join(secretDir, "SKILL.md"), "---\nname: Evil\n---\nEVIL PAYLOAD FROM OUTSIDE VAULT");
+    writeSkill("dirsymlink-skill", "A normal skill whose directory will be swapped for a symlink after indexing.");
+
+    // Index it once while the skill directory is still real.
+    await fetchSkill({ skill_id: "dirsymlink-skill" });
+
+    const skillDir = join(vaultDir, "dirsymlink-skill");
+    rmSync(skillDir, { recursive: true, force: true });
+    symlinkSync(secretDir, skillDir);
+
+    await expect(fetchSkill({ skill_id: "dirsymlink-skill" })).rejects.toThrow();
+
+    rmSync(secretDir, { recursive: true, force: true });
+  });
 });
 
 describe("audit log contract", () => {

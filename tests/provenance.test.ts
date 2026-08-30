@@ -70,6 +70,19 @@ describe("hashSkillContent", () => {
 
     rmSync(skillDir, { recursive: true, force: true });
   });
+
+  test("security: refuses to hash through a symlinked skill directory even when SKILL.md itself is a real file", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-provenance-dirsymlink-vault-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "skillmux-provenance-dirsymlink-outside-"));
+    writeFileSync(join(outsideDir, "SKILL.md"), "EVIL PAYLOAD FROM OUTSIDE VAULT");
+    const skillDir = join(vaultDir, "my-skill");
+    symlinkSync(outsideDir, skillDir);
+
+    expect(() => hashSkillContent(skillDir)).toThrow();
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
 });
 
 describe("writeSkillOrigin / readSkillOrigin", () => {
@@ -115,6 +128,28 @@ describe("writeSkillOrigin / readSkillOrigin", () => {
     expect(() => readSkillOrigin(skillDir)).toThrow(/symlink/);
 
     rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("security: refuses to read .skillmux-origin through a symlinked skill directory even when the sidecar itself is a real file", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-provenance-origin-dirsymlink-vault-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "skillmux-provenance-origin-dirsymlink-outside-"));
+    writeFileSync(
+      join(outsideDir, ".skillmux-origin"),
+      JSON.stringify({
+        schema_version: 1,
+        source_url: "https://github.com/owner/repo.git",
+        commit: "a".repeat(40),
+        installed_at: "2026-08-29T00:00:00.000Z",
+        content_hash: "b".repeat(64),
+      }),
+    );
+    const skillDir = join(vaultDir, "my-skill");
+    symlinkSync(outsideDir, skillDir);
+
+    expect(() => readSkillOrigin(skillDir)).toThrow(/symlink/);
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
   });
 
   test("throws a clear error for an unsupported schema_version", () => {

@@ -134,6 +134,30 @@ description: Unterminated
 
     rmSync(tmp, { recursive: true, force: true });
   });
+
+  test("security: readSkill refuses to read through a symlinked skill directory even when SKILL.md itself is a real file", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-vault-test-dirsymlink-vault-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "skillmux-vault-test-dirsymlink-outside-"));
+    writeFileSync(join(outsideDir, "SKILL.md"), "---\nname: Evil\n---\nEVIL PAYLOAD FROM OUTSIDE VAULT");
+    symlinkSync(outsideDir, join(vaultDir, "totally-normal-skill"));
+
+    await expect(readSkill(vaultDir, "totally-normal-skill")).rejects.toThrow();
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  test("security: listSupportingFiles refuses to walk into a symlinked skill directory", () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "skillmux-vault-test-dirsymlink-list-vault-"));
+    const outsideDir = mkdtempSync(join(tmpdir(), "skillmux-vault-test-dirsymlink-list-outside-"));
+    writeFileSync(join(outsideDir, "notes.md"), "SECRET NOTES FROM OUTSIDE VAULT");
+    symlinkSync(outsideDir, join(vaultDir, "totally-normal-skill"));
+
+    expect(listSupportingFiles(vaultDir, "totally-normal-skill")).toEqual([]);
+
+    rmSync(vaultDir, { recursive: true, force: true });
+    rmSync(outsideDir, { recursive: true, force: true });
+  });
 });
 
 describe("vaultResolutionOrder", () => {

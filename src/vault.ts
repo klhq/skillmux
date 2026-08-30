@@ -52,9 +52,19 @@ export function decodeUtf8Strict(bytes: Uint8Array): string {
 /** SKILL.md itself is read directly (not via listSupportingFiles, which excludes
  *  it by name) — so its own symlink-ness must be checked here. Without this, a
  *  symlinked SKILL.md reachable via a shared git-backed vault or a hand-edit would
- *  have its target's content indexed and delivered to agents as the skill body. */
+ *  have its target's content indexed and delivered to agents as the skill body.
+ *
+ *  The skill directory itself must be checked too, separately from SKILL.md's own
+ *  leaf check: `lstat` only refuses to follow the *final* path component, so a
+ *  symlinked skill directory containing a real (non-symlink) SKILL.md file at its
+ *  target silently passes the leaf check while still resolving straight through
+ *  to arbitrary host content. */
 export async function readSkill(vaultPath: string, skillId: string): Promise<VaultSkill> {
-  const path = join(vaultPath, skillId, "SKILL.md");
+  const skillDir = join(vaultPath, skillId);
+  if (lstatSync(skillDir).isSymbolicLink()) {
+    throw new Error(`refusing to read ${skillId}: the skill directory is a symlink`);
+  }
+  const path = join(skillDir, "SKILL.md");
   if (lstatSync(path).isSymbolicLink()) {
     throw new Error(`refusing to read ${skillId}/SKILL.md: it is a symlink`);
   }
@@ -151,6 +161,11 @@ export function listSupportingFiles(vaultPath: string, skillId: string): string[
     return [];
   }
   const root = join(vaultPath, skillId);
+  // A symlinked skill directory must not be walked into: readdirSync follows a
+  // symlinked path argument (unlike the entry.isSymbolicLink() check below, which
+  // only applies to entries *found by* the walk), so without this a symlinked
+  // `root` would return the target directory's file listing straight through.
+  if (!existsSync(root) || lstatSync(root).isSymbolicLink()) return [];
   const files: string[] = [];
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
