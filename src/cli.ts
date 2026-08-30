@@ -42,6 +42,7 @@ import {
   cloneToTemp,
   deriveRepoName,
   installIntoVault,
+  isLocalFileUrl,
   resolveCloneCommit,
   resolveRepoSource,
   resolveSkillDir,
@@ -1619,15 +1620,18 @@ function parseInstallArgs(args: string[]): {
   force: boolean;
   dryRun: boolean;
   failOn?: ScanSeverity;
+  allowLocalSource: boolean;
 } {
   let repo: string | undefined;
   let force = false;
   let dryRun = false;
   let failOn: ScanSeverity | undefined;
+  let allowLocalSource = false;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
     if (option === "--force") force = true;
     else if (option === "--dry-run") dryRun = true;
+    else if (option === "--allow-local-source") allowLocalSource = true;
     else if (option === "--fail-on") {
       const value = args[++i];
       if (value !== "low" && value !== "medium" && value !== "high") {
@@ -1644,21 +1648,26 @@ function parseInstallArgs(args: string[]): {
       repo = option;
     }
   }
-  return { repo, force, dryRun, failOn };
+  return { repo, force, dryRun, failOn, allowLocalSource };
 }
 
 async function runInstall(
   args: string[],
   options: { isJson: boolean },
 ): Promise<void> {
-  const { repo, force, dryRun, failOn } = parseInstallArgs(args);
+  const { repo, force, dryRun, failOn, allowLocalSource } = parseInstallArgs(args);
   if (!repo) {
     throw new Error(
-      "usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--json]",
+      "usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--allow-local-source] [--json]",
     );
   }
 
   const source = resolveRepoSource(repo);
+  if (!allowLocalSource && isLocalFileUrl(source.url)) {
+    throw new Error(
+      `"${repo}" is a local (file://) source — pass --allow-local-source to install from it`,
+    );
+  }
   const cloneDir = await cloneToTemp(source.url);
   try {
     const resolved = resolveSkillDir(
