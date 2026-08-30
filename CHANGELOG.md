@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2](https://github.com/klhq/skillmux/compare/v1.9.1...v1.9.2) (2026-08-30)
+
+
+### Fixed
+
+* **install:** refuse a file:// source without --allow-local-source (SMX-92) ([#156](https://github.com/klhq/skillmux/issues/156)) ([b4ffb4a](https://github.com/klhq/skillmux/commit/b4ffb4abec90f900113bcd5806274b5d5692d23c))
+* **server:** bound rate-limiter bucket map with LRU eviction (SMX-93) ([#155](https://github.com/klhq/skillmux/issues/155)) ([4dd1eb5](https://github.com/klhq/skillmux/commit/4dd1eb5a6d673f11f4ccd556fb4f189cf5fa828f))
+* **server:** compare fixed-length hashes in safeTokenEquals (SMX-94) ([#157](https://github.com/klhq/skillmux/issues/157)) ([ae225c0](https://github.com/klhq/skillmux/commit/ae225c0db88952fedd4e66d4f373455774635900))
+* **server:** refuse to bind a non-loopback host with auth disabled (SMX-91) ([#153](https://github.com/klhq/skillmux/issues/153)) ([2520408](https://github.com/klhq/skillmux/commit/252040867ed73ef1b82c6f97010842a9b399b498))
+
 ## [1.9.1](https://github.com/klhq/skillmux/compare/v1.9.0...v1.9.1) (2026-08-30)
 
 
