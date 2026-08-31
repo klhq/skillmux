@@ -14,6 +14,9 @@ In this guide, **local target** means the filesystem and process selected by
 the built-in CLI context. It does not describe local inference. A local target
 can call remote inference endpoints.
 
+Run `skillmux --help` for the full command list, or `skillmux <command> --help`
+(`-h` also works) for one command's usage and flags.
+
 For task-oriented workflows, start with [Getting started](getting-started.md)
 or [Managing skills](skill-management.md).
 

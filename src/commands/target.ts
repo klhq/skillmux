@@ -63,14 +63,16 @@ export async function runTarget(
       !(await confirmIfNeeded({
         confirmed: args.includes("--yes"),
         isJson: options.isJson,
-        prompt: `Adopt target ${name} at ${path}?`,
+        prompt: `adopt target ${name} at ${path}?`,
         nonInteractiveError:
           "skillmux target add requires --yes when run non-interactively",
       }))
     )
       return;
     applyInit(vaultPath, [{ name, dir: path }]);
-    console.log(`target "${name}" added at ${path}`);
+    emitSuccess({ isJson: options.isJson }, { name, dir: path }, () =>
+      console.log(`target "${name}" added at ${path}`),
+    );
     return;
   }
 
@@ -84,24 +86,34 @@ export async function runTarget(
       );
     }
     if (options.dryRun) {
-      console.log(`target remove: ${name} (files preserved, dry-run)`);
+      emitSuccess(
+        { isJson: options.isJson },
+        { name, preserved_dir: manifest.targets[name]!.dir },
+        () => console.log(`target remove: ${name} (files preserved, dry-run)`),
+      );
       return;
     }
     if (
       !(await confirmIfNeeded({
         confirmed: args.includes("--yes"),
         isJson: options.isJson,
-        prompt: `Remove target ${name} from the manifest and preserve its files?`,
+        prompt: `remove target ${name} from the manifest and preserve its files?`,
         nonInteractiveError:
           "skillmux target remove requires --yes when run non-interactively",
       }))
     )
       return;
     const targets = { ...manifest.targets };
+    const removedDir = manifest.targets[name]!.dir;
     delete targets[name];
     writeManifestAtomic(manifestPath, { ...manifest, targets });
-    console.log(
-      `target "${name}" removed from the manifest; files preserved at ${manifest.targets[name]!.dir}`,
+    emitSuccess(
+      { isJson: options.isJson },
+      { name, preserved_dir: removedDir },
+      () =>
+        console.log(
+          `target "${name}" removed from the manifest; files preserved at ${removedDir}`,
+        ),
     );
     return;
   }

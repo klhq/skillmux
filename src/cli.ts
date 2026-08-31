@@ -288,6 +288,13 @@ async function main() {
     return;
   }
 
+  if (
+    (rawArgv.includes("--help") || rawArgv.includes("-h")) &&
+    printCommandHelp(command)
+  ) {
+    return;
+  }
+
   try {
     resolvedTarget = await resolveContext({
       context: flagContext,
@@ -592,6 +599,163 @@ async function handleError(
   }
 }
 
+const COMMAND_HELP: Record<string, string> = {
+  context: `context: manage named CLI contexts for remote administration
+
+usage:
+  skillmux context list
+  skillmux context current
+  skillmux context add <name> --server <url> [--token-env <env_name>]
+  skillmux context use <name>
+  skillmux context remove <name>`,
+
+  config: `config: inspect or update server/machine configuration
+
+usage:
+  skillmux config init --vault <path> --yes
+  skillmux config show [--sources]
+  skillmux config get <key>
+  skillmux config set <key> <value> [--dry-run]
+  skillmux config validate
+  skillmux config diff
+  skillmux config status
+
+Accepts --context <name> / --server <url> to target a remote deployment.`,
+
+  completions: `completions: generate a shell completion script
+
+usage:
+  skillmux completions <bash|zsh|fish>`,
+
+  serve: `serve: start the MCP server
+
+usage:
+  skillmux serve [--transport stdio|http] [--port <port>] [--stats-port <port>]
+
+--transport defaults to stdio. --stats-port exposes GET /health and GET /stats
+alongside a stdio transport without opening the full HTTP surface.`,
+
+  index: `index: rebuild the local retrieval index and backfill embeddings
+
+usage:
+  skillmux index`,
+
+  sync: `sync: apply the manifest to native client target directories
+
+usage:
+  skillmux sync [--dry-run] [--restore-monolith] [--install-hook] [--yes] [--json]`,
+
+  init: `init: guided setup for native skill management
+
+usage:
+  skillmux init [--client <name>...] [--target <name>...] [--dir <dir>]
+                [--vault <path>] [--core <skill_id>...]
+                [--migrate-full-vault] [--no-instructions] [--no-sync]
+                [--interactive|--yes|--dry-run] [--json]
+
+clients: claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
+         antigravity, goose, hermes, skillmux-mcp
+targets: agent-skills, claude-code, codex, custom`,
+
+  project: `project: manage project-scoped skill pins and sync groups
+
+usage:
+  skillmux project init [path] [--name <group>] [--skill <skill_id>...]
+                [--client <name>...] [--target <name>...] [--no-sync]
+                [--interactive|--yes|--dry-run] [--json]
+  skillmux project list
+  skillmux project show <group>
+  skillmux project add-path <group> [path] --yes
+  skillmux project remove-path <group> [path] --yes
+  skillmux project pin <group> <skill_id>... --yes
+  skillmux project unpin <group> <skill_id>... --yes
+  skillmux project attach <group> (--client <id>... | --target <name>...) --yes
+  skillmux project detach <group> (--client <id>... | --target <name>...) --yes`,
+
+  target: `target: manage native sync target directories
+
+usage:
+  skillmux target list
+  skillmux target show <name>
+  skillmux target add <name> --dir <dir> --yes
+  skillmux target remove <name> --yes`,
+
+  core: `core: pin or unpin core-tier skills
+
+usage:
+  skillmux core pin <skill_id>... --yes
+  skillmux core unpin <skill_id>... --yes`,
+
+  report: `report: show routing/fetch-outcome audit statistics
+
+usage:
+  skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]`,
+
+  audit: `audit: prune the audit database
+
+usage:
+  skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
+
+Accepts --context <name> / --server <url> to prune a remote deployment's audit db.`,
+
+  scan: `scan: check the vault for install-time or integrity issues
+
+usage:
+  skillmux scan [path] [--format text|json] [--fail-on low|medium|high] [--json]`,
+
+  install: `install: install a skill from a git source
+
+usage:
+  skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--allow-local-source] [--json]`,
+
+  outdated: `outdated: list installed skills with a newer upstream version
+
+usage:
+  skillmux outdated [--allow-local-source] [--json]`,
+
+  update: `update: update one or all skills to their latest source version
+
+usage:
+  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high] [--json]`,
+
+  eval: `eval: run retrieval evaluation against the holdout set
+
+usage:
+  skillmux eval [--json]
+  skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
+
+Accepts --context <name> / --server <url> to evaluate a remote deployment.`,
+
+  doctor: `doctor: check server/environment readiness
+
+usage:
+  skillmux doctor [--json]
+
+Accepts --context <name> / --server <url> to check a remote deployment.`,
+
+  skill: `skill: inspect local vault skill resolution
+
+usage:
+  skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)`,
+
+  "local-vault": `local-vault: register an additional local vault checkout
+
+usage:
+  skillmux local-vault init <path> --yes`,
+
+  models: `models: manage local embedding model downloads
+
+usage:
+  skillmux models download`,
+};
+
+function printCommandHelp(command: string): boolean {
+  const help = COMMAND_HELP[command];
+  if (!help) return false;
+  console.log(help);
+  return true;
+}
+
 function printHelp(): void {
   if (process.env.RUNNING_IN_DOCKER === "true") {
     console.log(`Skillmux server image
@@ -642,7 +806,9 @@ Operations:
 
 Commands:
   serve, index, sync, init, project, target, core, report, audit, scan, install, outdated, update,
-  eval, doctor, skill, local-vault, config, models, context, completions`);
+  eval, doctor, skill, local-vault, config, models, context, completions
+
+Run "skillmux <command> --help" for a command's full usage.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -864,7 +1030,7 @@ async function runLocalVaultInit(
     !(await confirmIfNeeded({
       confirmed: args.includes("--yes"),
       isJson: options.isJson,
-      prompt: `Mark ${expanded} as a local_vault (role: local_vault, vault_path: ${expandHome(config.vault_path)})?`,
+      prompt: `mark ${expanded} as a local_vault (role: local_vault, vault_path: ${expandHome(config.vault_path)})?`,
       nonInteractiveError:
         "skillmux local-vault init requires --yes when run non-interactively",
     }))
@@ -896,19 +1062,22 @@ function parseSyncArgs(args: string[]): {
   restoreMonolith: boolean;
   installHook: boolean;
   yes: boolean;
+  isJson: boolean;
 } {
   let dryRun = false;
   let restoreMonolith = false;
   let installHook = false;
   let yes = false;
+  let isJson = false;
   for (const arg of args) {
     if (arg === "--dry-run") dryRun = true;
     else if (arg === "--restore-monolith") restoreMonolith = true;
     else if (arg === "--install-hook") installHook = true;
     else if (arg === "--yes") yes = true;
+    else if (arg === "--json") isJson = true;
     else throw new Error(`unknown sync option: ${arg}`);
   }
-  return { dryRun, restoreMonolith, installHook, yes };
+  return { dryRun, restoreMonolith, installHook, yes, isJson };
 }
 
 /**
@@ -921,68 +1090,108 @@ function parseSyncArgs(args: string[]): {
  * an as-yet-unseen directory therefore requires either `--yes` or an interactive
  * confirmation; once the directory exists, later syncs never hit this path again.
  */
-async function confirmNewSyncTarget(label: string, dir: string, yes: boolean): Promise<boolean> {
+async function confirmNewSyncTarget(
+  label: string,
+  dir: string,
+  yes: boolean,
+  isJson: boolean,
+): Promise<boolean> {
   if (yes) return true;
   if (!isInteractive()) {
-    console.log(
-      `${label}: skipped — ${dir} does not exist yet; creating it requires approval. Re-run "skillmux sync --yes", or run "skillmux sync" interactively, once you've confirmed this target is expected.`,
-    );
+    if (!isJson) {
+      console.log(
+        `${label}: skipped — ${dir} does not exist yet; creating it requires approval. Re-run "skillmux sync --yes", or run "skillmux sync" interactively, once you've confirmed this target is expected.`,
+      );
+    }
     return false;
   }
   return confirmAction(`${label}: create new target directory ${dir}?`);
 }
 
+interface SyncTargetSummary {
+  target: string;
+  status:
+    | "synced"
+    | "skipped_host_mismatch"
+    | "restored"
+    | "not_owned"
+    | "skipped_not_approved";
+  added?: string[];
+  removed?: string[];
+  skipped?: string[];
+  projects?: {
+    group: string;
+    pin_dir: string;
+    added: string[];
+    removed: string[];
+    skipped: string[];
+  }[];
+}
+
 async function runSync(args: string[]): Promise<void> {
-  const { dryRun, restoreMonolith, installHook, yes } = parseSyncArgs(args);
+  const { dryRun, restoreMonolith, installHook, yes, isJson } = parseSyncArgs(args);
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
+  const log = (line: string) => {
+    if (!isJson) console.log(line);
+  };
+  const warn = (line: string) => {
+    if (!isJson) console.error(`warning: ${line}`);
+  };
 
+  let hookInstalled: boolean | undefined;
   if (installHook) {
     const result = installPostMergeHook(vaultPath);
-    console.log(
-      result.installed
-        ? "installed post-merge hook"
-        : "post-merge hook already installed",
-    );
+    hookInstalled = result.installed;
+    log(result.installed ? "installed post-merge hook" : "post-merge hook already installed");
   }
 
   const manifestPath = resolveManifestPath(vaultPath);
   if (!manifestPath) {
-    console.log("no skillmux.toml found at vault root — nothing to sync");
+    emitSuccess({ isJson }, { hook_installed: hookInstalled ?? null, targets: [] }, () =>
+      console.log("no skillmux.toml found at vault root — nothing to sync"),
+    );
     return;
   }
 
   const manifest = parseManifest(await Bun.file(manifestPath).text());
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   const { notes } = validateManifest(manifest, vaultPath, localVaultPaths);
-  for (const note of notes) console.log(`note: ${note}`);
+  for (const note of notes) log(`note: ${note}`);
 
   const currentHost = hostname();
+  const targetSummaries: SyncTargetSummary[] = [];
   for (const [targetName, target] of Object.entries(manifest.targets)) {
     if (target.host !== undefined && target.host !== currentHost) {
-      console.log(
+      log(
         `${targetName}: skipped (host ${target.host} does not match current host ${currentHost})`,
       );
+      targetSummaries.push({ target: targetName, status: "skipped_host_mismatch" });
       continue;
     }
     const targetDir = expandHome(target.dir);
 
     if (restoreMonolith) {
       const result = restoreMonolithTarget(targetDir, vaultPath);
-      console.log(
+      log(
         result.restored
           ? `${targetName}: restored to a vault symlink`
           : `${targetName}: not owned by skillmux, left untouched`,
       );
+      targetSummaries.push({
+        target: targetName,
+        status: result.restored ? "restored" : "not_owned",
+      });
       continue;
     }
 
     if (!dryRun && !existsSync(targetDir)) {
-      const approved = await confirmNewSyncTarget(targetName, targetDir, yes);
+      const approved = await confirmNewSyncTarget(targetName, targetDir, yes, isJson);
       if (!approved) {
         if (isInteractive()) {
-          console.log(`${targetName}: skipped — creating ${targetDir} was not approved`);
+          log(`${targetName}: skipped — creating ${targetDir} was not approved`);
         }
+        targetSummaries.push({ target: targetName, status: "skipped_not_approved" });
         continue;
       }
     }
@@ -998,14 +1207,17 @@ async function runSync(args: string[]): Promise<void> {
       },
       { dryRun },
     );
-    console.log(
-      `${targetName}: +${result.added.length} -${result.removed.length}${suffix}`,
-    );
+    log(`${targetName}: +${result.added.length} -${result.removed.length}${suffix}`);
     if (result.skipped.length > 0) {
-      console.log(
-        `  warning: refused to sync ${result.skipped.join(", ")} — skill directory contains a symlink`,
-      );
+      warn(`refused to sync ${result.skipped.join(", ")} — skill directory contains a symlink`);
     }
+    const summary: SyncTargetSummary = {
+      target: targetName,
+      status: "synced",
+      added: result.added,
+      removed: result.removed,
+      skipped: result.skipped,
+    };
 
     if (target.project_groups.length > 0) {
       const allGroups = manifest.project ?? {};
@@ -1022,7 +1234,7 @@ async function runSync(args: string[]): Promise<void> {
             approvedPaths.push(path);
             continue;
           }
-          const approved = await confirmNewSyncTarget(`${targetName}/${groupName}`, pinDir, yes);
+          const approved = await confirmNewSyncTarget(`${targetName}/${groupName}`, pinDir, yes, isJson);
           if (approved) approvedPaths.push(path);
         }
         projectGroups[groupName] = { ...group, paths: approvedPaths };
@@ -1031,18 +1243,32 @@ async function runSync(args: string[]): Promise<void> {
         { vaultPath, targetDir, targetName, projectGroups, localVaultPaths },
         { dryRun },
       );
+      summary.projects = projectResults.map((projectResult) => ({
+        group: projectResult.group,
+        pin_dir: projectResult.pinDir,
+        added: projectResult.added,
+        removed: projectResult.removed,
+        skipped: projectResult.skipped,
+      }));
       for (const projectResult of projectResults) {
-        console.log(
+        log(
           `  ${projectResult.group} -> ${projectResult.pinDir}: +${projectResult.added.length} -${projectResult.removed.length}${suffix}`,
         );
         if (projectResult.skipped.length > 0) {
-          console.log(
-            `    warning: refused to sync ${projectResult.skipped.join(", ")} — skill directory contains a symlink`,
+          warn(
+            `refused to sync ${projectResult.skipped.join(", ")} — skill directory contains a symlink`,
           );
         }
       }
     }
+    targetSummaries.push(summary);
   }
+
+  emitSuccess(
+    { isJson },
+    { hook_installed: hookInstalled ?? null, notes, targets: targetSummaries },
+    () => {},
+  );
 }
 
 function parseInitArgs(args: string[]): {
@@ -1499,23 +1725,23 @@ async function runInit(
           `  core: ${plannedManifest.core.skills.join(", ") || "(none)"}`,
         );
         console.log(`  sync: ${sync ? "yes" : "no"}`);
-        if (!(await confirmAction("Apply this setup plan?"))) {
+        if (!(await confirmAction("apply this setup plan?"))) {
           console.log("init cancelled");
           return;
         }
       } else {
         const prompts = [
           ...confirmedTargets.map(
-            (target) => `Adopt ${target.name} at ${target.dir}?`,
+            (target) => `adopt ${target.name} at ${target.dir}?`,
           ),
           ...instructionPlan.changes
             .filter((change) => change.status !== "unchanged")
             .map(
               (change) => `${change.status} instruction file ${change.path}?`,
             ),
-          ...(hasConfigWrite ? [`Create machine config ${configPath}?`] : []),
+          ...(hasConfigWrite ? [`create machine config ${configPath}?`] : []),
           ...(selectedCoreSkillIds.length > 0
-            ? [`Pin core skills: ${selectedCoreSkillIds.join(", ")}?`]
+            ? [`pin core skills: ${selectedCoreSkillIds.join(", ")}?`]
             : []),
         ];
         for (const prompt of prompts) {

@@ -272,9 +272,9 @@ describe("skillmux config status CLI", () => {
     const result = await runCli("config", "status");
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Runtime: not_running");
-    expect(result.stdout).toContain("Deployment runtime: host");
-    expect(result.stdout).toContain("Image variant: none");
+    expect(result.stdout).toContain("runtime: not_running");
+    expect(result.stdout).toContain("deployment runtime: host");
+    expect(result.stdout).toContain("image variant: none");
   });
 });
 
@@ -285,6 +285,31 @@ describe("skillmux version CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toBe(packageJson.version);
     expect(result.stderr).toBe("");
+  });
+});
+
+describe("skillmux command --help", () => {
+  test("prints command-scoped usage instead of running the command", async () => {
+    const result = await runCli("target", "--help");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("target: manage native sync target directories");
+    expect(result.stdout).toContain("skillmux target add <name> --dir <dir> --yes");
+    expect(result.stderr).toBe("");
+  });
+
+  test("-h is accepted as an alias for --help", async () => {
+    const result = await runCli("doctor", "-h");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("doctor: check server/environment readiness");
+  });
+
+  test("falls through to the normal unknown-command error when no help entry exists", async () => {
+    const result = await runCli("frobnicate", "--help");
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("usage: skillmux <serve|index|sync");
   });
 });
 
@@ -608,6 +633,34 @@ describe("skillmux sync CLI", () => {
     rmSync(targetDir, { recursive: true, force: true });
   });
 
+  test("--json wraps the sync result in a schema_version:1 envelope instead of erroring", async () => {
+    const targetDir = join(tmp, "sync-target-json");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[targets.test]`,
+        `dir = "${targetDir}"`,
+        `host = "${hostname()}"`,
+      ].join("\n"),
+    );
+
+    const result = await runCli("sync", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.targets[0].target).toBe("test");
+    expect(parsed.data.targets[0].status).toBe("synced");
+    expect(parsed.data.targets[0].added).toContain("first-skill");
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
   test("security: refuses to create a new target directory non-interactively without --yes, then creates it once approved", async () => {
     const targetDir = join(tmp, "sync-target-unapproved");
     writeFileSync(
@@ -733,6 +786,20 @@ describe("skillmux core CLI", () => {
     expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain(
       `skills = ["first-skill", "second-skill"]`,
     );
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("core pin <skill_id> --yes --json prints a schema_version:1 envelope, not plain text", async () => {
+    writeManifest(["first-skill"]);
+
+    const result = await runCli("core", "pin", "second-skill", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.skill_ids).toEqual(["second-skill"]);
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
@@ -1045,6 +1112,34 @@ describe("skillmux project CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("project add-path --yes --json prints a schema_version:1 envelope, not plain text", async () => {
+    const projectPath = mkdtempSync(
+      join(tmpdir(), "skillmux-project-add-path-json-"),
+    );
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[project.demo]\npaths = ["/work/one"]\nskills = []\n\n[targets.test]\ndir = "~/.agents/skills"\n`,
+    );
+
+    const result = await runCli(
+      "project",
+      "add-path",
+      "demo",
+      projectPath,
+      "--yes",
+      "--json",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.group).toBe("demo");
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("project pin accepts multiple skill IDs in one command", async () => {
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
@@ -1148,6 +1243,30 @@ describe("skillmux target CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("target add --yes --json prints a schema_version:1 envelope, not plain text", async () => {
+    const targetPath = join(tmp, "custom-target-json");
+    writeFileSync(join(vaultDir, "skillmux.toml"), `[core]\nskills = []\n`);
+
+    const result = await runCli(
+      "target",
+      "add",
+      "custom-agent-json",
+      "--dir",
+      targetPath,
+      "--yes",
+      "--json",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.name).toBe("custom-agent-json");
+
+    rmSync(targetPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("target remove deletes only manifest configuration and preserves files", async () => {
     const targetPath = join(tmp, "preserved-target");
     mkdirSync(targetPath, { recursive: true });
@@ -1164,6 +1283,26 @@ describe("skillmux target CLI", () => {
       "[targets.custom-agent]",
     );
     expect(readFileSync(join(targetPath, "keep.txt"), "utf8")).toBe("keep");
+
+    rmSync(targetPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target remove --yes --json prints a schema_version:1 envelope, not plain text", async () => {
+    const targetPath = join(tmp, "preserved-target-json");
+    mkdirSync(targetPath, { recursive: true });
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.custom-agent]\ndir = "${targetPath}"\nproject_groups = []\n`,
+    );
+
+    const result = await runCli("target", "remove", "custom-agent", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.name).toBe("custom-agent");
 
     rmSync(targetPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });

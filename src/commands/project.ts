@@ -184,7 +184,11 @@ export async function runProject(
       config.local_vault_paths.map(expandHome),
     );
     if (options.dryRun) {
-      console.log(`${subCommand}: [project.${group}] ${projectPath} (dry-run)`);
+      emitSuccess(
+        { isJson: options.isJson },
+        { subcommand: subCommand, group, path: projectPath },
+        () => console.log(`${subCommand}: [project.${group}] ${projectPath} (dry-run)`),
+      );
       return;
     }
     if (
@@ -197,7 +201,11 @@ export async function runProject(
     )
       return;
     writeManifestAtomic(manifestPath, updated);
-    console.log(`${subCommand}: [project.${group}] ${projectPath}`);
+    emitSuccess(
+      { isJson: options.isJson },
+      { subcommand: subCommand, group, path: projectPath },
+      () => console.log(`${subCommand}: [project.${group}] ${projectPath}`),
+    );
     return;
   }
   if (subCommand === "pin" || subCommand === "unpin") {
@@ -224,8 +232,13 @@ export async function runProject(
       config.local_vault_paths.map(expandHome),
     );
     if (options.dryRun) {
-      console.log(
-        `${subCommand}: [project.${group}] ${skills.join(", ")} (dry-run)`,
+      emitSuccess(
+        { isJson: options.isJson },
+        { subcommand: subCommand, group, skill_ids: skills },
+        () =>
+          console.log(
+            `${subCommand}: [project.${group}] ${skills.join(", ")} (dry-run)`,
+          ),
       );
       return;
     }
@@ -239,7 +252,11 @@ export async function runProject(
     )
       return;
     writeManifestAtomic(manifestPath, updated);
-    console.log(`${subCommand}: [project.${group}] ${skills.join(", ")}`);
+    emitSuccess(
+      { isJson: options.isJson },
+      { subcommand: subCommand, group, skill_ids: skills },
+      () => console.log(`${subCommand}: [project.${group}] ${skills.join(", ")}`),
+    );
     return;
   }
   if (subCommand === "attach" || subCommand === "detach") {
@@ -283,8 +300,13 @@ export async function runProject(
       config.local_vault_paths.map(expandHome),
     );
     if (options.dryRun) {
-      console.log(
-        `${subCommand}: [project.${group}] ${targets.join(", ")} (dry-run)`,
+      emitSuccess(
+        { isJson: options.isJson },
+        { subcommand: subCommand, group, targets },
+        () =>
+          console.log(
+            `${subCommand}: [project.${group}] ${targets.join(", ")} (dry-run)`,
+          ),
       );
       return;
     }
@@ -298,7 +320,11 @@ export async function runProject(
     )
       return;
     writeManifestAtomic(manifestPath, updated);
-    console.log(`${subCommand}: [project.${group}] ${targets.join(", ")}`);
+    emitSuccess(
+      { isJson: options.isJson },
+      { subcommand: subCommand, group, targets },
+      () => console.log(`${subCommand}: [project.${group}] ${targets.join(", ")}`),
+    );
     return;
   }
   if (subCommand !== "init") throw new Error(PROJECT_INIT_USAGE);
@@ -381,7 +407,7 @@ export async function runProject(
       }
       if (
         !(await confirmAction(
-          `Apply project setup for ${request.name} at ${request.path}?`,
+          `apply project setup for ${request.name} at ${request.path}?`,
         ))
       ) {
         console.log("project setup cancelled");
