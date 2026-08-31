@@ -1,4 +1,4 @@
-import type { ResolvedTarget } from "./context";
+import type { ResolvedContext } from "./context";
 
 export interface JsonEnvelope<T = any> {
   schema_version: 1;
@@ -10,7 +10,7 @@ export interface JsonEnvelope<T = any> {
 
 export function formatJsonEnvelope<T>(opts: {
   ok: boolean;
-  target: ResolvedTarget | string | { name: string; server: string };
+  target: ResolvedContext | string | { name: string; server: string };
   data?: T;
   error?: { code: string; message: string; details?: any } | null;
 }): JsonEnvelope<T> {
@@ -51,7 +51,7 @@ export class CliError extends Error {
 }
 
 export function emitSuccess<T>(
-  ctx: { isJson: boolean; target?: ResolvedTarget | string | { name: string; server: string } },
+  ctx: { isJson: boolean; target?: ResolvedContext | string | { name: string; server: string } },
   data: T,
   renderText: () => void,
 ): void {
@@ -119,7 +119,7 @@ export function isInteractive(
   return stdoutIsTTY === true && env.TERM !== "dumb";
 }
 
-export function renderTargetBanner(target: ResolvedTarget): void {
+export function renderTargetBanner(target: ResolvedContext): void {
   if (!isInteractive()) return;
   if (target.type === "local") {
     console.log(`Target: local`);

@@ -1,6 +1,6 @@
 import { expandHome, migrateLegacyPaths, resolveConfigPath } from "../config";
 import { type TargetAdapter } from "../adapters";
-import { type ResolvedTarget } from "../context";
+import { type ResolvedContext } from "../context";
 import { applyConfigInit, planConfigInit, type ConfigInitPlan } from "../setup";
 import { emitSuccess, isInteractive, renderTargetBanner } from "../output";
 import { confirmAction } from "./shared";
@@ -40,7 +40,7 @@ export async function handleConfigCommand(
   adapter: TargetAdapter,
   sub: string,
   args: string[],
-  ctx: { target: ResolvedTarget; isJson: boolean; dryRun: boolean },
+  ctx: { target: ResolvedContext; isJson: boolean; dryRun: boolean },
 ) {
   if (sub === "init") {
     let vaultPath: string | undefined;

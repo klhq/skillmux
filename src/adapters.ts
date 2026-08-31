@@ -14,7 +14,7 @@ import {
   type ConfigStatusResponse,
   type SetConfigResult,
 } from "./config-service";
-import type { ResolvedTarget } from "./context";
+import type { ResolvedContext } from "./context";
 import type { Clients, Config } from "./types";
 
 export interface Capabilities {
@@ -31,6 +31,10 @@ export interface TargetAdapterOptions {
   clients?: Clients;
 }
 
+/**
+ * Target adapter: `local` = this CLI process has the Skillmux runtime (vault, index,
+ * audit db, embeddings/reranker clients) in-process; `remote` = thin network client to an external process.
+ */
 export interface TargetAdapter {
   getCapabilities(): Promise<Capabilities>;
   getConfigShow(): Promise<{ effective: Config; sources: Record<string, string>; active_revision: string }>;
@@ -283,7 +287,7 @@ export class RemoteAdapter implements TargetAdapter {
   }
 }
 
-export function createTargetAdapter(target: ResolvedTarget, opts?: TargetAdapterOptions): TargetAdapter {
+export function createTargetAdapter(target: ResolvedContext, opts?: TargetAdapterOptions): TargetAdapter {
   if (target.type === "local") {
     return new LocalAdapter(opts);
   } else {
