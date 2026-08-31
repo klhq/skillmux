@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
-import { isLocalFileUrl, remoteHeadCommit } from "../install";
+import { assertHostAllowed, isLocalFileUrl, remoteHeadCommit } from "../install";
 import { emitSuccess } from "../output";
 import { readSkillOrigin } from "../provenance";
 import { SKILL_ID_PATTERN } from "../vault";
@@ -24,7 +24,7 @@ function vaultSkillIds(vaultPath: string): string[] {
 
 export async function checkOutdated(
   vaultPath: string,
-  options: { allowLocalSource?: boolean } = {},
+  options: { allowLocalSource?: boolean; allowedHosts?: string[] } = {},
 ): Promise<OutdatedCheckResult[]> {
   const results: OutdatedCheckResult[] = [];
   for (const skillId of vaultSkillIds(vaultPath)) {
@@ -64,6 +64,7 @@ export async function checkOutdated(
     let status: OutdatedCheckResult["status"];
     let reason: string | null = null;
     try {
+      assertHostAllowed(origin.source_url, options.allowedHosts);
       remoteCommit = await remoteHeadCommit(origin.source_url);
       status = remoteCommit === origin.commit ? "up_to_date" : "outdated";
     } catch (error) {
@@ -94,8 +95,9 @@ export async function runOutdated(args: string[], options: { isJson: boolean }):
     throw new Error(`unknown outdated option: ${arg}`);
   }
 
-  const vaultPath = expandHome((await loadConfig()).vault_path);
-  const skills = await checkOutdated(vaultPath, { allowLocalSource });
+  const config = await loadConfig();
+  const vaultPath = expandHome(config.vault_path);
+  const skills = await checkOutdated(vaultPath, { allowLocalSource, allowedHosts: config.egress?.allowed_hosts });
   const checksFailed = skills.filter((s) => s.status === "check_failed").length;
   process.exitCode = checksFailed > 0 ? 1 : 0;
 

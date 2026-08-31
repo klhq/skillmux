@@ -219,6 +219,21 @@ Inside the server image, only read-only `config show`, `get`, `validate`,
 host CLI; the image returns `CONTAINER_COMMAND_UNSUPPORTED` with the exact host
 command to run. See [Deployment](deployment.md#container-command-contract).
 
+## Egress allowlist
+
+```toml
+[egress]
+allowed_hosts = ["github.com"]
+```
+
+Unset by default, matching Skillmux's opt-in security posture elsewhere.
+When set, `skillmux install` and `skillmux update` refuse to fetch from any
+git host not on the list, checked before the network call — see
+[Managing skills](skill-management.md#restrict-which-hosts-install-and-update-can-reach).
+`file://` sources are exempt (no network egress occurs; they're already
+gated by `--allow-local-source`), and host matching is exact and
+case-insensitive, with no glob support.
+
 ## Tiers and the manifest
 
 `skillmux init` and `skillmux sync` manage native delivery by pinning selected

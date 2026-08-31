@@ -39,6 +39,7 @@ import {
   surfaceCandidates,
 } from "./init";
 import {
+  assertHostAllowed,
   cloneToTemp,
   deriveRepoName,
   installIntoVault,
@@ -1697,6 +1698,8 @@ async function runInstall(
       `"${repo}" is a local (file://) source — pass --allow-local-source to install from it`,
     );
   }
+  const config = await loadConfig();
+  assertHostAllowed(source.url, config.egress?.allowed_hosts);
   const cloneDir = await cloneToTemp(source.url);
   try {
     const resolved = resolveSkillDir(
@@ -1718,7 +1721,7 @@ async function runInstall(
       return;
     }
 
-    const vaultPath = expandHome((await loadConfig()).vault_path);
+    const vaultPath = expandHome(config.vault_path);
     if (dryRun) {
       const plannedPath = join(vaultPath, resolved.skillId);
       emitSuccess(

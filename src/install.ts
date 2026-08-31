@@ -45,6 +45,21 @@ export function resolveRepoSource(repo: string): RepoSource {
   return rest.length > 0 ? { url, skillPath: rest.join("/") } : { url };
 }
 
+function extractHost(url: string): string {
+  const scpMatch = url.match(/^[^/\s]+@([^/\s]+):/);
+  if (scpMatch) return scpMatch[1]!;
+  return new URL(url).hostname;
+}
+
+export function assertHostAllowed(url: string, allowedHosts: string[] | undefined): void {
+  if (!allowedHosts || allowedHosts.length === 0) return;
+  if (isLocalFileUrl(url)) return;
+  const host = extractHost(url);
+  if (!allowedHosts.map((h) => h.toLowerCase()).includes(host.toLowerCase())) {
+    throw new Error(`refusing to fetch from host "${host}" — not in [egress] allowed_hosts`);
+  }
+}
+
 export function deriveRepoName(url: string): string {
   const cleaned = url.replace(/\.git$/, "");
   const segment = cleaned.split(/[/:]/).filter(Boolean).pop();

@@ -2,6 +2,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
 import {
+  assertHostAllowed,
   cloneToTemp,
   installIntoVault,
   isLocalFileUrl,
@@ -37,6 +38,7 @@ async function resolveCandidateOrigins(
   vaultPath: string,
   skillId: string | undefined,
   allowLocalSource: boolean,
+  allowedHosts: string[] | undefined,
 ): Promise<{ skillId: string; origin: SkillOrigin }[]> {
   if (skillId) {
     // skillId (the CLI's positional <skill-id>) is joined straight into vaultPath
@@ -65,7 +67,7 @@ async function resolveCandidateOrigins(
     }
     return [{ skillId, origin }];
   }
-  const outdated = await checkOutdated(vaultPath, { allowLocalSource });
+  const outdated = await checkOutdated(vaultPath, { allowLocalSource, allowedHosts });
   return outdated
     .filter((result) => result.status === "outdated")
     .map((result) => ({ skillId: result.skill_id, origin: readSkillOrigin(join(vaultPath, result.skill_id))! }));
@@ -76,6 +78,7 @@ async function buildPlan(
   candidates: { skillId: string; origin: SkillOrigin }[],
   failOn: ScanSeverity | undefined,
   force: boolean,
+  allowedHosts: string[] | undefined,
 ): Promise<UpdatePlanItem[]> {
   const plan: UpdatePlanItem[] = [];
   for (const { skillId, origin } of candidates) {
@@ -118,6 +121,7 @@ async function buildPlan(
       continue;
     }
 
+    assertHostAllowed(origin.source_url, allowedHosts);
     const cloneDir = await cloneToTemp(origin.source_url);
     const resolved = resolveSkillDir(cloneDir, skillId, origin.skill_path);
     const base = {
@@ -206,10 +210,11 @@ function parseUpdateArgs(args: string[]): {
 
 export async function runUpdate(args: string[], options: { isJson: boolean }): Promise<void> {
   const { skillId, yes, dryRun, force, failOn, allowLocalSource } = parseUpdateArgs(args);
-  const vaultPath = expandHome((await loadConfig()).vault_path);
+  const config = await loadConfig();
+  const vaultPath = expandHome(config.vault_path);
 
-  const candidates = await resolveCandidateOrigins(vaultPath, skillId, allowLocalSource);
-  const plan = await buildPlan(vaultPath, candidates, failOn, force);
+  const candidates = await resolveCandidateOrigins(vaultPath, skillId, allowLocalSource, config.egress?.allowed_hosts);
+  const plan = await buildPlan(vaultPath, candidates, failOn, force, config.egress?.allowed_hosts);
   try {
     const toWrite = plan.filter((item) => item.kind === "update");
 
