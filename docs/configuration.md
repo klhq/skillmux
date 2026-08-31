@@ -223,6 +223,30 @@ Inside the server image, only read-only `config show`, `get`, `validate`,
 host CLI; the image returns `CONTAINER_COMMAND_UNSUPPORTED` with the exact host
 command to run. See [Deployment](deployment.md#container-command-contract).
 
+## Secret redaction and the admin audit trail
+
+Skillmux redacts resolved credential values before they can reach CLI
+output or server logs. Every `*_env`-suffixed config key (`api_key_env`,
+`token_env`, `auth_token_env`) names an environment variable rather than
+storing the secret itself; when an error message would otherwise embed that
+variable's current value — or a credential typed directly into a URL, e.g.
+`https://user:TOKEN@host/repo.git` for private-repo git auth — it is
+replaced with `[REDACTED]` before the CLI's error handler or the server's
+exception logging writes it out. This applies in both human and `--json`
+output and requires no configuration; with no `*_env` keys set, it is a
+no-op.
+
+Every successful `PATCH /admin/v1/config` mutation appends one row to an
+`admin_audit` table in the same `audit.sqlite3` used for fetch/resolve
+telemetry, recording the timestamp, changed keys with their old and new
+values, and the resulting config revision hash. A rejected request (stale
+`If-Match`, read-only config) writes no row. Each row's hash is chained to
+the previous row's hash, so any row deleted or edited outside the running
+server breaks the chain — detectable by walking the table and recomputing
+the chain, without a dedicated query endpoint. `admin_audit` rows are
+pruned by the same `[audit] retention_days` setting as the rest of
+`audit.sqlite3`; there is no separate retention config for admin history.
+
 ## Egress allowlist
 
 ```toml
