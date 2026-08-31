@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  assertHostAllowed,
   cloneToTemp,
   deriveRepoName,
   findSymlinks,
@@ -80,6 +81,37 @@ describe("resolveRepoSource", () => {
     const malicious = "--upload-pack=touch${IFS}PWNED@host:repo.git";
 
     expect(() => resolveRepoSource(malicious)).toThrow(/owner\/repo/);
+  });
+});
+
+describe("assertHostAllowed", () => {
+  test("AC2: throws naming the disallowed host when allowedHosts is set and the URL's host isn't in it", () => {
+    expect(() => assertHostAllowed("https://evil.example.com/x/y.git", ["github.com"])).toThrow(
+      /evil\.example\.com/,
+    );
+  });
+
+  test("AC1: does not throw when allowedHosts is unset (default, unrestricted)", () => {
+    expect(() => assertHostAllowed("https://evil.example.com/x/y.git", undefined)).not.toThrow();
+  });
+
+  test("AC3: does not throw when the URL's host is in allowedHosts", () => {
+    expect(() => assertHostAllowed("https://github.com/x/y.git", ["github.com"])).not.toThrow();
+  });
+
+  test("AC5: host matching is case-insensitive", () => {
+    expect(() => assertHostAllowed("https://GitHub.com/x/y.git", ["github.com"])).not.toThrow();
+  });
+
+  test("extracts the host from an scp-like ssh URL (git@host:path), same as install/update already accept", () => {
+    expect(() => assertHostAllowed("git@github.com:runkids/skillshare.git", ["gitlab.example.com"])).toThrow(
+      /github\.com/,
+    );
+    expect(() => assertHostAllowed("git@github.com:runkids/skillshare.git", ["github.com"])).not.toThrow();
+  });
+
+  test("never throws for a file:// source — it's local content, not network egress, and is already gated by --allow-local-source", () => {
+    expect(() => assertHostAllowed("file:///tmp/local-skill-repo", ["github.com"])).not.toThrow();
   });
 });
 
