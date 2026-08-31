@@ -53,6 +53,22 @@ from a local repo is a deliberate, interactive choice:
 skillmux install file:///path/to/local/repo --allow-local-source
 ```
 
+### Restrict which hosts install and update can reach
+
+By default `install` and `update` will fetch from any git host. Set
+`[egress] allowed_hosts` in your config to restrict both to an explicit list:
+
+```toml
+[egress]
+allowed_hosts = ["github.com", "git.example.com"]
+```
+
+A host not on the list is rejected before any network fetch, for both a new
+`skillmux install <source>` and a `skillmux update` re-fetching a skill's
+recorded origin. This doesn't apply to `file://` sources, which never leave
+the local filesystem and are already gated by `--allow-local-source` above.
+Leaving `allowed_hosts` unset (the default) leaves both commands unrestricted.
+
 ## Scan a vault or candidate
 
 ```sh
