@@ -309,4 +309,96 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     expect(text).not.toContain("api_key");
     expect(text).not.toContain("token");
   });
+
+  test("rejects a request body larger than the default max_body_bytes (1 MiB) with 413", async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "accept": "application/json, text/event-stream" },
+      body: "x".repeat(1_048_577),
+    });
+    expect(res.status).toBe(413);
+  });
+});
+
+describe("Resource bounds (runtime-resource-hardening)", () => {
+  const tmp2 = mkdtempSync(join(tmpdir(), "skillmux-resource-bounds-"));
+  const vaultDir2 = join(tmp2, "vault");
+  const configPath2 = join(tmp2, "config.toml");
+  let boundedPort: number;
+
+  beforeAll(async () => {
+    mkdirSync(join(vaultDir2, "resource-bounds-skill"), { recursive: true });
+    writeFileSync(
+      join(vaultDir2, "resource-bounds-skill", "SKILL.md"),
+      "---\nname: resource-bounds-skill\ndescription: Matches resource bound queries.\n---\n\n# resource-bounds-skill\n\nBody.\n",
+    );
+    writeFileSync(
+      configPath2,
+      [
+        `vault_path = "${vaultDir2}"`,
+        `state_dir = "${join(tmp2, "state")}"`,
+        `[recall]`,
+        `k_lexical = 50`,
+        `k_vector = 50`,
+        `k_rerank = 50`,
+        ``,
+        `[output]`,
+        `top_k = 10`,
+        `max_top_k = 50`,
+        ``,
+        `[inference]`,
+        `mode = "remote"`,
+        `timeout_ms = 200`,
+        ``,
+        `[inference.embedding]`,
+        `provider = "openai"`,
+        `endpoint = "http://127.0.0.1:9/v1/embeddings"`,
+        `model = "microsoft/harrier-oss-v1-0.6b"`,
+        `dimension = 1024`,
+        ``,
+        `[server]`,
+        `max_body_bytes = 100`,
+        `max_concurrent_requests = 0`,
+        ``,
+      ].join("\n"),
+    );
+
+    const previousConfig = process.env.SKILLMUX_CONFIG;
+    process.env.SKILLMUX_CONFIG = configPath2;
+
+    const origServe = Bun.serve;
+    let capturedPort = 0;
+    const mockServe = (options: any) => {
+      const s = origServe(options);
+      capturedPort = s.port!;
+      return s;
+    };
+    // @ts-ignore
+    Bun.serve = mockServe;
+    await startServer({ transport: "http", port: 0 });
+    boundedPort = capturedPort;
+    // @ts-ignore
+    Bun.serve = origServe;
+
+    if (previousConfig === undefined) delete process.env.SKILLMUX_CONFIG;
+    else process.env.SKILLMUX_CONFIG = previousConfig;
+  });
+
+  afterAll(() => {
+    rmSync(tmp2, { recursive: true, force: true });
+  });
+
+  test("honors a configured max_body_bytes below the default", async () => {
+    const res = await fetch(`http://127.0.0.1:${boundedPort}/`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "accept": "application/json, text/event-stream" },
+      body: "x".repeat(101),
+    });
+    expect(res.status).toBe(413);
+  });
+
+  test("rejects every request with 503 once max_concurrent_requests is 0", async () => {
+    const res = await fetch(`http://127.0.0.1:${boundedPort}/health`);
+    expect(res.status).toBe(503);
+  });
 });

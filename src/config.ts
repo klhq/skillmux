@@ -87,6 +87,8 @@ const configSchema = z.object({
       enabled: z.boolean(),
       token_env: z.string().min(1),
     }).strict().optional(),
+    max_body_bytes: z.number().int().positive().optional(),
+    max_concurrent_requests: z.number().int().min(0).optional(),
   }).strict().optional(),
   audit: z.object({
     retention_days: z.number().int().min(0).default(90),

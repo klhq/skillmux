@@ -101,6 +101,8 @@ export interface ServerConfig {
   hostname?: string;
   rate_limit?: RateLimitConfig;
   admin?: AdminConfig;
+  max_body_bytes?: number;
+  max_concurrent_requests?: number;
 }
 
 export interface ConfigPolicy {
