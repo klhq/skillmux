@@ -2644,6 +2644,30 @@ describe("skillmux outdated CLI", () => {
 
     rmSync(join(vaultDir, "fixture-outdated-localallow"), { recursive: true, force: true });
   });
+
+  test("security: reports check_failed instead of running git ls-remote against a host not in [egress] allowed_hosts", async () => {
+    const fixtureDir = join(tmp, "fixture-outdated-egress");
+    initFixtureRepo(fixtureDir, "---\nname: Egress\ndescription: d\n---\nbody");
+    await runCli("install", `file://${fixtureDir}`, "--allow-local-source");
+    const skillDir = join(vaultDir, "fixture-outdated-egress");
+    const originPath = join(skillDir, ".skillmux-origin");
+    const origin = JSON.parse(readFileSync(originPath, "utf-8"));
+    origin.source_url = "https://evil.example.com/x/y.git";
+    writeFileSync(originPath, JSON.stringify(origin));
+
+    const result = await runCliEnv(["outdated", "--allow-local-source", "--json"], {
+      SKILLMUX_CONFIG: withEgressConfig(["github.com"]),
+    });
+
+    expect(result.exitCode).toBe(1);
+    const parsed = JSON.parse(result.stdout);
+    const skill = parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "fixture-outdated-egress");
+    expect(skill.status).toBe("check_failed");
+    expect(skill.reason).toContain("evil.example.com");
+    expect(skill.reason).toContain("allowed_hosts");
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
 });
 
 describe("skillmux update CLI", () => {

@@ -38,6 +38,7 @@ async function resolveCandidateOrigins(
   vaultPath: string,
   skillId: string | undefined,
   allowLocalSource: boolean,
+  allowedHosts: string[] | undefined,
 ): Promise<{ skillId: string; origin: SkillOrigin }[]> {
   if (skillId) {
     // skillId (the CLI's positional <skill-id>) is joined straight into vaultPath
@@ -66,7 +67,7 @@ async function resolveCandidateOrigins(
     }
     return [{ skillId, origin }];
   }
-  const outdated = await checkOutdated(vaultPath, { allowLocalSource });
+  const outdated = await checkOutdated(vaultPath, { allowLocalSource, allowedHosts });
   return outdated
     .filter((result) => result.status === "outdated")
     .map((result) => ({ skillId: result.skill_id, origin: readSkillOrigin(join(vaultPath, result.skill_id))! }));
@@ -212,7 +213,7 @@ export async function runUpdate(args: string[], options: { isJson: boolean }): P
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
 
-  const candidates = await resolveCandidateOrigins(vaultPath, skillId, allowLocalSource);
+  const candidates = await resolveCandidateOrigins(vaultPath, skillId, allowLocalSource, config.egress?.allowed_hosts);
   const plan = await buildPlan(vaultPath, candidates, failOn, force, config.egress?.allowed_hosts);
   try {
     const toWrite = plan.filter((item) => item.kind === "update");
