@@ -34,6 +34,11 @@ import {
 export const metricsRegistry = new MetricsRegistry();
 export const readinessState = new ReadinessState();
 
+// runtime-resource-hardening: positive defaults so the http transport is
+// never unbounded by omission, unlike the opt-in [egress] allowlist.
+const DEFAULT_MAX_BODY_BYTES = 1_048_576; // 1 MiB
+const DEFAULT_MAX_CONCURRENT_REQUESTS = 100;
+
 export interface ServerHandle {
   port?: number;
   statsPort?: number;
@@ -341,6 +346,10 @@ export async function startServer(opts?: {
     const rateLimiter = new RateLimiter(
       config.server?.rate_limit || { enabled: false, requests_per_minute: 60 },
     );
+    const { ConcurrencyLimiter, releaseOnStreamClose } = await import("./concurrency-limiter");
+    const concurrencyLimiter = new ConcurrencyLimiter(
+      config.server?.max_concurrent_requests ?? DEFAULT_MAX_CONCURRENT_REQUESTS,
+    );
 
     const port = opts?.port ?? Number(process.env.PORT || 3000);
     const hostname = config.server?.hostname ?? "127.0.0.1";
@@ -348,49 +357,325 @@ export async function startServer(opts?: {
     const bunServer = Bun.serve({
       port,
       hostname,
+      maxRequestBodySize: config.server?.max_body_bytes ?? DEFAULT_MAX_BODY_BYTES,
       async fetch(req, server) {
-        const serverConfig = config.server || {
-          auth_enabled: false,
-          auth_token_env: "SKILLMUX_AUTH_TOKEN",
-          allowed_origins: [],
-        };
-        const origin = req.headers.get("origin") || "";
-        const allowedOrigins = serverConfig.allowed_origins;
-        const isAllowed =
-          allowedOrigins.includes("*") || allowedOrigins.includes(origin);
-        const allowOriginHeader = isAllowed
-          ? allowedOrigins.includes("*")
-            ? "*"
-            : origin
-          : "";
-
-        if (origin && !isAllowed) {
-          return new Response("CORS origin not allowed", { status: 403 });
-        }
-
-        if (req.method === "OPTIONS") {
-          return new Response(null, {
-            headers: {
-              "Access-Control-Allow-Origin": allowOriginHeader,
-              "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers":
-                "Content-Type, Authorization, MCP-Protocol-Version",
-            },
+        // AC3: a positive bound on in-flight requests, checked before any other
+        // work — protects against connection exhaustion the same way
+        // maxRequestBodySize protects against a single oversized request.
+        if (!concurrencyLimiter.tryAcquire()) {
+          return new Response("Service Unavailable", {
+            status: 503,
+            headers: { "Retry-After": "1" },
           });
         }
+        try {
+          const res = await handleHttpRequest(req, server);
+          // Defer the release until the response body actually finishes —
+          // a buffered body drains almost immediately, but an open SSE
+          // stream (the MCP transport's notification channel and streaming
+          // replies) can stay open long after this async function returns,
+          // and the slot must reflect that real connection lifetime.
+          const body = releaseOnStreamClose(res.body, () => concurrencyLimiter.release());
+          return new Response(body, {
+            status: res.status,
+            statusText: res.statusText,
+            headers: res.headers,
+          });
+        } catch (error) {
+          concurrencyLimiter.release();
+          throw error;
+        }
 
-        // Run rate limiter check
-        const rateLimitResult = rateLimiter.check({
-          nowMs: Date.now(),
-          auth_enabled: serverConfig.auth_enabled,
-          req,
-          server,
-        });
+        async function handleHttpRequest(
+          req: Request,
+          server: { requestIP(request: Request): { address: string } | null },
+        ): Promise<Response> {
+          const serverConfig = config.server || {
+            auth_enabled: false,
+            auth_token_env: "SKILLMUX_AUTH_TOKEN",
+            allowed_origins: [],
+          };
+          const origin = req.headers.get("origin") || "";
+          const allowedOrigins = serverConfig.allowed_origins;
+          const isAllowed =
+            allowedOrigins.includes("*") || allowedOrigins.includes(origin);
+          const allowOriginHeader = isAllowed
+            ? allowedOrigins.includes("*")
+              ? "*"
+              : origin
+            : "";
 
-        if (!rateLimitResult.allowed) {
-          metricsRegistry.recordRateLimitExceeded();
+          if (origin && !isAllowed) {
+            return new Response("CORS origin not allowed", { status: 403 });
+          }
 
-          // Count the request in requests_total under the method if possible
+          if (req.method === "OPTIONS") {
+            return new Response(null, {
+              headers: {
+                "Access-Control-Allow-Origin": allowOriginHeader,
+                "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers":
+                  "Content-Type, Authorization, MCP-Protocol-Version",
+              },
+            });
+          }
+
+          // Run rate limiter check
+          const rateLimitResult = rateLimiter.check({
+            nowMs: Date.now(),
+            auth_enabled: serverConfig.auth_enabled,
+            req,
+            server,
+          });
+
+          if (!rateLimitResult.allowed) {
+            metricsRegistry.recordRateLimitExceeded();
+
+            // Count the request in requests_total under the method if possible
+            let mcpMethod = "unknown";
+            try {
+              const bodyClone = await req.clone().json();
+              if (bodyClone.method === "tools/call") {
+                mcpMethod = bodyClone.params?.name || "tools/call";
+              } else {
+                mcpMethod = bodyClone.method || "unknown";
+              }
+            } catch {
+              // Non-JSON or parsing error
+            }
+            metricsRegistry.recordRequest(mcpMethod);
+
+            const headers = new Headers(rateLimitResult.headers);
+            if (allowOriginHeader) {
+              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            }
+            return new Response("Too Many Requests", {
+              status: 429,
+              headers,
+            });
+          }
+
+          const url = new URL(req.url);
+          if (req.method === "GET") {
+            if (url.pathname === "/health" || url.pathname === "/health/live") {
+              const headers = new Headers({ "Content-Type": "application/json" });
+              if (allowOriginHeader) {
+                headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+              }
+              for (const [key, value] of Object.entries(
+                rateLimitResult.headers,
+              )) {
+                headers.set(key, value);
+              }
+              return new Response(JSON.stringify({ status: "ok" }), {
+                status: 200,
+                headers,
+              });
+            }
+            if (url.pathname === "/health/ready") {
+              const readiness = readinessState.get();
+              const deployment = describeDeployment(config);
+              const headers = new Headers({ "Content-Type": "application/json" });
+              if (allowOriginHeader)
+                headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+              return new Response(JSON.stringify({
+                ...readiness,
+                version: deployment.version,
+                runtime: deployment.runtime,
+                image_variant: deployment.image_variant,
+              }), {
+                status: readiness.status === "ready" ? 200 : 503,
+                headers,
+              });
+            }
+            if (url.pathname === "/metrics") {
+              const headers = new Headers({
+                "Content-Type": "text/plain; version=0.0.4",
+              });
+              if (allowOriginHeader) {
+                headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+              }
+              for (const [key, value] of Object.entries(
+                rateLimitResult.headers,
+              )) {
+                headers.set(key, value);
+              }
+              return new Response(metricsRegistry.render(), {
+                status: 200,
+                headers,
+              });
+            }
+          }
+
+          // Token Auth Check
+          if (serverConfig.auth_enabled) {
+            const expectedToken = resolveAuthToken(serverConfig.auth_token_env);
+            if (!expectedToken) {
+              return new Response(
+                "Server authentication configured but token environment variable is empty",
+                { status: 500 },
+              );
+            }
+            const authHeader = req.headers.get("authorization") || "";
+            const token = authHeader.startsWith("Bearer ")
+              ? authHeader.slice(7)
+              : authHeader;
+            if (!token || !safeTokenEquals(token, expectedToken)) {
+              return new Response("Unauthorized", { status: 401 });
+            }
+          }
+
+          // GET /stats — placed after the Token Auth Check above (unlike /health and /metrics,
+          // which return earlier and stay open) since audit queries carry raw user text.
+          if (req.method === "GET" && url.pathname === "/stats") {
+            const since = url.searchParams.get("since") ?? "";
+            if (!SINCE_PATTERN.test(since)) {
+              return new Response(
+                JSON.stringify({
+                  error:
+                    "since must be a relative window (e.g. 30d) or an absolute ISO-8601 date",
+                }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+              );
+            }
+            const { auditDb } = await getRuntime();
+            const headers = new Headers({ "Content-Type": "application/json" });
+            if (allowOriginHeader)
+              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+            for (const [key, value] of Object.entries(rateLimitResult.headers))
+              headers.set(key, value);
+            return new Response(JSON.stringify(getStats(auditDb, since)), {
+              status: 200,
+              headers,
+            });
+          }
+
+          // Admin HTTP API (/admin/v1/*)
+          if (url.pathname.startsWith("/admin/v1/")) {
+            if (!serverConfig.admin?.enabled) {
+              return new Response("Admin endpoints disabled", { status: 403 });
+            }
+
+            const adminTokenEnv =
+              serverConfig.admin.token_env || "SKILLMUX_ADMIN_TOKEN";
+            const expectedAdminToken = process.env[adminTokenEnv] || "";
+            const authHeader = req.headers.get("authorization") || "";
+            const token = authHeader.startsWith("Bearer ")
+              ? authHeader.slice(7)
+              : authHeader;
+
+            if (
+              !expectedAdminToken ||
+              !token ||
+              !safeTokenEquals(token, expectedAdminToken)
+            ) {
+              return new Response("Unauthorized", { status: 401 });
+            }
+
+            const headers = new Headers({ "Content-Type": "application/json" });
+            if (allowOriginHeader)
+              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
+
+            if (
+              req.method === "GET" &&
+              url.pathname === "/admin/v1/capabilities"
+            ) {
+              const isExternallyManaged =
+                process.env.SKILLMUX_CONFIG_READONLY === "true";
+              return new Response(
+                JSON.stringify({
+                  config_read: true,
+                  config_write: !isExternallyManaged,
+                  persistence: isExternallyManaged
+                    ? "externally_managed"
+                    : "writable",
+                  reloadable_keys: RELOADABLE_KEYS,
+                  restart_required_keys: RESTART_REQUIRED_KEYS,
+                }),
+                { status: 200, headers },
+              );
+            }
+
+            if (req.method === "GET" && url.pathname === "/admin/v1/config") {
+              const { effective, sources } = await getEffectiveConfig(configPath);
+              const deployment = describeDeployment(config);
+              const desiredHash = computeHash(effective);
+              const snapshot = snapshots.acquire();
+              const activeRevision = computeHash(snapshot.snapshot.config);
+              snapshot.release();
+              const status =
+                configWatcher?.reloadStatus() ?? inactiveReloadStatus;
+              headers.set("ETag", `"${desiredHash}"`);
+              return new Response(
+                JSON.stringify({
+                  desired: effective,
+                  effective,
+                  sources,
+                  active_revision: activeRevision,
+                  runtime: {
+                    target: "local",
+                    desired_source: configPath,
+                    desired_source_hash: desiredHash,
+                    active_revision: activeRevision,
+                    active_source_hash: activeRevision,
+                    ...status,
+                    readiness: readinessState.get(),
+                    runtime: "running",
+                    version: deployment.version,
+                    deployment_runtime: deployment.runtime,
+                    image_variant: deployment.image_variant,
+                  },
+                }),
+                { status: 200, headers },
+              );
+            }
+
+            if (req.method === "PATCH" && url.pathname === "/admin/v1/config") {
+              if (process.env.SKILLMUX_CONFIG_READONLY === "true") {
+                return new Response(
+                  JSON.stringify({
+                    error: "CONFIG_EXTERNALLY_MANAGED",
+                    message: "Configuration is externally managed",
+                  }),
+                  { status: 409, headers },
+                );
+              }
+
+              const ifMatch = req.headers.get("if-match") || "";
+              const cleanIfMatch = ifMatch.replace(/^"|"$/g, "");
+              const { effective } = await getEffectiveConfig(configPath);
+              const currentHash = computeHash(effective);
+
+              if (!ifMatch || cleanIfMatch !== currentHash) {
+                return new Response(
+                  JSON.stringify({
+                    error: "CONFIG_REVISION_CONFLICT",
+                    message: "Revision conflict",
+                  }),
+                  { status: 409, headers },
+                );
+              }
+
+              const body = (await req.json()) as {
+                changes: Record<string, string | number | boolean>;
+              };
+              let lastResult: any = null;
+              for (const [k, v] of Object.entries(body.changes ?? {})) {
+                lastResult = await setDottedKey(k, String(v), {
+                  targetName: "remote",
+                });
+              }
+
+              return new Response(JSON.stringify(lastResult ?? { ok: true }), {
+                status: 200,
+                headers,
+              });
+            }
+
+            return new Response("Not Found", { status: 404, headers });
+          }
+
+          // Record request metrics
           let mcpMethod = "unknown";
           try {
             const bodyClone = await req.clone().json();
@@ -404,263 +689,20 @@ export async function startServer(opts?: {
           }
           metricsRegistry.recordRequest(mcpMethod);
 
-          const headers = new Headers(rateLimitResult.headers);
+          const res = await transport.handleRequest(req);
+          const headers = new Headers(res.headers);
           if (allowOriginHeader) {
             headers.set("Access-Control-Allow-Origin", allowOriginHeader);
           }
-          return new Response("Too Many Requests", {
-            status: 429,
-            headers,
-          });
-        }
-
-        const url = new URL(req.url);
-        if (req.method === "GET") {
-          if (url.pathname === "/health" || url.pathname === "/health/live") {
-            const headers = new Headers({ "Content-Type": "application/json" });
-            if (allowOriginHeader) {
-              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-            }
-            for (const [key, value] of Object.entries(
-              rateLimitResult.headers,
-            )) {
-              headers.set(key, value);
-            }
-            return new Response(JSON.stringify({ status: "ok" }), {
-              status: 200,
-              headers,
-            });
-          }
-          if (url.pathname === "/health/ready") {
-            const readiness = readinessState.get();
-            const deployment = describeDeployment(config);
-            const headers = new Headers({ "Content-Type": "application/json" });
-            if (allowOriginHeader)
-              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-            return new Response(JSON.stringify({
-              ...readiness,
-              version: deployment.version,
-              runtime: deployment.runtime,
-              image_variant: deployment.image_variant,
-            }), {
-              status: readiness.status === "ready" ? 200 : 503,
-              headers,
-            });
-          }
-          if (url.pathname === "/metrics") {
-            const headers = new Headers({
-              "Content-Type": "text/plain; version=0.0.4",
-            });
-            if (allowOriginHeader) {
-              headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-            }
-            for (const [key, value] of Object.entries(
-              rateLimitResult.headers,
-            )) {
-              headers.set(key, value);
-            }
-            return new Response(metricsRegistry.render(), {
-              status: 200,
-              headers,
-            });
-          }
-        }
-
-        // Token Auth Check
-        if (serverConfig.auth_enabled) {
-          const expectedToken = resolveAuthToken(serverConfig.auth_token_env);
-          if (!expectedToken) {
-            return new Response(
-              "Server authentication configured but token environment variable is empty",
-              { status: 500 },
-            );
-          }
-          const authHeader = req.headers.get("authorization") || "";
-          const token = authHeader.startsWith("Bearer ")
-            ? authHeader.slice(7)
-            : authHeader;
-          if (!token || !safeTokenEquals(token, expectedToken)) {
-            return new Response("Unauthorized", { status: 401 });
-          }
-        }
-
-        // GET /stats — placed after the Token Auth Check above (unlike /health and /metrics,
-        // which return earlier and stay open) since audit queries carry raw user text.
-        if (req.method === "GET" && url.pathname === "/stats") {
-          const since = url.searchParams.get("since") ?? "";
-          if (!SINCE_PATTERN.test(since)) {
-            return new Response(
-              JSON.stringify({
-                error:
-                  "since must be a relative window (e.g. 30d) or an absolute ISO-8601 date",
-              }),
-              { status: 400, headers: { "Content-Type": "application/json" } },
-            );
-          }
-          const { auditDb } = await getRuntime();
-          const headers = new Headers({ "Content-Type": "application/json" });
-          if (allowOriginHeader)
-            headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-          for (const [key, value] of Object.entries(rateLimitResult.headers))
+          for (const [key, value] of Object.entries(rateLimitResult.headers)) {
             headers.set(key, value);
-          return new Response(JSON.stringify(getStats(auditDb, since)), {
-            status: 200,
+          }
+          return new Response(res.body, {
+            status: res.status,
+            statusText: res.statusText,
             headers,
           });
         }
-
-        // Admin HTTP API (/admin/v1/*)
-        if (url.pathname.startsWith("/admin/v1/")) {
-          if (!serverConfig.admin?.enabled) {
-            return new Response("Admin endpoints disabled", { status: 403 });
-          }
-
-          const adminTokenEnv =
-            serverConfig.admin.token_env || "SKILLMUX_ADMIN_TOKEN";
-          const expectedAdminToken = process.env[adminTokenEnv] || "";
-          const authHeader = req.headers.get("authorization") || "";
-          const token = authHeader.startsWith("Bearer ")
-            ? authHeader.slice(7)
-            : authHeader;
-
-          if (
-            !expectedAdminToken ||
-            !token ||
-            !safeTokenEquals(token, expectedAdminToken)
-          ) {
-            return new Response("Unauthorized", { status: 401 });
-          }
-
-          const headers = new Headers({ "Content-Type": "application/json" });
-          if (allowOriginHeader)
-            headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-
-          if (
-            req.method === "GET" &&
-            url.pathname === "/admin/v1/capabilities"
-          ) {
-            const isExternallyManaged =
-              process.env.SKILLMUX_CONFIG_READONLY === "true";
-            return new Response(
-              JSON.stringify({
-                config_read: true,
-                config_write: !isExternallyManaged,
-                persistence: isExternallyManaged
-                  ? "externally_managed"
-                  : "writable",
-                reloadable_keys: RELOADABLE_KEYS,
-                restart_required_keys: RESTART_REQUIRED_KEYS,
-              }),
-              { status: 200, headers },
-            );
-          }
-
-          if (req.method === "GET" && url.pathname === "/admin/v1/config") {
-            const { effective, sources } = await getEffectiveConfig(configPath);
-            const deployment = describeDeployment(config);
-            const desiredHash = computeHash(effective);
-            const snapshot = snapshots.acquire();
-            const activeRevision = computeHash(snapshot.snapshot.config);
-            snapshot.release();
-            const status =
-              configWatcher?.reloadStatus() ?? inactiveReloadStatus;
-            headers.set("ETag", `"${desiredHash}"`);
-            return new Response(
-              JSON.stringify({
-                desired: effective,
-                effective,
-                sources,
-                active_revision: activeRevision,
-                runtime: {
-                  target: "local",
-                  desired_source: configPath,
-                  desired_source_hash: desiredHash,
-                  active_revision: activeRevision,
-                  active_source_hash: activeRevision,
-                  ...status,
-                  readiness: readinessState.get(),
-                  runtime: "running",
-                  version: deployment.version,
-                  deployment_runtime: deployment.runtime,
-                  image_variant: deployment.image_variant,
-                },
-              }),
-              { status: 200, headers },
-            );
-          }
-
-          if (req.method === "PATCH" && url.pathname === "/admin/v1/config") {
-            if (process.env.SKILLMUX_CONFIG_READONLY === "true") {
-              return new Response(
-                JSON.stringify({
-                  error: "CONFIG_EXTERNALLY_MANAGED",
-                  message: "Configuration is externally managed",
-                }),
-                { status: 409, headers },
-              );
-            }
-
-            const ifMatch = req.headers.get("if-match") || "";
-            const cleanIfMatch = ifMatch.replace(/^"|"$/g, "");
-            const { effective } = await getEffectiveConfig(configPath);
-            const currentHash = computeHash(effective);
-
-            if (!ifMatch || cleanIfMatch !== currentHash) {
-              return new Response(
-                JSON.stringify({
-                  error: "CONFIG_REVISION_CONFLICT",
-                  message: "Revision conflict",
-                }),
-                { status: 409, headers },
-              );
-            }
-
-            const body = (await req.json()) as {
-              changes: Record<string, string | number | boolean>;
-            };
-            let lastResult: any = null;
-            for (const [k, v] of Object.entries(body.changes ?? {})) {
-              lastResult = await setDottedKey(k, String(v), {
-                targetName: "remote",
-              });
-            }
-
-            return new Response(JSON.stringify(lastResult ?? { ok: true }), {
-              status: 200,
-              headers,
-            });
-          }
-
-          return new Response("Not Found", { status: 404, headers });
-        }
-
-        // Record request metrics
-        let mcpMethod = "unknown";
-        try {
-          const bodyClone = await req.clone().json();
-          if (bodyClone.method === "tools/call") {
-            mcpMethod = bodyClone.params?.name || "tools/call";
-          } else {
-            mcpMethod = bodyClone.method || "unknown";
-          }
-        } catch {
-          // Non-JSON or parsing error
-        }
-        metricsRegistry.recordRequest(mcpMethod);
-
-        const res = await transport.handleRequest(req);
-        const headers = new Headers(res.headers);
-        if (allowOriginHeader) {
-          headers.set("Access-Control-Allow-Origin", allowOriginHeader);
-        }
-        for (const [key, value] of Object.entries(rateLimitResult.headers)) {
-          headers.set(key, value);
-        }
-        return new Response(res.body, {
-          status: res.status,
-          statusText: res.statusText,
-          headers,
-        });
       },
     });
     let stopped = false;

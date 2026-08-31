@@ -192,6 +192,8 @@ hostname = "127.0.0.1"
 auth_enabled = false
 auth_token_env = "SKILLMUX_AUTH_TOKEN"
 allowed_origins = []
+max_body_bytes = 1048576
+max_concurrent_requests = 100
 
 [server.rate_limit]
 enabled = false
@@ -204,6 +206,8 @@ token_env = "SKILLMUX_ADMIN_TOKEN"
 ```
 
 Defaults are loopback-only (`hostname = "127.0.0.1"`) with CORS deny-by-default (`allowed_origins = []`), so a zero-config `skillmux serve --transport http` is not reachable from the network or from a browser tab on another origin. Docker sets `hostname` to `0.0.0.0` automatically (`RUNNING_IN_DOCKER=true`) since port-mapping needs the container to accept connections on all interfaces.
+
+`max_body_bytes` (default 1 MiB) and `max_concurrent_requests` (default 100) are positive resource bounds on the `--transport http` listener: unlike `rate_limit`, which is opt-in and off by default, these apply out of the box so the transport is never unbounded by omission. A request whose body exceeds `max_body_bytes` is rejected with `413 Payload Too Large` before it's fully read; once `max_concurrent_requests` requests are in flight, an additional request is rejected with `503 Service Unavailable`. Both are unrelated to `rate_limit`, which bounds request *count* per client over time rather than body size or concurrency.
 
 Before exposing HTTP beyond localhost, set `hostname` to a reachable interface, `auth_enabled = true` with a token, and populate `allowed_origins` with the specific origins that need browser access. `rate_limit.trust_proxy` should stay `false` unless a trusted reverse proxy sets `X-Forwarded-For`: it's otherwise a client-controlled, spoofable header, and trusting it defeats per-client rate limiting.
 
@@ -233,6 +237,14 @@ git host not on the list, checked before the network call — see
 `file://` sources are exempt (no network egress occurs; they're already
 gated by `--allow-local-source`), and host matching is exact and
 case-insensitive, with no glob support.
+
+The same `allowed_hosts` list also gates remote-inference calls: when set,
+a `[inference.embedding]` or `[inference.reranker]` `endpoint` host not on
+the list is rejected before the HTTP request, surfaced the same way as any
+other embedding/reranker configuration error (`resolve_skill` degrades to
+the strongest available retrieval lane rather than failing outright). This
+does not apply to `inference.mode = "local"`, which never makes a network
+call.
 
 ## Tiers and the manifest
 

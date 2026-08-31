@@ -1,5 +1,6 @@
 import type { Clients, Config, RemoteRerankerConfig } from "./types";
 import { expandHome } from "./config";
+import { assertHostAllowed } from "./install";
 import type { pipeline as createPipeline } from "@huggingface/transformers";
 
 export type RemoteErrorKind = "configuration" | "availability" | "protocol";
@@ -32,6 +33,17 @@ function authorizationHeaders(
     );
   }
   return { authorization: `Bearer ${apiKey}` };
+}
+
+function assertInferenceHostAllowed(url: string, allowedHosts: string[] | undefined): void {
+  try {
+    assertHostAllowed(url, allowedHosts);
+  } catch (error) {
+    throw new RemoteInferenceError(
+      "configuration",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 function httpFailure(surface: string, status: number): RemoteInferenceError {
@@ -196,8 +208,11 @@ async function fetchRerankerScores(
   timeoutMs: number,
   query: string,
   docs: { skill_id: string; text: string }[],
+  allowedHosts: string[] | undefined,
 ): Promise<number[]> {
   if (docs.length === 0) return [];
+
+  assertInferenceHostAllowed(reranker.endpoint, allowedHosts);
 
   let response: Response;
   try {
@@ -300,6 +315,7 @@ export function createClients(config: Config): Clients {
       }
 
       const embedding = config.inference.embedding;
+      assertInferenceHostAllowed(embedding.endpoint, config.egress?.allowed_hosts);
       let response: Response;
       try {
         response = await fetch(embedding.endpoint, {
@@ -344,6 +360,7 @@ export function createClients(config: Config): Clients {
         inference.timeout_ms,
         query,
         docs,
+        config.egress?.allowed_hosts,
       );
     };
   }
