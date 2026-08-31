@@ -50,4 +50,12 @@ describe("buildRedactor", () => {
     expect(out).not.toContain("supersecret123");
     expect(out).toContain("[REDACTED]");
   });
+
+  test("should be a no-op when the config has no *_env keys set", () => {
+    const config = testConfig();
+    const redact = buildRedactor(config);
+    const text = "plain error: connection refused to https://host/repo.git";
+
+    expect(redact(text)).toBe(text);
+  });
 });
