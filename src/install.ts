@@ -47,7 +47,7 @@ export function resolveRepoSource(repo: string): RepoSource {
 
 function extractHost(url: string): string {
   const scpMatch = url.match(/^[^/\s]+@([^/\s]+):/);
-  if (scpMatch) return scpMatch[1];
+  if (scpMatch) return scpMatch[1]!;
   return new URL(url).hostname;
 }
 
