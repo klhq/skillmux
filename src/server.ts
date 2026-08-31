@@ -16,13 +16,14 @@ import {
   resolveSkill,
 } from "./router-core";
 import { closeRuntime, getRuntime, startVaultWatcher } from "./router-core";
-import { getStats, SINCE_PATTERN } from "./stats";
+import { getStats, parseSince, SINCE_PATTERN } from "./stats";
+import { countPrunable, insertAdminAuditRow, pruneAuditBefore, type AdminAuditChange } from "./db";
+import { buildPromotedCases, evalVault, queryPromotableFetches } from "./eval";
 import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
 import { initializeRuntime } from "./lifecycle";
 import { buildRedactor } from "./redact";
-import { insertAdminAuditRow, type AdminAuditChange } from "./db";
 import type { Clients, Config } from "./types";
 import {
   computeHash,
@@ -409,7 +410,7 @@ export async function startServer(opts?: {
             allowed_origins: [],
           };
           const origin = req.headers.get("origin") || "";
-          const allowedOrigins = serverConfig.allowed_origins;
+          const allowedOrigins = serverConfig.allowed_origins || [];
           const isAllowed =
             allowedOrigins.includes("*") || allowedOrigins.includes(origin);
           const allowOriginHeader = isAllowed
@@ -695,6 +696,161 @@ export async function startServer(opts?: {
               }
 
               return new Response(JSON.stringify(lastResult ?? { ok: true }), {
+                status: 200,
+                headers,
+              });
+            }
+
+            if (
+              req.method === "POST" &&
+              url.pathname === "/admin/v1/audit/prune"
+            ) {
+              let body: {
+                older_than?: string;
+                dry_run?: boolean;
+                confirm?: boolean;
+              } = {};
+              try {
+                const text = await req.text();
+                if (text.trim()) {
+                  body = JSON.parse(text);
+                }
+              } catch {
+                return new Response(
+                  JSON.stringify({
+                    error: "INVALID_JSON",
+                    message: "Request body must be valid JSON",
+                  }),
+                  { status: 400, headers },
+                );
+              }
+
+              const dryRun = body.dry_run ?? false;
+              const confirm = body.confirm ?? false;
+              if (!dryRun && !confirm) {
+                return new Response(
+                  JSON.stringify({
+                    error: "CONFIRMATION_REQUIRED",
+                    message:
+                      "Non-dry-run audit prune requires confirm: true",
+                  }),
+                  { status: 400, headers },
+                );
+              }
+
+              const { effective } = await getEffectiveConfig(configPath);
+              let cutoff: Date;
+              if (body.older_than) {
+                try {
+                  cutoff = parseSince(body.older_than);
+                } catch (err: any) {
+                  return new Response(
+                    JSON.stringify({
+                      error: "INVALID_CUTOFF",
+                      message: err.message,
+                    }),
+                    { status: 400, headers },
+                  );
+                }
+              } else {
+                const retentionDays = effective.audit?.retention_days ?? 90;
+                if (retentionDays <= 0) {
+                  return new Response(
+                    JSON.stringify({
+                      audit_deleted: 0,
+                      fetch_deleted: 0,
+                      admin_audit_deleted: 0,
+                      dry_run: dryRun,
+                      cutoff: null,
+                    }),
+                    { status: 200, headers },
+                  );
+                }
+                cutoff = new Date(Date.now() - retentionDays * 86_400_000);
+              }
+              const cutoffIso = cutoff.toISOString();
+
+              const { auditDb } = await getRuntime();
+              if (dryRun) {
+                const counts = countPrunable(auditDb, cutoffIso);
+                return new Response(
+                  JSON.stringify({
+                    ...counts,
+                    dry_run: true,
+                    cutoff: cutoffIso,
+                  }),
+                  { status: 200, headers },
+                );
+              }
+
+              const counts = pruneAuditBefore(auditDb, cutoffIso);
+              return new Response(
+                JSON.stringify({
+                  ...counts,
+                  dry_run: false,
+                  cutoff: cutoffIso,
+                }),
+                { status: 200, headers },
+              );
+            }
+
+            if (req.method === "POST" && url.pathname === "/admin/v1/eval") {
+              const report = await evalVault();
+              return new Response(JSON.stringify(report), {
+                status: 200,
+                headers,
+              });
+            }
+
+            if (
+              req.method === "POST" &&
+              url.pathname === "/admin/v1/eval/promote"
+            ) {
+              let body: { since?: string } = {};
+              try {
+                const text = await req.text();
+                if (text.trim()) {
+                  body = JSON.parse(text);
+                }
+              } catch {
+                return new Response(
+                  JSON.stringify({
+                    error: "INVALID_JSON",
+                    message: "Request body must be valid JSON",
+                  }),
+                  { status: 400, headers },
+                );
+              }
+
+              if (!body.since || typeof body.since !== "string") {
+                return new Response(
+                  JSON.stringify({
+                    error: "MISSING_SINCE",
+                    message: "Field 'since' is required",
+                  }),
+                  { status: 400, headers },
+                );
+              }
+
+              let sinceDate: Date;
+              try {
+                sinceDate = parseSince(body.since);
+              } catch (err: any) {
+                return new Response(
+                  JSON.stringify({
+                    error: "INVALID_SINCE",
+                    message: err.message,
+                  }),
+                  { status: 400, headers },
+                );
+              }
+              const sinceIso = sinceDate.toISOString();
+
+              const { auditDb } = await getRuntime();
+              const candidates = buildPromotedCases(
+                queryPromotableFetches(auditDb, sinceIso),
+              );
+              return new Response(JSON.stringify({ candidates }), {
                 status: 200,
                 headers,
               });
