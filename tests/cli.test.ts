@@ -80,6 +80,15 @@ async function runCli(
   return runCliEnv(args, {});
 }
 
+function withEgressConfig(allowedHosts: string[]): string {
+  const path = join(tmp, `config-egress-${allowedHosts.join("-")}.toml`);
+  writeFileSync(
+    path,
+    `${readFileSync(configPath, "utf8")}\n[egress]\nallowed_hosts = ${JSON.stringify(allowedHosts)}\n`,
+  );
+  return path;
+}
+
 beforeAll(() => {
   writeSkill("first-skill", "Reads and formats CSV files.");
   writeSkill("second-skill", "Deploys containers to the homelab.");
@@ -2455,15 +2464,6 @@ describe("skillmux install CLI", () => {
     rmSync(join(vaultDir, "fixture-local-allowed"), { recursive: true, force: true });
   });
 
-  function withEgressConfig(allowedHosts: string[]): string {
-    const path = join(tmp, `config-egress-${allowedHosts.join("-")}.toml`);
-    writeFileSync(
-      path,
-      `${readFileSync(configPath, "utf8")}\n[egress]\nallowed_hosts = ${JSON.stringify(allowedHosts)}\n`,
-    );
-    return path;
-  }
-
   test("AC2: rejects installing from a host not in [egress] allowed_hosts, before any network fetch", async () => {
     const result = await runCliEnv(["install", "https://evil.example.com/x/y.git"], {
       SKILLMUX_CONFIG: withEgressConfig(["github.com"]),
@@ -3033,6 +3033,33 @@ describe("skillmux update CLI", () => {
     expect(
       parsed.data.skills.find((s: { skill_id: string }) => s.skill_id === "fixture-update-localskip-batch"),
     ).toBeUndefined();
+    expect(readFileSync(join(skillDir, "SKILL.md"), "utf-8")).toContain("body v1");
+
+    rmSync(skillDir, { recursive: true, force: true });
+  });
+
+  test("AC4: refuses to re-fetch from a skill's recorded origin when its host isn't in [egress] allowed_hosts", async () => {
+    const fixtureDir = join(tmp, "fixture-update-egress");
+    initFixtureRepo(fixtureDir, "---\nname: Egress\ndescription: d\n---\nbody v1");
+    await runCli("install", `file://${fixtureDir}`, "--allow-local-source");
+    const skillDir = join(vaultDir, "fixture-update-egress");
+
+    // Point the recorded origin at a disallowed host, keeping content_hash matching
+    // the on-disk content so the local-drift check (unrelated to egress) passes and
+    // buildPlan reaches the point where it would re-fetch.
+    const originPath = join(skillDir, ".skillmux-origin");
+    const origin = JSON.parse(readFileSync(originPath, "utf-8"));
+    origin.source_url = "https://evil.example.com/x/y.git";
+    writeFileSync(originPath, JSON.stringify(origin));
+
+    const result = await runCliEnv(
+      ["update", "fixture-update-egress", "--yes", "--allow-local-source"],
+      { SKILLMUX_CONFIG: withEgressConfig(["github.com"]) },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("evil.example.com");
+    expect(result.stderr).toContain("allowed_hosts");
     expect(readFileSync(join(skillDir, "SKILL.md"), "utf-8")).toContain("body v1");
 
     rmSync(skillDir, { recursive: true, force: true });
