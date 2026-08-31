@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { insertAdminAuditRow, openAudit } from "../src/db";
+import { insertAdminAuditRow, openAudit, verifyAdminAuditChain } from "../src/db";
 
 describe("admin audit store", () => {
   let tmp: string;
@@ -33,5 +33,39 @@ describe("admin audit store", () => {
     expect(JSON.parse(row.changes)).toEqual([
       { key: "recall.k_lexical", old_value: 15, new_value: 25 },
     ]);
+  });
+
+  test("should chain each row's hash to the previous row's hash, verifying intact by default", () => {
+    const first = insertAdminAuditRow(db, {
+      ts: "2026-08-31T00:00:00.000Z",
+      changes: [{ key: "recall.k_lexical", old_value: 15, new_value: 25 }],
+      resulting_revision: "rev-1",
+    });
+    const second = insertAdminAuditRow(db, {
+      ts: "2026-08-31T00:01:00.000Z",
+      changes: [{ key: "recall.k_vector", old_value: 15, new_value: 30 }],
+      resulting_revision: "rev-2",
+    });
+
+    expect(first.prev_row_hash).toBeNull();
+    expect(second.prev_row_hash).toBe(first.row_hash);
+    expect(verifyAdminAuditChain(db)).toEqual({ valid: true, broken_at_id: null });
+  });
+
+  test("should detect a broken chain when a row is edited out-of-band", () => {
+    insertAdminAuditRow(db, {
+      ts: "2026-08-31T00:00:00.000Z",
+      changes: [{ key: "recall.k_lexical", old_value: 15, new_value: 25 }],
+      resulting_revision: "rev-1",
+    });
+    const second = insertAdminAuditRow(db, {
+      ts: "2026-08-31T00:01:00.000Z",
+      changes: [{ key: "recall.k_vector", old_value: 15, new_value: 30 }],
+      resulting_revision: "rev-2",
+    });
+
+    db.run("UPDATE admin_audit SET resulting_revision = ? WHERE id = ?", ["tampered-rev", second.id]);
+
+    expect(verifyAdminAuditChain(db)).toEqual({ valid: false, broken_at_id: second.id });
   });
 });
