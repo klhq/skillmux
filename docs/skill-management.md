@@ -211,6 +211,7 @@ skillmux doctor
 ```sh
 skillmux report --since 7d
 skillmux report --server http://host:3000 --since 7d
+skillmux report --context prod --since 7d
 ```
 
 `skillmux report` aggregates total requests, empty shortlist count and rate,
@@ -223,6 +224,32 @@ Top empty shortlist queries point to missing skills or weak skill descriptions.
 
 `--since` accepts windows such as `1h`, `7d`, and `1m`, plus absolute dates and
 timestamps.
+
+Register a remote deployment once with `skillmux context add`, then reuse it by
+name instead of retyping `--server` (and, if the deployment requires
+authentication, its token) on every call:
+
+```sh
+skillmux context add prod --server http://host:3000 --token-env SKILLMUX_AUTH_TOKEN
+skillmux report --context prod --since 7d
+```
+
+`--context` and bare `--server` both hit `GET /stats` on the target and require
+an HTTP transport listening there. A stdio-only deployment (the common case
+for an MCP server spawned by a host over stdin/stdout) has no such listener by
+default. Give it a narrow, read-only one — just `/health` and `/stats`, none
+of the MCP tool surface — without switching its primary transport:
+
+```sh
+skillmux serve --transport stdio --stats-port 4317
+```
+
+The stats port inherits the same `[server]` bind-posture rule as the `http`
+transport (see [Configuration](configuration.md#http-server)): binding it
+to anything other than a loopback address requires `server.auth_enabled =
+true` with a token, or it refuses to start. `--stats-port` is rejected
+alongside `--transport http`, since that transport already serves `/stats` on
+`--port`.
 
 ## Target ownership and recovery
 

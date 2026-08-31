@@ -408,6 +408,14 @@ describe("skillmux serve CLI", () => {
       "--port must be an integer between 0 and 65535",
     );
   });
+
+  test("rejects invalid --stats-port values", async () => {
+    const result = await runCli("serve", "--stats-port", "not-a-port");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(
+      "--stats-port must be an integer between 0 and 65535",
+    );
+  });
 });
 
 describe("skillmux CLI usage", () => {
@@ -1691,6 +1699,78 @@ describe("skillmux report CLI", () => {
 
     await handle.stop();
     rmSync(root, { recursive: true, force: true });
+  });
+
+  test("--context sends the bearer token from its token_env against an auth-enabled server", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-report-context-"));
+    const home = mkdtempSync(join(tmpdir(), "skillmux-report-home-"));
+    const skill = join(root, "vault", "server-report-skill");
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(
+      join(skill, "SKILL.md"),
+      "---\nname: Server report skill\ndescription: test\n---\nbody",
+    );
+    process.env.TEST_REPORT_AUTH_TOKEN = "s3cret-report-token";
+    const handle = await startServer({
+      transport: "http",
+      port: 0,
+      config: {
+        vault_path: join(root, "vault"),
+        local_vault_paths: [],
+        state_dir: join(root, "state"),
+        recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
+        output: { top_k: 10, max_top_k: 50 },
+        inference: {
+          mode: "local",
+          bundle: "gte-small-v1",
+          models_dir: join(root, "models"),
+          embedding: { model: "Xenova/gte-small", dimension: 3 },
+        },
+        server: {
+          hostname: "127.0.0.1",
+          auth_enabled: true,
+          auth_token_env: "TEST_REPORT_AUTH_TOKEN",
+          allowed_origins: [],
+        },
+      },
+      clients: {
+        embed: async (texts: string[]) =>
+          texts.map(() => Float32Array.from([1, 0, 0])),
+      },
+    });
+
+    const addResult = await runCliEnv(
+      [
+        "context",
+        "add",
+        "innie",
+        "--server",
+        `http://127.0.0.1:${handle.port}`,
+        "--token-env",
+        "TEST_REPORT_AUTH_TOKEN",
+      ],
+      { HOME: home },
+    );
+    expect(addResult.exitCode).toBe(0);
+
+    const unauthed = await runCliEnv(
+      ["report", "--context", "innie", "--since", "30d"],
+      { HOME: home, TEST_REPORT_AUTH_TOKEN: "" },
+    );
+    expect(unauthed.exitCode).not.toBe(0);
+    expect(unauthed.stderr).toContain("401");
+
+    const authed = await runCliEnv(
+      ["report", "--context", "innie", "--since", "30d"],
+      { HOME: home, TEST_REPORT_AUTH_TOKEN: "s3cret-report-token" },
+    );
+    expect(authed.exitCode).toBe(0);
+    expect(authed.stdout).toContain("total=0 empty_shortlist=0");
+
+    await handle.stop();
+    delete process.env.TEST_REPORT_AUTH_TOKEN;
+    rmSync(root, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   });
 
   test("defaults to the configured state_dir's audit db when neither --server nor --db is given", async () => {
