@@ -403,6 +403,133 @@ describe("skillmux Docker command policy", () => {
   });
 });
 
+describe("Remote context rejection (Bucket A)", () => {
+  const bucketACommands: Array<{ command: string; args: string[]; name: string }> = [
+    { command: "install", args: ["install", "owner/repo"], name: "install" },
+    { command: "update", args: ["update"], name: "update" },
+    { command: "outdated", args: ["outdated"], name: "outdated" },
+    { command: "sync", args: ["sync"], name: "sync" },
+    { command: "core", args: ["core", "pin", "first-skill"], name: "core" },
+    { command: "project", args: ["project", "list"], name: "project" },
+    { command: "target", args: ["target", "list"], name: "target" },
+    { command: "local-vault", args: ["local-vault", "init", vaultDir], name: "local-vault" },
+    { command: "index", args: ["index"], name: "index" },
+    { command: "models", args: ["models", "download"], name: "models" },
+    { command: "scan", args: ["scan"], name: "scan" },
+    { command: "init", args: ["init"], name: "init" },
+    { command: "serve", args: ["serve"], name: "serve" },
+    { command: "skill which", args: ["skill", "which", "first-skill"], name: "skill which" },
+  ];
+
+  test("rejects all 14 Bucket A commands when --server is provided (human text mode)", async () => {
+    for (const { args, name } of bucketACommands) {
+      const result = await runCli(...args, "--server", "https://remote.example.com");
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain(
+        `\`${name}\` operates on the local vault only; --context/--server isn't supported here`,
+      );
+    }
+  });
+
+  test("rejects all 14 Bucket A commands when --server is provided (JSON mode)", async () => {
+    for (const { args, name } of bucketACommands) {
+      const result = await runCli(...args, "--server", "https://remote.example.com", "--json");
+      expect(result.exitCode).toBe(2);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed).toMatchObject({
+        ok: false,
+        error: {
+          code: "REMOTE_CONTEXT_UNSUPPORTED",
+          message: `\`${name}\` operates on the local vault only; --context/--server isn't supported here`,
+          details: {
+            rejected_command: name,
+          },
+        },
+      });
+    }
+  });
+
+  test("rejects Bucket A commands when remote context is set via environment variable", async () => {
+    const result = await runCliEnv(["install", "owner/repo"], {
+      SKILLMUX_SERVER: "https://remote.example.com",
+    });
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain(
+      "`install` operates on the local vault only; --context/--server isn't supported here",
+    );
+  });
+
+  test("rejects Bucket A commands when configured context in contexts.toml is remote", async () => {
+    const fakeHome = join(tmp, "fake-home-context-" + Math.random().toString(36).slice(2));
+    const configDir = join(fakeHome, ".config", "skillmux");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, "contexts.toml"),
+      'default_context = "prod"\n\n[contexts.local]\nserver = "local"\n\n[contexts.prod]\nserver = "https://prod.example.com"\n',
+    );
+
+    // Default context is prod (remote) -> rejects sync
+    const defaultResult = await runCliEnv(["sync"], { HOME: fakeHome });
+    expect(defaultResult.exitCode).toBe(2);
+    expect(defaultResult.stderr).toContain(
+      "`sync` operates on the local vault only; --context/--server isn't supported here",
+    );
+
+    // Explicit --context prod -> rejects sync
+    const flagResult = await runCliEnv(["sync", "--context", "prod"], { HOME: fakeHome });
+    expect(flagResult.exitCode).toBe(2);
+    expect(flagResult.stderr).toContain(
+      "`sync` operates on the local vault only; --context/--server isn't supported here",
+    );
+
+    // Explicit --context local -> allows sync (not rejected by guard)
+    const localOverride = await runCliEnv(["sync", "--context", "local", "--dry-run"], { HOME: fakeHome });
+    expect(localOverride.stderr).not.toContain("operates on the local vault only; --context/--server isn't supported here");
+  });
+
+  test("allows all 14 Bucket A commands under explicit local context (--context local)", async () => {
+    for (const { args } of bucketACommands) {
+      const result = await runCli(...args, "--context", "local", "--dry-run");
+      expect(result.stderr).not.toContain("operates on the local vault only; --context/--server isn't supported here");
+      if (result.stdout.startsWith("{")) {
+        const parsed = JSON.parse(result.stdout);
+        expect(parsed.error?.code).not.toBe("REMOTE_CONTEXT_UNSUPPORTED");
+      }
+    }
+  });
+
+  test("does not reject AC6 commands (context, config, report, audit, eval, eval promote, doctor) with remote context", async () => {
+    const ac6Commands = [
+      ["context", "list"],
+      ["config", "show"],
+      ["report"],
+      ["audit"],
+      ["eval"],
+      ["eval", "promote", "--since", "7d", "--dry-run"],
+      ["doctor"],
+    ];
+
+    for (const args of ac6Commands) {
+      const result = await runCli(
+        ...args,
+        "--server",
+        "https://127.0.0.1:9999",
+        "--allow-insecure",
+        "--json",
+      );
+      if (result.stdout) {
+        try {
+          const parsed = JSON.parse(result.stdout);
+          expect(parsed.error?.code).not.toBe("REMOTE_CONTEXT_UNSUPPORTED");
+        } catch {
+          // not JSON output
+        }
+      }
+      expect(result.stderr).not.toContain("operates on the local vault only; --context/--server isn't supported here");
+    }
+  });
+});
+
 describe("skillmux serve CLI", () => {
   test("rejects invalid transport values", async () => {
     const result = await runCli("serve", "--transport", "websocket");
