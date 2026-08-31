@@ -270,6 +270,24 @@ describe("embedding client", () => {
     config.inference.embedding.endpoint = "http://127.0.0.1:1/embeddings";
     await expect(createClients(config).embed(["text"])).rejects.toMatchObject({ kind: "availability" });
   });
+
+  test("rejects an embedding call to a host not in [egress] allowed_hosts before the network fetch", async () => {
+    const config = testConfig();
+    config.egress = { allowed_hosts: ["allowed.example.com"] };
+    const before = requests.length;
+    const error = await createClients(config).embed(["text"]).catch((value) => value);
+    expect(error).toBeInstanceOf(RemoteInferenceError);
+    expect(error).toMatchObject({ kind: "configuration" });
+    expect(error.message).toContain("127.0.0.1");
+    expect(requests).toHaveLength(before);
+  });
+
+  test("allows an embedding call to a host listed in [egress] allowed_hosts", async () => {
+    const config = testConfig();
+    config.egress = { allowed_hosts: ["127.0.0.1"] };
+    const vectors = await createClients(config).embed(["text"]);
+    expect(vectors).toHaveLength(1);
+  });
 });
 
 describe("local embedding validation", () => {
@@ -407,5 +425,29 @@ describe("reranker protocol adapters", () => {
     const clients = createClients(testConfig());
     expect(await clients.rerank!("query", [])).toEqual([]);
     expect(requests).toHaveLength(0);
+  });
+
+  test("rejects a reranker call to a host not in [egress] allowed_hosts before the network fetch", async () => {
+    const config = testConfig();
+    config.egress = { allowed_hosts: ["allowed.example.com"] };
+    const before = requests.length;
+    const error = await createClients(config).rerank!("query", docs).catch((value) => value);
+    expect(error).toBeInstanceOf(RemoteInferenceError);
+    expect(error).toMatchObject({ kind: "configuration" });
+    expect(error.message).toContain("127.0.0.1");
+    expect(requests).toHaveLength(before);
+  });
+
+  test("allows a reranker call to a host listed in [egress] allowed_hosts", async () => {
+    const config = testConfig();
+    config.egress = { allowed_hosts: ["127.0.0.1"] };
+    const scores = await createClients(config).rerank!("route my task", docs);
+    expect(scores).toEqual([0.9, 0.6]);
+  });
+
+  test("[egress] allowed_hosts unset leaves reranker calls unrestricted", async () => {
+    const clients = createClients(testConfig());
+    const scores = await clients.rerank!("route my task", docs);
+    expect(scores).toEqual([0.9, 0.6]);
   });
 });
