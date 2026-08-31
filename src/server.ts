@@ -36,6 +36,7 @@ export const readinessState = new ReadinessState();
 
 export interface ServerHandle {
   port?: number;
+  statsPort?: number;
   reloadStatus(): ReloadStatus;
   stop(): Promise<void>;
 }
@@ -96,6 +97,100 @@ export function safeTokenEquals(a: string, b: string): boolean {
   const hashA = createHash("sha256").update(a).digest();
   const hashB = createHash("sha256").update(b).digest();
   return timingSafeEqual(hashA, hashB);
+}
+
+/**
+ * A second, narrow HTTP listener exposing only GET /health and GET /stats —
+ * nothing from the MCP tool surface or /admin/v1/*. Lets a stdio deployment
+ * (no HTTP transport at all) still answer `skillmux report --server ...`
+ * remotely, without switching its primary transport. Reuses the exact same
+ * bind-posture guard, auth-token check, and rate limiter as the http
+ * transport's /stats route (server.ts's main Bun.serve handler) rather than
+ * inventing a separate security model for this listener.
+ */
+async function serveStatsOnly(opts: {
+  config: Config;
+  port: number;
+}): Promise<{ port: number | undefined; stop(): void }> {
+  const serverConfig = opts.config.server || {
+    auth_enabled: false,
+    auth_token_env: "SKILLMUX_AUTH_TOKEN",
+    allowed_origins: [],
+  };
+  const hostname = serverConfig.hostname ?? "127.0.0.1";
+  assertSafeBindPosture(hostname, serverConfig.auth_enabled ?? false);
+
+  const { RateLimiter } = await import("./rate-limiter");
+  const rateLimiter = new RateLimiter(
+    serverConfig.rate_limit || { enabled: false, requests_per_minute: 60 },
+  );
+
+  const bunServer = Bun.serve({
+    port: opts.port,
+    hostname,
+    async fetch(req, server) {
+      const rateLimitResult = rateLimiter.check({
+        nowMs: Date.now(),
+        auth_enabled: serverConfig.auth_enabled,
+        req,
+        server,
+      });
+      if (!rateLimitResult.allowed) {
+        return new Response("Too Many Requests", {
+          status: 429,
+          headers: rateLimitResult.headers,
+        });
+      }
+
+      const url = new URL(req.url);
+      // GET /health stays open (unauthenticated) even when auth_enabled — it
+      // carries no data, matching the http transport's /health, which returns
+      // before its own Token Auth Check for the same reason.
+      if (req.method === "GET" && (url.pathname === "/health" || url.pathname === "/health/live")) {
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...rateLimitResult.headers },
+        });
+      }
+
+      if (serverConfig.auth_enabled) {
+        const expectedToken = resolveAuthToken(serverConfig.auth_token_env);
+        if (!expectedToken) {
+          return new Response(
+            "Server authentication configured but token environment variable is empty",
+            { status: 500 },
+          );
+        }
+        const authHeader = req.headers.get("authorization") || "";
+        const token = authHeader.startsWith("Bearer ")
+          ? authHeader.slice(7)
+          : authHeader;
+        if (!token || !safeTokenEquals(token, expectedToken)) {
+          return new Response("Unauthorized", { status: 401 });
+        }
+      }
+
+      if (req.method === "GET" && url.pathname === "/stats") {
+        const since = url.searchParams.get("since") ?? "";
+        if (!SINCE_PATTERN.test(since)) {
+          return new Response(
+            JSON.stringify({
+              error: "since must be a relative window (e.g. 30d) or an absolute ISO-8601 date",
+            }),
+            { status: 400, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        const { auditDb } = await getRuntime();
+        return new Response(JSON.stringify(getStats(auditDb, since)), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...rateLimitResult.headers },
+        });
+      }
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+
+  return { port: bunServer.port, stop: () => bunServer.stop(true) };
 }
 
 export function createMcpServer(): McpServer {
@@ -174,6 +269,7 @@ export function createMcpServer(): McpServer {
 export async function startServer(opts?: {
   transport?: "stdio" | "http";
   port?: number;
+  statsPort?: number;
   config?: Config;
   clients?: Partial<Clients>;
   configPath?: string;
@@ -223,6 +319,16 @@ export async function startServer(opts?: {
   const server = createMcpServer();
 
   const transportType = opts?.transport ?? "stdio";
+  if (opts?.statsPort !== undefined && transportType === "http") {
+    throw new Error(
+      "skillmux: --stats-port is not supported with --transport http; the http transport already serves /stats on --port",
+    );
+  }
+  const statsHandle =
+    opts?.statsPort !== undefined
+      ? await serveStatsOnly({ config, port: opts.statsPort })
+      : undefined;
+
   if (transportType === "http") {
     const { WebStandardStreamableHTTPServerTransport } =
       await import("@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js");
@@ -562,6 +668,7 @@ export async function startServer(opts?: {
     console.log(`skillmux serving over HTTP on ${hostname}:${bunServer.port}`);
     return {
       port: bunServer.port,
+      statsPort: statsHandle?.port,
       reloadStatus: () =>
         configWatcher?.reloadStatus() ?? { ...inactiveReloadStatus },
       async stop() {
@@ -571,6 +678,7 @@ export async function startServer(opts?: {
         readinessState.set({ ...readinessState.get(), status: "stopping" });
         metricsRegistry.setReadiness(readinessState.get());
         bunServer.stop(true);
+        statsHandle?.stop();
         configWatcher?.stop();
         stopWatcher();
         snapshots.dispose();
@@ -582,6 +690,7 @@ export async function startServer(opts?: {
     await server.connect(new StdioServerTransport());
     let stopped = false;
     return {
+      statsPort: statsHandle?.port,
       reloadStatus: () =>
         configWatcher?.reloadStatus() ?? { ...inactiveReloadStatus },
       async stop() {
@@ -590,6 +699,7 @@ export async function startServer(opts?: {
         clearInterval(auditPruneInterval);
         readinessState.set({ ...readinessState.get(), status: "stopping" });
         metricsRegistry.setReadiness(readinessState.get());
+        statsHandle?.stop();
         configWatcher?.stop();
         stopWatcher();
         snapshots.dispose();

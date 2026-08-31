@@ -101,7 +101,7 @@ import {
   useContext,
   type ResolvedTarget,
 } from "./context";
-import { createTargetAdapter, type TargetAdapter } from "./adapters";
+import { createTargetAdapter, isLoopbackHost, type TargetAdapter } from "./adapters";
 import {
   emitSuccess,
   CliError,
@@ -294,8 +294,8 @@ async function main() {
         break;
       case "serve": {
         const { startServer } = await import("./server");
-        const { transport, port } = parseServeArgs(rawArgv.slice(1));
-        const handle = await startServer({ transport, port });
+        const { transport, port, statsPort } = parseServeArgs(rawArgv.slice(1));
+        const handle = await startServer({ transport, port, statsPort });
         let stopping = false;
         const shutdown = async () => {
           if (stopping) return;
@@ -337,7 +337,11 @@ async function main() {
         await runCore(subCommand, commandArgs, { isJson, dryRun: isDryRun });
         break;
       case "report":
-        await runReport(rawArgv.slice(1), { isJson });
+        await runReport(rawArgv.slice(1), {
+          isJson,
+          target: resolvedTarget,
+          allowInsecure,
+        });
         break;
       case "audit":
         await runAudit(subCommand, commandArgs, { isJson, dryRun: isDryRun });
@@ -573,7 +577,7 @@ Init targets:
   agent-skills, claude-code, codex, custom
 
 Operations:
-  skillmux report [--server <url> | --db <path>] --since <window> [--json]
+  skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
   skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
   skillmux outdated [--allow-local-source] [--json]
@@ -593,9 +597,11 @@ type Transport = "stdio" | "http";
 function parseServeArgs(args: string[]): {
   transport: Transport;
   port?: number;
+  statsPort?: number;
 } {
   let transport: Transport = "stdio";
   let port: number | undefined;
+  let statsPort: number | undefined;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
     const value = args[i + 1];
@@ -612,11 +618,18 @@ function parseServeArgs(args: string[]): {
       }
       port = parsed;
       i++;
+    } else if (option === "--stats-port") {
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
+        throw new Error("--stats-port must be an integer between 0 and 65535");
+      }
+      statsPort = parsed;
+      i++;
     } else {
       throw new Error(`unknown serve option: ${option}`);
     }
   }
-  return { transport, port };
+  return { transport, port, statsPort };
 }
 
 async function runIndex(): Promise<void> {
@@ -1498,21 +1511,15 @@ async function runInit(
 }
 
 function parseReportArgs(args: string[]): {
-  server?: string;
   db?: string;
   since?: string;
 } {
-  let server: string | undefined;
   let db: string | undefined;
   let since: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
     const value = args[i + 1];
-    if (option === "--server") {
-      if (!value) throw new Error("--server requires a URL");
-      server = value;
-      i++;
-    } else if (option === "--db") {
+    if (option === "--db") {
       if (!value) throw new Error("--db requires a path");
       db = value;
       i++;
@@ -1522,27 +1529,49 @@ function parseReportArgs(args: string[]): {
       i++;
     } else if (option === "--json") {
       // handled globally by main()'s isJson flag; recognized here so it isn't rejected
+    } else if (option === "--server" || option === "--context") {
+      // handled globally by main()'s resolveTarget(); recognized here so it isn't rejected
+      i++;
+    } else if (option === "--allow-insecure") {
+      // handled globally by main()'s allowInsecure flag; recognized here so it isn't rejected
     } else {
       throw new Error(`unknown report option: ${option}`);
     }
   }
-  if (server && db) throw new Error("--server and --db are mutually exclusive");
-  return { server, db, since };
+  return { db, since };
 }
 
 async function runReport(
   args: string[],
-  options: { isJson: boolean },
+  options: { isJson: boolean; target: ResolvedTarget; allowInsecure: boolean },
 ): Promise<void> {
-  const { server, db: dbPath, since } = parseReportArgs(args);
+  const { db: dbPath, since } = parseReportArgs(args);
   if (!since)
     throw new Error(
-      "usage: skillmux report [--server <url> | --db <path>] --since <window> [--json]",
+      "usage: skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]",
     );
+  if (dbPath && options.target.type === "remote")
+    throw new Error("--db and --context/--server are mutually exclusive");
 
-  if (server) {
-    const url = `${server.replace(/\/$/, "")}/stats?since=${encodeURIComponent(since)}`;
-    const res = await fetch(url);
+  if (options.target.type === "remote") {
+    const { server, token_env } = options.target;
+    const url = new URL(`${server.replace(/\/$/, "")}/stats`);
+    url.searchParams.set("since", since);
+    if (
+      url.protocol === "http:" &&
+      !isLoopbackHost(url.hostname) &&
+      !options.allowInsecure
+    ) {
+      throw new Error(
+        `Plaintext HTTP report target not allowed for non-loopback server "${server}". Pass --allow-insecure to bypass.`,
+      );
+    }
+    const headers: Record<string, string> = {};
+    if (token_env) {
+      const token = process.env[token_env];
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    const res = await fetch(url, { headers });
     if (!res.ok)
       throw new Error(
         `skillmux report --server failed: ${res.status} ${await res.text()}`,
