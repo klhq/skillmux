@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.3](https://github.com/klhq/skillmux/compare/v1.9.2...v1.9.3) (2026-08-31)
+
+
+### Added
+
+* **security:** add egress allowlist for install/update ([#160](https://github.com/klhq/skillmux/issues/160)) ([08779fd](https://github.com/klhq/skillmux/commit/08779fd67aacb941aa56025aecc05cf52e93e0c9))
+* **security:** centralized secret redaction + tamper-evident admin audit trail ([#162](https://github.com/klhq/skillmux/issues/162)) ([f5335ec](https://github.com/klhq/skillmux/commit/f5335ecacf877d4e75821fe9d4be615718055814))
+* **server:** remote report reporting via a stats-only port + authenticated --context ([#158](https://github.com/klhq/skillmux/issues/158)) ([aa19986](https://github.com/klhq/skillmux/commit/aa19986d43d5557d1ef5c6dd4ff53fca7fc9002a))
+* **server:** runtime resource hardening — body/concurrency bounds and inference egress allowlist ([#161](https://github.com/klhq/skillmux/issues/161)) ([5e98765](https://github.com/klhq/skillmux/commit/5e9876581190aead64434c62f70e8d5e4010a9ad))
+
+
+### Chores
+
+* force release version to 1.9.3 ([97887fe](https://github.com/klhq/skillmux/commit/97887fe4931b183951dec6859333fb1497f6df91))
+
 ## [1.9.2](https://github.com/klhq/skillmux/compare/v1.9.1...v1.9.2) (2026-08-30)
 
 
