@@ -22,6 +22,7 @@ import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
 import { initializeRuntime } from "./lifecycle";
 import { buildRedactor } from "./redact";
+import { insertAdminAuditRow, type AdminAuditChange } from "./db";
 import type { Clients, Config } from "./types";
 import {
   computeHash,
@@ -672,9 +673,24 @@ export async function startServer(opts?: {
                 changes: Record<string, string | number | boolean>;
               };
               let lastResult: any = null;
+              const auditChanges: AdminAuditChange[] = [];
               for (const [k, v] of Object.entries(body.changes ?? {})) {
                 lastResult = await setDottedKey(k, String(v), {
                   targetName: "remote",
+                });
+                auditChanges.push({
+                  key: k,
+                  old_value: lastResult.prior_val,
+                  new_value: lastResult.resulting_val,
+                });
+              }
+
+              if (auditChanges.length > 0 && lastResult) {
+                const { auditDb } = await getRuntime();
+                insertAdminAuditRow(auditDb, {
+                  ts: new Date().toISOString(),
+                  changes: auditChanges,
+                  resulting_revision: lastResult.resulting_revision,
                 });
               }
 

@@ -4,6 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import packageJson from "../package.json" with { type: "json" };
 import { startServer, type ServerHandle } from "../src/server";
 import { loadConfig } from "../src/config";
+import { openAudit } from "../src/db";
 import type { Config } from "../src/types";
 
 describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
@@ -167,5 +168,86 @@ describe("Admin HTTP Control Plane (/admin/v1/*) (AC7, AC8, AC9, AC10)", () => {
     expect(resPatch.status).toBe(200);
     const patchData = await resPatch.json();
     expect(patchData.ok).toBe(true);
+  });
+
+  it("appends one admin_audit row with the changed key, old/new values, and resulting revision on a successful PATCH (AC7)", async () => {
+    const config = await getTestConfig(true);
+    serverHandle = await startServer({ transport: "http", port: 0, config });
+    const baseUrl = `http://127.0.0.1:${serverHandle.port}`;
+
+    const getRes = await fetch(`${baseUrl}/admin/v1/config`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const etag = getRes.headers.get("ETag")!;
+    const before = (await getRes.json()).effective;
+
+    const resPatch = await fetch(`${baseUrl}/admin/v1/config`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+        "If-Match": etag,
+      },
+      body: JSON.stringify({ changes: { "recall.k_lexical": 42 } }),
+    });
+    expect(resPatch.status).toBe(200);
+    const patchData = await resPatch.json();
+
+    const auditDb = openAudit(TEST_STATE);
+    const rows = auditDb.query("SELECT * FROM admin_audit").all() as any[];
+    auditDb.close();
+
+    expect(rows).toHaveLength(1);
+    expect(JSON.parse(rows[0].changes)).toEqual([
+      { key: "recall.k_lexical", old_value: before.recall.k_lexical, new_value: 42 },
+    ]);
+    expect(rows[0].resulting_revision).toBe(patchData.resulting_revision);
+  });
+
+  it("writes no admin_audit row when PATCH is rejected for a stale revision (AC9)", async () => {
+    const config = await getTestConfig(true);
+    serverHandle = await startServer({ transport: "http", port: 0, config });
+    const baseUrl = `http://127.0.0.1:${serverHandle.port}`;
+
+    const resConflict = await fetch(`${baseUrl}/admin/v1/config`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+        "If-Match": `"stale-etag"`,
+      },
+      body: JSON.stringify({ changes: { "recall.k_lexical": 99 } }),
+    });
+    expect(resConflict.status).toBe(409);
+
+    const auditDb = openAudit(TEST_STATE);
+    const rows = auditDb.query("SELECT * FROM admin_audit").all() as any[];
+    auditDb.close();
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it("writes no admin_audit row when PATCH is rejected because config is externally managed (AC9)", async () => {
+    process.env.SKILLMUX_CONFIG_READONLY = "true";
+    const config = await getTestConfig(true);
+    serverHandle = await startServer({ transport: "http", port: 0, config });
+    const baseUrl = `http://127.0.0.1:${serverHandle.port}`;
+
+    const res = await fetch(`${baseUrl}/admin/v1/config`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+        "If-Match": `"anything"`,
+      },
+      body: JSON.stringify({ changes: { "recall.k_lexical": 99 } }),
+    });
+    expect(res.status).toBe(409);
+
+    const auditDb = openAudit(TEST_STATE);
+    const rows = auditDb.query("SELECT * FROM admin_audit").all() as any[];
+    auditDb.close();
+
+    expect(rows).toHaveLength(0);
   });
 });
