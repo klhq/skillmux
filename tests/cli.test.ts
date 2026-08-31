@@ -1822,12 +1822,15 @@ describe("skillmux report CLI", () => {
       },
     });
 
-    const result = await runCli(
-      "report",
-      "--server",
-      `http://127.0.0.1:${handle.port}`,
-      "--since",
-      "30d",
+    const result = await runCliEnv(
+      [
+        "report",
+        "--server",
+        `http://127.0.0.1:${handle.port}`,
+        "--since",
+        "30d",
+      ],
+      { SKILLMUX_ADMIN_TOKEN: "any-token-for-unauthed-server" },
     );
 
     expect(result.exitCode).toBe(0);
@@ -1837,7 +1840,7 @@ describe("skillmux report CLI", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  test("--context sends the bearer token from its token_env against an auth-enabled server", async () => {
+  test("report --context fails fast when admin token env var is unset or empty (AC2)", async () => {
     const root = mkdtempSync(join(tmpdir(), "skillmux-report-context-"));
     const home = mkdtempSync(join(tmpdir(), "skillmux-report-home-"));
     const skill = join(root, "vault", "server-report-skill");
@@ -1894,7 +1897,7 @@ describe("skillmux report CLI", () => {
       { HOME: home, TEST_REPORT_AUTH_TOKEN: "" },
     );
     expect(unauthed.exitCode).not.toBe(0);
-    expect(unauthed.stderr).toContain("401");
+    expect(unauthed.stderr).toContain('Environment variable "TEST_REPORT_AUTH_TOKEN" for administrative authentication is empty');
 
     const authed = await runCliEnv(
       ["report", "--context", "innie", "--since", "30d"],
@@ -2262,6 +2265,185 @@ describe("skillmux eval promote CLI (AC17, AC18)", () => {
     expect(parsed.data.skipped_existing).toBe(0);
     expect(parsed.data.dry_run).toBe(false);
     rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("Remote Target Parity CLI (Bucket B) (AC3-9)", () => {
+  let serverHandle: any = null;
+  const adminToken = "bucket-b-test-token";
+  let remoteServerUrl = "";
+  let remoteStateDir = "";
+  let remoteVaultDir = "";
+  let localHome = "";
+
+  beforeAll(async () => {
+    remoteVaultDir = mkdtempSync(join(tmpdir(), "skillmux-bucket-b-vault-"));
+    remoteStateDir = mkdtempSync(join(tmpdir(), "skillmux-bucket-b-state-"));
+    localHome = mkdtempSync(join(tmpdir(), "skillmux-bucket-b-home-"));
+
+    const skill = join(remoteVaultDir, "remote-skill");
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(
+      join(skill, "SKILL.md"),
+      "---\nname: remote-skill\ndescription: remote test\n---\nbody",
+    );
+
+    process.env.TEST_BUCKET_B_ADMIN_TOKEN = adminToken;
+    serverHandle = await startServer({
+      transport: "http",
+      port: 0,
+      config: {
+        vault_path: remoteVaultDir,
+        local_vault_paths: [],
+        state_dir: remoteStateDir,
+        recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
+        output: { top_k: 10, max_top_k: 50 },
+        inference: {
+          mode: "local",
+          bundle: "gte-small-v1",
+          models_dir: join(remoteStateDir, "models"),
+          embedding: { model: "Xenova/gte-small", dimension: 3 },
+        },
+        server: {
+          hostname: "127.0.0.1",
+          auth_enabled: false,
+          auth_token_env: "SKILLMUX_AUTH_TOKEN",
+          allowed_origins: [],
+          admin: { enabled: true, token_env: "TEST_BUCKET_B_ADMIN_TOKEN" },
+        },
+      },
+      clients: {
+        embed: async (texts: string[]) => texts.map(() => Float32Array.from([1, 0, 0])),
+      },
+    });
+    remoteServerUrl = `http://127.0.0.1:${serverHandle.port}`;
+
+    // Add context to localHome
+    await runCliEnv(
+      ["context", "add", "remote-test", "--server", remoteServerUrl, "--token-env", "TEST_BUCKET_B_ADMIN_TOKEN"],
+      { HOME: localHome },
+    );
+  });
+
+  afterAll(async () => {
+    if (serverHandle) {
+      await serverHandle.stop();
+      serverHandle = null;
+    }
+    delete process.env.TEST_BUCKET_B_ADMIN_TOKEN;
+    rmSync(remoteVaultDir, { recursive: true, force: true });
+    rmSync(remoteStateDir, { recursive: true, force: true });
+    rmSync(localHome, { recursive: true, force: true });
+  });
+
+  test("remote audit prune --dry-run counts without deleting (AC4)", async () => {
+    const auditDb = openAudit(remoteStateDir);
+    insertAudit(auditDb, {
+      ts: "2020-01-01T00:00:00.000Z",
+      query: "old query",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 2,
+    });
+    auditDb.close();
+
+    const result = await runCliEnv(
+      ["audit", "prune", "--context", "remote-test", "--older-than", "30d", "--dry-run"],
+      { HOME: localHome, TEST_BUCKET_B_ADMIN_TOKEN: adminToken },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("audit=1");
+    expect(result.stdout).toContain("(dry-run)");
+
+    const checkDb = openAudit(remoteStateDir);
+    expect((checkDb.query("SELECT count(*) as c FROM audit").get() as { c: number }).c).toBe(1);
+    checkDb.close();
+  });
+
+  test("remote audit prune requires --yes when non-dry-run (AC5)", async () => {
+    const result = await runCliEnv(
+      ["audit", "prune", "--context", "remote-test", "--older-than", "30d"],
+      { HOME: localHome, TEST_BUCKET_B_ADMIN_TOKEN: adminToken },
+    );
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("requires --yes");
+  });
+
+  test("remote audit prune with --yes deletes remote rows (AC3)", async () => {
+    const result = await runCliEnv(
+      ["audit", "prune", "--context", "remote-test", "--older-than", "30d", "--yes"],
+      { HOME: localHome, TEST_BUCKET_B_ADMIN_TOKEN: adminToken },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("audit=1");
+
+    const checkDb = openAudit(remoteStateDir);
+    expect((checkDb.query("SELECT count(*) as c FROM audit").get() as { c: number }).c).toBe(0);
+    checkDb.close();
+  });
+
+  test("remote eval runs against server and displays report (AC6)", async () => {
+    const result = await runCliEnv(
+      ["eval", "--context", "remote-test"],
+      { HOME: localHome, TEST_BUCKET_B_ADMIN_TOKEN: adminToken },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("holdout queries:");
+    expect(result.stdout).toContain("lexical recall@5:");
+  });
+
+  test("remote eval promote sources candidates from server and writes to local file (AC7, AC8)", async () => {
+    const auditDb = openAudit(remoteStateDir);
+    insertAudit(auditDb, {
+      ts: new Date().toISOString(),
+      request_id: "req-remote-1",
+      query: "remote find skill",
+      retrieval: "lexical",
+      candidates: [{ skill_id: "remote-skill", score: 0.9 }],
+      latency_ms: 3,
+    });
+    const resolveRow = auditDb.query("SELECT id FROM audit WHERE request_id = 'req-remote-1'").get() as { id: number };
+    insertFetch(auditDb, {
+      ts: new Date().toISOString(),
+      skill_id: "remote-skill",
+      resolve_audit_id: resolveRow.id,
+      rank_at_resolve: 1,
+    });
+    auditDb.close();
+
+    const localTargetDir = mkdtempSync(join(tmpdir(), "skillmux-local-target-"));
+    const localTargetPath = join(localTargetDir, "eval-observed.json");
+
+    const result = await runCliEnv(
+      ["eval", "promote", "--context", "remote-test", "--since", "30d", "--target", localTargetPath, "--yes"],
+      { HOME: localHome, TEST_BUCKET_B_ADMIN_TOKEN: adminToken },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("wrote 1 case");
+    expect(result.stderr).toContain("raw user queries");
+
+    const written = JSON.parse(readFileSync(localTargetPath, "utf-8"));
+    expect(written).toEqual([{ query: "remote find skill", split: "observed", relevant_skill_ids: ["remote-skill"] }]);
+
+    rmSync(localTargetDir, { recursive: true, force: true });
+  });
+
+  test("remote doctor displays remote summary without affecting local doctor (AC9)", async () => {
+    const remoteResult = await runCliEnv(
+      ["doctor", "--context", "remote-test"],
+      { HOME: localHome, TEST_BUCKET_B_ADMIN_TOKEN: adminToken },
+    );
+    expect(remoteResult.exitCode).toBe(0);
+    expect(remoteResult.stdout).toContain(`server: ${remoteServerUrl}`);
+    expect(remoteResult.stdout).toContain("runtime: running");
+    expect(remoteResult.stdout).toContain("readiness: ready");
+    expect(remoteResult.stdout).toContain("persistence: writable");
+
+    // Local doctor unchanged (renders diagnostics for local config)
+    const localResult = await runCli("doctor");
+    expect(localResult.stdout).toContain(`version: ${packageJson.version}`);
+    expect(localResult.stdout).toContain("runtime: host");
+    expect(localResult.stdout).toContain("vault path:");
   });
 });
 

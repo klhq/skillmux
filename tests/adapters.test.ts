@@ -4,6 +4,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createTargetAdapter } from "../src/adapters";
 import { startServer, type ServerHandle } from "../src/server";
 import { loadConfig } from "../src/config";
+import { insertAudit, insertFetch, openAudit } from "../src/db";
 import { CliError } from "../src/output";
 import type { Config } from "../src/types";
 
@@ -215,5 +216,109 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     expect(typeof remoteShow.effective).toBe("object");
     expect(localShow.sources).toBeDefined();
     expect(remoteShow.sources).toBeDefined();
+  });
+
+  it("local and remote adapters have matching contract shapes for getStats (AC1, AC2)", async () => {
+    const config = await loadConfig();
+    config.vault_path = TEST_VAULT;
+    config.state_dir = TEST_STATE;
+    config.server = {
+      auth_enabled: false,
+      auth_token_env: "SKILLMUX_AUTH_TOKEN",
+      allowed_origins: [],
+      hostname: "127.0.0.1",
+      admin: { enabled: true, token_env: "SKILLMUX_ADMIN_TOKEN" },
+    };
+
+    serverHandle = await startServer({ transport: "http", port: 0, config });
+    const serverUrl = `http://127.0.0.1:${serverHandle.port}`;
+
+    const localAdapter = createTargetAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
+    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+
+    const localStats = await localAdapter.getStats("30d");
+    const remoteStats = await remoteAdapter.getStats("30d");
+
+    expect(typeof localStats.total_requests).toBe("number");
+    expect(typeof remoteStats.total_requests).toBe("number");
+    expect(localStats.total_requests).toBe(remoteStats.total_requests);
+  });
+
+  it("local and remote adapters execute auditCount and auditPrune (AC3, AC4, AC5)", async () => {
+    const config = await loadConfig();
+    config.vault_path = TEST_VAULT;
+    config.state_dir = TEST_STATE;
+    config.server = {
+      auth_enabled: false,
+      auth_token_env: "SKILLMUX_AUTH_TOKEN",
+      allowed_origins: [],
+      hostname: "127.0.0.1",
+      admin: { enabled: true, token_env: "SKILLMUX_ADMIN_TOKEN" },
+    };
+
+    serverHandle = await startServer({ transport: "http", port: 0, config });
+    const serverUrl = `http://127.0.0.1:${serverHandle.port}`;
+
+    const auditDb = openAudit(TEST_STATE);
+    insertAudit(auditDb, {
+      ts: "2020-01-01T00:00:00.000Z",
+      query: "old query",
+      retrieval: "lexical",
+      candidates: [],
+      latency_ms: 5,
+    });
+    auditDb.close();
+
+    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+
+    const dryRes = await remoteAdapter.auditCount("30d");
+    expect(dryRes.dry_run).toBe(true);
+    expect(dryRes.audit_deleted).toBe(1);
+
+    const pruneRes = await remoteAdapter.auditPrune({ older_than: "30d", dry_run: false, confirm: true });
+    expect(pruneRes.dry_run).toBe(false);
+    expect(pruneRes.audit_deleted).toBe(1);
+  });
+
+  it("local and remote adapters execute evalRun and evalPromote (AC6, AC7, AC8)", async () => {
+    const config = await loadConfig();
+    config.vault_path = TEST_VAULT;
+    config.state_dir = TEST_STATE;
+    config.server = {
+      auth_enabled: false,
+      auth_token_env: "SKILLMUX_AUTH_TOKEN",
+      allowed_origins: [],
+      hostname: "127.0.0.1",
+      admin: { enabled: true, token_env: "SKILLMUX_ADMIN_TOKEN" },
+    };
+
+    serverHandle = await startServer({ transport: "http", port: 0, config });
+    const serverUrl = `http://127.0.0.1:${serverHandle.port}`;
+
+    const auditDb = openAudit(TEST_STATE);
+    insertAudit(auditDb, {
+      ts: new Date().toISOString(),
+      query: "adapter eval query",
+      retrieval: "lexical",
+      candidates: [{ skill_id: "test-skill", score: 1 }],
+      latency_ms: 2,
+    });
+    const resolveRow = auditDb.query("SELECT id FROM audit WHERE query = 'adapter eval query'").get() as { id: number };
+    insertFetch(auditDb, {
+      ts: new Date().toISOString(),
+      skill_id: "test-skill",
+      resolve_audit_id: resolveRow.id,
+      rank_at_resolve: 1,
+    });
+    auditDb.close();
+
+    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+
+    const evalReport = await remoteAdapter.evalRun();
+    expect(evalReport.queries).toBeDefined();
+
+    const candidates = await remoteAdapter.evalPromote("30d");
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.query).toBe("adapter eval query");
   });
 });

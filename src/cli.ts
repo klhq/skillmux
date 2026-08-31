@@ -381,10 +381,16 @@ async function main() {
           isJson,
           target: resolvedTarget,
           allowInsecure,
+          adapter,
         });
         break;
       case "audit":
-        await runAudit(subCommand, commandArgs, { isJson, dryRun: isDryRun });
+        await runAudit(subCommand, commandArgs, {
+          isJson,
+          dryRun: isDryRun,
+          target: resolvedTarget,
+          adapter,
+        });
         break;
       case "scan":
         await runScan(rawArgv.slice(1), { isJson });
@@ -400,15 +406,15 @@ async function main() {
         break;
       case "eval":
         if (subCommand === "promote") {
-          await runEvalPromote(commandArgs, { isJson, dryRun: isDryRun });
+          await runEvalPromote(commandArgs, { isJson, dryRun: isDryRun, adapter });
         } else if (subCommand === "") {
-          await runEval({ isJson });
+          await runEval({ isJson, adapter });
         } else {
           throw new Error(`usage: skillmux eval [promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]]`);
         }
         break;
       case "doctor":
-        await runDoctor({ isJson });
+        await runDoctor({ isJson, target: resolvedTarget, adapter });
         break;
       case "which":
         throw new Error(
@@ -707,11 +713,11 @@ async function runIndex(): Promise<void> {
   }
 }
 
-async function runEval(options: { isJson: boolean }): Promise<void> {
+async function runEval(options: { isJson: boolean; adapter: TargetAdapter }): Promise<void> {
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
 
-  const report = await evalVault().catch((error: unknown) => {
+  const report = await options.adapter.evalRun().catch((error: unknown) => {
     throw new Error(
       `eval requires an embeddings client (local model or a configured remote endpoint): ${String(error)}`,
     );
@@ -731,7 +737,52 @@ async function runEval(options: { isJson: boolean }): Promise<void> {
   });
 }
 
-async function runDoctor(options: { isJson: boolean }): Promise<void> {
+async function runDoctor(options: {
+  isJson: boolean;
+  target: ResolvedContext;
+  adapter: TargetAdapter;
+}): Promise<void> {
+  if (options.target.type === "remote") {
+    const target = options.target;
+    const [status, caps] = await Promise.all([
+      options.adapter.configStatus(),
+      options.adapter.getCapabilities(),
+    ]);
+    const remoteReport = {
+      target: target.name || target.server,
+      server: target.server,
+      version: status.version,
+      deployment_runtime: status.deployment_runtime,
+      image_variant: status.image_variant ?? null,
+      runtime: status.runtime,
+      readiness: status.readiness,
+      active_revision: status.active_revision,
+      capabilities: caps,
+      restart_required_keys: status.restart_required_keys,
+      last_reload_error: status.last_reload_error,
+    };
+    emitSuccess({ isJson: options.isJson, target: options.target }, remoteReport, () => {
+      renderTargetBanner(options.target);
+      console.log(`server: ${remoteReport.server}`);
+      console.log(`version: ${remoteReport.version}`);
+      console.log(`deployment runtime: ${remoteReport.deployment_runtime}`);
+      console.log(`image variant: ${remoteReport.image_variant ?? "none"}`);
+      console.log(`runtime: ${remoteReport.runtime}`);
+      console.log(`readiness: ${remoteReport.readiness.status} (${remoteReport.readiness.capability})`);
+      console.log(`active revision: ${remoteReport.active_revision}`);
+      console.log(`persistence: ${caps.persistence}`);
+      console.log(`config read: ${caps.config_read}`);
+      console.log(`config write: ${caps.config_write}`);
+      if (status.last_reload_error) {
+        console.log(`last reload error: ${status.last_reload_error}`);
+      }
+      if (status.restart_required_keys.length > 0) {
+        console.log(`restart required for: ${status.restart_required_keys.join(", ")}`);
+      }
+    });
+    return;
+  }
+
   const effective = await getEffectiveConfig(resolveConfigPath());
   const report = await diagnose(effective.effective, process.env, effective.sources);
   emitSuccess({ isJson: options.isJson }, report, () => {
@@ -1600,7 +1651,7 @@ function parseReportArgs(args: string[]): {
 
 async function runReport(
   args: string[],
-  options: { isJson: boolean; target: ResolvedContext; allowInsecure: boolean },
+  options: { isJson: boolean; target: ResolvedContext; allowInsecure: boolean; adapter: TargetAdapter },
 ): Promise<void> {
   const { db: dbPath, since } = parseReportArgs(args);
   if (!since)
@@ -1610,44 +1661,23 @@ async function runReport(
   if (dbPath && options.target.type === "remote")
     throw new Error("--db and --context/--server are mutually exclusive");
 
-  if (options.target.type === "remote") {
-    const { server, token_env } = options.target;
-    const url = new URL(`${server.replace(/\/$/, "")}/stats`);
-    url.searchParams.set("since", since);
-    if (
-      url.protocol === "http:" &&
-      !isLoopbackHost(url.hostname) &&
-      !options.allowInsecure
-    ) {
-      throw new Error(
-        `Plaintext HTTP report target not allowed for non-loopback server "${server}". Pass --allow-insecure to bypass.`,
+  if (dbPath) {
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const stats = getStats(db, since);
+      emitSuccess({ isJson: options.isJson }, stats, () =>
+        console.log(renderStatsText(stats)),
       );
+    } finally {
+      db.close();
     }
-    const headers: Record<string, string> = {};
-    if (token_env) {
-      const token = process.env[token_env];
-      if (token) headers.Authorization = `Bearer ${token}`;
-    }
-    const res = await fetch(url, { headers });
-    if (!res.ok)
-      throw new Error(
-        `skillmux report --server failed: ${res.status} ${await res.text()}`,
-      );
-    const stats = (await res.json()) as StatsResponse;
-    emitSuccess({ isJson: options.isJson }, stats, () =>
-      console.log(renderStatsText(stats)),
-    );
     return;
   }
 
-  const db = dbPath
-    ? new Database(dbPath, { readonly: true })
-    : openAudit(expandHome((await loadConfig()).state_dir));
-  const stats = getStats(db, since);
+  const stats = await options.adapter.getStats(since);
   emitSuccess({ isJson: options.isJson }, stats, () =>
     console.log(renderStatsText(stats)),
   );
-  db.close();
 }
 
 function parseScanArgs(args: string[]): {
