@@ -2515,6 +2515,18 @@ describe("skillmux install CLI", () => {
     expect(result.stdout).not.toContain("supersecret123");
     expect(result.stdout).toContain("[REDACTED]");
   });
+
+  test("redacts a credential embedded in a git URL from the --verbose stack trace", async () => {
+    const result = await runCli(
+      "install",
+      "https://user:supersecret123@example.invalid/owner/repo.git",
+      "--verbose",
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).not.toContain("supersecret123");
+    expect(result.stderr).toContain("[REDACTED]");
+  });
 });
 
 describe("skillmux outdated CLI", () => {

@@ -543,7 +543,7 @@ async function handleError(
         : `error: ${msg}`,
     );
     if (opts.isVerbose && err instanceof Error && err.stack) {
-      console.error(err.stack);
+      console.error(redact(err.stack));
     }
   }
 }
@@ -1680,8 +1680,8 @@ function parseInstallArgs(args: string[]): {
         throw new Error("--fail-on must be low, medium, or high");
       }
       failOn = value;
-    } else if (option === "--json") {
-      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
+    } else if (option === "--json" || option === "--verbose") {
+      // handled globally by main()'s isJson/isVerbose flags; recognized here so they aren't rejected
     } else if (option?.startsWith("--")) {
       throw new Error(`unknown install option: ${option}`);
     } else if (repo !== undefined) {
