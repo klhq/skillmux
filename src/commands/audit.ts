@@ -39,7 +39,7 @@ export async function runAudit(
     if (retentionDays <= 0) {
       emitSuccess(
         { isJson: options.isJson },
-        { audit_deleted: 0, fetch_deleted: 0, dry_run: dryRun, cutoff: null },
+        { audit_deleted: 0, fetch_deleted: 0, admin_audit_deleted: 0, dry_run: dryRun, cutoff: null },
         () => console.log("prune: audit.retention_days is 0 (pruning disabled); nothing to do"),
       );
       return;
@@ -55,7 +55,10 @@ export async function runAudit(
       emitSuccess(
         { isJson: options.isJson },
         { ...counts, dry_run: true, cutoff: cutoffIso },
-        () => console.log(`prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} (dry-run)`),
+        () =>
+          console.log(
+            `prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} admin_audit=${counts.admin_audit_deleted} (dry-run)`,
+          ),
       );
       return;
     }
@@ -74,7 +77,10 @@ export async function runAudit(
     emitSuccess(
       { isJson: options.isJson },
       { ...counts, dry_run: false, cutoff: cutoffIso },
-      () => console.log(`prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted}`),
+      () =>
+        console.log(
+          `prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} admin_audit=${counts.admin_audit_deleted}`,
+        ),
     );
   } finally {
     db.close();

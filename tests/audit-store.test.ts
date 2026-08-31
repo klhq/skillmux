@@ -3,7 +3,15 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit, openIndex, pruneAudit } from "../src/db";
+import {
+  getAuditRowByRequestId,
+  insertAdminAuditRow,
+  insertAudit,
+  insertFetch,
+  openAudit,
+  openIndex,
+  pruneAudit,
+} from "../src/db";
 import { queryAuditRows } from "../src/stats";
 
 // The pre-split shape: a canonical audit table inside index.sqlite3. openIndex
@@ -286,7 +294,7 @@ describe("audit store", () => {
 
       const result = pruneAudit(db, 0, now);
 
-      expect(result).toEqual({ audit_deleted: 0, fetch_deleted: 0 });
+      expect(result).toEqual({ audit_deleted: 0, fetch_deleted: 0, admin_audit_deleted: 0 });
       expect((db.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n).toBe(1);
       expect((db.query("SELECT count(*) AS n FROM fetch").get() as { n: number }).n).toBe(1);
     });
@@ -314,6 +322,29 @@ describe("audit store", () => {
       expect(result.audit_deleted).toBe(1);
       const remaining = db.query("SELECT query FROM audit").all() as { query: string }[];
       expect(remaining.map((r) => r.query)).toEqual(["recent enough to keep"]);
+    });
+
+    test("deletes admin_audit rows older than the retention window and keeps newer ones (AC10)", () => {
+      db = openAudit(tmp);
+      const now = new Date("2026-08-28T00:00:00.000Z");
+      insertAdminAuditRow(db, {
+        ts: "2026-01-01T00:00:00.000Z",
+        changes: [{ key: "recall.k_lexical", old_value: 15, new_value: 25 }],
+        resulting_revision: "old-enough-to-prune",
+      });
+      insertAdminAuditRow(db, {
+        ts: "2026-08-27T00:00:00.000Z",
+        changes: [{ key: "recall.k_lexical", old_value: 25, new_value: 30 }],
+        resulting_revision: "recent-enough-to-keep",
+      });
+
+      const result = pruneAudit(db, 30, now);
+
+      expect(result.admin_audit_deleted).toBe(1);
+      const remaining = db.query("SELECT resulting_revision FROM admin_audit").all() as {
+        resulting_revision: string;
+      }[];
+      expect(remaining.map((r) => r.resulting_revision)).toEqual(["recent-enough-to-keep"]);
     });
 
     test("deletes fetch rows older than the retention window independently of their resolve row's age (AC13)", () => {

@@ -391,25 +391,34 @@ export function insertFetch(db: Database, row: FetchInsert): void {
 export interface PruneResult {
   audit_deleted: number;
   fetch_deleted: number;
+  admin_audit_deleted: number;
 }
 
 /**
- * Deletes resolve and fetch rows with ts before `cutoffIso`, each by its own
- * timestamp; no FK ties them, so a fetch outliving its resolve row simply
- * reads back uncorrelated (AC7's existing null path). Reclaims the freed
+ * Deletes resolve, fetch, and admin_audit rows with ts before `cutoffIso`,
+ * each by its own timestamp; no FK ties them, so a fetch outliving its
+ * resolve row simply reads back uncorrelated (AC7's existing null path).
+ * admin_audit shares this cutoff rather than a separate retention config
+ * (AC10) — its hash chain is unaffected since pruning only ever removes the
+ * oldest rows, never rows in the middle of the chain. Reclaims the freed
  * pages with an incremental vacuum, which only touches audit.sqlite3 (AC16).
  */
 export function pruneAuditBefore(db: Database, cutoffIso: string): PruneResult {
   const auditResult = db.run("DELETE FROM audit WHERE ts < ?", [cutoffIso]);
   const fetchResult = db.run("DELETE FROM fetch WHERE ts < ?", [cutoffIso]);
+  const adminAuditResult = db.run("DELETE FROM admin_audit WHERE ts < ?", [cutoffIso]);
   db.run("PRAGMA incremental_vacuum");
 
-  return { audit_deleted: auditResult.changes, fetch_deleted: fetchResult.changes };
+  return {
+    audit_deleted: auditResult.changes,
+    fetch_deleted: fetchResult.changes,
+    admin_audit_deleted: adminAuditResult.changes,
+  };
 }
 
 /** AC12: retentionDays <= 0 disables pruning entirely. */
 export function pruneAudit(db: Database, retentionDays: number, now: Date = new Date()): PruneResult {
-  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0 };
+  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0, admin_audit_deleted: 0 };
   const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
   return pruneAuditBefore(db, cutoff);
 }
@@ -505,5 +514,8 @@ export function verifyAdminAuditChain(db: Database): AdminAuditChainResult {
 export function countPrunable(db: Database, cutoffIso: string): PruneResult {
   const auditRow = db.query("SELECT count(*) AS n FROM audit WHERE ts < ?").get(cutoffIso) as { n: number };
   const fetchRow = db.query("SELECT count(*) AS n FROM fetch WHERE ts < ?").get(cutoffIso) as { n: number };
-  return { audit_deleted: auditRow.n, fetch_deleted: fetchRow.n };
+  const adminAuditRow = db
+    .query("SELECT count(*) AS n FROM admin_audit WHERE ts < ?")
+    .get(cutoffIso) as { n: number };
+  return { audit_deleted: auditRow.n, fetch_deleted: fetchRow.n, admin_audit_deleted: adminAuditRow.n };
 }
