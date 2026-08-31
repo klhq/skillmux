@@ -70,6 +70,29 @@ describe("buildRedactor", () => {
     expect(out).toContain("[REDACTED]");
     expect(out).toContain("host/repo.git");
   });
+
+  test("should be a synchronous, deterministic pure function needing no network or subprocess", () => {
+    process.env.SKILLMUX_TEST_REDACT_KEY = "purity-secret";
+    const config = testConfig({
+      inference: {
+        mode: "remote",
+        timeout_ms: 2000,
+        embedding: {
+          provider: "openai",
+          endpoint: "http://127.0.0.1:1/v1/embeddings",
+          model: "microsoft/harrier-oss-v1-0.6b",
+          dimension: 3,
+          api_key_env: "SKILLMUX_TEST_REDACT_KEY",
+        },
+      },
+    });
+
+    const redact = buildRedactor(config);
+    const result = redact("leaked purity-secret value");
+
+    expect(result).not.toBeInstanceOf(Promise);
+    expect(redact("leaked purity-secret value")).toBe(result);
+  });
 });
 
 describe("redactedErrorLog", () => {
