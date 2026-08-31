@@ -147,6 +147,43 @@ const KNOWN_COMMANDS = [
   "local-vault",
 ];
 
+const LOCAL_ONLY_COMMANDS = new Set([
+  "install",
+  "update",
+  "outdated",
+  "sync",
+  "core",
+  "project",
+  "target",
+  "local-vault",
+  "index",
+  "models",
+  "scan",
+  "init",
+  "serve",
+]);
+
+function getLocalOnlyCommand(command: string, subCommand: string): string | null {
+  if (LOCAL_ONLY_COMMANDS.has(command)) {
+    return command;
+  }
+  if (command === "skill" && (subCommand === "which" || !subCommand)) {
+    return "skill which";
+  }
+  return null;
+}
+
+function remoteContextUnsupported(rejectedCommand: string): CliError {
+  return new CliError(
+    `\`${rejectedCommand}\` operates on the local vault only; --context/--server isn't supported here`,
+    2,
+    "REMOTE_CONTEXT_UNSUPPORTED",
+    {
+      rejected_command: rejectedCommand,
+    },
+  );
+}
+
 function isDockerHostManagementCommand(command: string, subCommand: string): boolean {
   if (
     [
@@ -251,26 +288,26 @@ async function main() {
     return;
   }
 
-  // Only resolve target if command is target-aware or context/config
-  const isLocalConfigInit = command === "config" && rawArgv[1] === "init";
-  if (
-    (["context", "config"].includes(command) &&
-      !isLocalConfigInit) ||
-    flagContext ||
-    flagServer
-  ) {
-    try {
-      resolvedTarget = await resolveContext({
-        context: flagContext,
-        server: flagServer,
-      });
-    } catch (err: any) {
-      await handleError(err, { target: resolvedTarget, isJson, isVerbose });
-      return;
-    }
+  try {
+    resolvedTarget = await resolveContext({
+      context: flagContext,
+      server: flagServer,
+    });
+  } catch (err: any) {
+    await handleError(err, { target: resolvedTarget, isJson, isVerbose });
+    return;
   }
 
-  // Note: Most command handlers (install, update, sync, index, scan, eval, doctor, skill which, audit, core, project, target, local-vault, models) do not yet consume resolvedTarget and operate against local state regardless of --context/--server (known gap; see docs/sdd/cli-remote-target-parity/think.md).
+  const localOnlyCommand = getLocalOnlyCommand(command, subCommand);
+  if (localOnlyCommand && resolvedTarget.type === "remote") {
+    await handleError(remoteContextUnsupported(localOnlyCommand), {
+      target: resolvedTarget,
+      isJson,
+      isVerbose,
+    });
+    return;
+  }
+
   const adapter = createTargetAdapter(resolvedTarget, { allowInsecure });
 
   try {

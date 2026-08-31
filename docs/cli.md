@@ -32,6 +32,24 @@ uses `CONTAINER_COMMAND_UNSUPPORTED` and includes `rejected_command`,
 `recommended_host_command`, and a deployment-guide URL. See [the container
 command contract](deployment.md#container-command-contract) for examples.
 
+## Local-only commands and remote context rejection
+
+Commands that operate directly on the local vault checkout reject `--context` and
+`--server` (or a configured remote default context) with exit code 2. These 14
+commands are local-only: `install`, `update`, `outdated`, `sync`, `core`,
+`project`, `target`, `local-vault`, `index`, `models`, `scan`, `init`, `serve`,
+and `skill which`.
+
+When one of these commands receives a remote context, it exits with code 2.
+Human-mode output reports:
+
+```
+error: `<command>` operates on the local vault only; --context/--server isn't supported here
+```
+
+In `--json` mode, the CLI emits a structured error envelope with `code: "REMOTE_CONTEXT_UNSUPPORTED"`
+and includes `rejected_command`.
+
 ## Global options and target resolution
 
 Every target-aware command resolves its execution target deterministically in this order:
@@ -51,6 +69,27 @@ Every target-aware command resolves its execution target deterministically in th
 | `--json` | Emit line-stable JSON envelopes (schema version 1) to stdout |
 | `--allow-insecure` | Allow plaintext HTTP admin requests to non-loopback addresses |
 | `--verbose` | Output diagnostic stack traces for errors |
+
+`--context`/`--server` selects which Skillmux admin instance a command talks to
+over `/admin/v1/*` — nothing more. That's one of three independent axes in this
+system:
+
+1. Which vault checkout backs Core/Project pinning — always a local Git checkout
+   on the machine running the CLI. `install`/`update`/`sync`/`core`/`project`/
+   `target`/`local-vault`/`index`/`models`/`scan`/`init`/`outdated`/`serve`/
+   `skill which` operate on it. There is no remote version of this — Git and the
+   deployment process move content between checkouts, not Skillmux's own
+   commands.
+2. Which MCP server an agent queries for Routed retrieval — the agent's own MCP
+   client configuration (local stdio vs. remote HTTP), entirely separate from
+   `skillmux context`.
+3. Which Skillmux instance the CLI's admin commands act on — `config`, `report`,
+   and (in a future slice) `audit prune`/`eval`. This is the only thing
+   `--context`/`--server` actually selects.
+
+The commands above belong entirely to axis 1. `--context` has no meaning for
+them — not "risky," a category error, the same way `--context prod` wouldn't
+mean anything on `ls`.
 
 ---
 
