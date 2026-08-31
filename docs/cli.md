@@ -25,7 +25,7 @@ CLI. Its `skillmux --help` surface is intentionally limited to `serve`,
 `skill which`, and read-only `config` inspection (`show`, `get`, `validate`,
 `diff`, and `status`). Run `init`, `install`, pinning, `sync`, project or
 target management, model downloads, contexts, and bare `eval` (vault ranking
-evaluation, which needs local embeddings and the vault) on the host.
+evaluation, which needs an embeddings client and the vault) on the host.
 
 When the image rejects one of those commands, it exits with code 2. JSON mode
 uses `CONTAINER_COMMAND_UNSUPPORTED` and includes `rejected_command`,
@@ -285,6 +285,11 @@ Show which root actually serves a skill_id, and every root it shadows:
 ```sh
 skillmux skill which csv-formatter
 ```
+
+> [!NOTE]
+> `skill which` performs local vault-checkout shadow resolution (which root
+> wins on the local filesystem) and is unrelated to semantic MCP skill routing
+> (`resolve_skill`/`fetch_skill`).
 
 ---
 

@@ -99,9 +99,9 @@ import {
   getCurrentContext,
   listContexts,
   removeContext,
-  resolveTarget,
+  resolveContext,
   useContext,
-  type ResolvedTarget,
+  type ResolvedContext,
 } from "./context";
 import { createTargetAdapter, isLoopbackHost, type TargetAdapter } from "./adapters";
 import {
@@ -167,7 +167,7 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
   }
 
   // eval promote only touches the mounted state_dir, unlike bare `eval`
-  // (vault ranking evaluation), which needs local embeddings and the vault.
+  // (vault ranking evaluation), which needs an embeddings client and the vault.
   if (command === "eval" && subCommand !== "promote") return true;
 
   return command === "config" && ["init", "set"].includes(subCommand);
@@ -237,7 +237,7 @@ async function main() {
     else if (arg === "--server") flagServer = rawArgv[++i];
   }
 
-  let resolvedTarget: ResolvedTarget = { type: "local", name: "local" };
+  let resolvedTarget: ResolvedContext = { type: "local", name: "local" };
 
   if (
     process.env.RUNNING_IN_DOCKER === "true" &&
@@ -260,7 +260,7 @@ async function main() {
     flagServer
   ) {
     try {
-      resolvedTarget = await resolveTarget({
+      resolvedTarget = await resolveContext({
         context: flagContext,
         server: flagServer,
       });
@@ -270,6 +270,7 @@ async function main() {
     }
   }
 
+  // Note: Most command handlers (install, update, sync, index, scan, eval, doctor, skill which, audit, core, project, target, local-vault, models) do not yet consume resolvedTarget and operate against local state regardless of --context/--server (known gap; see docs/sdd/cli-remote-target-parity/think.md).
   const adapter = createTargetAdapter(resolvedTarget, { allowInsecure });
 
   try {
@@ -409,7 +410,7 @@ async function main() {
 async function handleContextCommand(
   sub: string,
   args: string[],
-  ctx: { target: ResolvedTarget; isJson: boolean },
+  ctx: { target: ResolvedContext; isJson: boolean },
 ) {
   if (sub === "list") {
     const contexts = await listContexts();
@@ -505,7 +506,7 @@ async function handleCompletionsCommand(shell: string) {
 
 async function handleError(
   err: any,
-  opts: { target: ResolvedTarget; isJson: boolean; isVerbose: boolean },
+  opts: { target: ResolvedContext; isJson: boolean; isVerbose: boolean },
 ) {
   const code = mapExitCode(err);
   process.exitCode = code;
@@ -580,7 +581,7 @@ Setup:
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
   skillmux target <list|show|add|remove>
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
-  skillmux skill which <skill_id>
+  skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
@@ -674,7 +675,9 @@ async function runEval(options: { isJson: boolean }): Promise<void> {
   configure({ config, clients: createClients(config) });
 
   const report = await evalVault().catch((error: unknown) => {
-    throw new Error(`eval requires local embeddings: ${String(error)}`);
+    throw new Error(
+      `eval requires an embeddings client (local model or a configured remote endpoint): ${String(error)}`,
+    );
   });
   emitSuccess({ isJson: options.isJson }, report, () => {
     console.log(`holdout queries:   ${report.queries}`);
@@ -718,7 +721,11 @@ async function runSkill(subCommand: string, args: string[]): Promise<void> {
 
 async function runWhich(args: string[]): Promise<void> {
   const skillId = args[0];
-  if (!skillId) throw new Error("usage: skillmux skill which <skill_id>");
+  if (!skillId) {
+    throw new Error(
+      "usage: skillmux skill which <skill_id> (local vault shadow resolution; unrelated to MCP routing)",
+    );
+  }
   const config = await loadConfig();
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
@@ -1543,7 +1550,7 @@ function parseReportArgs(args: string[]): {
     } else if (option === "--json") {
       // handled globally by main()'s isJson flag; recognized here so it isn't rejected
     } else if (option === "--server" || option === "--context") {
-      // handled globally by main()'s resolveTarget(); recognized here so it isn't rejected
+      // handled globally by main()'s resolveContext(); recognized here so it isn't rejected
       i++;
     } else if (option === "--allow-insecure") {
       // handled globally by main()'s allowInsecure flag; recognized here so it isn't rejected
@@ -1556,7 +1563,7 @@ function parseReportArgs(args: string[]): {
 
 async function runReport(
   args: string[],
-  options: { isJson: boolean; target: ResolvedTarget; allowInsecure: boolean },
+  options: { isJson: boolean; target: ResolvedContext; allowInsecure: boolean },
 ): Promise<void> {
   const { db: dbPath, since } = parseReportArgs(args);
   if (!since)

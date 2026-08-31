@@ -7,7 +7,7 @@ import {
   listContexts,
   loadContextConfig,
   removeContext,
-  resolveTarget,
+  resolveContext,
   useContext,
   type ContextConfig,
 } from "../src/context";
@@ -80,7 +80,7 @@ describe("Context management & Target resolution (AC1 & AC2)", () => {
     await useContext("prod", CONTEXT_FILE);
 
     // Precedence 4: default context (prod)
-    let target = await resolveTarget({}, CONTEXT_FILE);
+    let target = await resolveContext({}, CONTEXT_FILE);
     expect(target).toEqual({
       type: "remote",
       name: "prod",
@@ -90,12 +90,12 @@ describe("Context management & Target resolution (AC1 & AC2)", () => {
 
     // Precedence 2: ENV override
     process.env.SKILLMUX_CONTEXT = "local";
-    target = await resolveTarget({}, CONTEXT_FILE);
+    target = await resolveContext({}, CONTEXT_FILE);
     expect(target.type).toBe("local");
 
     process.env.SKILLMUX_SERVER = "http://env-server:3000";
     delete process.env.SKILLMUX_CONTEXT;
-    target = await resolveTarget({}, CONTEXT_FILE);
+    target = await resolveContext({}, CONTEXT_FILE);
     expect(target).toEqual({
       type: "remote",
       name: "custom",
@@ -103,10 +103,10 @@ describe("Context management & Target resolution (AC1 & AC2)", () => {
     });
 
     // Precedence 1: Flag override over ENV and default
-    target = await resolveTarget({ context: "local" }, CONTEXT_FILE);
+    target = await resolveContext({ context: "local" }, CONTEXT_FILE);
     expect(target.type).toBe("local");
 
-    target = await resolveTarget({ server: "http://flag-server:3000" }, CONTEXT_FILE);
+    target = await resolveContext({ server: "http://flag-server:3000" }, CONTEXT_FILE);
     expect(target).toEqual({
       type: "remote",
       name: "custom",
@@ -116,11 +116,11 @@ describe("Context management & Target resolution (AC1 & AC2)", () => {
 
   it("throws error when both --context and --server are supplied at same precedence level", async () => {
     await expect(
-      resolveTarget({ context: "local", server: "http://foo:3000" }, CONTEXT_FILE)
+      resolveContext({ context: "local", server: "http://foo:3000" }, CONTEXT_FILE)
     ).rejects.toThrow(/both/i);
 
     process.env.SKILLMUX_CONTEXT = "local";
     process.env.SKILLMUX_SERVER = "http://foo:3000";
-    await expect(resolveTarget({}, CONTEXT_FILE)).rejects.toThrow(/both/i);
+    await expect(resolveContext({}, CONTEXT_FILE)).rejects.toThrow(/both/i);
   });
 });

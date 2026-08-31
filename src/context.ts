@@ -12,7 +12,12 @@ export interface ContextConfig {
   contexts: Record<string, ContextRecord>;
 }
 
-export type ResolvedTarget =
+/**
+ * Context resolution: `local` = this CLI process has the Skillmux runtime (vault,
+ * index, audit db, embeddings/reranker clients) loaded in-process; `remote` = this
+ * CLI process is a thin network client to a separate process elsewhere that owns that runtime.
+ */
+export type ResolvedContext =
   | { type: "local"; name: "local" }
   | { type: "remote"; name: string; server: string; token_env?: string };
 
@@ -127,10 +132,10 @@ export async function useContext(name: string, filePath?: string): Promise<void>
   await saveContextConfig(config, filePath);
 }
 
-export async function resolveTarget(
+export async function resolveContext(
   flags: { context?: string; server?: string },
   filePath?: string
-): Promise<ResolvedTarget> {
+): Promise<ResolvedContext> {
   // Precedence 1: Explicit flags
   if (flags.context && flags.server) {
     throw new Error("Cannot specify both --context and --server");
