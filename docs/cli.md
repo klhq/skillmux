@@ -84,7 +84,7 @@ system:
    client configuration (local stdio vs. remote HTTP), entirely separate from
    `skillmux context`.
 3. Which Skillmux instance the CLI's admin commands act on — `config`, `report`,
-   and (in a future slice) `audit prune`/`eval`. This is the only thing
+   `audit prune`, `eval`/`eval promote`, and `doctor`. This is the only thing
    `--context`/`--server` actually selects.
 
 The commands above belong entirely to axis 1. `--context` has no meaning for
@@ -396,10 +396,10 @@ The HTTP server has two separate surfaces:
 | Surface | User | Purpose | CLI required |
 | --- | --- | --- | --- |
 | `/mcp` | AI clients | Resolve and fetch skills | No |
-| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+| `/admin/v1/*` (and `GET /stats`) | Operators | Inspect/update config, stats, audit prune, evaluation, and remote diagnostics | Yes, when using named CLI contexts |
 
 The MCP bearer token applies only to `/mcp`. The administrative bearer token
-below applies only to `/admin/v1/*`; neither credential grants access to the
+below applies only to `/admin/v1/*` (and `GET /stats`); neither credential grants access to the
 other surface. Named contexts use the latter to administer the deployed server,
 not any remote client skill directory.
 
@@ -418,6 +418,20 @@ Requests require `Authorization: Bearer <token>` where `<token>` matches the env
 | `/admin/v1/capabilities` | `GET` | Advertises server features (`config_read`, `config_write`, `persistence`) |
 | `/admin/v1/config` | `GET` | Returns desired/effective config, sources, and `ETag` revision hash |
 | `/admin/v1/config` | `PATCH` | Applies dotted-key updates; requires matching `If-Match` header |
+| `/admin/v1/audit/prune` | `POST` | Prunes audit/fetch/admin_audit rows older than cutoff; requires `confirm: true` unless `dry_run: true` |
+| `/admin/v1/eval` | `POST` | Runs vault ranking evaluation server-side and returns `EvalReport` |
+| `/admin/v1/eval/promote` | `POST` | Returns candidate promoted eval cases from the server's audit database; requires `since` |
+
+### Remote command capabilities
+
+Named CLI contexts (`--context <name>` or `--server <url>`) support the following administrative and diagnostic operations:
+
+- `skillmux config` (`show`, `get`, `set`, `validate`, `diff`, `status`): inspect and modify remote server configuration over `/admin/v1/*`.
+- `skillmux report --since <window>`: fetches usage and retrieval metrics from the remote server's `GET /stats`.
+- `skillmux audit prune [--older-than <window>] [--dry-run] [--yes]`: prunes or dry-run counts audit records on the remote server via `POST /admin/v1/audit/prune`.
+- `skillmux eval`: executes ranking evaluation against the remote server's in-process runtime via `POST /admin/v1/eval`.
+- `skillmux eval promote --since <window>`: fetches promotable candidates from the remote server's audit db via `POST /admin/v1/eval/promote`, dedups against the local fixture file, and writes locally.
+- `skillmux doctor`: inspects remote server status, readiness, deployment runtime, and capabilities without requiring local vault access.
 
 ---
 

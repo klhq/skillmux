@@ -1,15 +1,15 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
-import { openAudit } from "../db";
-import { buildPromotedCases, excludeExistingCases, parseEvalCases, queryPromotableFetches } from "../eval";
+import { excludeExistingCases, parseEvalCases } from "../eval";
 import { emitSuccess } from "../output";
 import { parseSince } from "../stats";
 import { confirmIfNeeded } from "./shared";
+import type { TargetAdapter } from "../adapters";
 
 export async function runEvalPromote(
   args: string[],
-  options: { isJson: boolean; dryRun: boolean },
+  options: { isJson: boolean; dryRun: boolean; adapter: TargetAdapter },
 ): Promise<void> {
   let since: string | undefined;
   let target: string | undefined;
@@ -21,8 +21,10 @@ export async function runEvalPromote(
     else if (arg === "--target") target = args[++i];
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--yes") yes = true;
-    else if (arg === "--json") {
+    else if (arg === "--json" || arg === "--allow-insecure" || arg === "--verbose") {
       // handled globally by main()'s isJson flag; recognized here so it isn't rejected
+    } else if (arg === "--context" || arg === "--server") {
+      i++; // skip flag value
     } else if (arg?.startsWith("--")) {
       throw new Error(`unknown eval promote option: ${arg}`);
     }
@@ -37,13 +39,7 @@ export async function runEvalPromote(
   const sinceDate = parseSince(since);
   const sinceIso = sinceDate.toISOString();
 
-  const db = openAudit(stateDir);
-  let candidates: ReturnType<typeof buildPromotedCases>;
-  try {
-    candidates = buildPromotedCases(queryPromotableFetches(db, sinceIso));
-  } finally {
-    db.close();
-  }
+  const candidates = await options.adapter.evalPromote(since);
 
   const existing = existsSync(targetPath) ? parseEvalCases(JSON.parse(readFileSync(targetPath, "utf-8"))) : [];
   const { cases: newCases, skipped } = excludeExistingCases(candidates, existing);

@@ -16,6 +16,9 @@ import {
 } from "./config-service";
 import type { ResolvedContext } from "./context";
 import type { Clients, Config } from "./types";
+import { getStats, parseSince, type StatsResponse } from "./stats";
+import { countPrunable, openAudit, pruneAuditBefore, type PruneResult } from "./db";
+import { buildPromotedCases, evalVault, queryPromotableFetches, type EvalCase, type EvalReport } from "./eval";
 
 export interface Capabilities {
   config_read: boolean;
@@ -31,6 +34,17 @@ export interface TargetAdapterOptions {
   clients?: Clients;
 }
 
+export interface AuditPruneOptions {
+  older_than?: string;
+  dry_run?: boolean;
+  confirm?: boolean;
+}
+
+export interface AuditPruneResult extends PruneResult {
+  dry_run: boolean;
+  cutoff: string | null;
+}
+
 /**
  * Target adapter: `local` = this CLI process has the Skillmux runtime (vault, index,
  * audit db, embeddings/reranker clients) in-process; `remote` = thin network client to an external process.
@@ -43,6 +57,11 @@ export interface TargetAdapter {
   configDiff(): Promise<{ diff: Record<string, { prior: unknown; resulting: unknown }> }>;
   configSet(key: string, rawValStr: string, opts?: { dryRun?: boolean }): Promise<SetConfigResult>;
   configStatus(): Promise<ConfigStatusResponse>;
+  getStats(since: string): Promise<StatsResponse>;
+  auditPrune(opts?: AuditPruneOptions): Promise<AuditPruneResult>;
+  auditCount(older_than?: string): Promise<AuditPruneResult>;
+  evalRun(): Promise<EvalReport>;
+  evalPromote(since: string): Promise<EvalCase[]>;
 }
 
 export function isLoopbackHost(hostname: string): boolean {
@@ -119,6 +138,75 @@ export class LocalAdapter implements TargetAdapter {
 
   async configStatus(): Promise<ConfigStatusResponse> {
     return getLocalConfigStatus(this.configPath);
+  }
+
+  async getStats(since: string): Promise<StatsResponse> {
+    const config = await loadConfig(this.configPath);
+    const stateDir = expandHome(config.state_dir);
+    const db = openAudit(stateDir);
+    try {
+      return getStats(db, since);
+    } finally {
+      db.close();
+    }
+  }
+
+  async auditPrune(opts?: AuditPruneOptions): Promise<AuditPruneResult> {
+    const config = await loadConfig(this.configPath);
+    const stateDir = expandHome(config.state_dir);
+    const olderThan = opts?.older_than;
+    const dryRun = opts?.dry_run ?? false;
+
+    let cutoff: Date;
+    if (olderThan) {
+      cutoff = parseSince(olderThan);
+    } else {
+      const retentionDays = config.audit?.retention_days ?? 90;
+      if (retentionDays <= 0) {
+        return {
+          audit_deleted: 0,
+          fetch_deleted: 0,
+          admin_audit_deleted: 0,
+          dry_run: dryRun,
+          cutoff: null,
+        };
+      }
+      cutoff = new Date(Date.now() - retentionDays * 86_400_000);
+    }
+    const cutoffIso = cutoff.toISOString();
+
+    const db = openAudit(stateDir);
+    try {
+      if (dryRun) {
+        const counts = countPrunable(db, cutoffIso);
+        return { ...counts, dry_run: true, cutoff: cutoffIso };
+      }
+      const counts = pruneAuditBefore(db, cutoffIso);
+      return { ...counts, dry_run: false, cutoff: cutoffIso };
+    } finally {
+      db.close();
+    }
+  }
+
+  async auditCount(older_than?: string): Promise<AuditPruneResult> {
+    return this.auditPrune({ older_than, dry_run: true });
+  }
+
+  async evalRun(): Promise<EvalReport> {
+    return evalVault();
+  }
+
+  async evalPromote(since: string): Promise<EvalCase[]> {
+    const sinceDate = parseSince(since);
+    const sinceIso = sinceDate.toISOString();
+    const config = await loadConfig(this.configPath);
+    const stateDir = expandHome(config.state_dir);
+    const db = openAudit(stateDir);
+    try {
+      return buildPromotedCases(queryPromotableFetches(db, sinceIso));
+    } finally {
+      db.close();
+    }
   }
 }
 
@@ -284,6 +372,60 @@ export class RemoteAdapter implements TargetAdapter {
       throw new Error(`Remote status fetch failed (${status}): ${data?.message || data}`);
     }
     return data.runtime;
+  }
+
+  async getStats(since: string): Promise<StatsResponse> {
+    const searchParams = new URLSearchParams({ since });
+    const { status, data } = await this.fetchJson(`/stats?${searchParams.toString()}`);
+    if (status !== 200) {
+      throw new Error(`Remote stats fetch failed (${status}): ${typeof data === "object" ? data?.message || data?.error || JSON.stringify(data) : data}`);
+    }
+    return data as StatsResponse;
+  }
+
+  async auditPrune(opts?: AuditPruneOptions): Promise<AuditPruneResult> {
+    const { status, data } = await this.fetchJson("/admin/v1/audit/prune", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...(opts?.older_than ? { older_than: opts.older_than } : {}),
+        ...(opts?.dry_run !== undefined ? { dry_run: opts.dry_run } : {}),
+        ...(opts?.confirm !== undefined ? { confirm: opts.confirm } : {}),
+      }),
+    });
+    if (status !== 200) {
+      const message = typeof data === "object" ? data?.message || data?.error || JSON.stringify(data) : data;
+      throw new Error(`Remote audit prune failed (${status}): ${message}`);
+    }
+    return data as AuditPruneResult;
+  }
+
+  async auditCount(older_than?: string): Promise<AuditPruneResult> {
+    return this.auditPrune({ older_than, dry_run: true });
+  }
+
+  async evalRun(): Promise<EvalReport> {
+    const { status, data } = await this.fetchJson("/admin/v1/eval", {
+      method: "POST",
+    });
+    if (status !== 200) {
+      const message = typeof data === "object" ? data?.message || data?.error || JSON.stringify(data) : data;
+      throw new Error(`Remote eval failed (${status}): ${message}`);
+    }
+    return data as EvalReport;
+  }
+
+  async evalPromote(since: string): Promise<EvalCase[]> {
+    const { status, data } = await this.fetchJson("/admin/v1/eval/promote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ since }),
+    });
+    if (status !== 200) {
+      const message = typeof data === "object" ? data?.message || data?.error || JSON.stringify(data) : data;
+      throw new Error(`Remote eval promote failed (${status}): ${message}`);
+    }
+    return data.candidates as EvalCase[];
   }
 }
 
