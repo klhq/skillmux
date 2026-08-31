@@ -21,6 +21,8 @@ import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
 import { initializeRuntime } from "./lifecycle";
+import { buildRedactor } from "./redact";
+import { insertAdminAuditRow, type AdminAuditChange } from "./db";
 import type { Clients, Config } from "./types";
 import {
   computeHash,
@@ -38,6 +40,16 @@ export const readinessState = new ReadinessState();
 // never unbounded by omission, unlike the opt-in [egress] allowlist.
 const DEFAULT_MAX_BODY_BYTES = 1_048_576; // 1 MiB
 const DEFAULT_MAX_CONCURRENT_REQUESTS = 100;
+
+/** Pairs a fixed log prefix with a redacted error message, for console.error. */
+export function redactedErrorLog(
+  prefix: string,
+  err: unknown,
+  redact: (text: string) => string,
+): [string, string] {
+  const msg = err instanceof Error ? err.message : String(err);
+  return [prefix, redact(msg)];
+}
 
 export interface ServerHandle {
   port?: number;
@@ -281,6 +293,7 @@ export async function startServer(opts?: {
 }): Promise<ServerHandle> {
   const configPath = resolveConfigPath(opts?.configPath);
   const config = opts?.config ?? (await loadConfig(configPath));
+  const redact = buildRedactor(config);
   const initialClients = { ...createClients(config), ...opts?.clients };
   const snapshots = RuntimeSnapshotManager.create(config, initialClients);
   const inactiveReloadStatus: ReloadStatus = {
@@ -305,18 +318,18 @@ export async function startServer(opts?: {
           configure({ config: nextConfig, clients: nextClients });
         },
         onError: (error) =>
-          console.error("skillmux config reload error:", error),
+          console.error(...redactedErrorLog("skillmux config reload error:", error, redact)),
       })
     : undefined;
   const stopWatcher = await startVaultWatcher();
   const initPromise = initializeRuntime(readinessState)
     .then(() => metricsRegistry.setReadiness(readinessState.get()))
-    .catch((err) => console.error("skillmux runtime init error:", err));
+    .catch((err) => console.error(...redactedErrorLog("skillmux runtime init error:", err, redact)));
 
   // AC14: fire-and-forget so this never delays readiness or blocks a resolve;
   // not chained onto initPromise, which is awaited below for HTTP transport.
   const runAuditPrune = () =>
-    pruneAuditIfDue().catch((err) => console.error("skillmux audit prune error:", err));
+    pruneAuditIfDue().catch((err) => console.error(...redactedErrorLog("skillmux audit prune error:", err, redact)));
   runAuditPrune();
   const auditPruneInterval = setInterval(runAuditPrune, 24 * 60 * 60 * 1000);
   auditPruneInterval.unref();
@@ -660,9 +673,24 @@ export async function startServer(opts?: {
                 changes: Record<string, string | number | boolean>;
               };
               let lastResult: any = null;
+              const auditChanges: AdminAuditChange[] = [];
               for (const [k, v] of Object.entries(body.changes ?? {})) {
                 lastResult = await setDottedKey(k, String(v), {
                   targetName: "remote",
+                });
+                auditChanges.push({
+                  key: k,
+                  old_value: lastResult.prior_val,
+                  new_value: lastResult.resulting_val,
+                });
+              }
+
+              if (auditChanges.length > 0 && lastResult) {
+                const { auditDb } = await getRuntime();
+                insertAdminAuditRow(auditDb, {
+                  ts: new Date().toISOString(),
+                  changes: auditChanges,
+                  resulting_revision: lastResult.resulting_revision,
                 });
               }
 

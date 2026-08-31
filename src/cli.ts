@@ -15,6 +15,7 @@ import {
 import { openAudit } from "./db";
 import { diagnose } from "./doctor";
 import { getEffectiveConfig } from "./config-service";
+import { buildRedactor } from "./redact";
 import { evalVault } from "./eval";
 import {
   assessClientReadiness,
@@ -242,7 +243,7 @@ async function main() {
     process.env.RUNNING_IN_DOCKER === "true" &&
     isDockerHostManagementCommand(command, subCommand)
   ) {
-    handleError(containerCommandUnsupported(command, subCommand), {
+    await handleError(containerCommandUnsupported(command, subCommand), {
       target: resolvedTarget,
       isJson,
       isVerbose,
@@ -264,7 +265,7 @@ async function main() {
         server: flagServer,
       });
     } catch (err: any) {
-      handleError(err, { target: resolvedTarget, isJson, isVerbose });
+      await handleError(err, { target: resolvedTarget, isJson, isVerbose });
       return;
     }
   }
@@ -401,7 +402,7 @@ async function main() {
       }
     }
   } catch (err: any) {
-    handleError(err, { target: resolvedTarget, isJson, isVerbose });
+    await handleError(err, { target: resolvedTarget, isJson, isVerbose });
   }
 }
 
@@ -502,14 +503,25 @@ async function handleCompletionsCommand(shell: string) {
   console.log(generateCompletions(shell as ShellType));
 }
 
-function handleError(
+async function handleError(
   err: any,
   opts: { target: ResolvedTarget; isJson: boolean; isVerbose: boolean },
 ) {
   const code = mapExitCode(err);
   process.exitCode = code;
 
-  const msg = err instanceof Error ? err.message : String(err);
+  const rawMsg = err instanceof Error ? err.message : String(err);
+  // Best-effort: a broken config must not suppress the original error report,
+  // so fall back to the URL-credential-only layer of buildRedactor(undefined)
+  // rather than let a config-load failure mask the real failure.
+  let redact: (text: string) => string;
+  try {
+    const { effective } = await getEffectiveConfig();
+    redact = buildRedactor(effective);
+  } catch {
+    redact = buildRedactor(undefined);
+  }
+  const msg = redact(rawMsg);
 
   if (opts.isJson) {
     const env = formatJsonEnvelope({
@@ -531,7 +543,7 @@ function handleError(
         : `error: ${msg}`,
     );
     if (opts.isVerbose && err instanceof Error && err.stack) {
-      console.error(err.stack);
+      console.error(redact(err.stack));
     }
   }
 }
@@ -1668,8 +1680,8 @@ function parseInstallArgs(args: string[]): {
         throw new Error("--fail-on must be low, medium, or high");
       }
       failOn = value;
-    } else if (option === "--json") {
-      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
+    } else if (option === "--json" || option === "--verbose") {
+      // handled globally by main()'s isJson/isVerbose flags; recognized here so they aren't rejected
     } else if (option?.startsWith("--")) {
       throw new Error(`unknown install option: ${option}`);
     } else if (repo !== undefined) {
