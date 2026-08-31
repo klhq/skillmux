@@ -1,5 +1,15 @@
 const PLACEHOLDER = "[REDACTED]";
 
+// Strips userinfo (user:pass@) from URLs unconditionally, since a
+// credential-bearing git URL (private-repo PAT auth) is typed by the user
+// directly and never resolved from a config `*_env` key, so it can't be
+// caught by the config-driven scrub below.
+const URL_USERINFO = /:\/\/[^/\s@]*@/g;
+
+function redactUrlCredentials(text: string): string {
+  return text.replace(URL_USERINFO, `://${PLACEHOLDER}@`);
+}
+
 /**
  * Walks the config tree for every string-valued key ending in `_env`
  * (api_key_env, token_env, auth_token_env, and any future one) and resolves
@@ -33,7 +43,7 @@ function collectSecretValues(value: unknown): string[] {
 export function buildRedactor(config: unknown): (text: string) => string {
   const secrets = collectSecretValues(config);
   return (text: string): string => {
-    let result = text;
+    let result = redactUrlCredentials(text);
     for (const secret of secrets) {
       result = result.split(secret).join(PLACEHOLDER);
     }

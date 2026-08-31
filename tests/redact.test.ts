@@ -58,4 +58,15 @@ describe("buildRedactor", () => {
 
     expect(redact(text)).toBe(text);
   });
+
+  test("should scrub userinfo credentials embedded in a URL, independent of config", () => {
+    const redact = buildRedactor(testConfig());
+    const out = redact(
+      "git clone failed for https://user:supersecret123@host/repo.git: fatal: repository not found",
+    );
+
+    expect(out).not.toContain("supersecret123");
+    expect(out).toContain("[REDACTED]");
+    expect(out).toContain("host/repo.git");
+  });
 });
