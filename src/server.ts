@@ -346,7 +346,7 @@ export async function startServer(opts?: {
     const rateLimiter = new RateLimiter(
       config.server?.rate_limit || { enabled: false, requests_per_minute: 60 },
     );
-    const { ConcurrencyLimiter } = await import("./concurrency-limiter");
+    const { ConcurrencyLimiter, releaseOnStreamClose } = await import("./concurrency-limiter");
     const concurrencyLimiter = new ConcurrencyLimiter(
       config.server?.max_concurrent_requests ?? DEFAULT_MAX_CONCURRENT_REQUESTS,
     );
@@ -369,9 +369,21 @@ export async function startServer(opts?: {
           });
         }
         try {
-          return await handleHttpRequest(req, server);
-        } finally {
+          const res = await handleHttpRequest(req, server);
+          // Defer the release until the response body actually finishes —
+          // a buffered body drains almost immediately, but an open SSE
+          // stream (the MCP transport's notification channel and streaming
+          // replies) can stay open long after this async function returns,
+          // and the slot must reflect that real connection lifetime.
+          const body = releaseOnStreamClose(res.body, () => concurrencyLimiter.release());
+          return new Response(body, {
+            status: res.status,
+            statusText: res.statusText,
+            headers: res.headers,
+          });
+        } catch (error) {
           concurrencyLimiter.release();
+          throw error;
         }
 
         async function handleHttpRequest(
