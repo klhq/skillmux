@@ -261,7 +261,7 @@ The server keeps its two HTTP surfaces separate:
 | Surface | User | Purpose | CLI required |
 | --- | --- | --- | --- |
 | `/mcp` | AI clients | Resolve and fetch skills | No |
-| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+| `/admin/v1/*` (and `GET /stats`) | Operators | Inspect/update config, stats, audit prune, evaluation, and remote diagnostics | Yes, when using named CLI contexts |
 
 Configure separate MCP and administrative bearer tokens; one never grants
 access to the other. Named CLI contexts can administer this deployed server,
