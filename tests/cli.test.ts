@@ -2454,6 +2454,43 @@ describe("skillmux install CLI", () => {
 
     rmSync(join(vaultDir, "fixture-local-allowed"), { recursive: true, force: true });
   });
+
+  function withEgressConfig(allowedHosts: string[]): string {
+    const path = join(tmp, `config-egress-${allowedHosts.join("-")}.toml`);
+    writeFileSync(
+      path,
+      `${readFileSync(configPath, "utf8")}\n[egress]\nallowed_hosts = ${JSON.stringify(allowedHosts)}\n`,
+    );
+    return path;
+  }
+
+  test("AC2: rejects installing from a host not in [egress] allowed_hosts, before any network fetch", async () => {
+    const result = await runCliEnv(["install", "https://evil.example.com/x/y.git"], {
+      SKILLMUX_CONFIG: withEgressConfig(["github.com"]),
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("evil.example.com");
+    expect(result.stderr).toContain("allowed_hosts");
+  });
+
+  test("AC3: a host in [egress] allowed_hosts passes the check and proceeds to attempt the fetch", async () => {
+    const result = await runCliEnv(["install", "https://example.invalid/owner/repo.git"], {
+      SKILLMUX_CONFIG: withEgressConfig(["example.invalid"]),
+    });
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).not.toContain("allowed_hosts");
+    expect(result.stderr).toContain("git clone failed");
+  });
+
+  test("AC1: with no [egress] section, a host that would otherwise be disallowed is not blocked", async () => {
+    const result = await runCli("install", "https://example.invalid/owner/repo.git");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).not.toContain("allowed_hosts");
+    expect(result.stderr).toContain("git clone failed");
+  });
 });
 
 describe("skillmux outdated CLI", () => {

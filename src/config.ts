@@ -91,6 +91,9 @@ const configSchema = z.object({
   audit: z.object({
     retention_days: z.number().int().min(0).default(90),
   }).strict().default({ retention_days: 90 }),
+  egress: z.object({
+    allowed_hosts: z.array(z.string().min(1)).optional(),
+  }).strict().optional(),
 }).strict().refine((cfg) => {
   const hasReranker = cfg.inference.mode === "remote" && !!cfg.inference.reranker;
   if (hasReranker && cfg.output.max_top_k > cfg.recall.k_rerank) {

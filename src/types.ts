@@ -107,6 +107,10 @@ export interface ConfigPolicy {
   environment_overrides?: boolean;
 }
 
+export interface EgressConfig {
+  allowed_hosts?: string[];
+}
+
 export interface AuditConfig {
   /** Age in days beyond which audit rows are pruned. 0 disables pruning. */
   retention_days: number;
@@ -122,6 +126,7 @@ export interface Config {
   inference: InferenceConfig;
   server?: ServerConfig;
   audit?: AuditConfig;
+  egress?: EgressConfig;
 }
 
 export interface RankedCandidate {
