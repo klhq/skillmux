@@ -2491,6 +2491,30 @@ describe("skillmux install CLI", () => {
     expect(result.stderr).not.toContain("allowed_hosts");
     expect(result.stderr).toContain("git clone failed");
   });
+
+  test("redacts a credential embedded in a git URL from a clone-failure message", async () => {
+    const result = await runCli(
+      "install",
+      "https://user:supersecret123@example.invalid/owner/repo.git",
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("git clone failed");
+    expect(result.stderr).not.toContain("supersecret123");
+    expect(result.stderr).toContain("[REDACTED]");
+  });
+
+  test("redacts a credential embedded in a git URL from the --json error envelope", async () => {
+    const result = await runCli(
+      "install",
+      "https://user:supersecret123@example.invalid/owner/repo.git",
+      "--json",
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).not.toContain("supersecret123");
+    expect(result.stdout).toContain("[REDACTED]");
+  });
 });
 
 describe("skillmux outdated CLI", () => {
