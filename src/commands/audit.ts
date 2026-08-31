@@ -65,8 +65,11 @@ export async function runAudit(
   )
     return;
 
+  // Reuse the exact cutoff already shown in the confirmation prompt — recomputing
+  // it here (if olderThan was left unset) could drift from what was confirmed,
+  // e.g. if audit.retention_days changed between the two calls on a remote target.
   const counts = await options.adapter.auditPrune({
-    older_than: olderThan,
+    older_than: countResult.cutoff,
     dry_run: false,
     confirm: true,
   });
