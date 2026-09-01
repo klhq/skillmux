@@ -291,6 +291,15 @@ export async function runProject(
     if (targets.length === 0) {
       throw new Error(`project ${subCommand} requires --client or --target`);
     }
+    // Several clients can share one target (e.g. gemini-cli/opencode both use
+    // agent-skills) — show the resolved directory, not just the target name,
+    // so it's clear at confirmation time which physical folder this affects.
+    const targetDirs = Object.fromEntries(
+      targets.map((t) => [t, manifest.targets[t]?.dir ?? "(unknown)"]),
+    );
+    const targetsDisplay = targets
+      .map((t) => `${t} (${targetDirs[t]})`)
+      .join(", ");
     const updated = updateProjectTargets(manifest, group, {
       ...(subCommand === "attach" ? { attach: targets } : { detach: targets }),
     });
@@ -302,10 +311,10 @@ export async function runProject(
     if (options.dryRun) {
       emitSuccess(
         { isJson: options.isJson },
-        { subcommand: subCommand, group, targets },
+        { subcommand: subCommand, group, targets, target_dirs: targetDirs },
         () =>
           console.log(
-            `${subCommand}: [project.${group}] ${targets.join(", ")} (dry-run)`,
+            `${subCommand}: [project.${group}] ${targetsDisplay} (dry-run)`,
           ),
       );
       return;
@@ -314,7 +323,7 @@ export async function runProject(
       !(await confirmIfNeeded({
         confirmed: args.includes("--yes"),
         isJson: options.isJson,
-        prompt: `${subCommand} [project.${group}] to ${targets.join(", ")}?`,
+        prompt: `${subCommand} [project.${group}] to ${targetsDisplay}?`,
         nonInteractiveError: `skillmux project ${subCommand} requires --yes when run non-interactively`,
       }))
     )
@@ -322,8 +331,8 @@ export async function runProject(
     writeManifestAtomic(manifestPath, updated);
     emitSuccess(
       { isJson: options.isJson },
-      { subcommand: subCommand, group, targets },
-      () => console.log(`${subCommand}: [project.${group}] ${targets.join(", ")}`),
+      { subcommand: subCommand, group, targets, target_dirs: targetDirs },
+      () => console.log(`${subCommand}: [project.${group}] ${targetsDisplay}`),
     );
     return;
   }

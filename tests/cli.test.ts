@@ -1241,6 +1241,43 @@ describe("skillmux project CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("project attach shows the resolved target directory, not just its name", async () => {
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[project.demo]\npaths = ["${tmp}"]\nskills = []\n\n[targets.agent-skills]\ndir = "~/.agents/skills"\nproject_groups = []\n`,
+    );
+
+    const dryRun = await runCli(
+      "project",
+      "attach",
+      "demo",
+      "--client",
+      "gemini-cli",
+      "--client",
+      "opencode",
+      "--dry-run",
+    );
+    expect(dryRun.stdout).toContain("agent-skills (~/.agents/skills)");
+
+    const jsonResult = await runCli(
+      "project",
+      "attach",
+      "demo",
+      "--client",
+      "gemini-cli",
+      "--client",
+      "opencode",
+      "--yes",
+      "--json",
+    );
+    expect(jsonResult.exitCode).toBe(0);
+    const parsed = JSON.parse(jsonResult.stdout);
+    expect(parsed.data.targets).toEqual(["agent-skills"]);
+    expect(parsed.data.target_dirs).toEqual({ "agent-skills": "~/.agents/skills" });
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("project list reports configured groups and attached targets", async () => {
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
