@@ -13,7 +13,6 @@ import {
   resolveConfigPath,
 } from "./config";
 import { openAudit } from "./db";
-import { diagnose } from "./doctor";
 import { getEffectiveConfig } from "./config-service";
 import { buildRedactor } from "./redact";
 import { evalVault } from "./eval";
@@ -59,7 +58,6 @@ import {
   serializeManifest,
   validateManifest,
 } from "./manifest";
-import { downloadLocalModels } from "./models";
 
 import {
   parseCommaList,
@@ -89,41 +87,34 @@ import {
   restoreMonolith as restoreMonolithTarget,
   syncProjectTargets,
   syncTarget,
-  writeLocalVaultMarker,
   type ProjectGroupInput,
 } from "./sync";
-import { scanVault, vaultResolutionOrder } from "./vault";
+import { scanVault } from "./vault";
 
-import {
-  addContext,
-  getCurrentContext,
-  listContexts,
-  removeContext,
-  resolveContext,
-  useContext,
-  type ResolvedContext,
-} from "./context";
+import { resolveContext, type ResolvedContext } from "./context";
 import { createTargetAdapter, isLoopbackHost, type TargetAdapter } from "./adapters";
 import {
   emitSuccess,
   CliError,
   formatJsonEnvelope,
-  green,
   isInteractive,
   mapExitCode,
   red,
-  renderTable,
-  renderTargetBanner,
   suggestCorrection,
   warn,
 } from "./output";
 import { generateCompletions, type ShellType } from "./completions";
 import { runAudit } from "./commands/audit";
 import { handleConfigCommand } from "./commands/config";
+import { handleContextCommand } from "./commands/context";
+import { runDoctor } from "./commands/doctor";
 import { runEvalPromote } from "./commands/eval";
 import { runCore } from "./commands/core";
+import { runLocalVaultInit } from "./commands/local-vault";
+import { runModelDownload } from "./commands/models";
 import { configuredTargetForSurface, runProject } from "./commands/project";
-import { confirmAction, confirmIfNeeded } from "./commands/shared";
+import { confirmAction } from "./commands/shared";
+import { runSkill } from "./commands/skill";
 import { runTarget } from "./commands/target";
 
 const KNOWN_COMMANDS = [
@@ -460,95 +451,7 @@ async function main() {
   }
 }
 
-async function handleContextCommand(
-  sub: string,
-  args: string[],
-  ctx: { target: ResolvedContext; isJson: boolean },
-) {
-  if (sub === "list") {
-    const contexts = await listContexts();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, contexts, () => {
-      renderTargetBanner(ctx.target);
-      renderTable(
-        [
-          { key: "name", header: "NAME" },
-          { key: "server", header: "SERVER" },
-          { key: "token_env", header: "TOKEN_ENV" },
-          { key: "isDefault", header: "DEFAULT" },
-        ],
-        contexts.map((c) => ({
-          ...c,
-          token_env: c.token_env ?? "-",
-          isDefault: c.isDefault ? "*" : "",
-        })),
-      );
-    });
-    return;
-  }
 
-  if (sub === "current") {
-    const current = await getCurrentContext();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, current, () => {
-      renderTargetBanner(ctx.target);
-      console.log(`Current context: ${current.name} (${current.server})`);
-    });
-    return;
-  }
-
-  if (sub === "add") {
-    const name = args[0];
-    let server: string | undefined;
-    let tokenEnv: string | undefined;
-    for (let i = 1; i < args.length; i++) {
-      if (args[i] === "--server") server = args[++i];
-      else if (args[i] === "--token-env") tokenEnv = args[++i];
-    }
-    if (!name || !server) {
-      throw new Error(
-        "usage: skillmux context add <name> --server <url> [--token-env <env_name>]",
-      );
-    }
-    await addContext(name, { server, token_env: tokenEnv });
-    emitSuccess(
-      { isJson: ctx.isJson, target: ctx.target },
-      { name, server, token_env: tokenEnv },
-      () => {
-        console.log(`Added context "${name}" -> ${server}`);
-      },
-    );
-    return;
-  }
-
-  if (sub === "use") {
-    const name = args[0];
-    if (!name) throw new Error("usage: skillmux context use <name>");
-    await useContext(name);
-    emitSuccess(
-      { isJson: ctx.isJson, target: ctx.target },
-      { default_context: name },
-      () => {
-        console.log(`Switched default context to "${name}"`);
-      },
-    );
-    return;
-  }
-
-  if (sub === "remove") {
-    const name = args[0];
-    if (!name) throw new Error("usage: skillmux context remove <name>");
-    await removeContext(name);
-    emitSuccess(
-      { isJson: ctx.isJson, target: ctx.target },
-      { removed: name },
-      () => {
-        console.log(`Removed context "${name}"`);
-      },
-    );
-    return;
-  }
-
-  throw new Error("usage: skillmux context <add|list|current|use|remove>");
-}
 
 async function handleCompletionsCommand(shell: string) {
   if (shell !== "bash" && shell !== "zsh" && shell !== "fish") {
@@ -906,159 +809,7 @@ async function runEval(options: { isJson: boolean; adapter: TargetAdapter }): Pr
   });
 }
 
-async function runDoctor(options: {
-  isJson: boolean;
-  target: ResolvedContext;
-  adapter: TargetAdapter;
-}): Promise<void> {
-  if (options.target.type === "remote") {
-    const target = options.target;
-    const [status, caps] = await Promise.all([
-      options.adapter.configStatus(),
-      options.adapter.getCapabilities(),
-    ]);
-    const remoteReport = {
-      target: target.name || target.server,
-      server: target.server,
-      version: status.version,
-      deployment_runtime: status.deployment_runtime,
-      image_variant: status.image_variant ?? null,
-      runtime: status.runtime,
-      readiness: status.readiness,
-      active_revision: status.active_revision,
-      capabilities: caps,
-      restart_required_keys: status.restart_required_keys,
-      last_reload_error: status.last_reload_error,
-    };
-    emitSuccess({ isJson: options.isJson, target: options.target }, remoteReport, () => {
-      renderTargetBanner(options.target);
-      console.log(`server: ${remoteReport.server}`);
-      console.log(`version: ${remoteReport.version}`);
-      console.log(`deployment runtime: ${remoteReport.deployment_runtime}`);
-      console.log(`image variant: ${remoteReport.image_variant ?? "none"}`);
-      console.log(`runtime: ${remoteReport.runtime}`);
-      console.log(`readiness: ${remoteReport.readiness.status} (${remoteReport.readiness.capability})`);
-      console.log(`active revision: ${remoteReport.active_revision}`);
-      console.log(`persistence: ${caps.persistence}`);
-      console.log(`config read: ${caps.config_read}`);
-      console.log(`config write: ${caps.config_write}`);
-      if (status.last_reload_error) {
-        console.log(`last reload error: ${status.last_reload_error}`);
-      }
-      if (status.restart_required_keys.length > 0) {
-        console.log(`restart required for: ${status.restart_required_keys.join(", ")}`);
-      }
-    });
-    return;
-  }
 
-  const effective = await getEffectiveConfig(resolveConfigPath());
-  const report = await diagnose(effective.effective, process.env, effective.sources);
-  emitSuccess({ isJson: options.isJson }, report, () => {
-    console.log(`version: ${report.version}`);
-    console.log(`runtime: ${report.runtime}`);
-    console.log(`image variant: ${report.image_variant ?? "none"}`);
-    console.log(`vault path: ${report.vault_path}`);
-    console.log(`state directory: ${report.state_dir}`);
-    console.log(`inference mode: ${report.mode}`);
-    console.log(`routing capability: ${report.capability}`);
-    console.log(`retrieval capability: ${report.retrieval_capability}`);
-    for (const check of report.checks)
-      console.log(
-        `${check.ok ? green("ok") : red("fail")}: ${check.name} - ${check.detail}`,
-      );
-  });
-  if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
-}
-
-async function runSkill(subCommand: string, args: string[]): Promise<void> {
-  if (subCommand !== "which") throw new Error("usage: skillmux skill <which>");
-  await runWhich(args);
-}
-
-async function runWhich(args: string[]): Promise<void> {
-  const skillId = args[0];
-  if (!skillId) {
-    throw new Error(
-      "usage: skillmux skill which <skill_id> (local vault shadow resolution; unrelated to MCP routing)",
-    );
-  }
-  const config = await loadConfig();
-  const vaultPath = expandHome(config.vault_path);
-  const localVaultPaths = config.local_vault_paths.map(expandHome);
-  const roots = vaultResolutionOrder(vaultPath, localVaultPaths).filter(
-    (root) => existsSync(join(root, skillId, "SKILL.md")),
-  );
-  if (roots.length === 0) {
-    console.log(`${skillId}: not found in vault_path or local_vault_paths`);
-    process.exitCode = 1;
-    return;
-  }
-  console.log(`${skillId}: serving from ${roots[0]}`);
-  for (const shadowedRoot of roots.slice(1))
-    console.log(`  shadows: ${shadowedRoot}`);
-}
-
-async function runLocalVaultInit(
-  args: string[],
-  options: { isJson: boolean; dryRun: boolean },
-): Promise<void> {
-  const path = args[0];
-  if (!path) throw new Error("usage: skillmux local-vault init <path> --yes");
-  const expanded = expandHome(path);
-  const config = await loadConfig();
-  const localVaultPaths = config.local_vault_paths.map(expandHome);
-  if (!localVaultPaths.includes(expanded)) {
-    throw new Error(
-      `"${path}" is not one of the configured local_vault_paths — add it to config.toml first`,
-    );
-  }
-  if (!existsSync(expanded)) throw new Error(`"${path}" does not exist`);
-  const markerPath = join(expanded, ".skillmux");
-  if (options.dryRun) {
-    emitSuccess(
-      { isJson: options.isJson },
-      {
-        marker_path: markerPath,
-        vault_path: expandHome(config.vault_path),
-      },
-      () =>
-        console.log(
-          `local-vault init: ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)}) (dry-run)`,
-        ),
-    );
-    return;
-  }
-  if (
-    !(await confirmIfNeeded({
-      confirmed: args.includes("--yes"),
-      isJson: options.isJson,
-      prompt: `mark ${expanded} as a local_vault (role: local_vault, vault_path: ${expandHome(config.vault_path)})?`,
-      nonInteractiveError:
-        "skillmux local-vault init requires --yes when run non-interactively",
-    }))
-  )
-    return;
-  writeLocalVaultMarker(expanded, expandHome(config.vault_path));
-  emitSuccess(
-    { isJson: options.isJson },
-    {
-      marker_path: markerPath,
-      vault_path: expandHome(config.vault_path),
-    },
-    () =>
-      console.log(
-        `wrote ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)})`,
-      ),
-  );
-}
-
-async function runModelDownload(options: { isJson: boolean }): Promise<void> {
-  const cacheDir = await downloadLocalModels(await loadConfig());
-  emitSuccess({ isJson: options.isJson }, { cache_dir: cacheDir }, () =>
-    console.log(`models ready in ${cacheDir}`),
-  );
-}
 
 function parseSyncArgs(args: string[]): {
   dryRun: boolean;
