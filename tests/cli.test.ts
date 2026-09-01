@@ -553,6 +553,28 @@ describe("Remote context rejection (Bucket A)", () => {
       expect(result.stderr).not.toContain("operates on the local vault only; --context/--server isn't supported here");
     }
   });
+
+  test("rejects `config init` with a remote target (config as a whole is remote-capable, but init bootstraps this machine's config file)", async () => {
+    const result = await runCli(
+      "config",
+      "init",
+      "--vault",
+      "/tmp/does-not-matter",
+      "--server",
+      "https://remote.example.com",
+      "--json",
+    );
+    expect(result.exitCode).toBe(2);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed).toMatchObject({
+      ok: false,
+      error: {
+        code: "REMOTE_CONTEXT_UNSUPPORTED",
+        message: "`config init` operates on the local vault only; --context/--server isn't supported here",
+        details: { rejected_command: "config init" },
+      },
+    });
+  });
 });
 
 describe("skillmux serve CLI", () => {
