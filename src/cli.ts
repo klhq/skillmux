@@ -45,7 +45,7 @@ import { runTarget } from "./commands/target";
 import { runSync } from "./commands/sync";
 import { runInit } from "./commands/init";
 
-const KNOWN_COMMANDS = [
+export const KNOWN_COMMANDS = [
   "context",
   "config",
   "completions",
@@ -69,28 +69,69 @@ const KNOWN_COMMANDS = [
   "local-vault",
 ];
 
-const LOCAL_ONLY_COMMANDS = new Set([
-  "install",
-  "update",
-  "outdated",
-  "sync",
-  "core",
-  "project",
-  "target",
-  "local-vault",
-  "index",
-  "models",
-  "scan",
-  "init",
-  "serve",
-]);
+/**
+ * Declared target support for every command in KNOWN_COMMANDS — the single
+ * source of truth getLocalOnlyCommand() enforces against. A command missing
+ * from here, or misclassified, is a bug: see tests/cli-target-support.test.ts,
+ * which fails the build rather than letting a command silently drift out of
+ * sync the way `config init` did (it was never rejected for a remote target,
+ * nor actually remote-capable — it just silently ran local logic that choked
+ * on an unrecognized --context/--server flag with a confusing error).
+ *
+ * - "local-only": operates on this machine's vault/filesystem/clients only;
+ *   a remote target is rejected outright.
+ * - "remote-capable": routed through TargetAdapter — same command, backed by
+ *   LocalAdapter or RemoteAdapter depending on the resolved target.
+ * - "target-agnostic": the resolved target isn't used to decide behavior at
+ *   all (context management is inherently local; completions never touch
+ *   vault/server state).
+ *
+ * Subcommand-level exceptions within an otherwise-classified command (e.g.
+ * `config init`, which bootstraps *this machine's* config file and so is
+ * local-only despite `config` overall being remote-capable) are handled in
+ * getLocalOnlyCommand() itself, not in this top-level map.
+ */
+export type CommandTargetSupport = "local-only" | "remote-capable" | "target-agnostic";
 
-function getLocalOnlyCommand(command: string, subCommand: string): string | null {
-  if (LOCAL_ONLY_COMMANDS.has(command)) {
-    return command;
-  }
+export const COMMAND_TARGET_SUPPORT: Record<string, CommandTargetSupport> = {
+  context: "target-agnostic",
+  config: "remote-capable",
+  completions: "target-agnostic",
+  serve: "local-only",
+  index: "local-only",
+  sync: "local-only",
+  init: "local-only",
+  project: "local-only",
+  target: "local-only",
+  core: "local-only",
+  report: "remote-capable",
+  audit: "remote-capable",
+  scan: "local-only",
+  install: "local-only",
+  outdated: "local-only",
+  update: "local-only",
+  eval: "remote-capable",
+  doctor: "remote-capable",
+  models: "local-only",
+  skill: "local-only",
+  "local-vault": "local-only",
+};
+
+const LOCAL_ONLY_COMMANDS = new Set(
+  Object.entries(COMMAND_TARGET_SUPPORT)
+    .filter(([, support]) => support === "local-only")
+    .map(([command]) => command),
+);
+
+export function getLocalOnlyCommand(command: string, subCommand: string): string | null {
   if (command === "skill" && (subCommand === "which" || !subCommand)) {
     return "skill which";
+  }
+  if (command === "config" && subCommand === "init") {
+    return "config init";
+  }
+  if (LOCAL_ONLY_COMMANDS.has(command)) {
+    return command;
   }
   return null;
 }
