@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { buildRedactor } from "../src/redact";
-import { redactedErrorLog } from "../src/server";
+import { redactedErrorLog } from "../src/logger";
 import type { Config } from "../src/types";
 
 function testConfig(overrides: Partial<Config> = {}): Config {
