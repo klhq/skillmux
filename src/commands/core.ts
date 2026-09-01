@@ -1,6 +1,6 @@
 import { expandHome } from "../config";
 import { pinCore, unpinCore, validateManifest, writeManifestAtomic } from "../manifest";
-import { emitSuccess } from "../output";
+import { emitSuccess, unknownSubcommandError } from "../output";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
 export async function runCore(
   subCommand: string,
@@ -8,7 +8,7 @@ export async function runCore(
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
   if (subCommand !== "pin" && subCommand !== "unpin") {
-    throw new Error("usage: skillmux core <pin|unpin>");
+    throw unknownSubcommandError("core", subCommand, ["pin", "unpin"]);
   }
   const skillIds = args.filter((arg) => !arg.startsWith("-"));
   if (skillIds.length === 0) {

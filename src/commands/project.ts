@@ -19,7 +19,7 @@ import {
   promptText,
   shouldUseWizard,
 } from "../prompts";
-import { emitSuccess, isInteractive } from "../output";
+import { emitSuccess, isInteractive, unknownSubcommandError } from "../output";
 import { confirmAction, confirmIfNeeded, loadManifestContext } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 const PROJECT_INIT_USAGE =
@@ -336,7 +336,18 @@ export async function runProject(
     );
     return;
   }
-  if (subCommand !== "init") throw new Error(PROJECT_INIT_USAGE);
+  if (subCommand !== "init")
+    throw unknownSubcommandError("project", subCommand, [
+      "init",
+      "list",
+      "show",
+      "add-path",
+      "remove-path",
+      "pin",
+      "unpin",
+      "attach",
+      "detach",
+    ]);
   let request = parseProjectInitArgs(args);
   const guided = shouldUseWizard(args, {
     interactive: isInteractive(),

@@ -2,7 +2,7 @@ import { expandHome } from "../config";
 import { planClientSurfaces, resolveBuiltInTarget, SUPPORTED_CLIENT_IDS } from "../init-clients";
 import { planInitManifest, applyInit } from "../init";
 import { writeManifestAtomic } from "../manifest";
-import { emitSuccess, warn } from "../output";
+import { emitSuccess, unknownSubcommandError, warn } from "../output";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
 
 /** Target names whose install directory is deterministic — --dir is optional for these. */
@@ -141,5 +141,5 @@ export async function runTarget(
     return;
   }
 
-  throw new Error("usage: skillmux target <list|show|add|remove>");
+  throw unknownSubcommandError("target", subCommand, ["list", "show", "add", "remove"]);
 }

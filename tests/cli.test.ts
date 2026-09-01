@@ -641,10 +641,39 @@ describe("skillmux CLI usage", () => {
     );
   });
 
-  test("config subcommand usage error names the skillmux binary", async () => {
+  test("config subcommand usage error names the skillmux binary and lists every valid subcommand", async () => {
     const result = await runCli("config", "bogus");
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("usage: skillmux config show");
+    expect(result.stderr).toContain(
+      "usage: skillmux config <init|show|get|set|validate|diff|status>",
+    );
+  });
+
+  test("project add is not confused with project init's usage — lists all real project subcommands instead", async () => {
+    const result = await runCli("project", "add", "somegroup");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(
+      "usage: skillmux project <init|list|show|add-path|remove-path|pin|unpin|attach|detach>",
+    );
+    expect(result.stderr).not.toContain("project init [path]");
+  });
+
+  test("unrecognized subcommands close to a real one get a did-you-mean suggestion", async () => {
+    writeFileSync(join(vaultDir, "skillmux.toml"), `[core]\nskills = []\n`);
+
+    const cases: Array<{ args: string[]; expected: string }> = [
+      { args: ["target", "lst"], expected: 'Unknown "target lst" subcommand. Did you mean "target list"?' },
+      { args: ["context", "lst"], expected: 'Unknown "context lst" subcommand. Did you mean "context list"?' },
+      { args: ["core", "pinn", "some-skill"], expected: 'Unknown "core pinn" subcommand. Did you mean "core pin"?' },
+      { args: ["skill", "whcih", "some-skill"], expected: 'Unknown "skill whcih" subcommand. Did you mean "skill which"?' },
+    ];
+    for (const { args, expected } of cases) {
+      const result = await runCli(...args);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain(expected);
+    }
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
   test("models subcommand usage error names the skillmux binary", async () => {

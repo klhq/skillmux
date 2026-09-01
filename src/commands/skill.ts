@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
+import { unknownSubcommandError } from "../output";
 import { vaultResolutionOrder } from "../vault";
 
 export async function runSkill(subCommand: string, args: string[]): Promise<void> {
-  if (subCommand !== "which") throw new Error("usage: skillmux skill <which>");
+  if (subCommand !== "which") throw unknownSubcommandError("skill", subCommand, ["which"]);
   await runWhich(args);
 }
 

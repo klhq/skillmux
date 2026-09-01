@@ -2,7 +2,7 @@ import { expandHome, migrateLegacyPaths, resolveConfigPath } from "../config";
 import { type TargetAdapter } from "../adapters";
 import { type ResolvedContext } from "../context";
 import { applyConfigInit, planConfigInit, type ConfigInitPlan } from "../setup";
-import { emitSuccess, isInteractive, renderTargetBanner } from "../output";
+import { emitSuccess, isInteractive, renderTargetBanner, unknownSubcommandError } from "../output";
 import { confirmAction } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 function emitConfigInitOutcome(
@@ -212,5 +212,13 @@ export async function handleConfigCommand(
     return;
   }
 
-  throw new Error("usage: skillmux config show");
+  throw unknownSubcommandError("config", sub, [
+    "init",
+    "show",
+    "get",
+    "set",
+    "validate",
+    "diff",
+    "status",
+  ]);
 }
