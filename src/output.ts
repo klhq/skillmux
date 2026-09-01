@@ -119,6 +119,31 @@ export function isInteractive(
   return stdoutIsTTY === true && env.TERM !== "dumb";
 }
 
+/** Color is opt-out only: https://no-color.org, plus the same TTY check as isInteractive(). */
+export function isColorEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+  stdoutIsTTY = process.stdout.isTTY,
+): boolean {
+  if (env.NO_COLOR !== undefined) return false;
+  return isInteractive(env, stdoutIsTTY);
+}
+
+const ANSI = { reset: "\x1b[0m", bold: "\x1b[1m", red: "\x1b[31m", yellow: "\x1b[33m", green: "\x1b[32m" } as const;
+
+function paint(code: string, text: string): string {
+  return isColorEnabled() ? `${code}${text}${ANSI.reset}` : text;
+}
+
+export const red = (text: string): string => paint(ANSI.red, text);
+export const yellow = (text: string): string => paint(ANSI.yellow, text);
+export const green = (text: string): string => paint(ANSI.green, text);
+export const bold = (text: string): string => paint(ANSI.bold, text);
+
+/** Prints a "warning: <line>" message to stderr, colored yellow when color is enabled. */
+export function warn(line: string): void {
+  console.error(yellow(`warning: ${line}`));
+}
+
 export function renderTargetBanner(target: ResolvedContext): void {
   if (!isInteractive()) return;
   if (target.type === "local") {
@@ -143,7 +168,7 @@ export function renderTable(columns: { key: string; header: string }[], rows: Re
   const headerLine = columns.map((col) => col.header.padEnd(widths.get(col.key) ?? 0)).join("  ");
   const sepLine = columns.map((col) => "-".repeat(widths.get(col.key) ?? 0)).join("  ");
 
-  console.log(headerLine);
+  console.log(bold(headerLine));
   console.log(sepLine);
   for (const row of rows) {
     const line = columns.map((col) => String(row[col.key] ?? "").padEnd(widths.get(col.key) ?? 0)).join("  ");

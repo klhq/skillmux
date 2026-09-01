@@ -438,6 +438,16 @@ Named CLI contexts (`--context <name>` or `--server <url>`) support the followin
 
 ---
 
+## Color
+
+Interactive terminal output uses a small amount of color: red for error
+messages, yellow for `warning:` lines, green/red for `doctor`'s `ok`/`fail`
+checks, and bold table headers. Color is automatic — it's on only when
+stdout is a TTY and off whenever `NO_COLOR` is set or output is piped or
+redirected. `--json` output never includes color codes.
+
+---
+
 ## Automation and JSON output (`--json`)
 
 When `--json` or `SKILLMUX_JSON=true` is set, all output is emitted to `stdout` in a stable envelope:

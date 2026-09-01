@@ -108,11 +108,14 @@ import {
   emitSuccess,
   CliError,
   formatJsonEnvelope,
+  green,
   isInteractive,
   mapExitCode,
+  red,
   renderTable,
   renderTargetBanner,
   suggestCorrection,
+  warn,
 } from "./output";
 import { generateCompletions, type ShellType } from "./completions";
 import { runAudit } from "./commands/audit";
@@ -587,11 +590,13 @@ async function handleError(
     console.log(JSON.stringify(env));
   } else {
     console.error(
-      msg.startsWith("usage:") ||
-        msg.startsWith("Unknown") ||
-        msg.startsWith("error:")
-        ? msg
-        : `error: ${msg}`,
+      red(
+        msg.startsWith("usage:") ||
+          msg.startsWith("Unknown") ||
+          msg.startsWith("error:")
+          ? msg
+          : `error: ${msg}`,
+      ),
     );
     if (opts.isVerbose && err instanceof Error && err.stack) {
       console.error(redact(err.stack));
@@ -859,9 +864,7 @@ async function runIndex(): Promise<void> {
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
   const report = await rebuildIndex((skillId, error) => {
-    console.error(
-      `warning: keeping previous index entry for ${skillId}: ${error}`,
-    );
+    warn(`keeping previous index entry for ${skillId}: ${error}`);
   });
   const retainedNote =
     report.retained.length > 0
@@ -962,7 +965,7 @@ async function runDoctor(options: {
     console.log(`retrieval capability: ${report.retrieval_capability}`);
     for (const check of report.checks)
       console.log(
-        `${check.ok ? "ok" : "fail"}: ${check.name} - ${check.detail}`,
+        `${check.ok ? green("ok") : red("fail")}: ${check.name} - ${check.detail}`,
       );
   });
   if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
@@ -1135,8 +1138,8 @@ async function runSync(args: string[]): Promise<void> {
   const log = (line: string) => {
     if (!isJson) console.log(line);
   };
-  const warn = (line: string) => {
-    if (!isJson) console.error(`warning: ${line}`);
+  const warnLine = (line: string) => {
+    if (!isJson) warn(line);
   };
 
   let hookInstalled: boolean | undefined;
@@ -1209,7 +1212,7 @@ async function runSync(args: string[]): Promise<void> {
     );
     log(`${targetName}: +${result.added.length} -${result.removed.length}${suffix}`);
     if (result.skipped.length > 0) {
-      warn(`refused to sync ${result.skipped.join(", ")} — skill directory contains a symlink`);
+      warnLine(`refused to sync ${result.skipped.join(", ")} — skill directory contains a symlink`);
     }
     const summary: SyncTargetSummary = {
       target: targetName,
@@ -1255,7 +1258,7 @@ async function runSync(args: string[]): Promise<void> {
           `  ${projectResult.group} -> ${projectResult.pinDir}: +${projectResult.added.length} -${projectResult.removed.length}${suffix}`,
         );
         if (projectResult.skipped.length > 0) {
-          warn(
+          warnLine(
             `refused to sync ${projectResult.skipped.join(", ")} — skill directory contains a symlink`,
           );
         }
@@ -1484,7 +1487,7 @@ async function runInit(
     throw new Error("--dir may only be used with --target custom");
   }
   for (const target of explicitSurfaceTargets) {
-    if (target.warning) console.error(`warning: ${target.warning}`);
+    if (target.warning) warn(target.warning);
   }
   const targetByPath = new Map(
     explicitSurfaceTargets.map(

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
 import { excludeExistingCases, parseEvalCases } from "../eval";
-import { emitSuccess } from "../output";
+import { emitSuccess, warn } from "../output";
 import { parseSince } from "../stats";
 import { confirmIfNeeded } from "./shared";
 import type { TargetAdapter } from "../adapters";
@@ -44,7 +44,7 @@ export async function runEvalPromote(
   const existing = existsSync(targetPath) ? parseEvalCases(JSON.parse(readFileSync(targetPath, "utf-8"))) : [];
   const { cases: newCases, skipped } = excludeExistingCases(candidates, existing);
 
-  console.error("warning: promoted eval cases contain raw user queries");
+  warn("promoted eval cases contain raw user queries");
 
   if (dryRun) {
     emitSuccess(
