@@ -1,0 +1,61 @@
+import { expandHome, loadConfig } from "../config";
+import { emitSuccess } from "../output";
+import {
+  renderScanJson,
+  renderScanText,
+  scanExitCode,
+  scanPath,
+  type ScanSeverity,
+} from "../scan";
+import { isGlobalFlag } from "../global-flags";
+
+function parseScanArgs(args: string[]): {
+  path?: string;
+  format: "text" | "json";
+  failOn?: ScanSeverity;
+} {
+  let path: string | undefined;
+  let format: "text" | "json" = "text";
+  let failOn: ScanSeverity | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const option = args[i];
+    if (option === "--format") {
+      const value = args[++i];
+      if (value !== "text" && value !== "json")
+        throw new Error("--format must be text or json");
+      format = value;
+    } else if (option === "--fail-on") {
+      const value = args[++i];
+      if (value !== "low" && value !== "medium" && value !== "high") {
+        throw new Error("--fail-on must be low, medium, or high");
+      }
+      failOn = value;
+    } else if (isGlobalFlag(option, "--json")) {
+      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
+    } else if (option?.startsWith("--")) {
+      throw new Error(`unknown scan option: ${option}`);
+    } else if (path !== undefined) {
+      throw new Error("skillmux scan accepts at most one <path> argument");
+    } else {
+      path = option;
+    }
+  }
+  return { path, format, failOn };
+}
+
+export async function runScan(
+  args: string[],
+  options: { isJson: boolean },
+): Promise<void> {
+  const { path, format, failOn } = parseScanArgs(args);
+  const rootPath = path
+    ? expandHome(path)
+    : expandHome((await loadConfig()).vault_path);
+  const result = await scanPath(rootPath);
+  emitSuccess({ isJson: options.isJson }, result, () => {
+    console.log(
+      format === "json" ? renderScanJson(result) : renderScanText(result),
+    );
+  });
+  process.exitCode = scanExitCode(result.findings, failOn);
+}

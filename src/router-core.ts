@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { buildAuditRow } from "./audit";
 import { embeddingDimension, embeddingFingerprint, expandHome, loadConfig } from "./config";
 import { RemoteInferenceError } from "./clients";
+import { log } from "./logger";
 import { warn } from "./output";
 import {
   deleteSkill,
@@ -555,14 +556,7 @@ export async function retrieveAndRerank(
       retrieval = "lexical";
       degraded_from = clients.rerank ? "reranked" : "hybrid";
       degradation_reason = classifyInferenceError("embedding", embedRes.error);
-      console.error(
-        JSON.stringify({
-          level: "warn",
-          stage: "embedding",
-          degraded_from,
-          reason: degradation_reason,
-        }),
-      );
+      log.warn("embedding", { degraded_from, reason: degradation_reason });
     } else {
       try {
         const queryVec = (embedRes as Float32Array[])[0];
@@ -575,14 +569,7 @@ export async function retrieveAndRerank(
         retrieval = "lexical";
         degraded_from = clients.rerank ? "reranked" : "hybrid";
         degradation_reason = classifyInferenceError("embedding", embedError);
-        console.error(
-          JSON.stringify({
-            level: "warn",
-            stage: "embedding",
-            degraded_from,
-            reason: degradation_reason,
-          }),
-        );
+        log.warn("embedding", { degraded_from, reason: degradation_reason });
       }
     }
   }
@@ -602,14 +589,7 @@ export async function retrieveAndRerank(
       scores = null;
       degraded_from = "reranked";
       degradation_reason = classifyInferenceError("reranker", rerankError);
-      console.error(
-        JSON.stringify({
-          level: "warn",
-          stage: "reranker",
-          degraded_from,
-          reason: degradation_reason,
-        }),
-      );
+      log.warn("reranker", { degraded_from, reason: degradation_reason });
     }
   }
 

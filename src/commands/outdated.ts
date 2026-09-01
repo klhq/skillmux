@@ -5,6 +5,7 @@ import { assertHostAllowed, isLocalFileUrl, remoteHeadCommit } from "../install"
 import { emitSuccess } from "../output";
 import { readSkillOrigin } from "../provenance";
 import { SKILL_ID_PATTERN } from "../vault";
+import { isGlobalFlag } from "../global-flags";
 
 export interface OutdatedCheckResult {
   skill_id: string;
@@ -87,7 +88,7 @@ export async function checkOutdated(
 export async function runOutdated(args: string[], options: { isJson: boolean }): Promise<void> {
   let allowLocalSource = false;
   for (const arg of args) {
-    if (arg === "--json") continue;
+    if (isGlobalFlag(arg, "--json")) continue;
     if (arg === "--allow-local-source") {
       allowLocalSource = true;
       continue;

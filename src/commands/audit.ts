@@ -2,6 +2,7 @@ import { emitSuccess } from "../output";
 import { confirmIfNeeded } from "./shared";
 import type { TargetAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
+import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 
 export async function runAudit(
   subCommand: string,
@@ -20,9 +21,9 @@ export async function runAudit(
     if (arg === "--older-than") olderThan = args[++i];
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--yes") yes = true;
-    else if (arg === "--json" || arg === "--allow-insecure" || arg === "--verbose") {
+    else if (isGlobalFlag(arg, "--json", "--allow-insecure", "--verbose")) {
       // handled globally by main()'s flags; recognized here so it isn't rejected
-    } else if (arg === "--context" || arg === "--server") {
+    } else if (isGlobalFlagWithValue(arg)) {
       i++; // skip flag value
     } else if (arg?.startsWith("--")) {
       throw new Error(`unknown audit prune option: ${arg}`);
