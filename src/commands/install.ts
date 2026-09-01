@@ -15,6 +15,7 @@ import {
 import { emitSuccess } from "../output";
 import { hashSkillContent, writeSkillOrigin } from "../provenance";
 import { renderScanText, scanExitCode, type ScanSeverity } from "../scan";
+import { isGlobalFlag } from "../global-flags";
 
 function parseInstallArgs(args: string[]): {
   repo?: string;
@@ -39,7 +40,7 @@ function parseInstallArgs(args: string[]): {
         throw new Error("--fail-on must be low, medium, or high");
       }
       failOn = value;
-    } else if (option === "--json" || option === "--verbose") {
+    } else if (isGlobalFlag(option, "--json", "--verbose")) {
       // handled globally by main()'s isJson/isVerbose flags; recognized here so they aren't rejected
     } else if (option?.startsWith("--")) {
       throw new Error(`unknown install option: ${option}`);

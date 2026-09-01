@@ -4,6 +4,7 @@ import { type ResolvedContext } from "../context";
 import { applyConfigInit, planConfigInit, type ConfigInitPlan } from "../setup";
 import { emitSuccess, isInteractive, renderTargetBanner } from "../output";
 import { confirmAction } from "./shared";
+import { isGlobalFlag } from "../global-flags";
 function emitConfigInitOutcome(
   ctx: { isJson: boolean },
   opts: {
@@ -53,7 +54,7 @@ export async function handleConfigCommand(
           throw new Error("usage: skillmux config init --vault <path> --yes");
       } else if (option === "--yes") {
         yes = true;
-      } else if (option === "--dry-run" || option === "--json") {
+      } else if (isGlobalFlag(option, "--dry-run", "--json")) {
         continue;
       } else {
         throw new Error(`unknown config init option: ${option}`);

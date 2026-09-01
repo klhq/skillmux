@@ -7,6 +7,7 @@ import {
   scanPath,
   type ScanSeverity,
 } from "../scan";
+import { isGlobalFlag } from "../global-flags";
 
 function parseScanArgs(args: string[]): {
   path?: string;
@@ -29,7 +30,7 @@ function parseScanArgs(args: string[]): {
         throw new Error("--fail-on must be low, medium, or high");
       }
       failOn = value;
-    } else if (option === "--json") {
+    } else if (isGlobalFlag(option, "--json")) {
       // handled globally by main()'s isJson flag; recognized here so it isn't rejected
     } else if (option?.startsWith("--")) {
       throw new Error(`unknown scan option: ${option}`);

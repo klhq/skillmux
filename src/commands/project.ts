@@ -21,6 +21,7 @@ import {
 } from "../prompts";
 import { emitSuccess, isInteractive } from "../output";
 import { confirmAction, confirmIfNeeded, loadManifestContext } from "./shared";
+import { isGlobalFlag } from "../global-flags";
 const PROJECT_INIT_USAGE =
   "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--client <id>...] [--target <name>...] [--yes] [--no-sync]";
 
@@ -89,8 +90,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
     } else if (arg === "--no-sync") {
       sync = false;
     } else if (
-      arg === "--dry-run" ||
-      arg === "--json" ||
+      isGlobalFlag(arg, "--dry-run", "--json") ||
       arg === "--interactive"
     ) {
       continue;

@@ -6,6 +6,7 @@ import { emitSuccess, warn } from "../output";
 import { parseSince } from "../stats";
 import { confirmIfNeeded } from "./shared";
 import type { TargetAdapter } from "../adapters";
+import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 
 export async function runEvalPromote(
   args: string[],
@@ -21,9 +22,9 @@ export async function runEvalPromote(
     else if (arg === "--target") target = args[++i];
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--yes") yes = true;
-    else if (arg === "--json" || arg === "--allow-insecure" || arg === "--verbose") {
+    else if (isGlobalFlag(arg, "--json", "--allow-insecure", "--verbose")) {
       // handled globally by main()'s isJson flag; recognized here so it isn't rejected
-    } else if (arg === "--context" || arg === "--server") {
+    } else if (isGlobalFlagWithValue(arg)) {
       i++; // skip flag value
     } else if (arg?.startsWith("--")) {
       throw new Error(`unknown eval promote option: ${arg}`);

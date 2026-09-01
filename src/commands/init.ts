@@ -30,6 +30,7 @@ import {
 } from "../init-instructions";
 import { parseManifest, resolveManifestPath } from "../manifest";
 import { isInteractive, warn } from "../output";
+import { isGlobalFlag } from "../global-flags";
 import {
   parseCommaList,
   promptMultiSelect,
@@ -95,8 +96,7 @@ function parseInitArgs(args: string[]): {
       coreSkillIds.push(value);
       i++;
     } else if (
-      option === "--dry-run" ||
-      option === "--json" ||
+      isGlobalFlag(option, "--dry-run", "--json") ||
       option === "--interactive"
     ) {
       continue;

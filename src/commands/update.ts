@@ -18,6 +18,7 @@ import { type ScanFinding, type ScanSeverity, scanExitCode } from "../scan";
 import { SKILL_ID_PATTERN } from "../vault";
 import { confirmIfNeeded } from "./shared";
 import { checkOutdated } from "./outdated";
+import { isGlobalFlag } from "../global-flags";
 
 type UpdateKind = "update" | "up_to_date" | "skip_drift" | "skip_scan_failed" | "skip_read_error";
 
@@ -195,7 +196,7 @@ function parseUpdateArgs(args: string[]): {
         throw new Error("--fail-on must be low, medium, or high");
       }
       failOn = value;
-    } else if (arg === "--json") {
+    } else if (isGlobalFlag(arg, "--json")) {
       // handled globally
     } else if (arg?.startsWith("--")) {
       throw new Error(`unknown update option: ${arg}`);

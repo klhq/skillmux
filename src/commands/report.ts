@@ -3,6 +3,7 @@ import type { TargetAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
 import { emitSuccess } from "../output";
 import { getStats, renderStatsText } from "../stats";
+import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 
 function parseReportArgs(args: string[]): {
   db?: string;
@@ -21,13 +22,11 @@ function parseReportArgs(args: string[]): {
       if (!value) throw new Error("--since requires a window");
       since = value;
       i++;
-    } else if (option === "--json") {
-      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
-    } else if (option === "--server" || option === "--context") {
+    } else if (isGlobalFlag(option, "--json", "--allow-insecure")) {
+      // handled globally by main()'s isJson/allowInsecure flags; recognized here so it isn't rejected
+    } else if (isGlobalFlagWithValue(option)) {
       // handled globally by main()'s resolveContext(); recognized here so it isn't rejected
       i++;
-    } else if (option === "--allow-insecure") {
-      // handled globally by main()'s allowInsecure flag; recognized here so it isn't rejected
     } else {
       throw new Error(`unknown report option: ${option}`);
     }
