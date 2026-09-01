@@ -189,7 +189,7 @@ for all three setups.
 | Surface | User | Purpose | CLI required |
 | --- | --- | --- | --- |
 | `/mcp` | AI clients | Resolve and fetch skills | No |
-| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+| `/admin/v1/*` (and `GET /stats`) | Operators | Inspect/update config, stats, audit prune, evaluation, and remote diagnostics | Yes, when using named CLI contexts |
 
 MCP clients authenticate only to `/mcp` with the MCP bearer token. Operators
 use a separate administrative bearer token for `/admin/v1/*`; neither token

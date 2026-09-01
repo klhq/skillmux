@@ -1,10 +1,26 @@
 import { describe, expect, it } from "bun:test";
-import { CliError, emitSuccess, formatJsonEnvelope, isInteractive, mapExitCode, suggestCorrection } from "../src/output";
+import { CliError, emitSuccess, formatJsonEnvelope, isColorEnabled, isInteractive, mapExitCode, red, suggestCorrection } from "../src/output";
 import { generateCompletions } from "../src/completions";
 
 describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () => {
   it("keeps prompts interactive when NO_COLOR is set", () => {
     expect(isInteractive({ TERM: "xterm-256color", NO_COLOR: "1" }, true)).toBe(true);
+  });
+
+  it("disables color when NO_COLOR is set, even on a TTY", () => {
+    expect(isColorEnabled({ TERM: "xterm-256color", NO_COLOR: "1" }, true)).toBe(false);
+  });
+
+  it("disables color when stdout is not a TTY", () => {
+    expect(isColorEnabled({ TERM: "xterm-256color" }, false)).toBe(false);
+  });
+
+  it("enables color on an interactive TTY with no NO_COLOR set", () => {
+    expect(isColorEnabled({ TERM: "xterm-256color" }, true)).toBe(true);
+  });
+
+  it("red() returns plain text unchanged when color is disabled (piped output)", () => {
+    expect(red("error: boom")).toBe("error: boom");
   });
 
   it("formats standard JSON envelope with schema_version 1 (AC12)", () => {

@@ -95,7 +95,7 @@ export async function handleConfigCommand(
       if (!ctx.isJson && isInteractive()) {
         if (
           !(await confirmAction(
-            `Create ${plan.configPath} with vault_path ${plan.vaultPath}?`,
+            `create ${plan.configPath} with vault_path ${plan.vaultPath}?`,
           ))
         ) {
           console.log("config init cancelled; nothing written");
@@ -164,9 +164,7 @@ export async function handleConfigCommand(
   if (sub === "validate") {
     const res = await adapter.configValidate();
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      console.log(
-        res.valid ? "Configuration is valid." : "Configuration is invalid.",
-      );
+      console.log(res.valid ? "configuration is valid" : "configuration is invalid");
     });
     return;
   }
@@ -204,11 +202,11 @@ export async function handleConfigCommand(
     const res = await adapter.configStatus();
     emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
       renderTargetBanner(ctx.target);
-      console.log(`Runtime: ${res.runtime}`);
-      console.log(`Deployment runtime: ${res.deployment_runtime}`);
-      console.log(`Image variant: ${res.image_variant ?? "none"}`);
-      console.log(`Active revision: ${res.active_revision}`);
-      console.log(`Readiness: ${res.readiness.status}`);
+      console.log(`runtime: ${res.runtime}`);
+      console.log(`deployment runtime: ${res.deployment_runtime}`);
+      console.log(`image variant: ${res.image_variant ?? "none"}`);
+      console.log(`active revision: ${res.active_revision}`);
+      console.log(`readiness: ${res.readiness.status}`);
     });
     return;
   }

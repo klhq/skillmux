@@ -14,6 +14,9 @@ In this guide, **local target** means the filesystem and process selected by
 the built-in CLI context. It does not describe local inference. A local target
 can call remote inference endpoints.
 
+Run `skillmux --help` for the full command list, or `skillmux <command> --help`
+(`-h` also works) for one command's usage and flags.
+
 For task-oriented workflows, start with [Getting started](getting-started.md)
 or [Managing skills](skill-management.md).
 
@@ -432,6 +435,16 @@ Named CLI contexts (`--context <name>` or `--server <url>`) support the followin
 - `skillmux eval`: executes ranking evaluation against the remote server's in-process runtime via `POST /admin/v1/eval`.
 - `skillmux eval promote --since <window>`: fetches promotable candidates from the remote server's audit db via `POST /admin/v1/eval/promote`, dedups against the local fixture file, and writes locally.
 - `skillmux doctor`: inspects remote server status, readiness, deployment runtime, and capabilities without requiring local vault access.
+
+---
+
+## Color
+
+Interactive terminal output uses a small amount of color: red for error
+messages, yellow for `warning:` lines, green/red for `doctor`'s `ok`/`fail`
+checks, and bold table headers. Color is automatic — it's on only when
+stdout is a TTY and off whenever `NO_COLOR` is set or output is piped or
+redirected. `--json` output never includes color codes.
 
 ---
 

@@ -267,6 +267,12 @@ true` with a token, or it refuses to start. `--stats-port` is rejected
 alongside `--transport http`, since that transport already serves `/stats` on
 `--port`.
 
+`--context`/`--server` work the same way for `audit prune`, `eval`, `eval
+promote`, and `doctor` — each hits the matching `/admin/v1/*` route on the
+named deployment instead of the local vault and audit db. See [CLI
+reference](cli.md#administrative-http-api-adminv1) for the full remote
+command surface and route table.
+
 ## Target ownership and recovery
 
 `skillmux target remove <name> --yes` removes the manifest record and preserves

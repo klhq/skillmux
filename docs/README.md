@@ -34,7 +34,7 @@ to customize behavior; see [Configuration](configuration.md#machine-config-boots
 | Surface | User | Purpose | CLI required |
 | --- | --- | --- | --- |
 | `/mcp` | AI clients | Resolve and fetch skills | No |
-| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+| `/admin/v1/*` (and `GET /stats`) | Operators | Inspect/update config, stats, audit prune, evaluation, and remote diagnostics | Yes, when using named CLI contexts |
 
 The MCP and administrative surfaces use separate bearer tokens; possession of
 one does not grant access to the other. A named CLI context administers the

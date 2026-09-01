@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { buildAuditRow } from "./audit";
 import { embeddingDimension, embeddingFingerprint, expandHome, loadConfig } from "./config";
 import { RemoteInferenceError } from "./clients";
+import { warn } from "./output";
 import {
   deleteSkill,
   findExactMatch,
@@ -274,7 +275,7 @@ export async function syncVaultIfNeeded(): Promise<void> {
     const invalidIds: string[] = [];
     const skills = await scanVaults(vaultPath, localVaultPaths, (skillId, error) => {
       invalidIds.push(skillId);
-      console.error(`warning: keeping previous index entry for ${skillId}: ${error}`);
+      warn(`keeping previous index entry for ${skillId}: ${error}`);
     });
     const rows = skills.map(toSkillRow);
     // See rebuildIndex: a skill_id invalid in one root can still be valid in
@@ -361,7 +362,7 @@ async function reindexOneSkill(db: Database, vaultPath: string, skillId: string)
     upsertSkill(db, await readSkill(vaultPath, skillId));
     backfillEmbeddings().catch(() => {});
   } catch (error) {
-    console.error(`warning: keeping previous index entry for ${skillId}: ${error}`);
+    warn(`keeping previous index entry for ${skillId}: ${error}`);
   }
 }
 
@@ -395,7 +396,7 @@ export async function startVaultWatcher(): Promise<() => void> {
   // A watcher error (e.g. the vault root disappearing) must degrade the index,
   // not crash the server — an unhandled 'error' event would throw.
   watcher.on("error", (error) => {
-    console.error(`warning: vault watcher error, live updates paused: ${error}`);
+    warn(`vault watcher error, live updates paused: ${error}`);
   });
 
   return () => {

@@ -180,7 +180,7 @@ The shared server exposes two distinct HTTP surfaces:
 | Surface | User | Purpose | CLI required |
 | --- | --- | --- | --- |
 | `/mcp` | AI clients | Resolve and fetch skills | No |
-| `/admin/v1/*` | Operators | Inspect or update server configuration | Yes, when using named CLI contexts |
+| `/admin/v1/*` (and `GET /stats`) | Operators | Inspect/update config, stats, audit prune, evaluation, and remote diagnostics | Yes, when using named CLI contexts |
 
 Configure and distribute separate bearer tokens. An MCP token authenticates an
 AI client to `/mcp` only; an administrative token authenticates an operator to
@@ -280,6 +280,9 @@ skillmux context add prod \
   --token-env SKILLMUX_PROD_ADMIN_TOKEN
 skillmux context use prod
 skillmux config status
+skillmux --context prod report --since 7d
+skillmux --context prod audit prune --dry-run
+skillmux --context prod doctor
 ```
 
 The context stores the token environment variable name. Export its value in
@@ -291,11 +294,12 @@ Enable the admin API and use a separate admin token in server configuration.
 Read [CLI reference](cli.md#administrative-http-api-adminv1) for routes and
 [Configuration](configuration.md#http-server) for reload behavior.
 
-Named contexts administer the deployed server configuration only. They do not
-install, pin, synchronize, or otherwise manage skill directories on remote
-client machines. Run those filesystem-management commands through Skillmux CLI
-on the machine that owns the directories. The full and slim server images read
-their mounted vault checkout and do not manage host agent directories.
+Named contexts administer the deployed server only — configuration, stats,
+audit prune, evaluation, and remote diagnostics. They do not install, pin,
+synchronize, or otherwise manage skill directories on remote client machines.
+Run those filesystem-management commands through Skillmux CLI on the machine
+that owns the directories. The full and slim server images read their mounted
+vault checkout and do not manage host agent directories.
 
 ## Persistent data and backups
 

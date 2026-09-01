@@ -48,5 +48,9 @@ export async function runCore(
   )
     return;
   writeManifestAtomic(manifestPath, updated);
-  console.log(`${subCommand}: [core] ${skillIds.join(", ")}`);
+  emitSuccess(
+    { isJson: options.isJson },
+    { subcommand: subCommand, skill_ids: skillIds },
+    () => console.log(`${subCommand}: [core] ${skillIds.join(", ")}`),
+  );
 }
