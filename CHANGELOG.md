@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0](https://github.com/klhq/skillmux/compare/v1.9.3...v1.10.0) (2026-09-01)
+
+
+### Added
+
+* **cli:** reject remote context for local-only commands ([#165](https://github.com/klhq/skillmux/issues/165)) ([934bb18](https://github.com/klhq/skillmux/commit/934bb18bce2b86dca8ac44cd8431ebdb53d12024))
+* **cli:** remote admin parity for report, audit prune, eval, doctor ([#166](https://github.com/klhq/skillmux/issues/166)) ([615a396](https://github.com/klhq/skillmux/commit/615a396212d5c0e2df07712bf588c25e91e99773))
+
+
+### Changed
+
+* **cli:** align context terminology ([#163](https://github.com/klhq/skillmux/issues/163)) ([e942075](https://github.com/klhq/skillmux/commit/e94207584d10e16c17d6d2f5ca9c23bd8aa7846f))
+* **server:** consolidate redactedErrorLog into logger.ts ([#169](https://github.com/klhq/skillmux/issues/169)) ([f7f29e4](https://github.com/klhq/skillmux/commit/f7f29e4ed6ea516e243d47d677e7ede207e47937))
+* split db.ts, extract cli.ts commands, consolidate flag parsing ([#168](https://github.com/klhq/skillmux/issues/168)) ([28a798a](https://github.com/klhq/skillmux/commit/28a798abacfb830aff7a6510c6e892bb28009e5c))
+
 ## [1.9.3](https://github.com/klhq/skillmux/compare/v1.9.2...v1.9.3) (2026-08-31)
 
 
