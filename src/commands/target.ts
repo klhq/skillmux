@@ -1,9 +1,18 @@
 import { expandHome } from "../config";
-import { planClientSurfaces, SUPPORTED_CLIENT_IDS } from "../init-clients";
+import { planClientSurfaces, resolveBuiltInTarget, SUPPORTED_CLIENT_IDS } from "../init-clients";
 import { planInitManifest, applyInit } from "../init";
 import { writeManifestAtomic } from "../manifest";
-import { emitSuccess } from "../output";
+import { emitSuccess, warn } from "../output";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
+
+/** Target names whose install directory is deterministic — --dir is optional for these. */
+const AUTO_RESOLVABLE_TARGET_NAMES = new Set([
+  "agent-skills",
+  "agents",
+  "claude-code",
+  "claude",
+  "codex",
+]);
 export async function runTarget(
   subCommand: string,
   args: string[],
@@ -47,9 +56,23 @@ export async function runTarget(
     const name = args[0];
     const dirIndex = args.indexOf("--dir");
     const rawPath = dirIndex === -1 ? undefined : args[dirIndex + 1];
-    if (!name || !rawPath)
+    if (!name)
       throw new Error("usage: skillmux target add <name> --dir <dir> --yes");
-    const path = expandHome(rawPath);
+
+    let path: string;
+    if (rawPath) {
+      path = expandHome(rawPath);
+    } else if (AUTO_RESOLVABLE_TARGET_NAMES.has(name)) {
+      const resolved = resolveBuiltInTarget(name, {
+        codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
+      });
+      if (resolved.warning) warn(resolved.warning);
+      path = resolved.path;
+    } else {
+      throw new Error(
+        "usage: skillmux target add <name> --dir <dir> --yes  (--dir may be omitted for built-in target names: agent-skills, claude-code, codex)",
+      );
+    }
     if (options.dryRun) {
       const planned = planInitManifest(vaultPath, [{ name, dir: path }], []);
       emitSuccess(

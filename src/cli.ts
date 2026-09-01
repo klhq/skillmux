@@ -554,8 +554,11 @@ usage:
 usage:
   skillmux target list
   skillmux target show <name>
-  skillmux target add <name> --dir <dir> --yes
-  skillmux target remove <name> --yes`,
+  skillmux target add <name> [--dir <dir>] --yes
+  skillmux target remove <name> --yes
+
+--dir may be omitted when <name> is a built-in target with a deterministic
+path: agent-skills, claude-code, codex. Any other <name> requires --dir.`,
 
   core: `core: pin or unpin core-tier skills
 

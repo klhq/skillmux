@@ -294,7 +294,7 @@ describe("skillmux command --help", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("target: manage native sync target directories");
-    expect(result.stdout).toContain("skillmux target add <name> --dir <dir> --yes");
+    expect(result.stdout).toContain("skillmux target add <name> [--dir <dir>] --yes");
     expect(result.stderr).toBe("");
   });
 
@@ -1262,6 +1262,45 @@ describe("skillmux target CLI", () => {
     expect(existsSync(join(targetPath, ".skillmux"))).toBe(true);
 
     rmSync(targetPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target add resolves --dir automatically for built-in target names", async () => {
+    writeFileSync(join(vaultDir, "skillmux.toml"), `[core]\nskills = []\n`);
+    const fakeHome = join(tmp, "fake-home-target-autodir");
+    mkdirSync(fakeHome, { recursive: true });
+
+    const claudeResult = await runCliEnv(
+      ["target", "add", "claude-code", "--yes", "--json"],
+      { HOME: fakeHome },
+    );
+    expect(claudeResult.exitCode).toBe(0);
+    const claudeParsed = JSON.parse(claudeResult.stdout);
+    expect(claudeParsed.data.dir).toBe(join(fakeHome, ".claude", "skills"));
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+    writeFileSync(join(vaultDir, "skillmux.toml"), `[core]\nskills = []\n`);
+
+    const codexResult = await runCliEnv(
+      ["target", "add", "codex", "--yes", "--json"],
+      { HOME: fakeHome },
+    );
+    expect(codexResult.exitCode).toBe(0);
+    const codexParsed = JSON.parse(codexResult.stdout);
+    expect(codexParsed.data.dir).toBe(join(fakeHome, ".codex", "skills"));
+
+    rmSync(fakeHome, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target add still requires --dir for a name that isn't a built-in target", async () => {
+    writeFileSync(join(vaultDir, "skillmux.toml"), `[core]\nskills = []\n`);
+
+    const result = await runCli("target", "add", "my-custom-thing", "--yes");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--dir may be omitted for built-in target names");
+
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
