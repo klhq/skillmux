@@ -570,9 +570,15 @@ usage:
                 [--migrate-full-vault] [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
 
-clients: claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
-         antigravity, goose, hermes, skillmux-mcp
-targets: agent-skills, claude-code, codex, custom`,
+clients (the common case — each one already knows its own target
+directory): claude-code, codex, gemini-cli, opencode, github-copilot,
+windsurf, antigravity, goose, hermes, skillmux-mcp
+  (skillmux-mcp isn't a directory — selecting it just prints the MCP
+  registration snippet at the end; it doesn't run init or write anything)
+
+--target is an advanced override, only needed for a tool not in the
+clients list above, or --target custom --dir <path> for an arbitrary
+directory: agent-skills, claude-code, codex, custom`,
 
   project: `project: manage project-scoped skill pins and sync groups
 
@@ -713,9 +719,10 @@ Setup:
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
   antigravity, goose, hermes, skillmux-mcp
-
-Init targets:
-  agent-skills, claude-code, codex, custom
+  (skillmux-mcp isn't a client directory — select it to also print the
+  MCP registration snippet; it never runs init or touches the vault
+  remotely. "skillmux init --help" covers --target, an advanced override
+  for a client not in this list.)
 
 Operations:
   skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]
