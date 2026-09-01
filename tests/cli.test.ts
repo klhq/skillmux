@@ -461,16 +461,12 @@ describe("Remote context rejection (Bucket A)", () => {
       const result = await runCli(...args, "--server", "https://remote.example.com", "--json");
       expect(result.exitCode).toBe(2);
       const parsed = JSON.parse(result.stdout);
-      expect(parsed).toMatchObject({
-        ok: false,
-        error: {
-          code: "REMOTE_CONTEXT_UNSUPPORTED",
-          message: `\`${name}\` operates on the local vault only; --context/--server isn't supported here`,
-          details: {
-            rejected_command: name,
-          },
-        },
-      });
+      expect(parsed.ok).toBe(false);
+      expect(parsed.error.code).toBe("REMOTE_CONTEXT_UNSUPPORTED");
+      expect(parsed.error.message).toContain(
+        `\`${name}\` operates on the local vault only; --context/--server isn't supported here`,
+      );
+      expect(parsed.error.details).toMatchObject({ rejected_command: name });
     }
   });
 
@@ -566,14 +562,49 @@ describe("Remote context rejection (Bucket A)", () => {
     );
     expect(result.exitCode).toBe(2);
     const parsed = JSON.parse(result.stdout);
-    expect(parsed).toMatchObject({
-      ok: false,
-      error: {
-        code: "REMOTE_CONTEXT_UNSUPPORTED",
-        message: "`config init` operates on the local vault only; --context/--server isn't supported here",
-        details: { rejected_command: "config init" },
-      },
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error.code).toBe("REMOTE_CONTEXT_UNSUPPORTED");
+    expect(parsed.error.message).toContain(
+      "`config init` operates on the local vault only; --context/--server isn't supported here",
+    );
+    expect(parsed.error.details).toMatchObject({
+      rejected_command: "config init",
+      reason: "local-config",
     });
+    expect(parsed.error.message).toContain(
+      'skillmux config show/set --context <name>',
+    );
+  });
+
+  test("rejection guidance points somewhere useful, not just \"no\", and differs by category", async () => {
+    const cases: Array<{ args: string[]; name: string; reason: string; guidanceSnippet: string }> = [
+      {
+        args: ["install", "owner/repo"],
+        name: "install",
+        reason: "vault-content",
+        guidanceSnippet: "update its git-backed source and redeploy or pull on that host",
+      },
+      {
+        args: ["sync"],
+        name: "sync",
+        reason: "native-delivery",
+        guidanceSnippet: "run it on the machine that owns those directories",
+      },
+      {
+        args: ["serve"],
+        name: "serve",
+        reason: "local-runtime",
+        guidanceSnippet: "operates on the local runtime process",
+      },
+    ];
+
+    for (const { args, name, reason, guidanceSnippet } of cases) {
+      const result = await runCli(...args, "--server", "https://remote.example.com", "--json");
+      expect(result.exitCode).toBe(2);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.error.details).toMatchObject({ rejected_command: name, reason });
+      expect(parsed.error.message).toContain(guidanceSnippet);
+    }
   });
 });
 

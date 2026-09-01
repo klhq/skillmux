@@ -136,13 +136,53 @@ export function getLocalOnlyCommand(command: string, subCommand: string): string
   return null;
 }
 
+/**
+ * Why a local-only command can't take a remote target, keyed by the exact
+ * string getLocalOnlyCommand() returns. Drives the guidance sentence
+ * remoteContextUnsupported() appends, so the rejection points somewhere
+ * useful instead of just saying no.
+ */
+type LocalOnlyReason = "vault-content" | "native-delivery" | "local-runtime" | "local-config";
+
+const LOCAL_ONLY_REASON: Record<string, LocalOnlyReason> = {
+  install: "vault-content",
+  update: "vault-content",
+  outdated: "vault-content",
+  scan: "vault-content",
+  init: "native-delivery",
+  sync: "native-delivery",
+  target: "native-delivery",
+  core: "native-delivery",
+  project: "native-delivery",
+  "local-vault": "native-delivery",
+  "skill which": "native-delivery",
+  serve: "local-runtime",
+  models: "local-runtime",
+  index: "local-runtime",
+  "config init": "local-config",
+};
+
+const LOCAL_ONLY_GUIDANCE: Record<LocalOnlyReason, string> = {
+  "vault-content":
+    "To change a remote deployment's vault contents, update its git-backed source and redeploy or pull on that host — skillmux doesn't replicate vault checkouts over the network.",
+  "native-delivery":
+    "This manages skill delivery into client directories on the machine you run it from; there's no remote equivalent — run it on the machine that owns those directories.",
+  "local-runtime":
+    "This operates on the local runtime process on the machine you run it from.",
+  "local-config":
+    "This bootstraps this machine's own config file. To inspect or change a remote deployment's configuration, use \"skillmux config show/set --context <name>\" instead.",
+};
+
 function remoteContextUnsupported(rejectedCommand: string): CliError {
+  const reason = LOCAL_ONLY_REASON[rejectedCommand];
+  const guidance = reason ? ` ${LOCAL_ONLY_GUIDANCE[reason]}` : "";
   return new CliError(
-    `\`${rejectedCommand}\` operates on the local vault only; --context/--server isn't supported here`,
+    `\`${rejectedCommand}\` operates on the local vault only; --context/--server isn't supported here.${guidance}`,
     2,
     "REMOTE_CONTEXT_UNSUPPORTED",
     {
       rejected_command: rejectedCommand,
+      ...(reason ? { reason } : {}),
     },
   );
 }
