@@ -24,6 +24,7 @@ import { MetricsRegistry } from "./metrics";
 import { ReadinessState } from "./readiness";
 import { initializeRuntime } from "./lifecycle";
 import { buildRedactor } from "./redact";
+import { redactedErrorLog } from "./logger";
 import type { Clients, Config } from "./types";
 import {
   computeHash,
@@ -41,16 +42,6 @@ export const readinessState = new ReadinessState();
 // never unbounded by omission, unlike the opt-in [egress] allowlist.
 const DEFAULT_MAX_BODY_BYTES = 1_048_576; // 1 MiB
 const DEFAULT_MAX_CONCURRENT_REQUESTS = 100;
-
-/** Pairs a fixed log prefix with a redacted error message, for console.error. */
-export function redactedErrorLog(
-  prefix: string,
-  err: unknown,
-  redact: (text: string) => string,
-): [string, string] {
-  const msg = err instanceof Error ? err.message : String(err);
-  return [prefix, redact(msg)];
-}
 
 export interface ServerHandle {
   port?: number;
