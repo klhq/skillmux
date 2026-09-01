@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import packageJson from "../package.json" with { type: "json" };
-import { Database } from "bun:sqlite";
-import { existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 
@@ -38,20 +37,8 @@ import {
   printLastMile,
   surfaceCandidates,
 } from "./init";
-import {
-  assertHostAllowed,
-  cloneToTemp,
-  deriveRepoName,
-  installIntoVault,
-  isLocalFileUrl,
-  resolveCloneCommit,
-  resolveRepoSource,
-  resolveSkillDir,
-  validateSkillCandidate,
-} from "./install";
 import { runOutdated } from "./commands/outdated";
 import { runUpdate } from "./commands/update";
-import { hashSkillContent, writeSkillOrigin } from "./provenance";
 import {
   parseManifest,
   resolveManifestPath,
@@ -67,20 +54,13 @@ import {
 } from "./prompts";
 import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import {
-  renderScanJson,
-  renderScanText,
-  scanExitCode,
-  scanPath,
-  type ScanSeverity,
-} from "./scan";
-import {
   applyConfigInit,
   inspectVault,
   planConfigInit,
   rollbackConfigInit,
   type ConfigInitPlan,
 } from "./setup";
-import { getStats, renderStatsText, type StatsResponse } from "./stats";
+import { type StatsResponse } from "./stats";
 import {
   installPostMergeHook,
   resolveProjectPinDir,
@@ -109,10 +89,13 @@ import { handleConfigCommand } from "./commands/config";
 import { handleContextCommand } from "./commands/context";
 import { runDoctor } from "./commands/doctor";
 import { runEvalPromote } from "./commands/eval";
+import { runInstall } from "./commands/install";
 import { runCore } from "./commands/core";
 import { runLocalVaultInit } from "./commands/local-vault";
 import { runModelDownload } from "./commands/models";
 import { configuredTargetForSurface, runProject } from "./commands/project";
+import { runReport } from "./commands/report";
+import { runScan } from "./commands/scan";
 import { confirmAction } from "./commands/shared";
 import { runSkill } from "./commands/skill";
 import { runTarget } from "./commands/target";
@@ -1596,233 +1579,6 @@ async function runInit(
   // confirmation gate would just be a redundant (and non-interactively,
   // silently-skipping) re-ask.
   if (guided && sync && confirmedTargets.length > 0) await runSync(["--yes"]);
-}
-
-function parseReportArgs(args: string[]): {
-  db?: string;
-  since?: string;
-} {
-  let db: string | undefined;
-  let since: string | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const option = args[i];
-    const value = args[i + 1];
-    if (option === "--db") {
-      if (!value) throw new Error("--db requires a path");
-      db = value;
-      i++;
-    } else if (option === "--since") {
-      if (!value) throw new Error("--since requires a window");
-      since = value;
-      i++;
-    } else if (option === "--json") {
-      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
-    } else if (option === "--server" || option === "--context") {
-      // handled globally by main()'s resolveContext(); recognized here so it isn't rejected
-      i++;
-    } else if (option === "--allow-insecure") {
-      // handled globally by main()'s allowInsecure flag; recognized here so it isn't rejected
-    } else {
-      throw new Error(`unknown report option: ${option}`);
-    }
-  }
-  return { db, since };
-}
-
-async function runReport(
-  args: string[],
-  options: { isJson: boolean; target: ResolvedContext; allowInsecure: boolean; adapter: TargetAdapter },
-): Promise<void> {
-  const { db: dbPath, since } = parseReportArgs(args);
-  if (!since)
-    throw new Error(
-      "usage: skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]",
-    );
-  if (dbPath && options.target.type === "remote")
-    throw new Error("--db and --context/--server are mutually exclusive");
-
-  if (dbPath) {
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      const stats = getStats(db, since);
-      emitSuccess({ isJson: options.isJson }, stats, () =>
-        console.log(renderStatsText(stats)),
-      );
-    } finally {
-      db.close();
-    }
-    return;
-  }
-
-  const stats = await options.adapter.getStats(since);
-  emitSuccess({ isJson: options.isJson }, stats, () =>
-    console.log(renderStatsText(stats)),
-  );
-}
-
-function parseScanArgs(args: string[]): {
-  path?: string;
-  format: "text" | "json";
-  failOn?: ScanSeverity;
-} {
-  let path: string | undefined;
-  let format: "text" | "json" = "text";
-  let failOn: ScanSeverity | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const option = args[i];
-    if (option === "--format") {
-      const value = args[++i];
-      if (value !== "text" && value !== "json")
-        throw new Error("--format must be text or json");
-      format = value;
-    } else if (option === "--fail-on") {
-      const value = args[++i];
-      if (value !== "low" && value !== "medium" && value !== "high") {
-        throw new Error("--fail-on must be low, medium, or high");
-      }
-      failOn = value;
-    } else if (option === "--json") {
-      // handled globally by main()'s isJson flag; recognized here so it isn't rejected
-    } else if (option?.startsWith("--")) {
-      throw new Error(`unknown scan option: ${option}`);
-    } else if (path !== undefined) {
-      throw new Error("skillmux scan accepts at most one <path> argument");
-    } else {
-      path = option;
-    }
-  }
-  return { path, format, failOn };
-}
-
-async function runScan(
-  args: string[],
-  options: { isJson: boolean },
-): Promise<void> {
-  const { path, format, failOn } = parseScanArgs(args);
-  const rootPath = path
-    ? expandHome(path)
-    : expandHome((await loadConfig()).vault_path);
-  const result = await scanPath(rootPath);
-  emitSuccess({ isJson: options.isJson }, result, () => {
-    console.log(
-      format === "json" ? renderScanJson(result) : renderScanText(result),
-    );
-  });
-  process.exitCode = scanExitCode(result.findings, failOn);
-}
-
-function parseInstallArgs(args: string[]): {
-  repo?: string;
-  force: boolean;
-  dryRun: boolean;
-  failOn?: ScanSeverity;
-  allowLocalSource: boolean;
-} {
-  let repo: string | undefined;
-  let force = false;
-  let dryRun = false;
-  let failOn: ScanSeverity | undefined;
-  let allowLocalSource = false;
-  for (let i = 0; i < args.length; i++) {
-    const option = args[i];
-    if (option === "--force") force = true;
-    else if (option === "--dry-run") dryRun = true;
-    else if (option === "--allow-local-source") allowLocalSource = true;
-    else if (option === "--fail-on") {
-      const value = args[++i];
-      if (value !== "low" && value !== "medium" && value !== "high") {
-        throw new Error("--fail-on must be low, medium, or high");
-      }
-      failOn = value;
-    } else if (option === "--json" || option === "--verbose") {
-      // handled globally by main()'s isJson/isVerbose flags; recognized here so they aren't rejected
-    } else if (option?.startsWith("--")) {
-      throw new Error(`unknown install option: ${option}`);
-    } else if (repo !== undefined) {
-      throw new Error("skillmux install accepts at most one <repo> argument");
-    } else {
-      repo = option;
-    }
-  }
-  return { repo, force, dryRun, failOn, allowLocalSource };
-}
-
-async function runInstall(
-  args: string[],
-  options: { isJson: boolean },
-): Promise<void> {
-  const { repo, force, dryRun, failOn, allowLocalSource } = parseInstallArgs(args);
-  if (!repo) {
-    throw new Error(
-      "usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--allow-local-source] [--json]",
-    );
-  }
-
-  const source = resolveRepoSource(repo);
-  if (!allowLocalSource && isLocalFileUrl(source.url)) {
-    throw new Error(
-      `"${repo}" is a local (file://) source — pass --allow-local-source to install from it`,
-    );
-  }
-  const config = await loadConfig();
-  assertHostAllowed(source.url, config.egress?.allowed_hosts);
-  const cloneDir = await cloneToTemp(source.url);
-  try {
-    const resolved = resolveSkillDir(
-      cloneDir,
-      deriveRepoName(source.url),
-      source.skillPath,
-    );
-    const { findings } = await validateSkillCandidate(
-      resolved.skillId,
-      resolved.dir,
-    );
-    if (!options.isJson) console.log(renderScanText({ scanned: 1, findings }));
-
-    if (scanExitCode(findings, failOn) !== 0) {
-      process.exitCode = 1;
-      console.error(
-        `aborting install: a finding met the --fail-on ${failOn} threshold`,
-      );
-      return;
-    }
-
-    const vaultPath = expandHome(config.vault_path);
-    if (dryRun) {
-      const plannedPath = join(vaultPath, resolved.skillId);
-      emitSuccess(
-        { isJson: options.isJson },
-        { skill_id: resolved.skillId, would_install_at: plannedPath },
-        () =>
-          console.log(
-            `dry-run: would install "${resolved.skillId}" into ${plannedPath}`,
-          ),
-      );
-      return;
-    }
-
-    const commit = resolveCloneCommit(cloneDir);
-    const targetDir = installIntoVault(
-      vaultPath,
-      resolved.skillId,
-      resolved.dir,
-      force,
-    );
-    writeSkillOrigin(targetDir, {
-      source_url: source.url,
-      skill_path: source.skillPath,
-      commit,
-      installed_at: new Date().toISOString(),
-      content_hash: hashSkillContent(targetDir),
-    });
-    emitSuccess(
-      { isJson: options.isJson },
-      { skill_id: resolved.skillId, installed_at: targetDir },
-      () => console.log(`installed "${resolved.skillId}" into ${targetDir}`),
-    );
-  } finally {
-    rmSync(cloneDir, { recursive: true, force: true });
-  }
 }
 
 if (import.meta.main) {
