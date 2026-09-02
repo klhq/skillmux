@@ -268,6 +268,17 @@ Re-running the command merges missing paths, skills, and target attachments.
 It validates the complete manifest before an atomic write and runs `sync` by
 default. Use `--no-sync` when another process will materialize the links.
 
+`--register-mcp` is the project-local counterpart to `skillmux init
+--register-mcp`, narrowed to `claude-code` — the only agent whose own CLI
+has a project MCP scope (`codex mcp add` has no scope flag at all, so codex
+stays global-only regardless). It runs `claude mcp add -s project` with this
+project directory as the working directory, which writes a committed
+`.mcp.json` shared with your team rather than the global, personal
+registration `skillmux init` makes. Same instruction-writing rule as `init`:
+a project-root `CLAUDE.md` is written only for an agent actually getting
+registered this run, never unconditionally. Guided mode asks before
+registering, when the selected agents include one that supports it.
+
 Direct project commands support later maintenance:
 
 ```sh

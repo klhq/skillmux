@@ -1,7 +1,11 @@
 import { existsSync, lstatSync } from "node:fs";
 import { basename } from "node:path";
 import { expandHome } from "../config";
-import { planAgentSurfaces, SUPPORTED_AGENT_IDS } from "../init-agents";
+import { planAgentSurfaces, SUPPORTED_AGENT_IDS, type AgentId } from "../init-agents";
+import {
+  applyInstructionPlan,
+  planProjectInstructionSetup,
+} from "../init-instructions";
 import {
   parseManifest,
   pinProject,
@@ -12,6 +16,11 @@ import {
   validateManifest,
   writeManifestAtomic,
 } from "../manifest";
+import {
+  MCP_PROJECT_REGISTRABLE_AGENTS,
+  registerMcpServer,
+  type McpRegistrationResult,
+} from "../mcp-registration";
 import { resolveProjectDirectory, suggestProjectName } from "../project-setup";
 import {
   parseCommaList,
@@ -23,7 +32,7 @@ import { emitSuccess, isInteractive, unknownSubcommandError } from "../output";
 import { confirmAction, confirmIfNeeded, loadManifestContext } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 const PROJECT_INIT_USAGE =
-  "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--agent <id>...] [--target <name>...] [--yes] [--no-sync]";
+  "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--agent <id>...] [--target <name>...] [--register-mcp] [--yes] [--no-sync]";
 
 interface ProjectInitArgs {
   path: string;
@@ -31,6 +40,7 @@ interface ProjectInitArgs {
   skills: string[];
   agents: string[];
   targets: string[];
+  registerMcp: boolean;
   yes: boolean;
   sync: boolean;
 }
@@ -65,6 +75,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
   const skills: string[] = [];
   const agents: string[] = [];
   const targets: string[] = [];
+  let registerMcp = false;
   let yes = false;
   let sync = true;
 
@@ -85,6 +96,8 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
       const agent = args[++i];
       if (!agent) throw new Error("--agent requires a name");
       agents.push(agent);
+    } else if (arg === "--register-mcp") {
+      registerMcp = true;
     } else if (arg === "--yes") {
       yes = true;
     } else if (arg === "--no-sync") {
@@ -112,6 +125,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
     skills,
     agents,
     targets,
+    registerMcp,
     yes,
     sync,
   };
@@ -387,7 +401,20 @@ export async function runProject(
         request.skills.join(","),
       ),
     );
-    request = { ...request, name, agents, skills };
+    // Local MCP registration + instruction writing are independent of skill
+    // pins — only offered for agents with a verified project-scoped CLI
+    // command (currently just claude-code; see MCP_PROJECT_REGISTRABLE_AGENTS).
+    const registrableAgents = agents.filter((agent) =>
+      MCP_PROJECT_REGISTRABLE_AGENTS.includes(agent as AgentId),
+    );
+    let registerMcp = request.registerMcp;
+    if (registrableAgents.length > 0) {
+      registerMcp = await confirmAction(
+        `Also register skillmux as a project-scoped MCP server for ${registrableAgents.join(", ")}? ` +
+          `This writes ${request.path}/.mcp.json, shared via git.`,
+      );
+    }
+    request = { ...request, name, agents, skills, registerMcp };
   }
   const agentTargets = configuredTargetsForAgents(manifest, request.agents);
   const targets = [...new Set([...request.targets, ...agentTargets])];
@@ -398,6 +425,22 @@ export async function runProject(
     targets,
   });
   const { notes } = validateManifest(updated, vaultPath, localVaultPaths);
+
+  // The project-local instruction block only teaches an agent to call
+  // resolve_skill/fetch_skill (MCP tools) — write it only for agents that
+  // are actually getting a project-scoped MCP registration this run.
+  const registrableAgents = request.agents.filter((agent) =>
+    MCP_PROJECT_REGISTRABLE_AGENTS.includes(agent as AgentId),
+  ) as AgentId[];
+  const mcpInstructionAgents = request.registerMcp ? registrableAgents : [];
+  const instructionPlan = planProjectInstructionSetup(
+    mcpInstructionAgents,
+    request.path,
+  );
+  const hasInstructionWrites = instructionPlan.changes.some(
+    (change) => change.status !== "unchanged",
+  );
+
   const plan = {
     mode: "project",
     project: request.name,
@@ -407,6 +450,12 @@ export async function runProject(
     targets,
     sync: request.sync,
     notes,
+    instructions: instructionPlan.changes.map(({ path, agents, status }) => ({
+      path,
+      agents,
+      status,
+    })),
+    register_mcp_for: mcpInstructionAgents,
   };
 
   if (options.dryRun) {
@@ -423,6 +472,12 @@ export async function runProject(
         console.log(`  path: ${request.path}`);
         console.log(`  agents: ${request.agents.join(", ") || "(none)"}`);
         console.log(`  skills: ${request.skills.join(", ") || "(none)"}`);
+        console.log(
+          `  instructions: ${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} file(s)`,
+        );
+        console.log(
+          `  MCP registration: ${mcpInstructionAgents.join(", ") || "(none)"}`,
+        );
         console.log(`  sync: ${request.sync ? "yes" : "no"}`);
       }
       if (
@@ -441,6 +496,17 @@ export async function runProject(
   }
 
   writeManifestAtomic(manifestPath, updated);
+  if (hasInstructionWrites) {
+    try {
+      applyInstructionPlan(instructionPlan);
+    } catch (error) {
+      throw new Error(
+        `project configuration was saved, but writing instruction files failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
   if (request.sync) {
     try {
       // Reaching here already required approval above (request.yes, or an
@@ -457,7 +523,39 @@ export async function runProject(
       );
     }
   }
-  emitSuccess({ isJson: options.isJson }, { result: plan }, () =>
-    console.log(`project "${request.name}" ready at ${request.path}`),
+
+  // Best-effort and outside the checks above: this mutates another tool's
+  // own config, not skillmux's, so a registration failure is reported, never
+  // rolled back — the successful project setup above still stands either way.
+  const mcpRegistrations: McpRegistrationResult[] = [];
+  if (request.registerMcp) {
+    for (const agent of registrableAgents) {
+      mcpRegistrations.push(
+        await registerMcpServer(agent, { scope: "project", cwd: request.path }),
+      );
+    }
+  }
+
+  emitSuccess(
+    { isJson: options.isJson },
+    {
+      result: {
+        ...plan,
+        instructions_changed: instructionPlan.changes
+          .filter((change) => change.status !== "unchanged")
+          .map((change) => change.path),
+        mcp_registrations: mcpRegistrations,
+      },
+    },
+    () => {
+      console.log(`project "${request.name}" ready at ${request.path}`);
+      for (const registration of mcpRegistrations) {
+        console.log(
+          registration.ok
+            ? `MCP registered: ${registration.agent} (project scope)`
+            : `MCP registration failed for ${registration.agent}: ${registration.error}`,
+        );
+      }
+    },
   );
 }

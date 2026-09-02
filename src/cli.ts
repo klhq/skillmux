@@ -592,8 +592,8 @@ directly, use "skillmux target add <name> --dir <dir>" instead of init.`,
 
 usage:
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
-                [--agent <name>...] [--target <name>...] [--no-sync]
-                [--interactive|--yes|--dry-run] [--json]
+                [--agent <name>...] [--target <name>...] [--register-mcp]
+                [--no-sync] [--interactive|--yes|--dry-run] [--json]
   skillmux project list
   skillmux project show <group>
   skillmux project add-path <group> [path] --yes
@@ -601,7 +601,16 @@ usage:
   skillmux project pin <group> <skill_id>... --yes
   skillmux project unpin <group> <skill_id>... --yes
   skillmux project attach <group> (--agent <id>... | --target <name>...) --yes
-  skillmux project detach <group> (--agent <id>... | --target <name>...) --yes`,
+  skillmux project detach <group> (--agent <id>... | --target <name>...) --yes
+
+--register-mcp is the project-local counterpart to "skillmux init
+--register-mcp": only for claude-code (the only agent whose own CLI has a
+project MCP scope — codex's mcp add has no scope flag, so it's always
+global). It runs "claude mcp add -s project" for this project directory,
+which writes a committed .mcp.json shared with your team, and writes a
+project-root CLAUDE.md with the resolve_skill/fetch_skill discovery
+paragraph — same reasoning as init: no instruction file is written unless
+MCP is actually being registered.`,
 
   target: `target: manage native sync target directories
 
