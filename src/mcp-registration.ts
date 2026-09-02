@@ -1,63 +1,22 @@
-import type { AgentId } from "./init-agents";
+import {
+  getAgentDefinition,
+  SUPPORTED_AGENT_IDS,
+  type AgentId,
+  type McpRegistrationScope,
+} from "./init-agents";
 
-export type McpRegistrationScope = "user" | "project";
+export type { McpRegistrationScope };
 
-interface McpRegistrationCommand {
-  command: string;
-  /** Returns undefined when this agent's CLI has no way to register at the requested scope. */
-  buildArgs: (scope: McpRegistrationScope) => string[] | undefined;
-}
-
-/**
- * Agents with their own official CLI for registering an MCP server — letting
- * the agent's own tool own its config schema is safer than skillmux hand-
- * writing it. Scope is deliberately narrow: only agents where the exact
- * command was verified against the installed CLI's own --help, not guessed
- * from docs. Other agents fall back to printing the registration snippet
- * (see printLastMile in init.ts) rather than a guessed command.
- *
- * "project" scope is resolved by the agent's own CLI relative to its current
- * working directory, so a project-scoped call must be spawned with cwd set
- * to the target project directory (see the `cwd` option below).
- */
-const MCP_REGISTRATION_COMMANDS: Partial<Record<AgentId, McpRegistrationCommand>> = {
-  "claude-code": {
-    command: "claude",
-    // claude mcp add --scope: local (default, unshared), project (writes a
-    // committed .mcp.json), or user (global). "project" is the only shared
-    // option, so that's what a project-scoped registration means here.
-    buildArgs: (scope) => [
-      "mcp",
-      "add",
-      "-s",
-      scope === "project" ? "project" : "user",
-      "skillmux",
-      "--",
-      "skillmux",
-      "serve",
-    ],
-  },
-  codex: {
-    command: "codex",
-    // codex mcp add has no --scope flag at all — it always writes to the
-    // global ~/.codex/config.toml, so project scope is not representable.
-    buildArgs: (scope) =>
-      scope === "project"
-        ? undefined
-        : ["mcp", "add", "skillmux", "--", "skillmux", "serve"],
-  },
-};
-
-export const MCP_REGISTRABLE_AGENTS = Object.keys(
-  MCP_REGISTRATION_COMMANDS,
-) as AgentId[];
+export const MCP_REGISTRABLE_AGENTS = SUPPORTED_AGENT_IDS.filter(
+  (agent) => getAgentDefinition(agent).mcpRegistration !== undefined,
+);
 
 export const MCP_PROJECT_REGISTRABLE_AGENTS = MCP_REGISTRABLE_AGENTS.filter(
-  (agent) => MCP_REGISTRATION_COMMANDS[agent]!.buildArgs("project") !== undefined,
+  (agent) => getAgentDefinition(agent).mcpRegistration!.buildArgs("project") !== undefined,
 );
 
 export function isMcpRegistrable(agent: AgentId): boolean {
-  return agent in MCP_REGISTRATION_COMMANDS;
+  return getAgentDefinition(agent).mcpRegistration !== undefined;
 }
 
 export interface McpRegistrationResult {
@@ -87,7 +46,7 @@ export async function registerMcpServer(
     cwd?: string;
   } = {},
 ): Promise<McpRegistrationResult> {
-  const entry = MCP_REGISTRATION_COMMANDS[agent];
+  const entry = getAgentDefinition(agent).mcpRegistration;
   const scope = options.scope ?? "user";
   const args = entry?.buildArgs(scope);
   if (!entry || !args) {

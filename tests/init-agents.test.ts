@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   assessAgentReadiness,
   detectInstalledAgents,
+  getAgentDefinition,
   resolveBuiltInTarget,
   SUPPORTED_AGENT_IDS,
   planAgentSurfaces,
@@ -24,7 +25,6 @@ describe("init agent registry", () => {
     expect(SUPPORTED_AGENT_IDS).toEqual([
       "claude-code",
       "codex",
-      "gemini-cli",
       "opencode",
       "github-copilot",
       "windsurf",
@@ -36,7 +36,7 @@ describe("init agent registry", () => {
 
   test("deduplicates agents that share the global agent-skills surface", () => {
     const plan = planAgentSurfaces(
-      ["gemini-cli", "opencode", "github-copilot", "windsurf"],
+      ["opencode", "github-copilot", "windsurf"],
       { home: "/home/tester" },
     );
 
@@ -46,7 +46,7 @@ describe("init agent registry", () => {
         targetName: "agent-skills",
         path: "/home/tester/.agents/skills",
         deliveryMode: "managed-pins",
-        agents: ["gemini-cli", "opencode", "github-copilot", "windsurf"],
+        agents: ["opencode", "github-copilot", "windsurf"],
       },
     ]);
   });
@@ -61,7 +61,7 @@ describe("init agent registry", () => {
     expect(plan.surfaces[0]?.agents).toEqual(["claude-code"]);
   });
 
-  test("resolves built-in targets and legacy aliases without vague names", () => {
+  test("resolves built-in targets without vague names", () => {
     expect(resolveBuiltInTarget("agent-skills", { home: "/home/tester" })).toEqual({
       targetName: "agent-skills",
       path: "/home/tester/.agents/skills",
@@ -73,11 +73,13 @@ describe("init agent registry", () => {
       targetName: "codex",
       path: "/srv/codex/skills",
     });
-    expect(resolveBuiltInTarget("agents", { home: "/home/tester" })).toEqual({
-      targetName: "agents",
-      path: "/home/tester/.agents/skills",
-      warning: '--target agents is deprecated; use --target agent-skills',
-    });
+  });
+
+  test("rejects the retired agents/claude legacy target aliases", () => {
+    expect(() => resolveBuiltInTarget("agents", { home: "/home/tester" }))
+      .toThrow('unknown --target "agents"; supported targets: agent-skills, claude-code, codex, custom');
+    expect(() => resolveBuiltInTarget("claude", { home: "/home/tester" }))
+      .toThrow('unknown --target "claude"; supported targets: agent-skills, claude-code, codex, custom');
   });
 
   test("requires an explicit path for the custom target", () => {
@@ -94,13 +96,13 @@ describe("init agent registry", () => {
 
   test("reports skill surface, MCP registration, and instructions separately", () => {
     const plan = planAgentSurfaces(
-      ["gemini-cli", "goose", "hermes"],
+      ["windsurf", "goose", "hermes"],
       { home: "/home/tester" },
     );
 
     expect(assessAgentReadiness(plan)).toEqual([
       {
-        agent: "gemini-cli",
+        agent: "windsurf",
         skillSurface: { status: "planned", detail: "/home/tester/.agents/skills" },
         mcpRegistration: { status: "not-applicable", detail: "native skill loading" },
         instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
@@ -118,5 +120,24 @@ describe("init agent registry", () => {
         instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
       },
     ]);
+  });
+
+  test("every agent declares a deliveryMode, and every managed-pins agent has a surface or a manual message", () => {
+    for (const id of SUPPORTED_AGENT_IDS) {
+      const def = getAgentDefinition(id);
+      expect(def.deliveryMode === "managed-pins" || def.deliveryMode === "full-vault").toBe(true);
+      if (def.deliveryMode === "managed-pins") {
+        expect(def.surfaceId, `${id} is managed-pins but declares no surfaceId`).toBeDefined();
+      } else {
+        expect(
+          def.surfaceId === undefined,
+          `${id} is full-vault but also declares a surfaceId`,
+        ).toBe(true);
+        expect(
+          def.manualSkillSurfaceMessage,
+          `${id} is full-vault but has no manualSkillSurfaceMessage for readiness reporting`,
+        ).toBeDefined();
+      }
+    }
   });
 });

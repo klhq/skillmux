@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { DISCOVERY_PARAGRAPH } from "./init";
-import type { AgentId } from "./init-agents";
+import { getAgentDefinition, type AgentId } from "./init-agents";
 
 export const INSTRUCTION_BLOCK_START = "<!-- skillmux:discovery:start -->";
 export const INSTRUCTION_BLOCK_END = "<!-- skillmux:discovery:end -->";
@@ -44,15 +44,7 @@ function instructionPath(
   agent: AgentId,
   options: Required<Pick<InstructionPlanOptions, "home" | "codexHome" | "claudeConfigDir">>,
 ): string | undefined {
-  if (agent === "claude-code") return join(options.claudeConfigDir, "CLAUDE.md");
-  if (agent === "codex") return join(options.codexHome, "AGENTS.md");
-  if (agent === "gemini-cli" || agent === "antigravity") {
-    return join(options.home, ".gemini", "GEMINI.md");
-  }
-  if (agent === "opencode") return join(options.home, ".config", "opencode", "AGENTS.md");
-  if (agent === "goose") return join(options.home, ".config", "goose", ".goosehints");
-  if (agent === "hermes") return join(options.home, ".hermes.md");
-  return undefined;
+  return getAgentDefinition(agent).instructions?.global?.(options);
 }
 
 function readInstructionFile(path: string): string | null {
@@ -136,16 +128,8 @@ export function planInstructionSetup(
   );
 }
 
-/**
- * The agents with a verified project-local instruction file convention.
- * Deliberately narrow: only claude-code's own CLI also has a project-scoped
- * MCP registration (see MCP_PROJECT_REGISTRABLE_AGENTS in mcp-registration.ts),
- * so it's the only agent where "local" is a single coherent, self-contained
- * choice covering both the instruction file and the MCP registration.
- */
 function projectInstructionPath(agent: AgentId, projectRoot: string): string | undefined {
-  if (agent === "claude-code") return join(projectRoot, "CLAUDE.md");
-  return undefined;
+  return getAgentDefinition(agent).instructions?.project?.(projectRoot);
 }
 
 export function planProjectInstructionSetup(

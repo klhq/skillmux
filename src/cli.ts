@@ -28,6 +28,7 @@ import {
   warn,
 } from "./output";
 import { generateCompletions, type ShellType } from "./completions";
+import { SUPPORTED_AGENT_IDS } from "./init-agents";
 import { runAudit } from "./commands/audit";
 import { handleConfigCommand } from "./commands/config";
 import { handleContextCommand } from "./commands/context";
@@ -575,8 +576,7 @@ usage:
                 [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
 
-agents: claude-code, codex, gemini-cli, opencode, github-copilot,
-windsurf, antigravity, goose, hermes
+agents: ${SUPPORTED_AGENT_IDS.join(", ")}
 
 Native pins and MCP are independent — skip both of the flags below for
 native-only setup, and init writes no instruction files (the managed
@@ -738,8 +738,7 @@ Setup:
   skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)
 
 Init agents:
-  claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
-  antigravity, goose, hermes
+  ${SUPPORTED_AGENT_IDS.join(", ")}
   ("skillmux init --show-mcp-setup" also prints the MCP registration
   snippet, independent of which agents you select. A tool not in this
   list isn't supported by init yet — see "skillmux init --help".)

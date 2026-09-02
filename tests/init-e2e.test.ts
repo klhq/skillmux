@@ -107,7 +107,7 @@ describe("skillmux init end-to-end", () => {
   test("writes no instruction files by default without any MCP flag", async () => {
     const result = await run([
       "init",
-      "--agent", "gemini-cli",
+      "--agent", "antigravity",
       "--yes",
     ]);
 

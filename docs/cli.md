@@ -189,7 +189,7 @@ Skillmux supports these agent IDs:
 |--------|----------------|
 | `claude-code` | `~/.claude/skills` |
 | `codex` | `$CODEX_HOME/skills`, falling back to `~/.codex/skills` |
-| `gemini-cli`, `opencode`, `github-copilot`, `windsurf` | Shared `~/.agents/skills` surface |
+| `opencode`, `github-copilot`, `windsurf` | Shared `~/.agents/skills` surface |
 | `antigravity` | `~/.gemini/config/skills` |
 | `goose`, `hermes` | Manual full-vault configuration |
 
