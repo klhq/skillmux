@@ -3,6 +3,7 @@ import { diagnose } from "../doctor";
 import { getEffectiveConfig } from "../config-service";
 import type { TargetAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
+import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 import {
   emitSuccess,
   green,
@@ -10,11 +11,31 @@ import {
   renderTargetBanner,
 } from "../output";
 
+/**
+ * doctor takes no options of its own, but it still has to reject unknown ones
+ * rather than silently ignoring them the way every other command does.
+ */
+export function parseDoctorArgs(args: readonly string[]): void {
+  for (let i = 0; i < args.length; i++) {
+    const option = args[i];
+    if (isGlobalFlag(option, "--json", "--allow-insecure", "--verbose")) {
+      // handled globally by main(); recognized here so it isn't rejected
+    } else if (isGlobalFlagWithValue(option)) {
+      // handled globally by main()'s resolveContext(); skip its value too
+      i++;
+    } else {
+      throw new Error(`unknown doctor option: ${option}`);
+    }
+  }
+}
+
 export async function runDoctor(options: {
   isJson: boolean;
   target: ResolvedContext;
   adapter: TargetAdapter;
+  args?: readonly string[];
 }): Promise<void> {
+  parseDoctorArgs(options.args ?? []);
   if (options.target.type === "remote") {
     const target = options.target;
     const [status, caps] = await Promise.all([

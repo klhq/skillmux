@@ -424,7 +424,12 @@ async function main() {
         }
         break;
       case "doctor":
-        await runDoctor({ isJson, target: resolvedTarget, adapter });
+        await runDoctor({
+          isJson,
+          target: resolvedTarget,
+          adapter,
+          args: rawArgv.slice(1),
+        });
         break;
       case "which":
         throw new Error(

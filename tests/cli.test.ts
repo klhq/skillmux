@@ -249,6 +249,32 @@ describe("skillmux doctor CLI", () => {
     expect(result.stdout).toContain("image variant: none");
     expect(result.stdout).toContain("retrieval capability: lexical");
   });
+
+  test("doctor rejects an unknown option instead of silently ignoring it", async () => {
+    const result = await runCli("doctor", "--dry-run");
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("unknown doctor option: --dry-run");
+  });
+
+  test("doctor still accepts the global flags it supports", async () => {
+    // Exit code is whatever the health checks report (1 when a check fails in
+    // this fixture); what matters is that it is never 2, the usage-error code.
+    for (const flag of ["--json", "--verbose", "--allow-insecure"]) {
+      const result = await runCli("doctor", flag);
+      expect(result.exitCode).not.toBe(2);
+      expect(result.stderr).not.toContain("unknown doctor option");
+    }
+  });
+
+  test("doctor skips the value of a global flag that takes one", async () => {
+    // --context/--server consume the next argv entry; that value must not be
+    // mistaken for an unknown option.
+    const result = await runCli("doctor", "--context", "local");
+
+    expect(result.exitCode).not.toBe(2);
+    expect(result.stderr).not.toContain("unknown doctor option");
+  });
 });
 
 describe("skillmux calibrate CLI", () => {
