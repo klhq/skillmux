@@ -169,8 +169,11 @@ sync, or any other remote-agent directory operation.
 ## Setup planner (`skillmux init`)
 
 Run `skillmux init` with no arguments in a terminal to start guided setup.
-Skillmux preselects agents it can detect from filesystem evidence, asks for
-core skills, prints one complete review, and applies after one confirmation.
+On a machine with no config yet, it first asks for the skill vault path
+(defaulting to `~/skills`) rather than assuming it silently — the vault
+must already exist there (`skillmux scan`/`install` create it). Skillmux
+preselects agents it can detect from filesystem evidence, asks for core
+skills, prints one complete review, and applies after one confirmation.
 The prompt stays line-oriented and does not use an alternate terminal screen.
 
 Select agents by product name:
