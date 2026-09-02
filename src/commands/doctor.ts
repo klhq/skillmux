@@ -1,14 +1,14 @@
 import { resolveConfigPath } from "../config";
 import { diagnose } from "../doctor";
 import { getEffectiveConfig } from "../config-service";
-import type { TargetAdapter } from "../adapters";
+import type { ContextAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
 import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 import {
   emitSuccess,
   green,
   red,
-  renderTargetBanner,
+  renderContextBanner,
 } from "../output";
 
 /**
@@ -31,20 +31,20 @@ export function parseDoctorArgs(args: readonly string[]): void {
 
 export async function runDoctor(options: {
   isJson: boolean;
-  target: ResolvedContext;
-  adapter: TargetAdapter;
+  context: ResolvedContext;
+  adapter: ContextAdapter;
   args?: readonly string[];
 }): Promise<void> {
   parseDoctorArgs(options.args ?? []);
-  if (options.target.type === "remote") {
-    const target = options.target;
+  if (options.context.type === "remote") {
+    const context = options.context;
     const [status, caps] = await Promise.all([
       options.adapter.configStatus(),
       options.adapter.getCapabilities(),
     ]);
     const remoteReport = {
-      target: target.name || target.server,
-      server: target.server,
+      target: context.name || context.server,
+      server: context.server,
       version: status.version,
       deployment_runtime: status.deployment_runtime,
       image_variant: status.image_variant ?? null,
@@ -55,8 +55,8 @@ export async function runDoctor(options: {
       restart_required_keys: status.restart_required_keys,
       last_reload_error: status.last_reload_error,
     };
-    emitSuccess({ isJson: options.isJson, target: options.target }, remoteReport, () => {
-      renderTargetBanner(options.target);
+    emitSuccess({ isJson: options.isJson, target: options.context }, remoteReport, () => {
+      renderContextBanner(options.context);
       console.log(`server: ${remoteReport.server}`);
       console.log(`version: ${remoteReport.version}`);
       console.log(`deployment runtime: ${remoteReport.deployment_runtime}`);

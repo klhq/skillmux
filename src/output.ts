@@ -166,12 +166,12 @@ export function warn(line: string): void {
   console.error(yellow(`warning: ${line}`));
 }
 
-export function renderTargetBanner(target: ResolvedContext): void {
+export function renderContextBanner(context: ResolvedContext): void {
   if (!isInteractive()) return;
-  if (target.type === "local") {
-    console.log(`Target: local`);
+  if (context.type === "local") {
+    console.log(`Context: local`);
   } else {
-    console.log(`Target: remote (${target.name} -> ${target.server})`);
+    console.log(`Context: remote (${context.name} -> ${context.server})`);
   }
 }
 

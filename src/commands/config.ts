@@ -1,8 +1,8 @@
 import { expandHome, migrateLegacyPaths, resolveConfigPath } from "../config";
-import { type TargetAdapter } from "../adapters";
+import { type ContextAdapter } from "../adapters";
 import { type ResolvedContext } from "../context";
 import { applyConfigInit, planConfigInit, type ConfigInitPlan } from "../setup";
-import { emitSuccess, isInteractive, renderTargetBanner, unknownSubcommandError } from "../output";
+import { emitSuccess, isInteractive, renderContextBanner, unknownSubcommandError } from "../output";
 import { confirmAction } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 function emitConfigInitOutcome(
@@ -38,10 +38,10 @@ function emitConfigInitOutcome(
 }
 
 export async function handleConfigCommand(
-  adapter: TargetAdapter,
+  adapter: ContextAdapter,
   sub: string,
   args: string[],
-  ctx: { target: ResolvedContext; isJson: boolean; dryRun: boolean },
+  ctx: { context: ResolvedContext; isJson: boolean; dryRun: boolean },
 ) {
   if (sub === "init") {
     let vaultPath: string | undefined;
@@ -127,8 +127,8 @@ export async function handleConfigCommand(
   if (sub === "show") {
     const withSources = args.includes("--sources");
     const data = await adapter.getConfigShow();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, data, () => {
-      renderTargetBanner(ctx.target);
+    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, data, () => {
+      renderContextBanner(ctx.context);
       if (withSources) {
         const policy =
           data.effective.config?.environment_overrides === false
@@ -151,7 +151,7 @@ export async function handleConfigCommand(
     if (!key) throw new Error("usage: skillmux config get <key>");
     const val = await adapter.getConfigGet(key);
     emitSuccess(
-      { isJson: ctx.isJson, target: ctx.target },
+      { isJson: ctx.isJson, target: ctx.context },
       { key, value: val },
       () => {
         console.log(
@@ -164,7 +164,7 @@ export async function handleConfigCommand(
 
   if (sub === "validate") {
     const res = await adapter.configValidate();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
+    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, res, () => {
       console.log(res.valid ? "configuration is valid" : "configuration is invalid");
     });
     return;
@@ -172,8 +172,8 @@ export async function handleConfigCommand(
 
   if (sub === "diff") {
     const res = await adapter.configDiff();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderTargetBanner(ctx.target);
+    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, res, () => {
+      renderContextBanner(ctx.context);
       console.log(JSON.stringify(res.diff, null, 2));
     });
     return;
@@ -186,8 +186,8 @@ export async function handleConfigCommand(
       throw new Error("usage: skillmux config set <key> <value> [--dry-run]");
     }
     const res = await adapter.configSet(key, value, { dryRun: ctx.dryRun });
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderTargetBanner(ctx.target);
+    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, res, () => {
+      renderContextBanner(ctx.context);
       const prefix = ctx.dryRun ? "[dry-run] " : "";
       console.log(
         `${prefix}${key}: ${JSON.stringify(res.prior_val)} -> ${JSON.stringify(res.resulting_val)}`,
@@ -201,8 +201,8 @@ export async function handleConfigCommand(
 
   if (sub === "status") {
     const res = await adapter.configStatus();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, res, () => {
-      renderTargetBanner(ctx.target);
+    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, res, () => {
+      renderContextBanner(ctx.context);
       console.log(`runtime: ${res.runtime}`);
       console.log(`deployment runtime: ${res.deployment_runtime}`);
       console.log(`image variant: ${res.image_variant ?? "none"}`);

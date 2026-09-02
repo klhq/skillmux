@@ -9,19 +9,19 @@ import {
 import {
   emitSuccess,
   renderTable,
-  renderTargetBanner,
+  renderContextBanner,
   unknownSubcommandError,
 } from "../output";
 
 export async function handleContextCommand(
   sub: string,
   args: string[],
-  ctx: { target: ResolvedContext; isJson: boolean },
+  ctx: { context: ResolvedContext; isJson: boolean },
 ) {
   if (sub === "list") {
     const contexts = await listContexts();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, contexts, () => {
-      renderTargetBanner(ctx.target);
+    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, contexts, () => {
+      renderContextBanner(ctx.context);
       renderTable(
         [
           { key: "name", header: "NAME" },
@@ -41,8 +41,8 @@ export async function handleContextCommand(
 
   if (sub === "current") {
     const current = await getCurrentContext();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.target }, current, () => {
-      renderTargetBanner(ctx.target);
+    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, current, () => {
+      renderContextBanner(ctx.context);
       console.log(`Current context: ${current.name} (${current.server})`);
     });
     return;
@@ -63,7 +63,7 @@ export async function handleContextCommand(
     }
     await addContext(name, { server, token_env: tokenEnv });
     emitSuccess(
-      { isJson: ctx.isJson, target: ctx.target },
+      { isJson: ctx.isJson, target: ctx.context },
       { name, server, token_env: tokenEnv },
       () => {
         console.log(`Added context "${name}" -> ${server}`);
@@ -77,7 +77,7 @@ export async function handleContextCommand(
     if (!name) throw new Error("usage: skillmux context use <name>");
     await useContext(name);
     emitSuccess(
-      { isJson: ctx.isJson, target: ctx.target },
+      { isJson: ctx.isJson, target: ctx.context },
       { default_context: name },
       () => {
         console.log(`Switched default context to "${name}"`);
@@ -91,7 +91,7 @@ export async function handleContextCommand(
     if (!name) throw new Error("usage: skillmux context remove <name>");
     await removeContext(name);
     emitSuccess(
-      { isJson: ctx.isJson, target: ctx.target },
+      { isJson: ctx.isJson, target: ctx.context },
       { removed: name },
       () => {
         console.log(`Removed context "${name}"`);

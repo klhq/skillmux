@@ -5,12 +5,12 @@ import { excludeExistingCases, parseEvalCases } from "../eval";
 import { emitSuccess, warn } from "../output";
 import { parseSince } from "../stats";
 import { confirmIfNeeded } from "./shared";
-import type { TargetAdapter } from "../adapters";
+import type { ContextAdapter } from "../adapters";
 import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 
 export async function runEvalPromote(
   args: string[],
-  options: { isJson: boolean; dryRun: boolean; adapter: TargetAdapter },
+  options: { isJson: boolean; dryRun: boolean; adapter: ContextAdapter },
 ): Promise<void> {
   let since: string | undefined;
   let target: string | undefined;
