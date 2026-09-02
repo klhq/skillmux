@@ -113,8 +113,8 @@ also reveals local-overlay shadowing.
 Skillmux will not change an existing unmarked directory. Adopt it first:
 
 ```sh
-skillmux init --client claude-code --dry-run
-skillmux init --client claude-code --yes
+skillmux init --agent claude-code --dry-run
+skillmux init --agent claude-code --yes
 ```
 
 ### Target points to the full vault
@@ -122,7 +122,7 @@ skillmux init --client claude-code --yes
 Review the smaller pinned set before converting:
 
 ```sh
-skillmux init --client claude-code \
+skillmux init --agent claude-code \
   --migrate-full-vault \
   --core code-context \
   --dry-run
@@ -239,7 +239,7 @@ skillmux --context prod config status
 An MCP token for `/mcp` cannot authenticate this request, and the administrative
 token cannot authenticate an MCP client. A named context administers the
 deployed server configuration only; use Skillmux CLI on the machine that owns
-client directories for `install`, pinning, or `sync`.
+agent directories for `install`, pinning, or `sync`.
 
 ### Client receives `429`
 

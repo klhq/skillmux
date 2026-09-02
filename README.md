@@ -12,9 +12,9 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
-<p align="center"><strong>One skill vault. Every AI coding client. Nothing lost in translation.</strong></p>
+<p align="center"><strong>One skill vault. Every AI coding agent. Nothing lost in translation.</strong></p>
 
-Every AI coding client wants its own skill folder and its own format. Skillmux
+Every AI coding agent wants its own skill folder and its own format. Skillmux
 manages [`SKILL.md`](https://agentskills.io) collections across all of them
 from one place. Keep one **vault source of truth** (the logical skill
 collection), pin a small set into native skill directories, and retrieve the
@@ -22,7 +22,7 @@ rest through MCP. A **vault checkout** is a physical copy of that collection.
 On one machine, `~/skills` can be both the source of truth and its checkout.
 
 For a shared topology, the Git-backed vault source of truth has a checkout on
-each client machine, where the Skillmux CLI creates native pins, and a checkout
+each agent machine, where the Skillmux CLI creates native pins, and a checkout
 on the server, where Skillmux server exposes HTTP MCP. Skillmux does not pull,
 push, replicate, or determine freshness between checkouts; Git and the
 deployment process own replication and freshness. See
@@ -40,7 +40,7 @@ See [Configuration](docs/configuration.md#machine-config-bootstrap) and
 
 Choose a setup by the job:
 
-1. Need native skills or local MCP for one client? Install the **Skillmux CLI**.
+1. Need native skills or local MCP for one agent? Install the **Skillmux CLI**.
 2. On Linux when Bun is undesirable? Use the **standalone Linux executable**;
    it is the same Skillmux CLI.
 3. Need one shared HTTP MCP service? Deploy the **full image**, the
@@ -49,7 +49,7 @@ Choose a setup by the job:
    retrieval? Use the **slim image**; see [Deployment](docs/deployment.md).
 
 For native pins and shared retrieval, run the Skillmux CLI on the machines that own
-   client directories and one shared server for routed retrieval. MCP-only
+   agent directories and one shared server for routed retrieval. MCP-only
 clients connect over HTTP and do not need the Skillmux CLI.
 
 Manage the server's vault checkout outside the container. Use the CLI for
@@ -126,19 +126,19 @@ skillmux sync
 skillmux doctor
 ```
 
-The planner detects clients, asks which skills belong in the core tier, and
+The planner detects agents, asks which skills belong in the core tier, and
 shows every write before confirmation. Use explicit flags for automation:
 
 ```sh
 skillmux init \
-  --client claude-code \
-  --client codex \
+  --agent claude-code \
+  --agent codex \
   --core csv-formatter \
   --dry-run
 
 skillmux init \
-  --client claude-code \
-  --client codex \
+  --agent claude-code \
+  --agent codex \
   --core csv-formatter \
   --yes
 ```
@@ -195,7 +195,7 @@ MCP clients authenticate only to `/mcp` with the MCP bearer token. Operators
 use a separate administrative bearer token for `/admin/v1/*`; neither token
 authorizes the other surface. Named CLI contexts administer the deployed server
 only. They never install, pin, synchronize, or otherwise manage skill
-directories on remote client machines. See [Deployment](docs/deployment.md#http-surfaces)
+directories on remote agent machines. See [Deployment](docs/deployment.md#http-surfaces)
 for configuration and examples.
 
 ## Add and inspect skills
@@ -254,16 +254,16 @@ Skillmux returns a ranked shortlist and lets the calling model choose. Endpoint 
 
 Read [MCP routing](docs/mcp-routing.md) for transports, client instructions, retrieval modes, and the wire contract.
 
-## Supported clients
+## Supported agents
 
-| Client | Native skill delivery | MCP setup |
+| Agent | Native skill delivery | MCP setup |
 | --- | --- | --- |
-| Claude Code | `~/.claude/skills` | Configure in the client |
-| Codex | `$CODEX_HOME/skills` or `~/.codex/skills` | Configure in the client |
-| Gemini CLI, OpenCode, GitHub Copilot, Windsurf | `~/.agents/skills` | Configure in the client |
-| Antigravity | `~/.gemini/config/skills` | Configure in the client |
+| Claude Code | `~/.claude/skills` | Configure in the agent |
+| Codex | `$CODEX_HOME/skills` or `~/.codex/skills` | Configure in the agent |
+| Gemini CLI, OpenCode, GitHub Copilot, Windsurf | `~/.agents/skills` | Configure in the agent |
+| Antigravity | `~/.gemini/config/skills` | Configure in the agent |
 | Goose, Hermes | Manual full-vault setup | Manual registration |
-| Custom clients | Any directory through a custom target | Stdio or Streamable HTTP |
+| Custom agents | Any directory through a custom target | Stdio or Streamable HTTP |
 
 Skillmux preserves existing instruction files and unmanaged target content. Run `skillmux init --dry-run` to inspect every planned filesystem change.
 

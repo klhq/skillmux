@@ -6,7 +6,7 @@ an installation.
 ```mermaid
 flowchart LR
     Q{What do you need?}
-    Q -->|Managed links in client skill directories| A[Manage native skills]
+    Q -->|Managed links in agent skill directories| A[Manage native skills]
     Q -->|Local stdio MCP| B[Add local MCP retrieval]
     Q -->|Streamable HTTP MCP for several clients| C[Run a shared MCP service]
     A --> A1[Skillmux CLI]
@@ -16,7 +16,7 @@ flowchart LR
 
 | Goal | Skill delivery | Recommended installation |
 | --- | --- | --- |
-| [Manage native skills](#manage-native-skills) | Managed links in client skill directories | Skillmux CLI |
+| [Manage native skills](#manage-native-skills) | Managed links in agent skill directories | Skillmux CLI |
 | [Add local MCP retrieval](#add-local-mcp-retrieval) | Local stdio MCP | Skillmux CLI |
 | [Run a shared MCP service](#run-a-shared-mcp-service) | Streamable HTTP MCP | Skillmux server (full image) |
 
@@ -122,7 +122,7 @@ Run `skillmux scan ~/skills` before adopting an existing collection.
 
 ## Manage native skills
 
-Run the guided setup on the machine that owns the client skill directories:
+Run the guided setup on the machine that owns the agent skill directories:
 
 ```sh
 skillmux init
@@ -131,7 +131,7 @@ skillmux init
 The planner:
 
 1. validates the vault;
-2. detects clients from filesystem evidence;
+2. detects agents from filesystem evidence;
 3. asks which skills belong in the core tier;
 4. shows the config, target, instruction, and sync plan;
 5. applies the plan after confirmation.
@@ -145,14 +145,14 @@ Use explicit flags for automation:
 
 ```sh
 skillmux init \
-  --client claude-code \
-  --client codex \
+  --agent claude-code \
+  --agent codex \
   --core csv-formatter \
   --dry-run
 
 skillmux init \
-  --client claude-code \
-  --client codex \
+  --agent claude-code \
+  --agent codex \
   --core csv-formatter \
   --yes
 ```
@@ -172,13 +172,13 @@ root:
 skillmux project init
 ```
 
-The noninteractive form accepts repeatable client and skill flags:
+The noninteractive form accepts repeatable agent and skill flags:
 
 ```sh
 skillmux project init ~/code/my-project \
   --name my-project \
-  --client claude-code \
-  --client codex \
+  --agent claude-code \
+  --agent codex \
   --skill code-context \
   --yes
 ```
@@ -266,7 +266,7 @@ The server keeps its two HTTP surfaces separate:
 Configure separate MCP and administrative bearer tokens; one never grants
 access to the other. Named CLI contexts can administer this deployed server,
 but cannot install, pin, synchronize, or otherwise manage skill directories on
-remote client machines. See [Deployment](deployment.md#http-surfaces).
+remote agent machines. See [Deployment](deployment.md#http-surfaces).
 
 Manage the mounted vault on the host. A retrieval-only container should mount
 it read-only.
@@ -277,7 +277,7 @@ Use this topology when users need native core or project pins and also one
 shared MCP endpoint. Keep one Git-backed vault source of truth. A vault
 checkout is its physical copy; on one machine, `~/skills` can be both:
 
-- each machine that owns client skill directories keeps its own checkout and
+- each machine that owns agent skill directories keeps its own checkout and
   runs the Skillmux CLI for `init`, pinning, and `sync`;
 - the shared server mounts its own checkout and serves routed retrieval over
   HTTP;

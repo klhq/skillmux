@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { DISCOVERY_PARAGRAPH } from "./init";
-import type { ClientId } from "./init-clients";
+import type { AgentId } from "./init-agents";
 
 export const INSTRUCTION_BLOCK_START = "<!-- skillmux:discovery:start -->";
 export const INSTRUCTION_BLOCK_END = "<!-- skillmux:discovery:end -->";
@@ -22,7 +22,7 @@ const MANAGED_BLOCK = [
 
 export interface InstructionChange {
   path: string;
-  clients: ClientId[];
+  agents: AgentId[];
   status: "create" | "update" | "unchanged";
   before: string | null;
   after: string;
@@ -30,7 +30,7 @@ export interface InstructionChange {
 
 export interface InstructionPlan {
   changes: InstructionChange[];
-  manual: Array<{ client: ClientId; reason: string }>;
+  manual: Array<{ agent: AgentId; reason: string }>;
 }
 
 interface InstructionPlanOptions {
@@ -41,17 +41,17 @@ interface InstructionPlanOptions {
 }
 
 function instructionPath(
-  client: ClientId,
+  agent: AgentId,
   options: Required<Pick<InstructionPlanOptions, "home" | "codexHome" | "claudeConfigDir">>,
 ): string | undefined {
-  if (client === "claude-code") return join(options.claudeConfigDir, "CLAUDE.md");
-  if (client === "codex") return join(options.codexHome, "AGENTS.md");
-  if (client === "gemini-cli" || client === "antigravity") {
+  if (agent === "claude-code") return join(options.claudeConfigDir, "CLAUDE.md");
+  if (agent === "codex") return join(options.codexHome, "AGENTS.md");
+  if (agent === "gemini-cli" || agent === "antigravity") {
     return join(options.home, ".gemini", "GEMINI.md");
   }
-  if (client === "opencode") return join(options.home, ".config", "opencode", "AGENTS.md");
-  if (client === "goose") return join(options.home, ".config", "goose", ".goosehints");
-  if (client === "hermes") return join(options.home, ".hermes.md");
+  if (agent === "opencode") return join(options.home, ".config", "opencode", "AGENTS.md");
+  if (agent === "goose") return join(options.home, ".config", "goose", ".goosehints");
+  if (agent === "hermes") return join(options.home, ".hermes.md");
   return undefined;
 }
 
@@ -86,7 +86,7 @@ function withManagedBlock(existing: string | null, path: string): string {
 }
 
 export function planInstructionSetup(
-  requestedClients: readonly ClientId[],
+  requestedAgents: readonly AgentId[],
   options: InstructionPlanOptions = {},
 ): InstructionPlan {
   const home = options.home ?? process.env.HOME ?? "";
@@ -99,15 +99,15 @@ export function planInstructionSetup(
   const changesByPath = new Map<string, InstructionChange>();
   const manual: InstructionPlan["manual"] = [];
 
-  for (const client of [...new Set(requestedClients)]) {
-    const path = instructionPath(client, resolvedOptions);
+  for (const agent of [...new Set(requestedAgents)]) {
+    const path = instructionPath(agent, resolvedOptions);
     if (!path) {
-      manual.push({ client, reason: "no safe durable user instruction file is known" });
+      manual.push({ agent, reason: "no safe durable user instruction file is known" });
       continue;
     }
     const existingChange = changesByPath.get(path);
     if (existingChange) {
-      existingChange.clients.push(client);
+      existingChange.agents.push(agent);
       continue;
     }
 
@@ -115,7 +115,7 @@ export function planInstructionSetup(
     const after = withManagedBlock(before, path);
     changesByPath.set(path, {
       path,
-      clients: [client],
+      agents: [agent],
       status: before === null ? "create" : before === after ? "unchanged" : "update",
       before,
       after,

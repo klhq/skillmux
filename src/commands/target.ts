@@ -1,5 +1,5 @@
 import { expandHome } from "../config";
-import { planClientSurfaces, resolveBuiltInTarget, SUPPORTED_CLIENT_IDS } from "../init-clients";
+import { planAgentSurfaces, resolveBuiltInTarget, SUPPORTED_AGENT_IDS } from "../init-agents";
 import { planInitManifest, applyInit } from "../init";
 import { writeManifestAtomic } from "../manifest";
 import { emitSuccess, unknownSubcommandError, warn } from "../output";
@@ -28,11 +28,11 @@ export async function runTarget(
     }
     const targets = names.map((name) => {
       const target = manifest.targets[name]!;
-      const clients = SUPPORTED_CLIENT_IDS.filter((client) => {
-        const surface = planClientSurfaces([client]).surfaces[0];
+      const agents = SUPPORTED_AGENT_IDS.filter((agent) => {
+        const surface = planAgentSurfaces([agent]).surfaces[0];
         return surface !== undefined && surface.path === expandHome(target.dir);
       });
-      return { name, ...target, clients };
+      return { name, ...target, agents };
     });
     emitSuccess({ isJson: options.isJson }, { targets }, () => {
       if (targets.length === 0) {
@@ -42,7 +42,7 @@ export async function runTarget(
           console.log(`${target.name}:`);
           console.log(`  dir: ${target.dir}`);
           console.log(`  host: ${target.host ?? "(global)"}`);
-          console.log(`  clients: ${target.clients.join(", ") || "(custom)"}`);
+          console.log(`  agents: ${target.agents.join(", ") || "(custom)"}`);
           console.log(
             `  projects: ${target.project_groups.join(", ") || "(none)"}`,
           );

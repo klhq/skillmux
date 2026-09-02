@@ -59,7 +59,7 @@ and network exposure before serving other machines. See
 This is the MCP surface for AI clients. Its bearer token applies only to
 `/mcp`; server configuration uses the separate operator surface at
 `/admin/v1/*`. AI clients do not need the CLI to use `/mcp`; named CLI contexts
-are for administering the deployed server, not remote client skill directories.
+are for administering the deployed server, not remote agent skill directories.
 See [Deployment](deployment.md#http-surfaces).
 
 ## Tool contract

@@ -5,7 +5,7 @@ Skillmux separates three decisions:
 | Decision | Choices |
 | --- | --- |
 | Skill delivery | Native core/project pins or routed MCP retrieval |
-| Process location | On the client machine or as a shared HTTP service |
+| Process location | On the agent machine or as a shared HTTP service |
 | Packaging | Skillmux CLI installation or Skillmux server deployment |
 
 Retrieval capability is a fourth, independent concern: lexical, hybrid,
@@ -25,7 +25,7 @@ The default vault checkout path is `~/skills`. Set `vault_path` in
 `~/.config/skillmux/config.toml` when its checkout lives elsewhere. On one
 machine, `~/skills` can be both the vault source of truth and its checkout.
 In a shared topology, use a Git-backed vault source of truth, a checkout on
-each client machine for the Skillmux CLI, and a checkout on the server for
+each agent machine for the Skillmux CLI, and a checkout on the server for
 Skillmux server. Skillmux does not pull, push, replicate, or determine
 freshness between checkouts; Git and the deployment process own those jobs.
 
@@ -45,7 +45,7 @@ Skillmux applies three policies to one vault checkout:
 
 | Tier | Scope | Delivery |
 | --- | --- | --- |
-| Core | Each configured target | Native client skill directory |
+| Core | Each configured target | Native agent skill directory |
 | Project | Selected project paths and targets | Project-local native skill directory |
 | Routed | Full indexed vault | MCP on demand |
 
@@ -55,7 +55,7 @@ one.
 
 One skill can serve different roles across machines or projects, but the
 shared manifest prevents conflicting core and project assignments. Core stays
-capped at 25 skills to protect client startup context.
+capped at 25 skills to protect agent startup context.
 
 Delivery tiers do not select a deployment. A local Skillmux process can serve
 routed skills over stdio, while a shared Skillmux process can serve its server
@@ -66,7 +66,7 @@ checkout over HTTP.
 ```mermaid
 flowchart TD
     V[Git-backed vault source of truth]
-    V -->|client checkout| CLI[Skillmux CLI]
+    V -->|agent checkout| CLI[Skillmux CLI]
     V -->|server checkout| SRV[Skillmux server]
     CLI --> NM[Native management: filesystem links]
     CLI --> LM[Local MCP: stdio]
@@ -75,7 +75,7 @@ flowchart TD
 
 | Topology | Process location | Transport | Typical installation |
 | --- | --- | --- | --- |
-| Native management | Client machine | Filesystem links | Skillmux CLI |
+| Native management | Agent machine | Filesystem links | Skillmux CLI |
 | Local MCP | Beside one client | stdio | Skillmux CLI |
 | Shared MCP | Server or container host | Streamable HTTP | Skillmux server (full image) |
 
@@ -99,7 +99,7 @@ An HTTP server has two separate surfaces:
 MCP authentication protects `/mcp`; administrative authentication protects
 `/admin/v1/*`. Their bearer tokens are distinct and do not grant access across
 surfaces. A named CLI context is an operator connection to the deployed server,
-not a way to manage skill directories on remote client machines. The server
+not a way to manage skill directories on remote agent machines. The server
 and its full/slim images never manage host agent directories. See
 [Deployment](deployment.md#http-surfaces).
 
@@ -109,13 +109,13 @@ package downloads and caches GTE-small when local inference first loads it;
 `skillmux models download` prefetches it. Neither Skillmux server image
 bundles a local reranker; configure one remotely when needed.
 
-## Clients and targets
+## Agents and targets
 
-A **client** is a supported product name such as `claude-code` or `codex`.
+An **agent** is a supported product name such as `claude-code` or `codex`.
 Skillmux maps it to the product's skill directory and safe instruction-file
 conventions.
 
-A **target** is a physical directory managed by sync. Several clients can map
+A **target** is a physical directory managed by sync. Several agents can map
 to one target. Gemini CLI, OpenCode, GitHub Copilot, and Windsurf share
 `~/.agents/skills`, so Skillmux deduplicates that directory.
 

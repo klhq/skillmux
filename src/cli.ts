@@ -78,7 +78,7 @@ export const KNOWN_COMMANDS = [
  * nor actually remote-capable — it just silently ran local logic that choked
  * on an unrecognized --context/--server flag with a confusing error).
  *
- * - "local-only": operates on this machine's vault/filesystem/clients only;
+ * - "local-only": operates on this machine's vault/filesystem/agents only;
  *   a remote target is rejected outright.
  * - "remote-capable": routed through TargetAdapter — same command, backed by
  *   LocalAdapter or RemoteAdapter depending on the resolved target.
@@ -166,7 +166,7 @@ const LOCAL_ONLY_GUIDANCE: Record<LocalOnlyReason, string> = {
   "vault-content":
     "To change a remote deployment's vault contents, update its git-backed source and redeploy or pull on that host — skillmux doesn't replicate vault checkouts over the network.",
   "native-delivery":
-    "This manages skill delivery into client directories on the machine you run it from; there's no remote equivalent — run it on the machine that owns those directories.",
+    "This manages skill delivery into agent directories on the machine you run it from; there's no remote equivalent — run it on the machine that owns those directories.",
   "local-runtime":
     "This operates on the local runtime process on the machine you run it from.",
   "local-config":
@@ -557,7 +557,7 @@ alongside a stdio transport without opening the full HTTP surface.`,
 usage:
   skillmux index`,
 
-  sync: `sync: apply the manifest to native client target directories
+  sync: `sync: apply the manifest to native agent target directories
 
 usage:
   skillmux sync [--dry-run] [--restore-monolith] [--install-hook] [--yes] [--json]`,
@@ -565,17 +565,17 @@ usage:
   init: `init: guided setup for native skill management
 
 usage:
-  skillmux init [--client <name>...] [--vault <path>] [--core <skill_id>...]
+  skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--show-mcp-setup] [--no-instructions]
                 [--no-sync] [--interactive|--yes|--dry-run] [--json]
 
-clients: claude-code, codex, gemini-cli, opencode, github-copilot,
+agents: claude-code, codex, gemini-cli, opencode, github-copilot,
 windsurf, antigravity, goose, hermes
 
 --show-mcp-setup also prints the MCP registration snippet, independent
-of which (if any) clients you select — there's no client ID for "just
+of which (if any) agents you select — there's no agent ID for "just
 MCP". A tool not in the list above isn't supported by init yet — add it
-to SUPPORTED_CLIENT_IDS rather than guessing a directory. To adopt an
+to SUPPORTED_AGENT_IDS rather than guessing a directory. To adopt an
 arbitrary existing directory directly, use "skillmux target add <name>
 --dir <dir>" instead of init.`,
 
@@ -583,7 +583,7 @@ arbitrary existing directory directly, use "skillmux target add <name>
 
 usage:
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
-                [--client <name>...] [--target <name>...] [--no-sync]
+                [--agent <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project list
   skillmux project show <group>
@@ -591,8 +591,8 @@ usage:
   skillmux project remove-path <group> [path] --yes
   skillmux project pin <group> <skill_id>... --yes
   skillmux project unpin <group> <skill_id>... --yes
-  skillmux project attach <group> (--client <id>... | --target <name>...) --yes
-  skillmux project detach <group> (--client <id>... | --target <name>...) --yes`,
+  skillmux project attach <group> (--agent <id>... | --target <name>...) --yes
+  skillmux project detach <group> (--agent <id>... | --target <name>...) --yes`,
 
   target: `target: manage native sync target directories
 
@@ -703,22 +703,22 @@ See docs/deployment.md for server deployment examples.`);
 
 Setup:
   skillmux config init --vault <path> --yes
-  skillmux init [--client <name>...] [--vault <path>] [--core <skill_id>...]
+  skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
-                [--client <name>...] [--target <name>...] [--no-sync]
+                [--agent <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
   skillmux target <list|show|add|remove>
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
   skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)
 
-Init clients:
+Init agents:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
   antigravity, goose, hermes
   ("skillmux init --show-mcp-setup" also prints the MCP registration
-  snippet, independent of which clients you select. A tool not in this
+  snippet, independent of which agents you select. A tool not in this
   list isn't supported by init yet — see "skillmux init --help".)
 
 Operations:

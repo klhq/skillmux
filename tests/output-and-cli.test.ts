@@ -100,7 +100,7 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(bash).toContain("skillmux");
     expect(bash).toContain("context");
     expect(bash).toContain("config");
-    expect(bash).toContain("--client");
+    expect(bash).toContain("--agent");
     expect(bash).toContain("claude-code");
     expect(bash).not.toContain("skillmux-mcp");
     expect(bash).toContain("--show-mcp-setup");
@@ -111,11 +111,11 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
 
     const zsh = generateCompletions("zsh");
     expect(zsh).toContain("#compdef skillmux");
-    expect(zsh).toContain("--client");
+    expect(zsh).toContain("--agent");
 
     const fish = generateCompletions("fish");
     expect(fish).toContain("complete -c skillmux");
-    expect(fish).toContain("-l client");
+    expect(fish).toContain("-l agent");
   });
 
   it("gives bash, zsh, and fish the identical, full top-level command set (AC12)", () => {
