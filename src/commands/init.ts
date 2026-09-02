@@ -152,9 +152,14 @@ export async function runInit(
   let configPlan: ConfigInitPlan | undefined;
   let vaultPath: string;
   if (!existsSync(configPath)) {
-    const bootstrapVaultPath =
-      requestedVaultPath ??
-      (!options.isJson && isInteractive() ? "~/skills" : undefined);
+    let bootstrapVaultPath = requestedVaultPath;
+    if (!bootstrapVaultPath) {
+      if (guided) {
+        bootstrapVaultPath = await promptText("Skill vault path", "~/skills");
+      } else if (!options.isJson && isInteractive()) {
+        bootstrapVaultPath = "~/skills";
+      }
+    }
     if (!bootstrapVaultPath) {
       throw new Error(
         `machine config does not exist: ${configPath}; re-run with --vault <path>`,
@@ -163,7 +168,7 @@ export async function runInit(
     configPlan = planConfigInit(configPath, expandHome(bootstrapVaultPath));
     vaultPath = configPlan.vaultPath;
     if (!options.isJson) {
-      console.log(`config create: ${configPath}`);
+      console.log(`config create: ${configPath} (vault: ${vaultPath})`);
     }
   } else {
     const config = await loadConfig();
