@@ -5,6 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0](https://github.com/klhq/skillmux/compare/v1.10.0...v1.11.0) (2026-09-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** agent-based native setup — remove --target/--client vagueness, clearer rejections ([#172](https://github.com/klhq/skillmux/issues/172))
+
+### Added
+
+* **cli:** add --register-mcp to auto-register skillmux ([#173](https://github.com/klhq/skillmux/issues/173)) ([55e6e33](https://github.com/klhq/skillmux/commit/55e6e33a71abdfb2b340cdf2634f47db6a0fcff6))
+* **cli:** agent-based native setup — remove --target/--client vagueness, clearer rejections ([#172](https://github.com/klhq/skillmux/issues/172)) ([cf5a346](https://github.com/klhq/skillmux/commit/cf5a346a3374ea217f7ffd17aba9495439b37f87))
+* **cli:** project init --register-mcp for project-scoped MCP + instructions ([#176](https://github.com/klhq/skillmux/issues/176)) ([a1e5e3b](https://github.com/klhq/skillmux/commit/a1e5e3b43cd65b64741528e9cbaed0770d1637b7))
+
+
+### Fixed
+
+* **cli:** four consistency bugs found in a CLI audit ([#177](https://github.com/klhq/skillmux/issues/177)) ([a3aa008](https://github.com/klhq/skillmux/commit/a3aa0082b8d5dd6f36a0bf527bfaddb43075bb7d))
+* **cli:** guided init prompts for vault path instead of guessing ([#175](https://github.com/klhq/skillmux/issues/175)) ([2fa224c](https://github.com/klhq/skillmux/commit/2fa224ce7887a19bc4bbb59b626926c13f3d7284))
+* **cli:** reject config init cleanly for remote targets, add classification registry ([#170](https://github.com/klhq/skillmux/issues/170)) ([9e6da95](https://github.com/klhq/skillmux/commit/9e6da95a386230e03dc94e0c8cbaa6d622a4d3f5))
+
+
+### Changed
+
+* **cli:** consolidate per-agent data into one registry ([#179](https://github.com/klhq/skillmux/issues/179)) ([9af61da](https://github.com/klhq/skillmux/commit/9af61da4e181fc8c1ae5259cf7179d60050bf5b9))
+* **cli:** one meaning per word — finish the target/context split ([#180](https://github.com/klhq/skillmux/issues/180)) ([1714daa](https://github.com/klhq/skillmux/commit/1714daa63a3429ffe6db090fc25a3e018026d85e))
+
+
+### Chores
+
+* pin next release to 1.11.0 ([#178](https://github.com/klhq/skillmux/issues/178)) ([0193952](https://github.com/klhq/skillmux/commit/01939522b550b40ee9bfa6981ea359d17bd55897))
+
 ## [1.10.0](https://github.com/klhq/skillmux/compare/v1.9.3...v1.10.0) (2026-09-01)
 
 
