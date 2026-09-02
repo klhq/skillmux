@@ -32,6 +32,8 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(successEnv.schema_version).toBe(1);
     expect(successEnv.ok).toBe(true);
     expect(successEnv.target).toBe("local");
+    expect(successEnv.context).toBe("local");
+    expect(successEnv.context).toEqual(successEnv.target);
     expect(successEnv.data).toEqual({ key: "value" });
     expect(successEnv.error).toBeNull();
 
@@ -42,6 +44,9 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     });
     expect(errEnv.schema_version).toBe(1);
     expect(errEnv.ok).toBe(false);
+    expect(errEnv.target).toEqual({ name: "prod", server: "https://prod:8080" });
+    expect(errEnv.context).toEqual({ name: "prod", server: "https://prod:8080" });
+    expect(errEnv.context).toEqual(errEnv.target);
     expect(errEnv.error?.code).toBe("CONFIG_REVISION_CONFLICT");
   });
 
@@ -81,6 +86,7 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(JSON.parse(logs[0]!)).toEqual({
       schema_version: 1,
       ok: true,
+      context: "local",
       target: "local",
       data: { foo: "bar" },
       error: null,

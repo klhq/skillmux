@@ -2080,6 +2080,8 @@ describe("skillmux init CLI", () => {
     // (docs/cli.md "Automation and JSON output"), so a generic consumer
     // reading target/data/error works here too.
     expect(envelope.target).toBe("local");
+    expect(envelope.context).toBe("local");
+    expect(envelope.context).toEqual(envelope.target);
     expect(envelope.error).toBeNull();
     expect(envelope.data).toMatchObject({
       command: "init",
@@ -2118,6 +2120,8 @@ describe("skillmux init CLI", () => {
     expect(envelope.schema_version).toBe(1);
     expect(envelope.ok).toBe(true);
     expect(envelope.target).toBe("local");
+    expect(envelope.context).toBe("local");
+    expect(envelope.context).toEqual(envelope.target);
     expect(envelope.error).toBeNull();
     expect(envelope.data).toMatchObject({
       command: "init",

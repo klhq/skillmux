@@ -498,7 +498,7 @@ async function handleError(
   if (opts.isJson) {
     const env = formatJsonEnvelope({
       ok: false,
-      target: opts.context,
+      context: opts.context,
       error: {
         code: err instanceof CliError ? err.code : `EXIT_${code}`,
         message: msg,

@@ -487,11 +487,14 @@ When `--json` or `SKILLMUX_JSON=true` is set, all output is emitted to `stdout` 
 {
   "schema_version": 1,
   "ok": true,
+  "context": "local",
   "target": "local",
   "data": { ... },
   "error": null
 }
 ```
+
+The `context` field identifies the execution context (`"local"` or `{ "name": "<context>", "server": "<url>" }`). The `target` field carries identical content but is deprecated and slated for removal in the next major version; consumers should read `context`.
 
 `skillmux init` additionally repeats its payload as deprecated top-level
 `command`, `phase`, `dry_run`, `applied`, `plan`, and `result` keys, which

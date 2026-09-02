@@ -127,7 +127,7 @@ export async function handleConfigCommand(
   if (sub === "show") {
     const withSources = args.includes("--sources");
     const data = await adapter.getConfigShow();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, data, () => {
+    emitSuccess({ isJson: ctx.isJson, context: ctx.context }, data, () => {
       renderContextBanner(ctx.context);
       if (withSources) {
         const policy =
@@ -151,7 +151,7 @@ export async function handleConfigCommand(
     if (!key) throw new Error("usage: skillmux config get <key>");
     const val = await adapter.getConfigGet(key);
     emitSuccess(
-      { isJson: ctx.isJson, target: ctx.context },
+      { isJson: ctx.isJson, context: ctx.context },
       { key, value: val },
       () => {
         console.log(
@@ -164,7 +164,7 @@ export async function handleConfigCommand(
 
   if (sub === "validate") {
     const res = await adapter.configValidate();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, res, () => {
+    emitSuccess({ isJson: ctx.isJson, context: ctx.context }, res, () => {
       console.log(res.valid ? "configuration is valid" : "configuration is invalid");
     });
     return;
@@ -172,7 +172,7 @@ export async function handleConfigCommand(
 
   if (sub === "diff") {
     const res = await adapter.configDiff();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, res, () => {
+    emitSuccess({ isJson: ctx.isJson, context: ctx.context }, res, () => {
       renderContextBanner(ctx.context);
       console.log(JSON.stringify(res.diff, null, 2));
     });
@@ -186,7 +186,7 @@ export async function handleConfigCommand(
       throw new Error("usage: skillmux config set <key> <value> [--dry-run]");
     }
     const res = await adapter.configSet(key, value, { dryRun: ctx.dryRun });
-    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, res, () => {
+    emitSuccess({ isJson: ctx.isJson, context: ctx.context }, res, () => {
       renderContextBanner(ctx.context);
       const prefix = ctx.dryRun ? "[dry-run] " : "";
       console.log(
@@ -201,7 +201,7 @@ export async function handleConfigCommand(
 
   if (sub === "status") {
     const res = await adapter.configStatus();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, res, () => {
+    emitSuccess({ isJson: ctx.isJson, context: ctx.context }, res, () => {
       renderContextBanner(ctx.context);
       console.log(`runtime: ${res.runtime}`);
       console.log(`deployment runtime: ${res.deployment_runtime}`);

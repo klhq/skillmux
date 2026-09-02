@@ -20,7 +20,7 @@ export async function handleContextCommand(
 ) {
   if (sub === "list") {
     const contexts = await listContexts();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, contexts, () => {
+    emitSuccess({ isJson: ctx.isJson, context: ctx.context }, contexts, () => {
       renderContextBanner(ctx.context);
       renderTable(
         [
@@ -41,7 +41,7 @@ export async function handleContextCommand(
 
   if (sub === "current") {
     const current = await getCurrentContext();
-    emitSuccess({ isJson: ctx.isJson, target: ctx.context }, current, () => {
+    emitSuccess({ isJson: ctx.isJson, context: ctx.context }, current, () => {
       renderContextBanner(ctx.context);
       console.log(`Current context: ${current.name} (${current.server})`);
     });
@@ -63,7 +63,7 @@ export async function handleContextCommand(
     }
     await addContext(name, { server, token_env: tokenEnv });
     emitSuccess(
-      { isJson: ctx.isJson, target: ctx.context },
+      { isJson: ctx.isJson, context: ctx.context },
       { name, server, token_env: tokenEnv },
       () => {
         console.log(`Added context "${name}" -> ${server}`);
@@ -77,7 +77,7 @@ export async function handleContextCommand(
     if (!name) throw new Error("usage: skillmux context use <name>");
     await useContext(name);
     emitSuccess(
-      { isJson: ctx.isJson, target: ctx.context },
+      { isJson: ctx.isJson, context: ctx.context },
       { default_context: name },
       () => {
         console.log(`Switched default context to "${name}"`);
@@ -91,7 +91,7 @@ export async function handleContextCommand(
     if (!name) throw new Error("usage: skillmux context remove <name>");
     await removeContext(name);
     emitSuccess(
-      { isJson: ctx.isJson, target: ctx.context },
+      { isJson: ctx.isJson, context: ctx.context },
       { removed: name },
       () => {
         console.log(`Removed context "${name}"`);
