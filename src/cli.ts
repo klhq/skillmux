@@ -565,20 +565,19 @@ usage:
   init: `init: guided setup for native skill management
 
 usage:
-  skillmux init [--client <name>...] [--target <name>...] [--dir <dir>]
-                [--vault <path>] [--core <skill_id>...]
+  skillmux init [--client <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
 
-clients (the common case — each one already knows its own target
-directory): claude-code, codex, gemini-cli, opencode, github-copilot,
+clients: claude-code, codex, gemini-cli, opencode, github-copilot,
 windsurf, antigravity, goose, hermes, skillmux-mcp
   (skillmux-mcp isn't a directory — selecting it just prints the MCP
   registration snippet at the end; it doesn't run init or write anything)
 
---target is an advanced override, only needed for a tool not in the
-clients list above, or --target custom --dir <path> for an arbitrary
-directory: agent-skills, claude-code, codex, custom`,
+A tool not in this list isn't supported by init yet — add it to
+SUPPORTED_CLIENT_IDS rather than guessing a directory. To adopt an
+arbitrary existing directory directly, use "skillmux target add <name>
+--dir <dir>" instead of init.`,
 
   project: `project: manage project-scoped skill pins and sync groups
 
@@ -704,8 +703,7 @@ See docs/deployment.md for server deployment examples.`);
 
 Setup:
   skillmux config init --vault <path> --yes
-  skillmux init [--client <name>...] [--target <name>...] [--dir <dir>]
-                [--vault <path>] [--core <skill_id>...]
+  skillmux init [--client <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
@@ -721,8 +719,8 @@ Init clients:
   antigravity, goose, hermes, skillmux-mcp
   (skillmux-mcp isn't a client directory — select it to also print the
   MCP registration snippet; it never runs init or touches the vault
-  remotely. "skillmux init --help" covers --target, an advanced override
-  for a client not in this list.)
+  remotely. A tool not in this list isn't supported by init yet —
+  see "skillmux init --help".)
 
 Operations:
   skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]

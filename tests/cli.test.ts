@@ -1700,7 +1700,7 @@ describe("skillmux init CLI", () => {
     rmSync(clientConfig, { force: true });
   });
 
-  test("resolves the codex built-in target through CODEX_HOME", async () => {
+  test("init --client codex resolves its target through CODEX_HOME", async () => {
     const codexHome = join(tmp, "custom-codex-home");
     const clientVault = join(tmp, "codex-client-vault");
     const clientConfig = join(tmp, "codex-client-config.toml");
@@ -1714,7 +1714,7 @@ describe("skillmux init CLI", () => {
       `vault_path = ${JSON.stringify(clientVault)}\n`,
     );
 
-    const result = await runCliEnv(["init", "--target", "codex", "--yes"], {
+    const result = await runCliEnv(["init", "--client", "codex", "--yes"], {
       CODEX_HOME: codexHome,
       SKILLMUX_CONFIG: clientConfig,
     });
@@ -1731,84 +1731,18 @@ describe("skillmux init CLI", () => {
     rmSync(clientConfig, { force: true });
   });
 
-  test("accepts the legacy agents target with a deprecation warning", async () => {
-    const clientHome = join(tmp, "legacy-agents-home");
-    const clientVault = join(tmp, "legacy-agents-vault");
-    const clientConfig = join(tmp, "legacy-agents-config.toml");
-    mkdirSync(join(clientVault, "legacy-skill"), { recursive: true });
-    writeFileSync(
-      join(clientVault, "legacy-skill", "SKILL.md"),
-      "---\nname: legacy-skill\n---\n",
-    );
-    writeFileSync(
-      clientConfig,
-      `vault_path = ${JSON.stringify(clientVault)}\n`,
+  test("init --target and --dir were removed; both point to --client instead", async () => {
+    const targetResult = await runCli("init", "--target", "agent-skills", "--yes");
+    expect(targetResult.exitCode).not.toBe(0);
+    expect(targetResult.stderr).toContain(
+      "--target was removed; select a specific supported client with --client instead",
     );
 
-    const result = await runCliEnv(["init", "--target", "agents", "--yes"], {
-      HOME: clientHome,
-      SKILLMUX_CONFIG: clientConfig,
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain("--target agents is deprecated");
-    expect(readFileSync(join(clientVault, "skillmux.toml"), "utf8")).toContain(
-      "[targets.agents]",
+    const dirResult = await runCli("init", "--dir", "/tmp/some-dir", "--yes");
+    expect(dirResult.exitCode).not.toBe(0);
+    expect(dirResult.stderr).toContain(
+      "--dir was removed; select a specific supported client with --client instead",
     );
-
-    rmSync(clientHome, { recursive: true, force: true });
-    rmSync(clientVault, { recursive: true, force: true });
-    rmSync(clientConfig, { force: true });
-  });
-
-  test("init --target custom --dir <path> adopts a custom directory", async () => {
-    const clientHome = join(tmp, "custom-dir-client-home");
-    const clientVault = join(tmp, "custom-dir-client-vault");
-    const clientConfig = join(tmp, "custom-dir-client-config.toml");
-    const customTargetDir = join(tmp, "custom-dir-target");
-    mkdirSync(join(clientVault, "custom-dir-skill"), { recursive: true });
-    writeFileSync(
-      join(clientVault, "custom-dir-skill", "SKILL.md"),
-      "---\nname: custom-dir-skill\n---\n",
-    );
-    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
-
-    const result = await runCliEnv(
-      ["init", "--target", "custom", "--dir", customTargetDir, "--yes"],
-      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(existsSync(join(customTargetDir, ".skillmux"))).toBe(true);
-
-    rmSync(customTargetDir, { recursive: true, force: true });
-  });
-
-  test("init --path is removed in favor of --dir", async () => {
-    const clientHome = join(tmp, "old-path-client-home");
-    const clientVault = join(tmp, "old-path-client-vault");
-    const clientConfig = join(tmp, "old-path-client-config.toml");
-    mkdirSync(join(clientVault, "old-path-skill"), { recursive: true });
-    writeFileSync(
-      join(clientVault, "old-path-skill", "SKILL.md"),
-      "---\nname: old-path-skill\n---\n",
-    );
-    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
-
-    const result = await runCliEnv(
-      [
-        "init",
-        "--target",
-        "custom",
-        "--path",
-        join(tmp, "old-path-target"),
-        "--yes",
-      ],
-      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
-    );
-
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("unknown init option: --path");
   });
 
   test("client init reuses a legacy-named target with the same physical directory", async () => {
@@ -1821,11 +1755,12 @@ describe("skillmux init CLI", () => {
       "---\nname: legacy-skill\n---\n",
     );
     writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+    writeFileSync(join(clientVault, "skillmux.toml"), `[core]\nskills = []\n`);
 
-    const first = await runCliEnv(["init", "--target", "claude", "--yes"], {
-      HOME: clientHome,
-      SKILLMUX_CONFIG: clientConfig,
-    });
+    const first = await runCliEnv(
+      ["target", "add", "claude", "--dir", join(clientHome, ".claude", "skills"), "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
     expect(first.exitCode).toBe(0);
 
     const second = await runCliEnv(
@@ -2015,42 +1950,57 @@ describe("skillmux init CLI", () => {
     rmSync(parent, { recursive: true, force: true });
   });
 
-  test("requires --yes when --target is given (interactive confirm not supported non-interactively)", async () => {
-    const { surface, parent, targetName } = makeSurface(
-      "skillmux-init-cli-noyes-",
+  test("requires --yes when --client is given (interactive confirm not supported non-interactively)", async () => {
+    const clientHome = join(tmp, "noyes-client-home");
+    const clientVault = join(tmp, "noyes-client-vault");
+    const clientConfig = join(tmp, "noyes-client-config.toml");
+    mkdirSync(join(clientVault, "noyes-skill"), { recursive: true });
+    writeFileSync(
+      join(clientVault, "noyes-skill", "SKILL.md"),
+      "---\nname: noyes-skill\n---\n",
     );
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
 
-    const result = await runCliEnv(["init", "--target", targetName], {
-      SKILLMUX_INIT_SURFACES: surface,
+    const result = await runCliEnv(["init", "--client", "claude-code"], {
+      HOME: clientHome,
+      SKILLMUX_CONFIG: clientConfig,
     });
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("--yes");
 
-    rmSync(parent, { recursive: true, force: true });
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
   });
 
-  test("adopts a confirmed target with --target and --yes, writes skillmux.toml, and prints the last mile", async () => {
-    const { surface, parent, targetName } = makeSurface(
-      "skillmux-init-cli-confirm-",
+  test("adopts a confirmed target with --client and --yes, writes skillmux.toml, and prints the last mile", async () => {
+    const clientHome = join(tmp, "confirm-client-home");
+    const clientVault = join(tmp, "confirm-client-vault");
+    const clientConfig = join(tmp, "confirm-client-config.toml");
+    mkdirSync(join(clientVault, "confirm-skill"), { recursive: true });
+    writeFileSync(
+      join(clientVault, "confirm-skill", "SKILL.md"),
+      "---\nname: confirm-skill\n---\n",
     );
-    writeFileSync(join(surface, "not-touched.txt"), "keep me");
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
 
-    const result = await runCliEnv(["init", "--target", targetName, "--yes"], {
-      SKILLMUX_INIT_SURFACES: surface,
-    });
+    const result = await runCliEnv(
+      ["init", "--client", "claude-code", "--client", "skillmux-mcp", "--yes"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
 
     expect(result.exitCode).toBe(0);
-    expect(existsSync(join(vaultDir, "skillmux.toml"))).toBe(true);
-    expect(existsSync(join(surface, ".skillmux"))).toBe(true);
-    expect(existsSync(join(surface, "not-touched.txt"))).toBe(true);
+    expect(existsSync(join(clientVault, "skillmux.toml"))).toBe(true);
+    expect(existsSync(join(clientHome, ".claude", "skills", ".skillmux"))).toBe(true);
     expect(result.stdout).toContain("next: skillmux core pin <skill_id> --yes");
     expect(result.stdout).toContain("next: skillmux sync");
     expect(result.stdout).toContain(`"command": "skillmux"`);
     expect(result.stdout).toContain("resolve_skill");
 
-    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
-    rmSync(parent, { recursive: true, force: true });
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
   });
 });
 

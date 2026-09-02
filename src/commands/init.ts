@@ -18,7 +18,6 @@ import {
   assessClientReadiness,
   detectInstalledClients,
   planClientSurfaces,
-  resolveBuiltInTarget,
   SUPPORTED_CLIENT_IDS,
   type ClientId,
   type ReadinessAxis,
@@ -29,7 +28,7 @@ import {
   rollbackInstructionPlan,
 } from "../init-instructions";
 import { parseManifest, resolveManifestPath } from "../manifest";
-import { isInteractive, warn } from "../output";
+import { isInteractive } from "../output";
 import { isGlobalFlag } from "../global-flags";
 import {
   parseCommaList,
@@ -49,20 +48,16 @@ import { confirmAction } from "./shared";
 import { runSync } from "./sync";
 
 function parseInitArgs(args: string[]): {
-  targets: string[];
   clients: string[];
   coreSkillIds: string[];
-  customPath?: string;
   migrateFullVault: boolean;
   skipInstructions: boolean;
   sync: boolean;
   vaultPath?: string;
   yes: boolean;
 } {
-  const targets: string[] = [];
   const clients: string[] = [];
   const coreSkillIds: string[] = [];
-  let customPath: string | undefined;
   let migrateFullVault = false;
   let skipInstructions = false;
   let sync = true;
@@ -70,11 +65,10 @@ function parseInitArgs(args: string[]): {
   let yes = false;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
-    if (option === "--target") {
-      const value = args[i + 1];
-      if (!value) throw new Error("--target requires a name");
-      targets.push(value);
-      i++;
+    if (option === "--target" || option === "--dir") {
+      throw new Error(
+        `${option} was removed; select a specific supported client with --client instead (see "skillmux init --help")`,
+      );
     } else if (option === "--client") {
       const value = args[i + 1];
       if (!value) throw new Error("--client requires a name");
@@ -84,11 +78,6 @@ function parseInitArgs(args: string[]): {
       const value = args[i + 1];
       if (!value) throw new Error("--vault requires a path");
       vaultPath = value;
-      i++;
-    } else if (option === "--dir") {
-      const value = args[i + 1];
-      if (!value) throw new Error("--dir requires a directory");
-      customPath = value;
       i++;
     } else if (option === "--core") {
       const value = args[i + 1];
@@ -113,10 +102,8 @@ function parseInitArgs(args: string[]): {
     }
   }
   return {
-    targets,
     clients,
     coreSkillIds,
-    customPath,
     migrateFullVault,
     skipInstructions,
     sync,
@@ -130,10 +117,8 @@ export async function runInit(
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
   const {
-    targets: explicitTargets,
     clients: requestedClients,
     coreSkillIds,
-    customPath,
     migrateFullVault,
     skipInstructions,
     sync,
@@ -238,49 +223,19 @@ export async function runInit(
       detail: manual.reason,
     };
   }
-  const builtInNames = new Set([
-    "agent-skills",
-    "claude-code",
-    "codex",
-    "custom",
-    "agents",
-    "claude",
-  ]);
-  const explicitSurfaceTargets = explicitTargets
-    .filter((name) => builtInNames.has(name))
-    .map((name) =>
-      resolveBuiltInTarget(name, {
-        codexHome: process.env.CODEX_HOME
-          ? expandHome(process.env.CODEX_HOME)
-          : undefined,
-        customPath: customPath ? expandHome(customPath) : undefined,
-      }),
-    );
-  if (customPath && !explicitTargets.includes("custom")) {
-    throw new Error("--dir may only be used with --target custom");
-  }
-  for (const target of explicitSurfaceTargets) {
-    if (target.warning) warn(target.warning);
-  }
-  const targetByPath = new Map(
-    explicitSurfaceTargets.map(
-      (target) => [target.path, target.targetName] as const,
-    ),
-  );
   const existingManifestPath = resolveManifestPath(vaultPath);
   const existingManifest = existingManifestPath
     ? parseManifest(await Bun.file(existingManifestPath).text())
     : undefined;
+  const targetByPath = new Map<string, string>();
   for (const surface of clientPlan.surfaces) {
-    if (!targetByPath.has(surface.path)) {
-      targetByPath.set(
-        surface.path,
-        existingManifest
-          ? (configuredTargetForSurface(existingManifest, surface) ??
-              surface.targetName)
-          : surface.targetName,
-      );
-    }
+    targetByPath.set(
+      surface.path,
+      existingManifest
+        ? (configuredTargetForSurface(existingManifest, surface) ??
+            surface.targetName)
+        : surface.targetName,
+    );
   }
   const candidatePaths = [
     ...new Set([
@@ -352,12 +307,7 @@ export async function runInit(
     }
   }
 
-  const requestedTargets = [
-    ...new Set([
-      ...explicitTargets.filter((name) => !builtInNames.has(name)),
-      ...targetByPath.values(),
-    ]),
-  ];
+  const requestedTargets = [...new Set(targetByPath.values())];
   const hasInstructionWrites = instructionPlan.changes.some(
     (change) => change.status !== "unchanged",
   );
@@ -402,7 +352,7 @@ export async function runInit(
         );
       }
       throw new Error(
-        `unknown --target "${name}": not among detected surfaces`,
+        `target "${name}" not among detected surfaces`,
       );
     }
   }

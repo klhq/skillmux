@@ -122,11 +122,11 @@ Use product names for common clients:
 skillmux init --client claude-code --client codex --dry-run
 ```
 
-Use a direct target when you need a known path:
+For a directory that isn't tied to any supported client, use `target add`
+directly instead of `init`:
 
 ```sh
-skillmux init --target agent-skills --yes
-skillmux init --target custom --dir /srv/my-agent/skills --yes
+skillmux target add my-agent --dir /srv/my-agent/skills --yes
 ```
 
 Skillmux refuses to adopt a target that points to the whole vault because sync
