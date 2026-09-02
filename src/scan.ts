@@ -156,7 +156,7 @@ export interface ScanResult {
   findings: ScanFinding[];
 }
 
-interface ScanContentTarget {
+interface ScanContentFile {
   skill_id: string;
   file: string;
   content: string;
@@ -177,21 +177,21 @@ export async function readTextFileOrNull(path: string): Promise<string | null> {
   }
 }
 
-async function collectSkillTargets(
+async function collectSkillFiles(
   vaultPath: string,
   skillId: string,
   skillMdBody: string,
-): Promise<ScanContentTarget[]> {
-  const targets: ScanContentTarget[] = [{ skill_id: skillId, file: "SKILL.md", content: skillMdBody }];
+): Promise<ScanContentFile[]> {
+  const files: ScanContentFile[] = [{ skill_id: skillId, file: "SKILL.md", content: skillMdBody }];
   for (const rel of listSupportingFiles(vaultPath, skillId)) {
     const content = await readTextFileOrNull(join(vaultPath, skillId, rel));
-    if (content !== null) targets.push({ skill_id: skillId, file: rel, content });
+    if (content !== null) files.push({ skill_id: skillId, file: rel, content });
   }
-  return targets;
+  return files;
 }
 
-interface ResolvedScanTargets {
-  targets: ScanContentTarget[];
+interface ResolvedScanFiles {
+  files: ScanContentFile[];
   /** skill_ids whose SKILL.md could not be parsed/decoded — must still be counted and
    *  flagged, never silently dropped, or a malformed SKILL.md becomes a scan-evasion trick. */
   unparseable: string[];
@@ -199,32 +199,32 @@ interface ResolvedScanTargets {
 
 /** Single-skill-dir mode when `rootPath` itself holds a SKILL.md; otherwise treats
  *  `rootPath` as a vault root and enumerates every skill dir under it. */
-async function resolveScanTargets(rootPath: string): Promise<ResolvedScanTargets> {
+async function resolveScanFiles(rootPath: string): Promise<ResolvedScanFiles> {
   if (existsSync(join(rootPath, "SKILL.md"))) {
     const skillId = basename(rootPath);
     const vaultPath = dirname(rootPath);
     const body = await readTextFileOrNull(join(rootPath, "SKILL.md"));
-    if (body === null) return { targets: [], unparseable: [skillId] };
-    return { targets: await collectSkillTargets(vaultPath, skillId, body), unparseable: [] };
+    if (body === null) return { files: [], unparseable: [skillId] };
+    return { files: await collectSkillFiles(vaultPath, skillId, body), unparseable: [] };
   }
 
   const unparseable: string[] = [];
   const skills = await scanVault(rootPath, (skillId) => unparseable.push(skillId));
-  const targets: ScanContentTarget[] = [];
+  const files: ScanContentFile[] = [];
   for (const skill of skills) {
-    targets.push(...(await collectSkillTargets(rootPath, skill.skill_id, skill.body)));
+    files.push(...(await collectSkillFiles(rootPath, skill.skill_id, skill.body)));
   }
-  return { targets, unparseable };
+  return { files, unparseable };
 }
 
 export async function scanPath(rootPath: string): Promise<ScanResult> {
-  const { targets, unparseable } = await resolveScanTargets(rootPath);
+  const { files, unparseable } = await resolveScanFiles(rootPath);
   const findings: ScanFinding[] = [];
   const skillIds = new Set<string>();
-  for (const target of targets) {
-    skillIds.add(target.skill_id);
-    for (const match of scanContent(target.content)) {
-      findings.push({ ...match, skill_id: target.skill_id, file: target.file });
+  for (const file of files) {
+    skillIds.add(file.skill_id);
+    for (const match of scanContent(file.content)) {
+      findings.push({ ...match, skill_id: file.skill_id, file: file.file });
     }
   }
   for (const skillId of unparseable) {
