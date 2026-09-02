@@ -51,6 +51,7 @@ function parseInitArgs(args: string[]): {
   clients: string[];
   coreSkillIds: string[];
   migrateFullVault: boolean;
+  showMcpSetup: boolean;
   skipInstructions: boolean;
   sync: boolean;
   vaultPath?: string;
@@ -59,6 +60,7 @@ function parseInitArgs(args: string[]): {
   const clients: string[] = [];
   const coreSkillIds: string[] = [];
   let migrateFullVault = false;
+  let showMcpSetup = false;
   let skipInstructions = false;
   let sync = true;
   let vaultPath: string | undefined;
@@ -91,6 +93,8 @@ function parseInitArgs(args: string[]): {
       continue;
     } else if (option === "--migrate-full-vault") {
       migrateFullVault = true;
+    } else if (option === "--show-mcp-setup") {
+      showMcpSetup = true;
     } else if (option === "--no-instructions") {
       skipInstructions = true;
     } else if (option === "--no-sync") {
@@ -105,6 +109,7 @@ function parseInitArgs(args: string[]): {
     clients,
     coreSkillIds,
     migrateFullVault,
+    showMcpSetup,
     skipInstructions,
     sync,
     vaultPath,
@@ -120,6 +125,7 @@ export async function runInit(
     clients: requestedClients,
     coreSkillIds,
     migrateFullVault,
+    showMcpSetup,
     skipInstructions,
     sync,
     vaultPath: requestedVaultPath,
@@ -556,10 +562,7 @@ export async function runInit(
     console.log("next: skillmux core pin <skill_id> --yes");
   }
   if (confirmedTargets.length > 0) console.log("next: skillmux sync");
-  if (
-    selectedClients.length === 0 ||
-    selectedClients.includes("skillmux-mcp")
-  ) {
+  if (selectedClients.length === 0 || showMcpSetup) {
     console.log(`\n${printLastMile()}`);
   }
   // Reaching this point already required approval above (--yes, or an accepted

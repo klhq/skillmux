@@ -102,7 +102,8 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
     expect(bash).toContain("config");
     expect(bash).toContain("--client");
     expect(bash).toContain("claude-code");
-    expect(bash).toContain("skillmux-mcp");
+    expect(bash).not.toContain("skillmux-mcp");
+    expect(bash).toContain("--show-mcp-setup");
     expect(bash).toContain("--migrate-full-vault");
     expect(bash).toContain("core");
     expect(bash).not.toContain("manifest");

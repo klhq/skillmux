@@ -566,16 +566,16 @@ usage:
 
 usage:
   skillmux init [--client <name>...] [--vault <path>] [--core <skill_id>...]
-                [--migrate-full-vault] [--no-instructions] [--no-sync]
-                [--interactive|--yes|--dry-run] [--json]
+                [--migrate-full-vault] [--show-mcp-setup] [--no-instructions]
+                [--no-sync] [--interactive|--yes|--dry-run] [--json]
 
 clients: claude-code, codex, gemini-cli, opencode, github-copilot,
-windsurf, antigravity, goose, hermes, skillmux-mcp
-  (skillmux-mcp isn't a directory — selecting it just prints the MCP
-  registration snippet at the end; it doesn't run init or write anything)
+windsurf, antigravity, goose, hermes
 
-A tool not in this list isn't supported by init yet — add it to
-SUPPORTED_CLIENT_IDS rather than guessing a directory. To adopt an
+--show-mcp-setup also prints the MCP registration snippet, independent
+of which (if any) clients you select — there's no client ID for "just
+MCP". A tool not in the list above isn't supported by init yet — add it
+to SUPPORTED_CLIENT_IDS rather than guessing a directory. To adopt an
 arbitrary existing directory directly, use "skillmux target add <name>
 --dir <dir>" instead of init.`,
 
@@ -716,11 +716,10 @@ Setup:
 
 Init clients:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
-  antigravity, goose, hermes, skillmux-mcp
-  (skillmux-mcp isn't a client directory — select it to also print the
-  MCP registration snippet; it never runs init or touches the vault
-  remotely. A tool not in this list isn't supported by init yet —
-  see "skillmux init --help".)
+  antigravity, goose, hermes
+  ("skillmux init --show-mcp-setup" also prints the MCP registration
+  snippet, independent of which clients you select. A tool not in this
+  list isn't supported by init yet — see "skillmux init --help".)
 
 Operations:
   skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]

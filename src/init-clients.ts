@@ -12,11 +12,10 @@ export const SUPPORTED_CLIENT_IDS = [
   "antigravity",
   "goose",
   "hermes",
-  "skillmux-mcp",
 ] as const;
 
 export type ClientId = (typeof SUPPORTED_CLIENT_IDS)[number];
-export type DeliveryMode = "managed-pins" | "full-vault" | "mcp";
+export type DeliveryMode = "managed-pins" | "full-vault";
 
 export interface DetectedClient {
   client: ClientId;
@@ -72,7 +71,6 @@ const CLIENTS: Record<ClientId, ClientDefinition> = {
   antigravity: { id: "antigravity", surfaceId: "antigravity", deliveryMode: "managed-pins" },
   goose: { id: "goose", deliveryMode: "full-vault" },
   hermes: { id: "hermes", deliveryMode: "full-vault" },
-  "skillmux-mcp": { id: "skillmux-mcp", deliveryMode: "mcp" },
 };
 
 export function detectInstalledClients(
@@ -203,9 +201,10 @@ export function assessClientReadiness(
       };
     }
 
-    const mcpRegistration: ReadinessAxis = client.deliveryMode === "mcp"
-      ? { status: "manual", detail: "register the Skillmux MCP server" }
-      : { status: "not-applicable", detail: "native skill loading" };
+    const mcpRegistration: ReadinessAxis = {
+      status: "not-applicable",
+      detail: "native skill loading",
+    };
 
     return {
       client: client.id,

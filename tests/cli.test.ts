@@ -1986,7 +1986,7 @@ describe("skillmux init CLI", () => {
     writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
 
     const result = await runCliEnv(
-      ["init", "--client", "claude-code", "--client", "skillmux-mcp", "--yes"],
+      ["init", "--client", "claude-code", "--show-mcp-setup", "--yes"],
       { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
     );
 

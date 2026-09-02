@@ -31,7 +31,6 @@ describe("init client registry", () => {
       "antigravity",
       "goose",
       "hermes",
-      "skillmux-mcp",
     ]);
   });
 
@@ -95,7 +94,7 @@ describe("init client registry", () => {
 
   test("reports skill surface, MCP registration, and instructions separately", () => {
     const plan = planClientSurfaces(
-      ["gemini-cli", "goose", "hermes", "skillmux-mcp"],
+      ["gemini-cli", "goose", "hermes"],
       { home: "/home/tester" },
     );
 
@@ -116,12 +115,6 @@ describe("init client registry", () => {
         client: "hermes",
         skillSurface: { status: "manual", detail: "configure the full vault in Hermes external_dirs" },
         mcpRegistration: { status: "not-applicable", detail: "native skill loading" },
-        instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
-      },
-      {
-        client: "skillmux-mcp",
-        skillSurface: { status: "not-applicable", detail: "skills resolve through Skillmux MCP" },
-        mcpRegistration: { status: "manual", detail: "register the Skillmux MCP server" },
         instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
       },
     ]);

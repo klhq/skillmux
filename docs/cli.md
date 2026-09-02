@@ -189,11 +189,12 @@ Skillmux supports these client IDs:
 | `gemini-cli`, `opencode`, `github-copilot`, `windsurf` | Shared `~/.agents/skills` surface |
 | `antigravity` | `~/.gemini/config/skills` |
 | `goose`, `hermes` | Manual full-vault configuration |
-| `skillmux-mcp` | Manual MCP registration |
 
-Direct target IDs are `agent-skills`, `claude-code`, `codex`, and `custom`.
-Custom targets require `--dir <dir>`. The legacy `agents` and `claude` IDs
-print deprecation warnings and retain their manifest names.
+There's no client ID for "just MCP" — pass `--show-mcp-setup` to also print
+the MCP registration snippet, independent of which (if any) clients you
+select. A tool not in this table isn't supported by `init` yet; for an
+arbitrary directory not tied to any supported client, use `skillmux target
+add <name> --dir <dir> --yes` directly instead of `init`.
 
 `--dry-run` prints the config, target, instruction, and core plan without
 prompting or writing. `--json` emits one schema-versioned plan or result
