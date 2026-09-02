@@ -67,7 +67,7 @@ _skillmux_completions() {
             ;;
     esac
     if [ "\${COMP_WORDS[1]}" = "init" ] && [ "\${#COMPREPLY[@]}" -eq 0 ]; then
-        COMPREPLY=( $(compgen -W "--agent --vault --core --migrate-full-vault --show-mcp-setup --no-instructions --no-sync --interactive --yes --dry-run --json" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--agent --vault --core --migrate-full-vault --show-mcp-setup --register-mcp --no-instructions --no-sync --interactive --yes --dry-run --json" -- "$cur") )
     fi
     if [ "\${COMP_WORDS[1]}" = "project" ] && [ "\${COMP_WORDS[2]}" = "init" ]; then
         COMPREPLY=( $(compgen -W "--name --skill --agent --target --no-sync --interactive --yes --dry-run --json" -- "$cur") )
@@ -94,6 +94,7 @@ ${commands}
           '*--core[seed a core skill]:skill id:' \\
           '--migrate-full-vault[convert a full-vault symlink to managed pins]' \\
           '--show-mcp-setup[also print the MCP registration snippet]' \\
+          '--register-mcp[register skillmux via the agent own CLI]' \\
           '--no-instructions[skip managed instruction files]' \\
           '--no-sync[save setup without synchronizing targets]' \\
           '--interactive[force guided setup]' \\
@@ -140,6 +141,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from init" -l vault -r -d "Vault
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l core -x -d "Seed a core skill"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l migrate-full-vault -d "Convert a full-vault symlink"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l show-mcp-setup -d "Also print the MCP registration snippet"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l register-mcp -d "Register skillmux via the agent's own CLI"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l no-instructions -d "Skip managed instruction files"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l interactive -d "Force guided setup"

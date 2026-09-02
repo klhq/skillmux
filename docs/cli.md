@@ -196,6 +196,15 @@ select. A tool not in this table isn't supported by `init` yet; for an
 arbitrary directory not tied to any supported agent, use `skillmux target
 add <name> --dir <dir> --yes` directly instead of `init`.
 
+`--show-mcp-setup` only prints the snippet; it never registers anything.
+For `claude-code` and `codex`, `--register-mcp` goes further and runs that
+agent's own CLI (`claude mcp add` / `codex mcp add`) to register skillmux as
+an MCP server directly, so you don't have to paste the snippet yourself. In
+guided mode, if any selected agent supports it, skillmux asks before
+registering; noninteractive runs only register when `--register-mcp` is
+passed explicitly. It is a no-op for agents with no known registration
+command (skip it and use `--show-mcp-setup` instead).
+
 `--dry-run` prints the config, target, instruction, and core plan without
 prompting or writing. `--json` emits one schema-versioned plan or result
 object. Noninteractive writes require `--yes`. `--interactive` forces the

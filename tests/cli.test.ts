@@ -1731,6 +1731,66 @@ describe("skillmux init CLI", () => {
     rmSync(clientConfig, { force: true });
   });
 
+  // Deliberately does NOT test the case where registration is actually
+  // attempted (a registrable agent + --register-mcp together): claude/codex
+  // are genuinely installed on dev machines that run this suite, and
+  // registerMcpServer's production path calls the real CLI with no fake-
+  // spawn seam reachable across the CLI subprocess boundary. That path is
+  // covered by tests/mcp-registration.test.ts with an injected fake spawn
+  // instead. These two tests only exercise the safe, no-real-invocation
+  // paths: opt-in defaults to off, and a non-registrable agent is a no-op
+  // even when --register-mcp is passed.
+  test("MCP registration is off by default even for a registrable agent (native-only stays untouched)", async () => {
+    const clientHome = join(tmp, "mcp-default-off-home");
+    const clientVault = join(tmp, "mcp-default-off-vault");
+    const clientConfig = join(tmp, "mcp-default-off-config.toml");
+    mkdirSync(join(clientVault, "some-skill"), { recursive: true });
+    writeFileSync(
+      join(clientVault, "some-skill", "SKILL.md"),
+      "---\nname: some-skill\n---\n",
+    );
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const result = await runCliEnv(
+      ["init", "--agent", "codex", "--yes", "--json"],
+      { HOME: clientHome, CODEX_HOME: join(clientHome, ".codex"), SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.result.mcp_registrations).toEqual([]);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("--register-mcp is a no-op for an agent with no known registration command", async () => {
+    const clientHome = join(tmp, "mcp-nonregistrable-home");
+    const clientVault = join(tmp, "mcp-nonregistrable-vault");
+    const clientConfig = join(tmp, "mcp-nonregistrable-config.toml");
+    mkdirSync(join(clientVault, "some-skill"), { recursive: true });
+    writeFileSync(
+      join(clientVault, "some-skill", "SKILL.md"),
+      "---\nname: some-skill\n---\n",
+    );
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const result = await runCliEnv(
+      ["init", "--agent", "gemini-cli", "--register-mcp", "--yes", "--json"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.result.mcp_registrations).toEqual([]);
+    expect(parsed.plan.register_mcp_for).toEqual([]);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
   test("init --target, --dir, and --client were removed; all point to --agent instead", async () => {
     const targetResult = await runCli("init", "--target", "agent-skills", "--yes");
     expect(targetResult.exitCode).not.toBe(0);

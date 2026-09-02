@@ -225,6 +225,10 @@ Register it with your MCP client:
 The client launches the process and closes it with the MCP session. Continue
 with [MCP routing](mcp-routing.md) for client behavior and ranked candidate retrieval.
 
+For `claude-code` and `codex`, `skillmux init --register-mcp` runs this
+registration for you via the agent's own CLI instead of editing config by
+hand — see [Setup planner](cli.md#setup-planner-skillmux-init).
+
 ## Run a shared MCP service
 
 Use the full image when you want local embeddings without configuring an

@@ -28,6 +28,11 @@ import {
   rollbackInstructionPlan,
 } from "../init-instructions";
 import { parseManifest, resolveManifestPath } from "../manifest";
+import {
+  MCP_REGISTRABLE_AGENTS,
+  registerMcpServer,
+  type McpRegistrationResult,
+} from "../mcp-registration";
 import { isInteractive } from "../output";
 import { isGlobalFlag } from "../global-flags";
 import {
@@ -52,6 +57,7 @@ function parseInitArgs(args: string[]): {
   coreSkillIds: string[];
   migrateFullVault: boolean;
   showMcpSetup: boolean;
+  registerMcp: boolean;
   skipInstructions: boolean;
   sync: boolean;
   vaultPath?: string;
@@ -61,6 +67,7 @@ function parseInitArgs(args: string[]): {
   const coreSkillIds: string[] = [];
   let migrateFullVault = false;
   let showMcpSetup = false;
+  let registerMcp = false;
   let skipInstructions = false;
   let sync = true;
   let vaultPath: string | undefined;
@@ -95,6 +102,8 @@ function parseInitArgs(args: string[]): {
       migrateFullVault = true;
     } else if (option === "--show-mcp-setup") {
       showMcpSetup = true;
+    } else if (option === "--register-mcp") {
+      registerMcp = true;
     } else if (option === "--no-instructions") {
       skipInstructions = true;
     } else if (option === "--no-sync") {
@@ -110,6 +119,7 @@ function parseInitArgs(args: string[]): {
     coreSkillIds,
     migrateFullVault,
     showMcpSetup,
+    registerMcp,
     skipInstructions,
     sync,
     vaultPath,
@@ -126,6 +136,7 @@ export async function runInit(
     coreSkillIds,
     migrateFullVault,
     showMcpSetup,
+    registerMcp: requestedRegisterMcp,
     skipInstructions,
     sync,
     vaultPath: requestedVaultPath,
@@ -198,6 +209,19 @@ export async function runInit(
         "Core skill IDs to add, comma-separated",
         coreSkillIds.join(","),
       ),
+    );
+  }
+
+  // Native pins and MCP registration are independent choices — this stays
+  // opt-in and only offered for agents whose own CLI we've verified, so a
+  // user who only wants native skill management sees nothing new here.
+  const registrableAgents = selectedAgents.filter((agent) =>
+    MCP_REGISTRABLE_AGENTS.includes(agent as AgentId),
+  ) as AgentId[];
+  let registerMcp = requestedRegisterMcp;
+  if (guided && registrableAgents.length > 0) {
+    registerMcp = await confirmAction(
+      `Also register skillmux as an MCP server for ${registrableAgents.join(", ")}?`,
     );
   }
 
@@ -390,6 +414,7 @@ export async function runInit(
       status,
     })),
     manual: instructionPlan.manual,
+    register_mcp_for: registerMcp ? registrableAgents : [],
   };
   if (!hasChanges) {
     if (options.isJson) {
@@ -436,7 +461,8 @@ export async function runInit(
       console.log(
         `\ndry-run: ${confirmedTargets.length} target(s), ` +
           `${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} instruction file(s), ` +
-          `core: ${plannedManifest.core.skills.join(", ") || "(unchanged)"}`,
+          `core: ${plannedManifest.core.skills.join(", ") || "(unchanged)"}, ` +
+          `MCP registration: ${registerMcp ? registrableAgents.join(", ") || "(none)" : "(none)"}`,
       );
     }
     return;
@@ -455,6 +481,9 @@ export async function runInit(
         );
         console.log(
           `  core: ${plannedManifest.core.skills.join(", ") || "(none)"}`,
+        );
+        console.log(
+          `  MCP registration: ${registerMcp ? registrableAgents.join(", ") || "(none)" : "(none)"}`,
         );
         console.log(`  sync: ${sync ? "yes" : "no"}`);
         if (!(await confirmAction("apply this setup plan?"))) {
@@ -528,6 +557,16 @@ export async function runInit(
     );
   }
 
+  // Best-effort and outside the rollback above: this mutates another tool's
+  // own config, not skillmux's, so a registration failure is reported, never
+  // rolled back — the successful native setup above still stands either way.
+  const mcpRegistrations: McpRegistrationResult[] = [];
+  if (registerMcp) {
+    for (const agent of registrableAgents) {
+      mcpRegistrations.push(await registerMcpServer(agent));
+    }
+  }
+
   if (options.isJson) {
     console.log(
       JSON.stringify({
@@ -545,6 +584,7 @@ export async function runInit(
             .filter((change) => change.status !== "unchanged")
             .map((change) => change.path),
           core: plannedManifest.core.skills,
+          mcp_registrations: mcpRegistrations,
         },
       }),
     );
@@ -562,6 +602,13 @@ export async function runInit(
     console.log("next: skillmux core pin <skill_id> --yes");
   }
   if (confirmedTargets.length > 0) console.log("next: skillmux sync");
+  for (const registration of mcpRegistrations) {
+    console.log(
+      registration.ok
+        ? `registered skillmux as an MCP server for ${registration.agent}`
+        : `failed to register skillmux as an MCP server for ${registration.agent}: ${registration.error}`,
+    );
+  }
   if (selectedAgents.length === 0 || showMcpSetup) {
     console.log(`\n${printLastMile()}`);
   }
