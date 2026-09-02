@@ -1,21 +1,14 @@
-import { createInterface } from "node:readline/promises";
 import { expandHome, loadConfig } from "../config";
 import { parseManifest, resolveManifestPath } from "../manifest";
 import { isInteractive } from "../output";
+import { askQuestion, type PromptIO } from "../prompts";
 
-export async function confirmAction(prompt: string): Promise<boolean> {
-  const readline = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  try {
-    const answer = (await readline.question(`${prompt} [y/N] `))
-      .trim()
-      .toLowerCase();
-    return answer === "y" || answer === "yes";
-  } finally {
-    readline.close();
-  }
+export async function confirmAction(
+  prompt: string,
+  io: PromptIO = {},
+): Promise<boolean> {
+  const answer = (await askQuestion(`${prompt} [y/N] `, io)).trim().toLowerCase();
+  return answer === "y" || answer === "yes";
 }
 
 export async function loadManifestContext() {

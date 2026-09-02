@@ -127,6 +127,38 @@ function parseInitArgs(args: string[]): {
   };
 }
 
+interface InitJsonPayload {
+  command: "init";
+  phase: "plan" | "result";
+  dry_run: boolean;
+  applied: boolean;
+  plan: unknown;
+  result?: unknown;
+}
+
+/**
+ * init predates the shared emitSuccess envelope and shipped its own top-level
+ * keys, which existing automation reads. Emit the documented envelope
+ * (`target`/`data`/`error`, see docs/cli.md) so generic consumers work, while
+ * keeping the original keys so nothing breaks. init's error path already goes
+ * through the shared handler and needs no bridging.
+ *
+ * DEPRECATED: the duplicated top-level `command`/`phase`/`dry_run`/`applied`/
+ * `plan`/`result` keys should be dropped in the next major version, leaving
+ * only the standard envelope. init is local-only, so `target` is always
+ * "local".
+ */
+function initJsonEnvelope(payload: InitJsonPayload): string {
+  return JSON.stringify({
+    schema_version: 1,
+    ok: true,
+    target: "local",
+    data: payload,
+    error: null,
+    ...payload,
+  });
+}
+
 export async function runInit(
   args: string[],
   options: { isJson: boolean; dryRun: boolean },
@@ -443,9 +475,7 @@ export async function runInit(
   if (!hasChanges) {
     if (options.isJson) {
       console.log(
-        JSON.stringify({
-          schema_version: 1,
-          ok: true,
+        initJsonEnvelope({
           command: "init",
           phase: "plan",
           dry_run: options.dryRun,
@@ -471,9 +501,7 @@ export async function runInit(
   if (options.dryRun) {
     if (options.isJson) {
       console.log(
-        JSON.stringify({
-          schema_version: 1,
-          ok: true,
+        initJsonEnvelope({
           command: "init",
           phase: "plan",
           dry_run: true,
@@ -593,9 +621,7 @@ export async function runInit(
 
   if (options.isJson) {
     console.log(
-      JSON.stringify({
-        schema_version: 1,
-        ok: true,
+      initJsonEnvelope({
         command: "init",
         phase: "result",
         dry_run: false,
@@ -625,7 +651,7 @@ export async function runInit(
   if (plannedManifest.core.skills.length === 0 && confirmedTargets.length > 0) {
     console.log("next: skillmux core pin <skill_id> --yes");
   }
-  if (confirmedTargets.length > 0) console.log("next: skillmux sync");
+  if (!sync && confirmedTargets.length > 0) console.log("next: skillmux sync");
   for (const registration of mcpRegistrations) {
     console.log(
       registration.ok
@@ -641,5 +667,5 @@ export async function runInit(
   // new target directories this init just adopted, so runSync's own new-target
   // confirmation gate would just be a redundant (and non-interactively,
   // silently-skipping) re-ask.
-  if (guided && sync && confirmedTargets.length > 0) await runSync(["--yes"]);
+  if (sync && confirmedTargets.length > 0) await runSync(["--yes"]);
 }

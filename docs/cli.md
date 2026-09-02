@@ -493,6 +493,12 @@ When `--json` or `SKILLMUX_JSON=true` is set, all output is emitted to `stdout` 
 }
 ```
 
+`skillmux init` additionally repeats its payload as deprecated top-level
+`command`, `phase`, `dry_run`, `applied`, `plan`, and `result` keys, which
+predate this envelope. They carry exactly the same content as `data` and are
+kept only so existing automation keeps working. Read `data` instead; the
+duplicated keys will be removed in the next major version.
+
 ### Exit codes
 
 | Code | Meaning | Examples |
