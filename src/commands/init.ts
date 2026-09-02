@@ -15,21 +15,20 @@ import {
   surfaceCandidates,
 } from "../init";
 import {
-  assessClientReadiness,
-  detectInstalledClients,
-  planClientSurfaces,
-  resolveBuiltInTarget,
-  SUPPORTED_CLIENT_IDS,
-  type ClientId,
+  assessAgentReadiness,
+  detectInstalledAgents,
+  planAgentSurfaces,
+  SUPPORTED_AGENT_IDS,
+  type AgentId,
   type ReadinessAxis,
-} from "../init-clients";
+} from "../init-agents";
 import {
   applyInstructionPlan,
   planInstructionSetup,
   rollbackInstructionPlan,
 } from "../init-instructions";
 import { parseManifest, resolveManifestPath } from "../manifest";
-import { isInteractive, warn } from "../output";
+import { isInteractive } from "../output";
 import { isGlobalFlag } from "../global-flags";
 import {
   parseCommaList,
@@ -49,46 +48,38 @@ import { confirmAction } from "./shared";
 import { runSync } from "./sync";
 
 function parseInitArgs(args: string[]): {
-  targets: string[];
-  clients: string[];
+  agents: string[];
   coreSkillIds: string[];
-  customPath?: string;
   migrateFullVault: boolean;
+  showMcpSetup: boolean;
   skipInstructions: boolean;
   sync: boolean;
   vaultPath?: string;
   yes: boolean;
 } {
-  const targets: string[] = [];
-  const clients: string[] = [];
+  const agents: string[] = [];
   const coreSkillIds: string[] = [];
-  let customPath: string | undefined;
   let migrateFullVault = false;
+  let showMcpSetup = false;
   let skipInstructions = false;
   let sync = true;
   let vaultPath: string | undefined;
   let yes = false;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
-    if (option === "--target") {
+    if (option === "--target" || option === "--dir" || option === "--client") {
+      throw new Error(
+        `${option} was removed; select a specific supported agent with --agent instead (see "skillmux init --help")`,
+      );
+    } else if (option === "--agent") {
       const value = args[i + 1];
-      if (!value) throw new Error("--target requires a name");
-      targets.push(value);
-      i++;
-    } else if (option === "--client") {
-      const value = args[i + 1];
-      if (!value) throw new Error("--client requires a name");
-      clients.push(value);
+      if (!value) throw new Error("--agent requires a name");
+      agents.push(value);
       i++;
     } else if (option === "--vault") {
       const value = args[i + 1];
       if (!value) throw new Error("--vault requires a path");
       vaultPath = value;
-      i++;
-    } else if (option === "--dir") {
-      const value = args[i + 1];
-      if (!value) throw new Error("--dir requires a directory");
-      customPath = value;
       i++;
     } else if (option === "--core") {
       const value = args[i + 1];
@@ -102,6 +93,8 @@ function parseInitArgs(args: string[]): {
       continue;
     } else if (option === "--migrate-full-vault") {
       migrateFullVault = true;
+    } else if (option === "--show-mcp-setup") {
+      showMcpSetup = true;
     } else if (option === "--no-instructions") {
       skipInstructions = true;
     } else if (option === "--no-sync") {
@@ -113,11 +106,10 @@ function parseInitArgs(args: string[]): {
     }
   }
   return {
-    targets,
-    clients,
+    agents,
     coreSkillIds,
-    customPath,
     migrateFullVault,
+    showMcpSetup,
     skipInstructions,
     sync,
     vaultPath,
@@ -130,11 +122,10 @@ export async function runInit(
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
   const {
-    targets: explicitTargets,
-    clients: requestedClients,
+    agents: requestedAgents,
     coreSkillIds,
-    customPath,
     migrateFullVault,
+    showMcpSetup,
     skipInstructions,
     sync,
     vaultPath: requestedVaultPath,
@@ -178,25 +169,25 @@ export async function runInit(
     throw new Error(vaultHealth.message);
   }
 
-  let selectedClients = requestedClients;
+  let selectedAgents = requestedAgents;
   if (guided) {
-    const detected = detectInstalledClients({
+    const detected = detectInstalledAgents({
       codexHome: process.env.CODEX_HOME
         ? expandHome(process.env.CODEX_HOME)
         : undefined,
     });
     const evidence = new Map(
-      detected.map((item) => [item.client, item.evidence]),
+      detected.map((item) => [item.agent, item.evidence]),
     );
-    selectedClients = await promptMultiSelect(
-      "Which clients do you use?",
-      SUPPORTED_CLIENT_IDS.map((client) => ({
-        value: client,
-        label: client,
-        detail: evidence.has(client)
-          ? `detected: ${evidence.get(client)}`
+    selectedAgents = await promptMultiSelect(
+      "Which agents do you use?",
+      SUPPORTED_AGENT_IDS.map((agent) => ({
+        value: agent,
+        label: agent,
+        detail: evidence.has(agent)
+          ? `detected: ${evidence.get(agent)}`
           : undefined,
-        selected: evidence.has(client) || requestedClients.includes(client),
+        selected: evidence.has(agent) || requestedAgents.includes(agent),
       })),
     );
   }
@@ -210,77 +201,47 @@ export async function runInit(
     );
   }
 
-  const clientPlan = planClientSurfaces(selectedClients, {
+  const agentPlan = planAgentSurfaces(selectedAgents, {
     codexHome: process.env.CODEX_HOME
       ? expandHome(process.env.CODEX_HOME)
       : undefined,
   });
   const instructionPlan = planInstructionSetup(
-    skipInstructions ? [] : clientPlan.clients.map((client) => client.id),
+    skipInstructions ? [] : agentPlan.agents.map((agent) => agent.id),
     {
       codexHome: process.env.CODEX_HOME
         ? expandHome(process.env.CODEX_HOME)
         : undefined,
     },
   );
-  const instructionReadiness: Partial<Record<ClientId, ReadinessAxis>> = {};
+  const instructionReadiness: Partial<Record<AgentId, ReadinessAxis>> = {};
   for (const change of instructionPlan.changes) {
-    for (const client of change.clients) {
-      instructionReadiness[client] = {
+    for (const agent of change.agents) {
+      instructionReadiness[agent] = {
         status: change.status === "unchanged" ? "ready" : "planned",
         detail: change.path,
       };
     }
   }
   for (const manual of instructionPlan.manual) {
-    instructionReadiness[manual.client] = {
+    instructionReadiness[manual.agent] = {
       status: "manual",
       detail: manual.reason,
     };
   }
-  const builtInNames = new Set([
-    "agent-skills",
-    "claude-code",
-    "codex",
-    "custom",
-    "agents",
-    "claude",
-  ]);
-  const explicitSurfaceTargets = explicitTargets
-    .filter((name) => builtInNames.has(name))
-    .map((name) =>
-      resolveBuiltInTarget(name, {
-        codexHome: process.env.CODEX_HOME
-          ? expandHome(process.env.CODEX_HOME)
-          : undefined,
-        customPath: customPath ? expandHome(customPath) : undefined,
-      }),
-    );
-  if (customPath && !explicitTargets.includes("custom")) {
-    throw new Error("--dir may only be used with --target custom");
-  }
-  for (const target of explicitSurfaceTargets) {
-    if (target.warning) warn(target.warning);
-  }
-  const targetByPath = new Map(
-    explicitSurfaceTargets.map(
-      (target) => [target.path, target.targetName] as const,
-    ),
-  );
   const existingManifestPath = resolveManifestPath(vaultPath);
   const existingManifest = existingManifestPath
     ? parseManifest(await Bun.file(existingManifestPath).text())
     : undefined;
-  for (const surface of clientPlan.surfaces) {
-    if (!targetByPath.has(surface.path)) {
-      targetByPath.set(
-        surface.path,
-        existingManifest
-          ? (configuredTargetForSurface(existingManifest, surface) ??
-              surface.targetName)
-          : surface.targetName,
-      );
-    }
+  const targetByPath = new Map<string, string>();
+  for (const surface of agentPlan.surfaces) {
+    targetByPath.set(
+      surface.path,
+      existingManifest
+        ? (configuredTargetForSurface(existingManifest, surface) ??
+            surface.targetName)
+        : surface.targetName,
+    );
   }
   const candidatePaths = [
     ...new Set([
@@ -327,11 +288,11 @@ export async function runInit(
         `${name} (${candidate.path}): ${kind}, ${candidate.skillCount} skills${marked}`,
       );
     }
-    for (const readiness of assessClientReadiness(
-      clientPlan,
+    for (const readiness of assessAgentReadiness(
+      agentPlan,
       instructionReadiness,
     )) {
-      console.log(`\n${readiness.client} readiness:`);
+      console.log(`\n${readiness.agent} readiness:`);
       console.log(
         `  skill surface: ${readiness.skillSurface.status} — ${readiness.skillSurface.detail}`,
       );
@@ -344,20 +305,15 @@ export async function runInit(
     }
     for (const change of instructionPlan.changes) {
       console.log(
-        `instructions ${change.status}: ${change.path} (${change.clients.join(", ")})`,
+        `instructions ${change.status}: ${change.path} (${change.agents.join(", ")})`,
       );
     }
     for (const manual of instructionPlan.manual) {
-      console.log(`instructions manual: ${manual.client} — ${manual.reason}`);
+      console.log(`instructions manual: ${manual.agent} — ${manual.reason}`);
     }
   }
 
-  const requestedTargets = [
-    ...new Set([
-      ...explicitTargets.filter((name) => !builtInNames.has(name)),
-      ...targetByPath.values(),
-    ]),
-  ];
+  const requestedTargets = [...new Set(targetByPath.values())];
   const hasInstructionWrites = instructionPlan.changes.some(
     (change) => change.status !== "unchanged",
   );
@@ -402,7 +358,7 @@ export async function runInit(
         );
       }
       throw new Error(
-        `unknown --target "${name}": not among detected surfaces`,
+        `target "${name}" not among detected surfaces`,
       );
     }
   }
@@ -425,12 +381,12 @@ export async function runInit(
     config: configPlan
       ? { path: configPlan.configPath, action: configPlan.action }
       : { path: configPath, action: "preserve" },
-    clients: clientPlan.clients.map((client) => client.id),
+    agents: agentPlan.agents.map((agent) => agent.id),
     targets: confirmedTargets,
     core: plannedManifest.core.skills,
-    instructions: instructionPlan.changes.map(({ path, clients, status }) => ({
+    instructions: instructionPlan.changes.map(({ path, agents, status }) => ({
       path,
-      clients,
+      agents,
       status,
     })),
     manual: instructionPlan.manual,
@@ -490,7 +446,7 @@ export async function runInit(
     if (!options.isJson && isInteractive()) {
       if (guided) {
         console.log("\nReview");
-        console.log(`  clients: ${selectedClients.join(", ") || "(none)"}`);
+        console.log(`  agents: ${selectedAgents.join(", ") || "(none)"}`);
         console.log(
           `  targets: ${confirmedTargets.map((target) => `${target.name} -> ${target.dir}`).join(", ") || "(none)"}`,
         );
@@ -606,10 +562,7 @@ export async function runInit(
     console.log("next: skillmux core pin <skill_id> --yes");
   }
   if (confirmedTargets.length > 0) console.log("next: skillmux sync");
-  if (
-    selectedClients.length === 0 ||
-    selectedClients.includes("skillmux-mcp")
-  ) {
+  if (selectedAgents.length === 0 || showMcpSetup) {
     console.log(`\n${printLastMile()}`);
   }
   // Reaching this point already required approval above (--yes, or an accepted

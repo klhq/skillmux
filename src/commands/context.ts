@@ -10,6 +10,7 @@ import {
   emitSuccess,
   renderTable,
   renderTargetBanner,
+  unknownSubcommandError,
 } from "../output";
 
 export async function handleContextCommand(
@@ -99,5 +100,5 @@ export async function handleContextCommand(
     return;
   }
 
-  throw new Error("usage: skillmux context <add|list|current|use|remove>");
+  throw unknownSubcommandError("context", sub, ["add", "list", "current", "use", "remove"]);
 }

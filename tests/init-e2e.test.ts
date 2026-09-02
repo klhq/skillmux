@@ -48,7 +48,7 @@ describe("skillmux init end-to-end", () => {
     const first = await run([
       "init",
       "--vault", vault,
-      "--client", "claude-code",
+      "--agent", "claude-code",
       "--core", "review-code",
       "--yes",
     ]);
@@ -75,7 +75,7 @@ describe("skillmux init end-to-end", () => {
     const second = await run([
       "init",
       "--vault", vault,
-      "--client", "claude-code",
+      "--agent", "claude-code",
       "--core", "review-code",
       "--yes",
     ]);
@@ -90,7 +90,7 @@ describe("skillmux init end-to-end", () => {
   test("can skip managed instruction files", async () => {
     const result = await run([
       "init",
-      "--client", "codex",
+      "--agent", "codex",
       "--no-instructions",
       "--yes",
     ]);

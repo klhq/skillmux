@@ -1,7 +1,7 @@
 import { existsSync, lstatSync } from "node:fs";
 import { basename } from "node:path";
 import { expandHome } from "../config";
-import { planClientSurfaces, SUPPORTED_CLIENT_IDS } from "../init-clients";
+import { planAgentSurfaces, SUPPORTED_AGENT_IDS } from "../init-agents";
 import {
   parseManifest,
   pinProject,
@@ -19,17 +19,17 @@ import {
   promptText,
   shouldUseWizard,
 } from "../prompts";
-import { emitSuccess, isInteractive } from "../output";
+import { emitSuccess, isInteractive, unknownSubcommandError } from "../output";
 import { confirmAction, confirmIfNeeded, loadManifestContext } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 const PROJECT_INIT_USAGE =
-  "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--client <id>...] [--target <name>...] [--yes] [--no-sync]";
+  "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--agent <id>...] [--target <name>...] [--yes] [--no-sync]";
 
 interface ProjectInitArgs {
   path: string;
   name: string;
   skills: string[];
-  clients: string[];
+  agents: string[];
   targets: string[];
   yes: boolean;
   sync: boolean;
@@ -45,16 +45,16 @@ export function configuredTargetForSurface(
   )?.[0];
 }
 
-function configuredTargetsForClients(
+function configuredTargetsForAgents(
   manifest: ReturnType<typeof parseManifest>,
-  clients: readonly string[],
+  agents: readonly string[],
 ): string[] {
-  return planClientSurfaces(clients).surfaces.map((surface) => {
+  return planAgentSurfaces(agents).surfaces.map((surface) => {
     const target = configuredTargetForSurface(manifest, surface);
     if (target) return target;
-    const client = surface.clients[0]!;
+    const agent = surface.agents[0]!;
     throw new Error(
-      `client target for "${client}" is not configured; run "skillmux init --client ${client} --yes" first`,
+      `agent target for "${agent}" is not configured; run "skillmux init --agent ${agent} --yes" first`,
     );
   });
 }
@@ -63,7 +63,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
   let projectPath: string | undefined;
   let name: string | undefined;
   const skills: string[] = [];
-  const clients: string[] = [];
+  const agents: string[] = [];
   const targets: string[] = [];
   let yes = false;
   let sync = true;
@@ -81,10 +81,10 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
       const target = args[++i];
       if (!target) throw new Error("--target requires a name");
       targets.push(target);
-    } else if (arg === "--client") {
-      const client = args[++i];
-      if (!client) throw new Error("--client requires a name");
-      clients.push(client);
+    } else if (arg === "--agent") {
+      const agent = args[++i];
+      if (!agent) throw new Error("--agent requires a name");
+      agents.push(agent);
     } else if (arg === "--yes") {
       yes = true;
     } else if (arg === "--no-sync") {
@@ -110,7 +110,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
     path,
     name: name ?? suggestProjectName(basename(path)),
     skills,
-    clients,
+    agents,
     targets,
     yes,
     sync,
@@ -263,15 +263,15 @@ export async function runProject(
     const group = args[0];
     if (!group)
       throw new Error(
-        `usage: skillmux project ${subCommand} <group> (--client <id>... | --target <name>...) --yes`,
+        `usage: skillmux project ${subCommand} <group> (--agent <id>... | --target <name>...) --yes`,
       );
-    const clients: string[] = [];
+    const agents: string[] = [];
     const requestedTargets: string[] = [];
     for (let i = 1; i < args.length; i++) {
-      if (args[i] === "--client") {
+      if (args[i] === "--agent") {
         const value = args[++i];
-        if (!value) throw new Error("--client requires a name");
-        clients.push(value);
+        if (!value) throw new Error("--agent requires a name");
+        agents.push(value);
       } else if (args[i] === "--target") {
         const value = args[++i];
         if (!value) throw new Error("--target requires a name");
@@ -286,11 +286,20 @@ export async function runProject(
     }
     const { config, vaultPath, manifestPath, manifest } =
       await loadManifestContext();
-    const clientTargets = configuredTargetsForClients(manifest, clients);
-    const targets = [...new Set([...requestedTargets, ...clientTargets])];
+    const agentTargets = configuredTargetsForAgents(manifest, agents);
+    const targets = [...new Set([...requestedTargets, ...agentTargets])];
     if (targets.length === 0) {
-      throw new Error(`project ${subCommand} requires --client or --target`);
+      throw new Error(`project ${subCommand} requires --agent or --target`);
     }
+    // Several agents can share one target (e.g. gemini-cli/opencode both use
+    // agent-skills) — show the resolved directory, not just the target name,
+    // so it's clear at confirmation time which physical folder this affects.
+    const targetDirs = Object.fromEntries(
+      targets.map((t) => [t, manifest.targets[t]?.dir ?? "(unknown)"]),
+    );
+    const targetsDisplay = targets
+      .map((t) => `${t} (${targetDirs[t]})`)
+      .join(", ");
     const updated = updateProjectTargets(manifest, group, {
       ...(subCommand === "attach" ? { attach: targets } : { detach: targets }),
     });
@@ -302,10 +311,10 @@ export async function runProject(
     if (options.dryRun) {
       emitSuccess(
         { isJson: options.isJson },
-        { subcommand: subCommand, group, targets },
+        { subcommand: subCommand, group, targets, target_dirs: targetDirs },
         () =>
           console.log(
-            `${subCommand}: [project.${group}] ${targets.join(", ")} (dry-run)`,
+            `${subCommand}: [project.${group}] ${targetsDisplay} (dry-run)`,
           ),
       );
       return;
@@ -314,7 +323,7 @@ export async function runProject(
       !(await confirmIfNeeded({
         confirmed: args.includes("--yes"),
         isJson: options.isJson,
-        prompt: `${subCommand} [project.${group}] to ${targets.join(", ")}?`,
+        prompt: `${subCommand} [project.${group}] to ${targetsDisplay}?`,
         nonInteractiveError: `skillmux project ${subCommand} requires --yes when run non-interactively`,
       }))
     )
@@ -322,12 +331,23 @@ export async function runProject(
     writeManifestAtomic(manifestPath, updated);
     emitSuccess(
       { isJson: options.isJson },
-      { subcommand: subCommand, group, targets },
-      () => console.log(`${subCommand}: [project.${group}] ${targets.join(", ")}`),
+      { subcommand: subCommand, group, targets, target_dirs: targetDirs },
+      () => console.log(`${subCommand}: [project.${group}] ${targetsDisplay}`),
     );
     return;
   }
-  if (subCommand !== "init") throw new Error(PROJECT_INIT_USAGE);
+  if (subCommand !== "init")
+    throw unknownSubcommandError("project", subCommand, [
+      "init",
+      "list",
+      "show",
+      "add-path",
+      "remove-path",
+      "pin",
+      "unpin",
+      "attach",
+      "detach",
+    ]);
   let request = parseProjectInitArgs(args);
   const guided = shouldUseWizard(args, {
     interactive: isInteractive(),
@@ -345,20 +365,20 @@ export async function runProject(
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   if (guided) {
     const name = await promptText("Project group", request.name);
-    const availableClients = SUPPORTED_CLIENT_IDS.filter((client) => {
-      const surface = planClientSurfaces([client]).surfaces[0];
+    const availableAgents = SUPPORTED_AGENT_IDS.filter((agent) => {
+      const surface = planAgentSurfaces([agent]).surfaces[0];
       return (
         surface !== undefined &&
         configuredTargetForSurface(manifest, surface) !== undefined
       );
     });
-    const clients = await promptMultiSelect(
-      "Which clients should receive project skills?",
-      availableClients.map((client) => ({
-        value: client,
-        label: client,
+    const agents = await promptMultiSelect(
+      "Which agents should receive project skills?",
+      availableAgents.map((agent) => ({
+        value: agent,
+        label: agent,
         selected:
-          request.clients.length === 0 || request.clients.includes(client),
+          request.agents.length === 0 || request.agents.includes(agent),
       })),
     );
     const skills = parseCommaList(
@@ -367,10 +387,10 @@ export async function runProject(
         request.skills.join(","),
       ),
     );
-    request = { ...request, name, clients, skills };
+    request = { ...request, name, agents, skills };
   }
-  const clientTargets = configuredTargetsForClients(manifest, request.clients);
-  const targets = [...new Set([...request.targets, ...clientTargets])];
+  const agentTargets = configuredTargetsForAgents(manifest, request.agents);
+  const targets = [...new Set([...request.targets, ...agentTargets])];
   const updated = upsertProject(manifest, {
     name: request.name,
     paths: [request.path],
@@ -383,7 +403,7 @@ export async function runProject(
     project: request.name,
     path: request.path,
     skills: request.skills,
-    clients: request.clients,
+    agents: request.agents,
     targets,
     sync: request.sync,
     notes,
@@ -401,7 +421,7 @@ export async function runProject(
         console.log("\nReview");
         console.log(`  project: ${request.name}`);
         console.log(`  path: ${request.path}`);
-        console.log(`  clients: ${request.clients.join(", ") || "(none)"}`);
+        console.log(`  agents: ${request.agents.join(", ") || "(none)"}`);
         console.log(`  skills: ${request.skills.join(", ") || "(none)"}`);
         console.log(`  sync: ${request.sync ? "yes" : "no"}`);
       }

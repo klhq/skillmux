@@ -6,7 +6,7 @@ const TOP_LEVEL_COMMANDS: { name: string; description: string }[] = [
   { name: "serve", description: "Start MCP server" },
   { name: "index", description: "Rebuild local search index" },
   { name: "sync", description: "Synchronize vault skills" },
-  { name: "init", description: "Configure this machine and its clients" },
+  { name: "init", description: "Configure this machine and its agents" },
   { name: "project", description: "Configure project-scoped skills" },
   { name: "target", description: "Manage advanced skill-delivery targets" },
   { name: "core", description: "Pin/unpin skills into [core]" },
@@ -62,18 +62,15 @@ _skillmux_completions() {
         local-vault)
             COMPREPLY=( $(compgen -W "init" -- "$cur") )
             ;;
-        --client)
-            COMPREPLY=( $(compgen -W "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp" -- "$cur") )
-            ;;
-        --target)
-            COMPREPLY=( $(compgen -W "agent-skills claude-code codex custom" -- "$cur") )
+        --agent)
+            COMPREPLY=( $(compgen -W "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes" -- "$cur") )
             ;;
     esac
     if [ "\${COMP_WORDS[1]}" = "init" ] && [ "\${#COMPREPLY[@]}" -eq 0 ]; then
-        COMPREPLY=( $(compgen -W "--client --target --dir --vault --core --migrate-full-vault --no-instructions --no-sync --interactive --yes --dry-run --json" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--agent --vault --core --migrate-full-vault --show-mcp-setup --no-instructions --no-sync --interactive --yes --dry-run --json" -- "$cur") )
     fi
     if [ "\${COMP_WORDS[1]}" = "project" ] && [ "\${COMP_WORDS[2]}" = "init" ]; then
-        COMPREPLY=( $(compgen -W "--name --skill --client --target --no-sync --interactive --yes --dry-run --json" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--name --skill --agent --target --no-sync --interactive --yes --dry-run --json" -- "$cur") )
     fi
 }
 complete -F _skillmux_completions skillmux
@@ -92,12 +89,11 @@ ${commands}
         _describe -t commands 'skillmux command' commands
     elif [[ "$words[2]" == "init" ]]; then
         _arguments \\
-          '*--client[select a client]:client:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp)' \\
-          '*--target[select a delivery target]:target:(agent-skills claude-code codex custom)' \\
-          '--dir[custom target directory]:directory:_directories' \\
+          '*--agent[select an agent]:agent:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes)' \\
           '--vault[vault directory]:directory:_directories' \\
           '*--core[seed a core skill]:skill id:' \\
           '--migrate-full-vault[convert a full-vault symlink to managed pins]' \\
+          '--show-mcp-setup[also print the MCP registration snippet]' \\
           '--no-instructions[skip managed instruction files]' \\
           '--no-sync[save setup without synchronizing targets]' \\
           '--interactive[force guided setup]' \\
@@ -109,7 +105,7 @@ ${commands}
           '1:project directory:_directories' \\
           '--name[project group name]:group:' \\
           '*--skill[project skill]:skill id:' \\
-          '*--client[select a client]:client:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity)' \\
+          '*--agent[select an agent]:agent:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity)' \\
           '*--target[select an advanced target]:target:' \\
           '--no-sync[save setup without synchronizing targets]' \\
           '--interactive[force guided setup]' \\
@@ -139,12 +135,11 @@ _skillmux "$@"
     return `# fish completion for skillmux
 complete -c skillmux -f
 ${topLevel}
-complete -c skillmux -n "__fish_seen_subcommand_from init" -l client -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes skillmux-mcp" -d "Select a client"
-complete -c skillmux -n "__fish_seen_subcommand_from init" -l target -x -a "agent-skills claude-code codex custom" -d "Select a delivery target"
-complete -c skillmux -n "__fish_seen_subcommand_from init" -l dir -r -d "Custom target directory"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l agent -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes" -d "Select an agent"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l vault -r -d "Vault directory"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l core -x -d "Seed a core skill"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l migrate-full-vault -d "Convert a full-vault symlink"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l show-mcp-setup -d "Also print the MCP registration snippet"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l no-instructions -d "Skip managed instruction files"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l interactive -d "Force guided setup"
@@ -154,7 +149,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from init" -l json -d "Emit a JS
 complete -c skillmux -n "__fish_seen_subcommand_from project" -a "init list show add-path remove-path pin unpin attach detach" -d "Manage projects"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l name -x -d "Project group name"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l skill -x -d "Project skill"
-complete -c skillmux -n "__fish_seen_subcommand_from project" -l client -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity" -d "Select a client"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l agent -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity" -d "Select an agent"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l target -x -d "Select an advanced delivery target"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l interactive -d "Force guided setup"

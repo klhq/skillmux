@@ -112,6 +112,28 @@ export function suggestCorrection(input: string, candidates: string[]): string |
   return bestMatch;
 }
 
+/**
+ * Builds the error for an unrecognized subcommand: "did you mean X" when
+ * close to a valid one, otherwise the full <a|b|c> usage list — never a
+ * fixed, possibly-unrelated usage string for just one of several valid
+ * subcommands (that's what `config`'s fallback used to do before this
+ * existed: any invalid subcommand got told "usage: skillmux config show",
+ * silently omitting get/set/validate/diff/status/init).
+ */
+export function unknownSubcommandError(
+  command: string,
+  subCommand: string,
+  validSubcommands: string[],
+): Error {
+  const suggestion = subCommand ? suggestCorrection(subCommand, validSubcommands) : null;
+  if (suggestion) {
+    return new Error(
+      `Unknown "${command} ${subCommand}" subcommand. Did you mean "${command} ${suggestion}"?`,
+    );
+  }
+  return new Error(`usage: skillmux ${command} <${validSubcommands.join("|")}>`);
+}
+
 export function isInteractive(
   env: NodeJS.ProcessEnv = process.env,
   stdoutIsTTY = process.stdout.isTTY,

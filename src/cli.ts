@@ -78,7 +78,7 @@ export const KNOWN_COMMANDS = [
  * nor actually remote-capable — it just silently ran local logic that choked
  * on an unrecognized --context/--server flag with a confusing error).
  *
- * - "local-only": operates on this machine's vault/filesystem/clients only;
+ * - "local-only": operates on this machine's vault/filesystem/agents only;
  *   a remote target is rejected outright.
  * - "remote-capable": routed through TargetAdapter — same command, backed by
  *   LocalAdapter or RemoteAdapter depending on the resolved target.
@@ -136,13 +136,53 @@ export function getLocalOnlyCommand(command: string, subCommand: string): string
   return null;
 }
 
+/**
+ * Why a local-only command can't take a remote target, keyed by the exact
+ * string getLocalOnlyCommand() returns. Drives the guidance sentence
+ * remoteContextUnsupported() appends, so the rejection points somewhere
+ * useful instead of just saying no.
+ */
+type LocalOnlyReason = "vault-content" | "native-delivery" | "local-runtime" | "local-config";
+
+const LOCAL_ONLY_REASON: Record<string, LocalOnlyReason> = {
+  install: "vault-content",
+  update: "vault-content",
+  outdated: "vault-content",
+  scan: "vault-content",
+  init: "native-delivery",
+  sync: "native-delivery",
+  target: "native-delivery",
+  core: "native-delivery",
+  project: "native-delivery",
+  "local-vault": "native-delivery",
+  "skill which": "native-delivery",
+  serve: "local-runtime",
+  models: "local-runtime",
+  index: "local-runtime",
+  "config init": "local-config",
+};
+
+const LOCAL_ONLY_GUIDANCE: Record<LocalOnlyReason, string> = {
+  "vault-content":
+    "To change a remote deployment's vault contents, update its git-backed source and redeploy or pull on that host — skillmux doesn't replicate vault checkouts over the network.",
+  "native-delivery":
+    "This manages skill delivery into agent directories on the machine you run it from; there's no remote equivalent — run it on the machine that owns those directories.",
+  "local-runtime":
+    "This operates on the local runtime process on the machine you run it from.",
+  "local-config":
+    "This bootstraps this machine's own config file. To inspect or change a remote deployment's configuration, use \"skillmux config show/set --context <name>\" instead.",
+};
+
 function remoteContextUnsupported(rejectedCommand: string): CliError {
+  const reason = LOCAL_ONLY_REASON[rejectedCommand];
+  const guidance = reason ? ` ${LOCAL_ONLY_GUIDANCE[reason]}` : "";
   return new CliError(
-    `\`${rejectedCommand}\` operates on the local vault only; --context/--server isn't supported here`,
+    `\`${rejectedCommand}\` operates on the local vault only; --context/--server isn't supported here.${guidance}`,
     2,
     "REMOTE_CONTEXT_UNSUPPORTED",
     {
       rejected_command: rejectedCommand,
+      ...(reason ? { reason } : {}),
     },
   );
 }
@@ -517,7 +557,7 @@ alongside a stdio transport without opening the full HTTP surface.`,
 usage:
   skillmux index`,
 
-  sync: `sync: apply the manifest to native client target directories
+  sync: `sync: apply the manifest to native agent target directories
 
 usage:
   skillmux sync [--dry-run] [--restore-monolith] [--install-hook] [--yes] [--json]`,
@@ -525,20 +565,25 @@ usage:
   init: `init: guided setup for native skill management
 
 usage:
-  skillmux init [--client <name>...] [--target <name>...] [--dir <dir>]
-                [--vault <path>] [--core <skill_id>...]
-                [--migrate-full-vault] [--no-instructions] [--no-sync]
-                [--interactive|--yes|--dry-run] [--json]
+  skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
+                [--migrate-full-vault] [--show-mcp-setup] [--no-instructions]
+                [--no-sync] [--interactive|--yes|--dry-run] [--json]
 
-clients: claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
-         antigravity, goose, hermes, skillmux-mcp
-targets: agent-skills, claude-code, codex, custom`,
+agents: claude-code, codex, gemini-cli, opencode, github-copilot,
+windsurf, antigravity, goose, hermes
+
+--show-mcp-setup also prints the MCP registration snippet, independent
+of which (if any) agents you select — there's no agent ID for "just
+MCP". A tool not in the list above isn't supported by init yet — add it
+to SUPPORTED_AGENT_IDS rather than guessing a directory. To adopt an
+arbitrary existing directory directly, use "skillmux target add <name>
+--dir <dir>" instead of init.`,
 
   project: `project: manage project-scoped skill pins and sync groups
 
 usage:
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
-                [--client <name>...] [--target <name>...] [--no-sync]
+                [--agent <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project list
   skillmux project show <group>
@@ -546,16 +591,19 @@ usage:
   skillmux project remove-path <group> [path] --yes
   skillmux project pin <group> <skill_id>... --yes
   skillmux project unpin <group> <skill_id>... --yes
-  skillmux project attach <group> (--client <id>... | --target <name>...) --yes
-  skillmux project detach <group> (--client <id>... | --target <name>...) --yes`,
+  skillmux project attach <group> (--agent <id>... | --target <name>...) --yes
+  skillmux project detach <group> (--agent <id>... | --target <name>...) --yes`,
 
   target: `target: manage native sync target directories
 
 usage:
   skillmux target list
   skillmux target show <name>
-  skillmux target add <name> --dir <dir> --yes
-  skillmux target remove <name> --yes`,
+  skillmux target add <name> [--dir <dir>] --yes
+  skillmux target remove <name> --yes
+
+--dir may be omitted when <name> is a built-in target with a deterministic
+path: agent-skills, claude-code, codex. Any other <name> requires --dir.`,
 
   core: `core: pin or unpin core-tier skills
 
@@ -655,24 +703,23 @@ See docs/deployment.md for server deployment examples.`);
 
 Setup:
   skillmux config init --vault <path> --yes
-  skillmux init [--client <name>...] [--target <name>...] [--dir <dir>]
-                [--vault <path>] [--core <skill_id>...]
+  skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
-                [--client <name>...] [--target <name>...] [--no-sync]
+                [--agent <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
   skillmux target <list|show|add|remove>
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
   skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)
 
-Init clients:
+Init agents:
   claude-code, codex, gemini-cli, opencode, github-copilot, windsurf,
-  antigravity, goose, hermes, skillmux-mcp
-
-Init targets:
-  agent-skills, claude-code, codex, custom
+  antigravity, goose, hermes
+  ("skillmux init --show-mcp-setup" also prints the MCP registration
+  snippet, independent of which agents you select. A tool not in this
+  list isn't supported by init yet — see "skillmux init --help".)
 
 Operations:
   skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]

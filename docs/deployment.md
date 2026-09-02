@@ -296,7 +296,7 @@ Read [CLI reference](cli.md#administrative-http-api-adminv1) for routes and
 
 Named contexts administer the deployed server only — configuration, stats,
 audit prune, evaluation, and remote diagnostics. They do not install, pin,
-synchronize, or otherwise manage skill directories on remote client machines.
+synchronize, or otherwise manage skill directories on remote agent machines.
 Run those filesystem-management commands through Skillmux CLI on the machine
 that owns the directories. The full and slim server images read their mounted
 vault checkout and do not manage host agent directories.

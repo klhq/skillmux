@@ -1,11 +1,11 @@
 # Managing skills
 
 Skillmux keeps skill content in a vault checkout and materializes selected
-skills into client directories. The vault source of truth is the logical
+skills into agent directories. The vault source of truth is the logical
 collection; a checkout is its physical copy. This guide covers the commands
 that change or inspect that state.
 
-Run these commands on the machine that owns the vault checkout and client
+Run these commands on the machine that owns the vault checkout and agent
 directories. For a retrieval-only Docker service, manage the mounted checkout
 on the host and keep the container mount read-only; the server image does not
 manage host agent directories.
@@ -114,28 +114,28 @@ skill whose on-disk content has drifted from what was last installed —
 someone may have hand-edited it. Pass `--force` to overwrite anyway. Like
 `audit prune`, a non-interactive or `--json` run needs `--yes`.
 
-## Plan client delivery
+## Plan agent delivery
 
-Use product names for common clients:
+Use product names for common agents:
 
 ```sh
-skillmux init --client claude-code --client codex --dry-run
+skillmux init --agent claude-code --agent codex --dry-run
 ```
 
-Use a direct target when you need a known path:
+For a directory that isn't tied to any supported agent, use `target add`
+directly instead of `init`:
 
 ```sh
-skillmux init --target agent-skills --yes
-skillmux init --target custom --dir /srv/my-agent/skills --yes
+skillmux target add my-agent --dir /srv/my-agent/skills --yes
 ```
 
 Skillmux refuses to adopt a target that points to the whole vault because sync
 would reduce its visible skills. Review that migration first:
 
 ```sh
-skillmux init --client claude-code --migrate-full-vault \
+skillmux init --agent claude-code --migrate-full-vault \
   --core csv-formatter --dry-run
-skillmux init --client claude-code --migrate-full-vault \
+skillmux init --agent claude-code --migrate-full-vault \
   --core csv-formatter --yes
 ```
 
@@ -170,7 +170,7 @@ skillmux project list
 skillmux project show my-project
 skillmux project add-path my-project ~/code/my-project --yes
 skillmux project pin my-project code-context --yes
-skillmux project attach my-project --client claude-code --client codex --yes
+skillmux project attach my-project --agent claude-code --agent codex --yes
 skillmux project unpin my-project code-context --yes
 skillmux project detach my-project --target codex --yes
 skillmux project remove-path my-project ~/code/my-project --yes

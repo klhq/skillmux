@@ -1,27 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import {
-  assessClientReadiness,
-  detectInstalledClients,
+  assessAgentReadiness,
+  detectInstalledAgents,
   resolveBuiltInTarget,
-  SUPPORTED_CLIENT_IDS,
-  planClientSurfaces,
-} from "../src/init-clients";
+  SUPPORTED_AGENT_IDS,
+  planAgentSurfaces,
+} from "../src/init-agents";
 
-describe("init client registry", () => {
-  test("detects installed clients with concrete filesystem evidence", () => {
-    const detected = detectInstalledClients({
+describe("init agent registry", () => {
+  test("detects installed agents with concrete filesystem evidence", () => {
+    const detected = detectInstalledAgents({
       home: "/home/tester",
       exists: (path) => path === "/home/tester/.claude" || path === "/home/tester/.config/goose",
     });
 
     expect(detected).toEqual([
-      { client: "claude-code", evidence: "/home/tester/.claude" },
-      { client: "goose", evidence: "/home/tester/.config/goose" },
+      { agent: "claude-code", evidence: "/home/tester/.claude" },
+      { agent: "goose", evidence: "/home/tester/.config/goose" },
     ]);
   });
 
-  test("supports the documented client names", () => {
-    expect(SUPPORTED_CLIENT_IDS).toEqual([
+  test("supports the documented agent names", () => {
+    expect(SUPPORTED_AGENT_IDS).toEqual([
       "claude-code",
       "codex",
       "gemini-cli",
@@ -31,12 +31,11 @@ describe("init client registry", () => {
       "antigravity",
       "goose",
       "hermes",
-      "skillmux-mcp",
     ]);
   });
 
-  test("deduplicates clients that share the global agent-skills surface", () => {
-    const plan = planClientSurfaces(
+  test("deduplicates agents that share the global agent-skills surface", () => {
+    const plan = planAgentSurfaces(
       ["gemini-cli", "opencode", "github-copilot", "windsurf"],
       { home: "/home/tester" },
     );
@@ -47,19 +46,19 @@ describe("init client registry", () => {
         targetName: "agent-skills",
         path: "/home/tester/.agents/skills",
         deliveryMode: "managed-pins",
-        clients: ["gemini-cli", "opencode", "github-copilot", "windsurf"],
+        agents: ["gemini-cli", "opencode", "github-copilot", "windsurf"],
       },
     ]);
   });
 
-  test("deduplicates repeated client selections", () => {
-    const plan = planClientSurfaces(
+  test("deduplicates repeated agent selections", () => {
+    const plan = planAgentSurfaces(
       ["claude-code", "claude-code"],
       { home: "/home/tester" },
     );
 
-    expect(plan.clients.map((client) => client.id)).toEqual(["claude-code"]);
-    expect(plan.surfaces[0]?.clients).toEqual(["claude-code"]);
+    expect(plan.agents.map((agent) => agent.id)).toEqual(["claude-code"]);
+    expect(plan.surfaces[0]?.agents).toEqual(["claude-code"]);
   });
 
   test("resolves built-in targets and legacy aliases without vague names", () => {
@@ -94,34 +93,28 @@ describe("init client registry", () => {
   });
 
   test("reports skill surface, MCP registration, and instructions separately", () => {
-    const plan = planClientSurfaces(
-      ["gemini-cli", "goose", "hermes", "skillmux-mcp"],
+    const plan = planAgentSurfaces(
+      ["gemini-cli", "goose", "hermes"],
       { home: "/home/tester" },
     );
 
-    expect(assessClientReadiness(plan)).toEqual([
+    expect(assessAgentReadiness(plan)).toEqual([
       {
-        client: "gemini-cli",
+        agent: "gemini-cli",
         skillSurface: { status: "planned", detail: "/home/tester/.agents/skills" },
         mcpRegistration: { status: "not-applicable", detail: "native skill loading" },
         instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
       },
       {
-        client: "goose",
+        agent: "goose",
         skillSurface: { status: "manual", detail: "configure the full vault in Goose" },
         mcpRegistration: { status: "not-applicable", detail: "native skill loading" },
         instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
       },
       {
-        client: "hermes",
+        agent: "hermes",
         skillSurface: { status: "manual", detail: "configure the full vault in Hermes external_dirs" },
         mcpRegistration: { status: "not-applicable", detail: "native skill loading" },
-        instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
-      },
-      {
-        client: "skillmux-mcp",
-        skillSurface: { status: "not-applicable", detail: "skills resolve through Skillmux MCP" },
-        mcpRegistration: { status: "manual", detail: "register the Skillmux MCP server" },
         instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
       },
     ]);

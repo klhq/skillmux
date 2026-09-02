@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const SUPPORTED_CLIENT_IDS = [
+export const SUPPORTED_AGENT_IDS = [
   "claude-code",
   "codex",
   "gemini-cli",
@@ -12,34 +12,33 @@ export const SUPPORTED_CLIENT_IDS = [
   "antigravity",
   "goose",
   "hermes",
-  "skillmux-mcp",
 ] as const;
 
-export type ClientId = (typeof SUPPORTED_CLIENT_IDS)[number];
-export type DeliveryMode = "managed-pins" | "full-vault" | "mcp";
+export type AgentId = (typeof SUPPORTED_AGENT_IDS)[number];
+export type DeliveryMode = "managed-pins" | "full-vault";
 
-export interface DetectedClient {
-  client: ClientId;
+export interface DetectedAgent {
+  agent: AgentId;
   evidence: string;
 }
 
-interface ClientDefinition {
-  id: ClientId;
+interface AgentDefinition {
+  id: AgentId;
   surfaceId?: "agent-skills" | "claude-code" | "codex" | "antigravity";
   deliveryMode: DeliveryMode;
 }
 
-export interface PlannedClientSurface {
+export interface PlannedAgentSurface {
   id: string;
   targetName: string;
   path: string;
   deliveryMode: "managed-pins";
-  clients: ClientId[];
+  agents: AgentId[];
 }
 
-export interface ClientSurfacePlan {
-  clients: ClientDefinition[];
-  surfaces: PlannedClientSurface[];
+export interface AgentSurfacePlan {
+  agents: AgentDefinition[];
+  surfaces: PlannedAgentSurface[];
 }
 
 type ReadinessStatus = "ready" | "planned" | "manual" | "not-applicable";
@@ -49,8 +48,8 @@ export interface ReadinessAxis {
   detail: string;
 }
 
-export interface ClientReadiness {
-  client: ClientId;
+export interface AgentReadiness {
+  agent: AgentId;
   skillSurface: ReadinessAxis;
   mcpRegistration: ReadinessAxis;
   instructionSetup: ReadinessAxis;
@@ -62,7 +61,7 @@ export interface ResolvedBuiltInTarget {
   warning?: string;
 }
 
-const CLIENTS: Record<ClientId, ClientDefinition> = {
+const AGENTS: Record<AgentId, AgentDefinition> = {
   "claude-code": { id: "claude-code", surfaceId: "claude-code", deliveryMode: "managed-pins" },
   codex: { id: "codex", surfaceId: "codex", deliveryMode: "managed-pins" },
   "gemini-cli": { id: "gemini-cli", surfaceId: "agent-skills", deliveryMode: "managed-pins" },
@@ -72,20 +71,19 @@ const CLIENTS: Record<ClientId, ClientDefinition> = {
   antigravity: { id: "antigravity", surfaceId: "antigravity", deliveryMode: "managed-pins" },
   goose: { id: "goose", deliveryMode: "full-vault" },
   hermes: { id: "hermes", deliveryMode: "full-vault" },
-  "skillmux-mcp": { id: "skillmux-mcp", deliveryMode: "mcp" },
 };
 
-export function detectInstalledClients(
+export function detectInstalledAgents(
   options: {
     home?: string;
     codexHome?: string;
     exists?: (path: string) => boolean;
   } = {},
-): DetectedClient[] {
+): DetectedAgent[] {
   const home = options.home ?? homedir();
   const codexHome = options.codexHome ?? join(home, ".codex");
   const exists = options.exists ?? existsSync;
-  const candidates: Array<[ClientId, string]> = [
+  const candidates: Array<[AgentId, string]> = [
     ["claude-code", join(home, ".claude")],
     ["codex", codexHome],
     ["gemini-cli", join(home, ".gemini")],
@@ -97,11 +95,11 @@ export function detectInstalledClients(
   ];
   return candidates
     .filter(([, evidence]) => exists(evidence))
-    .map(([client, evidence]) => ({ client, evidence }));
+    .map(([agent, evidence]) => ({ agent, evidence }));
 }
 
 function surfacePath(
-  surfaceId: NonNullable<ClientDefinition["surfaceId"]>,
+  surfaceId: NonNullable<AgentDefinition["surfaceId"]>,
   options: { home: string; codexHome?: string },
 ): string {
   if (surfaceId === "agent-skills") return join(options.home, ".agents", "skills");
@@ -148,53 +146,53 @@ export function resolveBuiltInTarget(
   );
 }
 
-export function planClientSurfaces(
-  requestedClients: readonly string[],
+export function planAgentSurfaces(
+  requestedAgents: readonly string[],
   options: { home?: string; codexHome?: string } = {},
-): ClientSurfacePlan {
-  const clients = [...new Set(requestedClients)].map((id) => {
-    if (!SUPPORTED_CLIENT_IDS.includes(id as ClientId)) {
+): AgentSurfacePlan {
+  const agents = [...new Set(requestedAgents)].map((id) => {
+    if (!SUPPORTED_AGENT_IDS.includes(id as AgentId)) {
       throw new Error(
-        `unsupported client "${id}"; supported clients: ${SUPPORTED_CLIENT_IDS.join(", ")}`,
+        `unsupported agent "${id}"; supported agents: ${SUPPORTED_AGENT_IDS.join(", ")}`,
       );
     }
-    return CLIENTS[id as ClientId];
+    return AGENTS[id as AgentId];
   });
   const home = options.home ?? homedir();
-  const surfaces = new Map<string, PlannedClientSurface>();
+  const surfaces = new Map<string, PlannedAgentSurface>();
 
-  for (const client of clients) {
-    if (!client.surfaceId) continue;
-    const path = surfacePath(client.surfaceId, { home, codexHome: options.codexHome });
+  for (const agent of agents) {
+    if (!agent.surfaceId) continue;
+    const path = surfacePath(agent.surfaceId, { home, codexHome: options.codexHome });
     const existing = surfaces.get(path);
     if (existing) {
-      if (!existing.clients.includes(client.id)) existing.clients.push(client.id);
+      if (!existing.agents.includes(agent.id)) existing.agents.push(agent.id);
       continue;
     }
     surfaces.set(path, {
-      id: client.surfaceId,
-      targetName: client.surfaceId,
+      id: agent.surfaceId,
+      targetName: agent.surfaceId,
       path,
       deliveryMode: "managed-pins",
-      clients: [client.id],
+      agents: [agent.id],
     });
   }
 
-  return { clients, surfaces: [...surfaces.values()] };
+  return { agents, surfaces: [...surfaces.values()] };
 }
 
-export function assessClientReadiness(
-  plan: ClientSurfacePlan,
-  instructionReadiness: Partial<Record<ClientId, ReadinessAxis>> = {},
-): ClientReadiness[] {
-  return plan.clients.map((client) => {
-    const surface = plan.surfaces.find((candidate) => candidate.clients.includes(client.id));
+export function assessAgentReadiness(
+  plan: AgentSurfacePlan,
+  instructionReadiness: Partial<Record<AgentId, ReadinessAxis>> = {},
+): AgentReadiness[] {
+  return plan.agents.map((agent) => {
+    const surface = plan.surfaces.find((candidate) => candidate.agents.includes(agent.id));
     let skillSurface: ReadinessAxis;
     if (surface) {
       skillSurface = { status: "planned", detail: surface.path };
-    } else if (client.id === "goose") {
+    } else if (agent.id === "goose") {
       skillSurface = { status: "manual", detail: "configure the full vault in Goose" };
-    } else if (client.id === "hermes") {
+    } else if (agent.id === "hermes") {
       skillSurface = { status: "manual", detail: "configure the full vault in Hermes external_dirs" };
     } else {
       skillSurface = {
@@ -203,15 +201,16 @@ export function assessClientReadiness(
       };
     }
 
-    const mcpRegistration: ReadinessAxis = client.deliveryMode === "mcp"
-      ? { status: "manual", detail: "register the Skillmux MCP server" }
-      : { status: "not-applicable", detail: "native skill loading" };
+    const mcpRegistration: ReadinessAxis = {
+      status: "not-applicable",
+      detail: "native skill loading",
+    };
 
     return {
-      client: client.id,
+      agent: agent.id,
       skillSurface,
       mcpRegistration,
-      instructionSetup: instructionReadiness[client.id] ?? {
+      instructionSetup: instructionReadiness[agent.id] ?? {
         status: "manual",
         detail: "instruction adapter not applied",
       },

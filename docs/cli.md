@@ -4,11 +4,11 @@ The Bun package and standalone Linux executable expose the same Skillmux CLI.
 For Linux installation, use the [pinned checksum-verified download](getting-started.md#install-the-cli)
 or, when provenance verification is required, the
 [attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
-Native management belongs on the machine that owns the client skill directories:
+Native management belongs on the machine that owns the agent skill directories:
 use the built-in `local` target for `init`, `install`, pinning, and `sync`.
 Named remote contexts administer shared-server configuration through its
 administrative API only; they do not install, pin, synchronize, or otherwise
-manage skill directories on remote client machines.
+manage skill directories on remote agent machines.
 
 In this guide, **local target** means the filesystem and process selected by
 the built-in CLI context. It does not describe local inference. A local target
@@ -161,39 +161,40 @@ The JSON response contains no credential, API-key, or token values.
 
 `config init` writes only `vault_path`. It leaves an existing config unchanged
 and does not add `local_vault_paths`. Remote contexts administer the deployed
-server configuration; they never administer client skill installation, pins,
-sync, or any other remote-client directory operation.
+server configuration; they never administer agent skill installation, pins,
+sync, or any other remote-agent directory operation.
 
 ---
 
 ## Setup planner (`skillmux init`)
 
 Run `skillmux init` with no arguments in a terminal to start guided setup.
-Skillmux preselects clients it can detect from filesystem evidence, asks for
+Skillmux preselects agents it can detect from filesystem evidence, asks for
 core skills, prints one complete review, and applies after one confirmation.
 The prompt stays line-oriented and does not use an alternate terminal screen.
 
-Select clients by product name:
+Select agents by product name:
 
 ```sh
-skillmux init --client claude-code --client codex --core csv-formatter --dry-run
-skillmux init --client claude-code --client codex --core csv-formatter --yes
+skillmux init --agent claude-code --agent codex --core csv-formatter --dry-run
+skillmux init --agent claude-code --agent codex --core csv-formatter --yes
 ```
 
-Skillmux supports these client IDs:
+Skillmux supports these agent IDs:
 
-| Client | Skill delivery |
+| Agent | Skill delivery |
 |--------|----------------|
 | `claude-code` | `~/.claude/skills` |
 | `codex` | `$CODEX_HOME/skills`, falling back to `~/.codex/skills` |
 | `gemini-cli`, `opencode`, `github-copilot`, `windsurf` | Shared `~/.agents/skills` surface |
 | `antigravity` | `~/.gemini/config/skills` |
 | `goose`, `hermes` | Manual full-vault configuration |
-| `skillmux-mcp` | Manual MCP registration |
 
-Direct target IDs are `agent-skills`, `claude-code`, `codex`, and `custom`.
-Custom targets require `--dir <dir>`. The legacy `agents` and `claude` IDs
-print deprecation warnings and retain their manifest names.
+There's no agent ID for "just MCP" — pass `--show-mcp-setup` to also print
+the MCP registration snippet, independent of which (if any) agents you
+select. A tool not in this table isn't supported by `init` yet; for an
+arbitrary directory not tied to any supported agent, use `skillmux target
+add <name> --dir <dir> --yes` directly instead of `init`.
 
 `--dry-run` prints the config, target, instruction, and core plan without
 prompting or writing. `--json` emits one schema-versioned plan or result
@@ -205,15 +206,15 @@ Skillmux rejects a target that currently links to the whole vault. Convert it
 only after reviewing the smaller post-sync skill set:
 
 ```sh
-skillmux init --client claude-code --migrate-full-vault \
+skillmux init --agent claude-code --migrate-full-vault \
   --core csv-formatter --dry-run
-skillmux init --client claude-code --migrate-full-vault \
+skillmux init --agent claude-code --migrate-full-vault \
   --core csv-formatter --yes
 ```
 
-Client instruction adapters append one managed discovery block and preserve
+Agent instruction adapters append one managed discovery block and preserve
 the rest of each file. Skillmux uses `.hermes.md` for Hermes and refuses
-`SOUL.md` or Hermes's installed-source `AGENTS.md`. A client without a safe
+`SOUL.md` or Hermes's installed-source `AGENTS.md`. An agent without a safe
 user-level convention reports manual setup.
 
 ---
@@ -230,19 +231,19 @@ Skillmux resolves the project directory from an explicit positional path, then
 the current Git root, then the current directory. It suggests the directory
 basename as the project-group name.
 
-The noninteractive form accepts repeatable client and skill flags:
+The noninteractive form accepts repeatable agent and skill flags:
 
 ```sh
 skillmux project init ~/code/skillmux \
   --name skillmux \
-  --client claude-code \
-  --client codex \
+  --agent claude-code \
+  --agent codex \
   --skill sdd-tdd \
   --skill code-context \
   --yes
 ```
 
-`--client` maps product names to configured, deduplicated targets. Advanced
+`--agent` maps product names to configured, deduplicated targets. Advanced
 callers can attach a configured target with repeated `--target <name>`.
 Re-running the command merges missing paths, skills, and target attachments.
 It validates the complete manifest before an atomic write and runs `sync` by
@@ -257,13 +258,13 @@ skillmux project add-path skillmux ~/code/skillmux --yes
 skillmux project remove-path skillmux ~/old/skillmux --yes
 skillmux project pin skillmux sdd-tdd code-context --yes
 skillmux project unpin skillmux old-skill --yes
-skillmux project attach skillmux --client claude-code --client codex --yes
+skillmux project attach skillmux --agent claude-code --agent codex --yes
 skillmux project detach skillmux --target codex --yes
 ```
 
 `add-path` and `remove-path` detect the current Git root when the path is
-omitted. Client attachments map to configured physical targets and deduplicate
-clients that share `~/.agents/skills`. Mutating commands validate the complete
+omitted. Agent attachments map to configured physical targets and deduplicate
+agents that share `~/.agents/skills`. Mutating commands validate the complete
 manifest and replace it atomically. Run `skillmux sync` after direct
 maintenance commands to materialize the new state.
 
@@ -271,7 +272,7 @@ maintenance commands to materialize the new state.
 
 ## Advanced targets (`skillmux target`)
 
-Most users should select products with `init --client`. Use `target` commands
+Most users should select products with `init --agent`. Use `target` commands
 for custom delivery directories and manifest inspection:
 
 ```sh
@@ -404,7 +405,7 @@ The HTTP server has two separate surfaces:
 The MCP bearer token applies only to `/mcp`. The administrative bearer token
 below applies only to `/admin/v1/*` (and `GET /stats`); neither credential grants access to the
 other surface. Named contexts use the latter to administer the deployed server,
-not any remote client skill directory.
+not any remote agent skill directory.
 
 Remote servers expose administrative control endpoints under `/admin/v1/*` when enabled in configuration:
 

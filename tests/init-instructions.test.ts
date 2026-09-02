@@ -26,7 +26,7 @@ describe("init instruction adapters", () => {
       "/home/tester/.config/goose/.goosehints",
       "/home/tester/.hermes.md",
     ]);
-    expect(plan.changes.find((change) => change.path.endsWith("GEMINI.md"))?.clients)
+    expect(plan.changes.find((change) => change.path.endsWith("GEMINI.md"))?.agents)
       .toEqual(["gemini-cli", "antigravity"]);
     expect(plan.changes.some((change) => /SOUL\.md$/.test(change.path))).toBe(false);
     expect(plan.changes.some((change) => /\/AGENTS\.md$/.test(change.path) && change.path !== "/srv/codex/AGENTS.md"))

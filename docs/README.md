@@ -1,7 +1,7 @@
 # Skillmux documentation
 
 Skillmux manages one `SKILL.md` vault source of truth: the logical skill
-collection. A vault checkout is a physical copy used by a client machine or
+collection. A vault checkout is a physical copy used by an agent machine or
 server. On one machine, `~/skills` can be both. Choose a workflow based on
 where skills need to appear and where Skillmux should run.
 
@@ -19,7 +19,7 @@ where skills need to appear and where Skillmux should run.
 
 You can combine native management and local MCP retrieval on one machine. For
 native pins plus shared retrieval, run Skillmux CLI on each machine that owns
-client directories and deploy Skillmux server for HTTP MCP. The Bun package is
+agent directories and deploy Skillmux server for HTTP MCP. The Bun package is
 the cross-platform CLI installation method; the standalone Linux executable is
 its Linux alternative. Git and the deployment process, not Skillmux, replicate
 vault checkouts and determine their freshness; see
@@ -38,7 +38,7 @@ to customize behavior; see [Configuration](configuration.md#machine-config-boots
 
 The MCP and administrative surfaces use separate bearer tokens; possession of
 one does not grant access to the other. A named CLI context administers the
-deployed server only, never remote client skill directories. See
+deployed server only, never remote agent skill directories. See
 [Deployment](deployment.md#http-surfaces) for authentication and examples.
 
 ## Learn the model
