@@ -1088,6 +1088,92 @@ describe("skillmux project CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  // Deliberately does NOT test the case where registration is actually
+  // attempted (claude-code selected + --register-mcp together): claude is
+  // genuinely installed on dev machines that run this suite, and
+  // registerMcpServer's production path calls the real CLI with no fake-
+  // spawn seam reachable across the CLI subprocess boundary. That path is
+  // covered by tests/mcp-registration.test.ts with an injected fake spawn
+  // instead. These two tests only exercise the safe, no-real-invocation
+  // paths — same policy as the equivalent tests for "skillmux init".
+  test("project init leaves MCP registration and instructions off by default even with claude-code selected", async () => {
+    const projectPath = mkdtempSync(
+      join(tmpdir(), "skillmux-project-mcp-default-off-"),
+    );
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = []`,
+        ``,
+        `[targets.claude-code]`,
+        `dir = "~/does-not-matter"`,
+        `project_groups = []`,
+      ].join("\n"),
+    );
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--agent",
+      "claude-code",
+      "--yes",
+      "--no-sync",
+      "--json",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.data.result.mcp_registrations).toEqual([]);
+    expect(parsed.data.result.instructions_changed).toEqual([]);
+    expect(existsSync(join(projectPath, "CLAUDE.md"))).toBe(false);
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("project init --register-mcp is a no-op for an agent with no project-scoped registration command", async () => {
+    const projectPath = mkdtempSync(
+      join(tmpdir(), "skillmux-project-mcp-nonregistrable-"),
+    );
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = []`,
+        ``,
+        `[targets.agent-skills]`,
+        `dir = "~/does-not-matter"`,
+        `project_groups = []`,
+      ].join("\n"),
+    );
+
+    const result = await runCli(
+      "project",
+      "init",
+      projectPath,
+      "--name",
+      "demo",
+      "--agent",
+      "gemini-cli",
+      "--register-mcp",
+      "--yes",
+      "--no-sync",
+      "--json",
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.data.result.mcp_registrations).toEqual([]);
+    expect(parsed.data.result.register_mcp_for).toEqual([]);
+
+    rmSync(projectPath, { recursive: true, force: true });
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("project init explains how to configure a missing client target", async () => {
     const projectPath = mkdtempSync(
       join(tmpdir(), "skillmux-project-missing-client-"),

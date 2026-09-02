@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   isMcpRegistrable,
+  MCP_PROJECT_REGISTRABLE_AGENTS,
   MCP_REGISTRABLE_AGENTS,
   registerMcpServer,
 } from "../src/mcp-registration";
@@ -24,6 +25,14 @@ describe("MCP_REGISTRABLE_AGENTS", () => {
     expect(isMcpRegistrable("codex")).toBe(true);
     expect(isMcpRegistrable("gemini-cli")).toBe(false);
     expect(isMcpRegistrable("goose")).toBe(false);
+  });
+});
+
+describe("MCP_PROJECT_REGISTRABLE_AGENTS", () => {
+  test("only lists agents whose own CLI has a project MCP scope", () => {
+    // codex's mcp add has no --scope flag at all (always global), so only
+    // claude-code (--scope project) qualifies here.
+    expect(MCP_PROJECT_REGISTRABLE_AGENTS).toEqual(["claude-code"]);
   });
 });
 
@@ -101,5 +110,40 @@ describe("registerMcpServer", () => {
     const result = await registerMcpServer("goose");
     expect(result.ok).toBe(false);
     expect(result.error).toContain('no MCP registration command known for agent "goose"');
+  });
+
+  test("runs claude-code's project-scoped command with the project directory as cwd", async () => {
+    let capturedCmd: string[] = [];
+    let capturedCwd: string | undefined;
+    const result = await registerMcpServer("claude-code", {
+      scope: "project",
+      cwd: "/tmp/some-project",
+      spawn: (cmd, opts) => {
+        capturedCmd = cmd;
+        capturedCwd = opts?.cwd;
+        return { exited: Promise.resolve(0), stderr: fakeStream("") };
+      },
+    });
+    expect(capturedCmd).toEqual([
+      "claude",
+      "mcp",
+      "add",
+      "-s",
+      "project",
+      "skillmux",
+      "--",
+      "skillmux",
+      "serve",
+    ]);
+    expect(capturedCwd).toBe("/tmp/some-project");
+    expect(result).toEqual({ agent: "claude-code", ok: true });
+  });
+
+  test("rejects codex for project scope since its CLI has no scope flag", async () => {
+    const result = await registerMcpServer("codex", { scope: "project" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain(
+      'no project-scoped MCP registration command known for agent "codex"',
+    );
   });
 });

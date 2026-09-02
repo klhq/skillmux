@@ -70,7 +70,7 @@ _skillmux_completions() {
         COMPREPLY=( $(compgen -W "--agent --vault --core --migrate-full-vault --show-mcp-setup --register-mcp --no-instructions --no-sync --interactive --yes --dry-run --json" -- "$cur") )
     fi
     if [ "\${COMP_WORDS[1]}" = "project" ] && [ "\${COMP_WORDS[2]}" = "init" ]; then
-        COMPREPLY=( $(compgen -W "--name --skill --agent --target --no-sync --interactive --yes --dry-run --json" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--name --skill --agent --target --register-mcp --no-sync --interactive --yes --dry-run --json" -- "$cur") )
     fi
 }
 complete -F _skillmux_completions skillmux
@@ -108,6 +108,7 @@ ${commands}
           '*--skill[project skill]:skill id:' \\
           '*--agent[select an agent]:agent:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity)' \\
           '*--target[select an advanced target]:target:' \\
+          '--register-mcp[register a project-scoped MCP server for claude-code]' \\
           '--no-sync[save setup without synchronizing targets]' \\
           '--interactive[force guided setup]' \\
           '--yes[apply without prompts]' \\
@@ -153,6 +154,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from project" -l name -x -d "Pro
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l skill -x -d "Project skill"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l agent -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity" -d "Select an agent"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l target -x -d "Select an advanced delivery target"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l register-mcp -d "Register a project-scoped MCP server for claude-code"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l interactive -d "Force guided setup"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l yes -d "Apply without prompts"

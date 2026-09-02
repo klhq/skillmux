@@ -85,22 +85,16 @@ function withManagedBlock(existing: string | null, path: string): string {
   return `${existing.slice(0, start)}${MANAGED_BLOCK}${existing.slice(end + INSTRUCTION_BLOCK_END.length)}`;
 }
 
-export function planInstructionSetup(
+function planInstructionSetupWithResolver(
   requestedAgents: readonly AgentId[],
-  options: InstructionPlanOptions = {},
+  resolvePath: (agent: AgentId) => string | undefined,
+  readFile: (path: string) => string | null,
 ): InstructionPlan {
-  const home = options.home ?? process.env.HOME ?? "";
-  const resolvedOptions = {
-    home,
-    codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(home, ".codex"),
-    claudeConfigDir: options.claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"),
-  };
-  const readFile = options.readFile ?? readInstructionFile;
   const changesByPath = new Map<string, InstructionChange>();
   const manual: InstructionPlan["manual"] = [];
 
   for (const agent of [...new Set(requestedAgents)]) {
-    const path = instructionPath(agent, resolvedOptions);
+    const path = resolvePath(agent);
     if (!path) {
       manual.push({ agent, reason: "no safe durable user instruction file is known" });
       continue;
@@ -123,6 +117,47 @@ export function planInstructionSetup(
   }
 
   return { changes: [...changesByPath.values()], manual };
+}
+
+export function planInstructionSetup(
+  requestedAgents: readonly AgentId[],
+  options: InstructionPlanOptions = {},
+): InstructionPlan {
+  const home = options.home ?? process.env.HOME ?? "";
+  const resolvedOptions = {
+    home,
+    codexHome: options.codexHome ?? process.env.CODEX_HOME ?? join(home, ".codex"),
+    claudeConfigDir: options.claudeConfigDir ?? process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude"),
+  };
+  return planInstructionSetupWithResolver(
+    requestedAgents,
+    (agent) => instructionPath(agent, resolvedOptions),
+    options.readFile ?? readInstructionFile,
+  );
+}
+
+/**
+ * The agents with a verified project-local instruction file convention.
+ * Deliberately narrow: only claude-code's own CLI also has a project-scoped
+ * MCP registration (see MCP_PROJECT_REGISTRABLE_AGENTS in mcp-registration.ts),
+ * so it's the only agent where "local" is a single coherent, self-contained
+ * choice covering both the instruction file and the MCP registration.
+ */
+function projectInstructionPath(agent: AgentId, projectRoot: string): string | undefined {
+  if (agent === "claude-code") return join(projectRoot, "CLAUDE.md");
+  return undefined;
+}
+
+export function planProjectInstructionSetup(
+  requestedAgents: readonly AgentId[],
+  projectRoot: string,
+  options: Pick<InstructionPlanOptions, "readFile"> = {},
+): InstructionPlan {
+  return planInstructionSetupWithResolver(
+    requestedAgents,
+    (agent) => projectInstructionPath(agent, projectRoot),
+    options.readFile ?? readInstructionFile,
+  );
 }
 
 function atomicWrite(path: string, content: string, mode: number): void {
