@@ -230,8 +230,19 @@ export async function runInit(
       ? expandHome(process.env.CODEX_HOME)
       : undefined,
   });
+  // The managed instruction block only teaches an agent to call resolve_skill
+  // /fetch_skill (MCP tools) — writing it for an agent with no MCP registered
+  // or requested would tell that agent to call tools that don't exist. Only
+  // agents actually getting MCP this run (or whose snippet the user asked to
+  // see) get the block; native-only setups get no instruction writes at all.
+  const mcpInstructionAgentIds = agentPlan.agents
+    .map((agent) => agent.id)
+    .filter(
+      (agentId) =>
+        showMcpSetup || (registerMcp && registrableAgents.includes(agentId)),
+    );
   const instructionPlan = planInstructionSetup(
-    skipInstructions ? [] : agentPlan.agents.map((agent) => agent.id),
+    skipInstructions ? [] : mcpInstructionAgentIds,
     {
       codexHome: process.env.CODEX_HOME
         ? expandHome(process.env.CODEX_HOME)
@@ -251,6 +262,14 @@ export async function runInit(
     instructionReadiness[manual.agent] = {
       status: "manual",
       detail: manual.reason,
+    };
+  }
+  for (const agent of agentPlan.agents) {
+    if (mcpInstructionAgentIds.includes(agent.id)) continue;
+    if (instructionReadiness[agent.id]) continue;
+    instructionReadiness[agent.id] = {
+      status: "not-applicable",
+      detail: "no MCP requested — see --show-mcp-setup / --register-mcp",
     };
   }
   const existingManifestPath = resolveManifestPath(vaultPath);

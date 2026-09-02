@@ -574,15 +574,19 @@ agents: claude-code, codex, gemini-cli, opencode, github-copilot,
 windsurf, antigravity, goose, hermes
 
 Native pins and MCP are independent — skip both of the flags below for
-native-only setup. --show-mcp-setup prints the MCP registration snippet
-to copy in yourself, for any agent. --register-mcp instead runs that
-agent's own CLI to register skillmux automatically, but only for
-claude-code and codex (the only agents with a verified registration
-command); interactively, init asks about this only when you've selected
-one of those two. A tool not in the agents list above isn't supported by
-init yet — add it to SUPPORTED_AGENT_IDS rather than guessing a
-directory. To adopt an arbitrary existing directory directly, use
-"skillmux target add <name> --dir <dir>" instead of init.`,
+native-only setup, and init writes no instruction files (the managed
+block only teaches resolve_skill/fetch_skill, which are MCP tools).
+--show-mcp-setup prints the MCP registration snippet to copy in yourself,
+for any agent, and also writes the instruction block for every selected
+agent. --register-mcp instead runs that agent's own CLI to register
+skillmux automatically, but only for claude-code and codex (the only
+agents with a verified registration command), and writes the instruction
+block just for those; interactively, init asks about this only when
+you've selected one of those two. --no-instructions forces instruction
+writes off even when an MCP flag is set. A tool not in the agents list
+above isn't supported by init yet — add it to SUPPORTED_AGENT_IDS rather
+than guessing a directory. To adopt an arbitrary existing directory
+directly, use "skillmux target add <name> --dir <dir>" instead of init.`,
 
   project: `project: manage project-scoped skill pins and sync groups
 

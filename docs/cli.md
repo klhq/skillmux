@@ -205,11 +205,18 @@ registering; noninteractive runs only register when `--register-mcp` is
 passed explicitly. It is a no-op for agents with no known registration
 command (skip it and use `--show-mcp-setup` instead).
 
+The managed instruction block only teaches an agent to call `resolve_skill`/
+`fetch_skill` (MCP tools), so `init` only writes it for an agent actually
+getting MCP this run — one you passed `--register-mcp` for, or any agent at
+all when `--show-mcp-setup` is set. A purely native run (neither flag) writes
+no instruction files, by design; `--no-instructions` forces that off even
+when MCP flags are present.
+
 `--dry-run` prints the config, target, instruction, and core plan without
 prompting or writing. `--json` emits one schema-versioned plan or result
 object. Noninteractive writes require `--yes`. `--interactive` forces the
-wizard and seeds it with supplied flags. `--no-instructions` skips managed
-instruction files; `--no-sync` saves setup without materializing links.
+wizard and seeds it with supplied flags. `--no-sync` saves setup without
+materializing links.
 
 Skillmux rejects a target that currently links to the whole vault. Convert it
 only after reviewing the smaller post-sync skill set:

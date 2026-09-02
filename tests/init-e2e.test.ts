@@ -50,6 +50,7 @@ describe("skillmux init end-to-end", () => {
       "--vault", vault,
       "--agent", "claude-code",
       "--core", "review-code",
+      "--show-mcp-setup",
       "--yes",
     ]);
     expect(first.exitCode).toBe(0);
@@ -77,6 +78,7 @@ describe("skillmux init end-to-end", () => {
       "--vault", vault,
       "--agent", "claude-code",
       "--core", "review-code",
+      "--show-mcp-setup",
       "--yes",
     ]);
 
@@ -87,15 +89,27 @@ describe("skillmux init end-to-end", () => {
     expect(readFileSync(join(target, ".skillmux"), "utf8")).toBe(before.marker);
   });
 
-  test("can skip managed instruction files", async () => {
+  test("can skip managed instruction files even with MCP setup requested", async () => {
     const result = await run([
       "init",
       "--agent", "codex",
+      "--show-mcp-setup",
       "--no-instructions",
       "--yes",
     ]);
 
     expect(result.exitCode).toBe(0);
     expect(existsSync(join(home, ".codex", "AGENTS.md"))).toBe(false);
+  });
+
+  test("writes no instruction files by default without any MCP flag", async () => {
+    const result = await run([
+      "init",
+      "--agent", "gemini-cli",
+      "--yes",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(home, ".gemini", "GEMINI.md"))).toBe(false);
   });
 });

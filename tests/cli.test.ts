@@ -1670,7 +1670,15 @@ describe("skillmux init CLI", () => {
     );
 
     const result = await runCliEnv(
-      ["init", "--agent", "gemini-cli", "--agent", "opencode", "--yes"],
+      [
+        "init",
+        "--agent",
+        "gemini-cli",
+        "--agent",
+        "opencode",
+        "--show-mcp-setup",
+        "--yes",
+      ],
       { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
     );
 
@@ -1791,6 +1799,37 @@ describe("skillmux init CLI", () => {
     rmSync(clientConfig, { force: true });
   });
 
+  // The managed instruction block only teaches an agent to call
+  // resolve_skill/fetch_skill (MCP tools) — writing it without any MCP setup
+  // would tell the agent to call tools that don't exist. Neither
+  // --show-mcp-setup nor --register-mcp is passed here, so no instruction
+  // file should be written even though claude-code is a registrable agent.
+  test("writes no instruction files when neither MCP flag is passed", async () => {
+    const clientHome = join(tmp, "no-mcp-no-instructions-home");
+    const clientVault = join(tmp, "no-mcp-no-instructions-vault");
+    const clientConfig = join(tmp, "no-mcp-no-instructions-config.toml");
+    mkdirSync(join(clientVault, "some-skill"), { recursive: true });
+    writeFileSync(
+      join(clientVault, "some-skill", "SKILL.md"),
+      "---\nname: some-skill\n---\n",
+    );
+    writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
+
+    const result = await runCliEnv(
+      ["init", "--agent", "claude-code", "--yes", "--json"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.result.instructions_changed).toEqual([]);
+    expect(existsSync(join(clientHome, ".claude", "CLAUDE.md"))).toBe(false);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
   test("init --target, --dir, and --client were removed; all point to --agent instead", async () => {
     const targetResult = await runCli("init", "--target", "agent-skills", "--yes");
     expect(targetResult.exitCode).not.toBe(0);
@@ -1865,6 +1904,7 @@ describe("skillmux init CLI", () => {
         "claude-code",
         "--core",
         "selected-core",
+        "--show-mcp-setup",
         "--dry-run",
       ],
       { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
@@ -1903,6 +1943,7 @@ describe("skillmux init CLI", () => {
         "claude-code",
         "--core",
         "selected-core",
+        "--show-mcp-setup",
         "--dry-run",
         "--json",
       ],
