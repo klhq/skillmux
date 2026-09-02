@@ -2101,7 +2101,7 @@ describe("skillmux init CLI", () => {
     expect(existsSync(join(clientVault, "skillmux.toml"))).toBe(true);
     expect(existsSync(join(clientHome, ".claude", "skills", ".skillmux"))).toBe(true);
     expect(result.stdout).toContain("next: skillmux core pin <skill_id> --yes");
-    expect(result.stdout).toContain("next: skillmux sync");
+    expect(result.stdout).not.toContain("next: skillmux sync");
     expect(result.stdout).toContain(`"command": "skillmux"`);
     expect(result.stdout).toContain("resolve_skill");
 

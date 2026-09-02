@@ -62,6 +62,8 @@ describe("skillmux init end-to-end", () => {
     expect(existsSync(join(target, ".skillmux"))).toBe(true);
     expect(readFileSync(instructions, "utf8")).toContain("skillmux:discovery:start");
     expect(readFileSync(manifest, "utf8")).toContain('skills = ["review-code"]');
+    expect(lstatSync(join(target, "review-code")).isSymbolicLink()).toBe(true);
+    expect(first.stdout).not.toContain("next: skillmux sync");
 
     const sync = await run(["sync"]);
     expect(sync.exitCode).toBe(0);
@@ -112,4 +114,57 @@ describe("skillmux init end-to-end", () => {
     expect(result.exitCode).toBe(0);
     expect(existsSync(join(home, ".gemini", "GEMINI.md"))).toBe(false);
   });
+
+  test("suppresses skill materialization and prints next: skillmux sync when --no-sync is passed", async () => {
+    const noSyncRoot = mkdtempSync(join(tmpdir(), "skillmux-init-nosync-"));
+    const noSyncHome = join(noSyncRoot, "home");
+    const noSyncVault = join(noSyncRoot, "vault");
+    const noSyncConfig = join(noSyncRoot, "config.toml");
+
+    mkdirSync(join(noSyncVault, "suppressed-skill"), { recursive: true });
+    writeFileSync(
+      join(noSyncVault, "suppressed-skill", "SKILL.md"),
+      "---\nname: suppressed-skill\ndescription: A test skill.\n---\n",
+    );
+
+    const proc = Bun.spawn(
+      [
+        "bun",
+        "run",
+        cliPath,
+        "init",
+        "--vault",
+        noSyncVault,
+        "--agent",
+        "claude-code",
+        "--core",
+        "suppressed-skill",
+        "--yes",
+        "--no-sync",
+      ],
+      {
+        env: {
+          ...(process.env as Record<string, string>),
+          HOME: noSyncHome,
+          SKILLMUX_CONFIG: noSyncConfig,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    const target = join(noSyncHome, ".claude", "skills");
+    expect(existsSync(join(target, ".skillmux"))).toBe(true);
+    expect(existsSync(join(target, "suppressed-skill"))).toBe(false);
+    expect(stdout).toContain("next: skillmux sync");
+
+    rmSync(noSyncRoot, { recursive: true, force: true });
+  });
 });
+

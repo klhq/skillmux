@@ -620,7 +620,7 @@ export async function runInit(
   if (plannedManifest.core.skills.length === 0 && confirmedTargets.length > 0) {
     console.log("next: skillmux core pin <skill_id> --yes");
   }
-  if (confirmedTargets.length > 0) console.log("next: skillmux sync");
+  if (!sync && confirmedTargets.length > 0) console.log("next: skillmux sync");
   for (const registration of mcpRegistrations) {
     console.log(
       registration.ok
@@ -636,5 +636,5 @@ export async function runInit(
   // new target directories this init just adopted, so runSync's own new-target
   // confirmation gate would just be a redundant (and non-interactively,
   // silently-skipping) re-ask.
-  if (guided && sync && confirmedTargets.length > 0) await runSync(["--yes"]);
+  if (sync && confirmedTargets.length > 0) await runSync(["--yes"]);
 }
