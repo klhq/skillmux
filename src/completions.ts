@@ -64,6 +64,9 @@ _skillmux_completions() {
         local-vault)
             COMPREPLY=( $(compgen -W "init" -- "$cur") )
             ;;
+        eval)
+            COMPREPLY=( $(compgen -W "promote" -- "$cur") )
+            ;;
         --agent)
             if [ "\${COMP_WORDS[1]}" = "project" ]; then
                 COMPREPLY=( $(compgen -W "${MANAGED_PINS_AGENT_IDS.join(" ")}" -- "$cur") )
@@ -77,6 +80,9 @@ _skillmux_completions() {
     fi
     if [ "\${COMP_WORDS[1]}" = "project" ] && [ "\${COMP_WORDS[2]}" = "init" ]; then
         COMPREPLY=( $(compgen -W "--name --skill --agent --target --register-mcp --no-sync --interactive --yes --dry-run --json" -- "$cur") )
+    fi
+    if [ "\${COMP_WORDS[1]}" = "eval" ] && [ "\${COMP_WORDS[2]}" = "promote" ]; then
+        COMPREPLY=( $(compgen -W "--since --out --dry-run --yes --json" -- "$cur") )
     fi
 }
 complete -F _skillmux_completions skillmux
@@ -122,6 +128,15 @@ ${commands}
           '--json[emit a JSON envelope]'
     elif [[ "$words[2]" == "project" && CURRENT == 3 ]]; then
         _values 'project command' init list show add-path remove-path pin unpin attach detach
+    elif [[ "$words[2]" == "eval" && "$words[3]" == "promote" ]]; then
+        _arguments \
+          '--since[time window]:window:' \
+          '--out[output file]:file:_files' \
+          '--dry-run[print the plan without writing]' \
+          '--yes[apply without prompts]' \
+          '--json[emit a JSON envelope]'
+    elif [[ "$words[2]" == "eval" && CURRENT == 3 ]]; then
+        _values 'eval command' promote
     elif [[ "$words[2]" == "target" && CURRENT == 3 ]]; then
         _values 'target command' list show add remove
     elif [[ "$words[2]" == "skill" && CURRENT == 3 ]]; then
@@ -164,6 +179,12 @@ complete -c skillmux -n "__fish_seen_subcommand_from project" -l register-mcp -d
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l interactive -d "Force guided setup"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l yes -d "Apply without prompts"
+complete -c skillmux -n "__fish_seen_subcommand_from eval" -a "promote" -d "Promote correlated fetches into eval cases"
+complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l since -x -d "Time window"
+complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l out -r -d "Output file"
+complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l dry-run -d "Print the plan without writing"
+complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l yes -d "Apply without prompts"
+complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l json -d "Emit a JSON envelope"
 complete -c skillmux -n "__fish_seen_subcommand_from target" -a "list show add remove" -d "Manage targets"
 complete -c skillmux -n "__fish_seen_subcommand_from core" -a "pin unpin" -d "Manage [core] pins"
 complete -c skillmux -n "__fish_seen_subcommand_from skill" -a "which" -d "Show which root resolves a skill_id"

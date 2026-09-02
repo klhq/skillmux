@@ -389,7 +389,7 @@ skillmux audit prune --older-than 30d --json
 # Promote observed, correlated fetches into an eval case file
 skillmux eval promote --since 7d --dry-run
 skillmux eval promote --since 7d --yes
-skillmux eval promote --since 7d --target eval/observed.json --yes
+skillmux eval promote --since 7d --out eval/observed.json --yes
 ```
 
 `report` reads `--server <url>`, `--db <path>` (an explicit SQLite file,
@@ -414,7 +414,7 @@ manual pruning is for on-demand cleanup or a tighter window.
 
 `eval promote` reads correlated fetches since `--since`, deduplicates them by
 normalized query, and writes `{ query, split: "observed", relevant_skill_ids
-}` cases to `--target` (default an `eval-observed.json` file under
+}` cases to `--out` (or deprecated alias `--target`; default an `eval-observed.json` file under
 `state_dir`; never the hand-curated `eval/queries.json` unless given
 explicitly). It never rewrites a case for a query already present in the
 target file; skipped counts are reported in the summary. Because promoted

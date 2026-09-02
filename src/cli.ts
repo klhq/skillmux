@@ -421,7 +421,7 @@ async function main() {
         } else if (subCommand === "") {
           await runEval({ isJson, adapter });
         } else {
-          throw new Error(`usage: skillmux eval [promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]]`);
+          throw new Error(`usage: skillmux eval [promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]]`);
         }
         break;
       case "doctor":
@@ -670,7 +670,7 @@ usage:
 
 usage:
   skillmux eval [--json]
-  skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
+  skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
 
 Accepts --context <name> / --server <url> to evaluate a remote deployment.`,
 
@@ -746,7 +746,7 @@ Init agents:
 Operations:
   skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
-  skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
+  skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
   skillmux outdated [--allow-local-source] [--json]
   skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high] [--json]
 
