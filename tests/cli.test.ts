@@ -1099,7 +1099,7 @@ describe("skillmux project CLI", () => {
       "--name",
       "demo",
       "--agent",
-      "gemini-cli",
+      "windsurf",
       "--agent",
       "opencode",
       "--yes",
@@ -1184,7 +1184,7 @@ describe("skillmux project CLI", () => {
       "--name",
       "demo",
       "--agent",
-      "gemini-cli",
+      "windsurf",
       "--register-mcp",
       "--yes",
       "--no-sync",
@@ -1368,7 +1368,7 @@ describe("skillmux project CLI", () => {
       "attach",
       "demo",
       "--agent",
-      "gemini-cli",
+      "windsurf",
       "--agent",
       "opencode",
       "--yes",
@@ -1393,7 +1393,7 @@ describe("skillmux project CLI", () => {
       "attach",
       "demo",
       "--agent",
-      "gemini-cli",
+      "windsurf",
       "--agent",
       "opencode",
       "--dry-run",
@@ -1405,7 +1405,7 @@ describe("skillmux project CLI", () => {
       "attach",
       "demo",
       "--agent",
-      "gemini-cli",
+      "windsurf",
       "--agent",
       "opencode",
       "--yes",
@@ -1785,7 +1785,7 @@ describe("skillmux init CLI", () => {
       [
         "init",
         "--agent",
-        "gemini-cli",
+        "windsurf",
         "--agent",
         "opencode",
         "--show-mcp-setup",
@@ -1801,13 +1801,10 @@ describe("skillmux init CLI", () => {
     expect(manifest).toContain(
       `dir = ${JSON.stringify(join(clientHome, ".agents", "skills"))}`,
     );
-    expect(result.stdout).toContain("gemini-cli readiness:");
+    expect(result.stdout).toContain("windsurf readiness:");
     expect(result.stdout).toContain("skill surface:");
     expect(result.stdout).toContain("MCP registration:");
     expect(result.stdout).toContain("instructions: planned");
-    expect(
-      readFileSync(join(clientHome, ".gemini", "GEMINI.md"), "utf8"),
-    ).toContain("<!-- skillmux:discovery:start -->");
     expect(
       readFileSync(
         join(clientHome, ".config", "opencode", "AGENTS.md"),
@@ -1897,7 +1894,7 @@ describe("skillmux init CLI", () => {
     writeFileSync(clientConfig, `vault_path = "${clientVault}"\n`);
 
     const result = await runCliEnv(
-      ["init", "--agent", "gemini-cli", "--register-mcp", "--yes", "--json"],
+      ["init", "--agent", "windsurf", "--register-mcp", "--yes", "--json"],
       { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
     );
 

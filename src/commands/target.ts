@@ -1,18 +1,15 @@
 import { expandHome } from "../config";
-import { planAgentSurfaces, resolveBuiltInTarget, SUPPORTED_AGENT_IDS } from "../init-agents";
+import {
+  BUILT_IN_TARGET_NAMES,
+  planAgentSurfaces,
+  resolveBuiltInTarget,
+  SUPPORTED_AGENT_IDS,
+} from "../init-agents";
 import { planInitManifest, applyInit } from "../init";
 import { writeManifestAtomic } from "../manifest";
-import { emitSuccess, unknownSubcommandError, warn } from "../output";
+import { emitSuccess, unknownSubcommandError } from "../output";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
 
-/** Target names whose install directory is deterministic — --dir is optional for these. */
-const AUTO_RESOLVABLE_TARGET_NAMES = new Set([
-  "agent-skills",
-  "agents",
-  "claude-code",
-  "claude",
-  "codex",
-]);
 export async function runTarget(
   subCommand: string,
   args: string[],
@@ -62,12 +59,10 @@ export async function runTarget(
     let path: string;
     if (rawPath) {
       path = expandHome(rawPath);
-    } else if (AUTO_RESOLVABLE_TARGET_NAMES.has(name)) {
-      const resolved = resolveBuiltInTarget(name, {
+    } else if (BUILT_IN_TARGET_NAMES.has(name)) {
+      path = resolveBuiltInTarget(name, {
         codexHome: process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined,
-      });
-      if (resolved.warning) warn(resolved.warning);
-      path = resolved.path;
+      }).path;
     } else {
       throw new Error(
         "usage: skillmux target add <name> --dir <dir> --yes  (--dir may be omitted for built-in target names: agent-skills, claude-code, codex)",

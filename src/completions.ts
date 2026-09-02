@@ -1,3 +1,5 @@
+import { MANAGED_PINS_AGENT_IDS, SUPPORTED_AGENT_IDS } from "./init-agents";
+
 export type ShellType = "bash" | "zsh" | "fish";
 
 const TOP_LEVEL_COMMANDS: { name: string; description: string }[] = [
@@ -63,7 +65,11 @@ _skillmux_completions() {
             COMPREPLY=( $(compgen -W "init" -- "$cur") )
             ;;
         --agent)
-            COMPREPLY=( $(compgen -W "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes" -- "$cur") )
+            if [ "\${COMP_WORDS[1]}" = "project" ]; then
+                COMPREPLY=( $(compgen -W "${MANAGED_PINS_AGENT_IDS.join(" ")}" -- "$cur") )
+            else
+                COMPREPLY=( $(compgen -W "${SUPPORTED_AGENT_IDS.join(" ")}" -- "$cur") )
+            fi
             ;;
     esac
     if [ "\${COMP_WORDS[1]}" = "init" ] && [ "\${#COMPREPLY[@]}" -eq 0 ]; then
@@ -89,7 +95,7 @@ ${commands}
         _describe -t commands 'skillmux command' commands
     elif [[ "$words[2]" == "init" ]]; then
         _arguments \\
-          '*--agent[select an agent]:agent:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes)' \\
+          '*--agent[select an agent]:agent:(${SUPPORTED_AGENT_IDS.join(" ")})' \\
           '--vault[vault directory]:directory:_directories' \\
           '*--core[seed a core skill]:skill id:' \\
           '--migrate-full-vault[convert a full-vault symlink to managed pins]' \\
@@ -106,7 +112,7 @@ ${commands}
           '1:project directory:_directories' \\
           '--name[project group name]:group:' \\
           '*--skill[project skill]:skill id:' \\
-          '*--agent[select an agent]:agent:(claude-code codex gemini-cli opencode github-copilot windsurf antigravity)' \\
+          '*--agent[select an agent]:agent:(${MANAGED_PINS_AGENT_IDS.join(" ")})' \\
           '*--target[select an advanced target]:target:' \\
           '--register-mcp[register a project-scoped MCP server for claude-code]' \\
           '--no-sync[save setup without synchronizing targets]' \\
@@ -137,7 +143,7 @@ _skillmux "$@"
     return `# fish completion for skillmux
 complete -c skillmux -f
 ${topLevel}
-complete -c skillmux -n "__fish_seen_subcommand_from init" -l agent -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity goose hermes" -d "Select an agent"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l agent -x -a "${SUPPORTED_AGENT_IDS.join(" ")}" -d "Select an agent"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l vault -r -d "Vault directory"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l core -x -d "Seed a core skill"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l migrate-full-vault -d "Convert a full-vault symlink"
@@ -152,7 +158,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from init" -l json -d "Emit a JS
 complete -c skillmux -n "__fish_seen_subcommand_from project" -a "init list show add-path remove-path pin unpin attach detach" -d "Manage projects"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l name -x -d "Project group name"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l skill -x -d "Project skill"
-complete -c skillmux -n "__fish_seen_subcommand_from project" -l agent -x -a "claude-code codex gemini-cli opencode github-copilot windsurf antigravity" -d "Select an agent"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -l agent -x -a "${MANAGED_PINS_AGENT_IDS.join(" ")}" -d "Select an agent"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l target -x -d "Select an advanced delivery target"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l register-mcp -d "Register a project-scoped MCP server for claude-code"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Save without synchronizing"

@@ -11,7 +11,7 @@ import {
 describe("init instruction adapters", () => {
   test("uses safe durable files and never selects Hermes identity or engineering context", () => {
     const plan = planInstructionSetup(
-      ["claude-code", "codex", "gemini-cli", "antigravity", "goose", "hermes"],
+      ["claude-code", "codex", "antigravity", "goose", "hermes"],
       {
         home: "/home/tester",
         codexHome: "/srv/codex",
@@ -27,7 +27,7 @@ describe("init instruction adapters", () => {
       "/home/tester/.hermes.md",
     ]);
     expect(plan.changes.find((change) => change.path.endsWith("GEMINI.md"))?.agents)
-      .toEqual(["gemini-cli", "antigravity"]);
+      .toEqual(["antigravity"]);
     expect(plan.changes.some((change) => /SOUL\.md$/.test(change.path))).toBe(false);
     expect(plan.changes.some((change) => /\/AGENTS\.md$/.test(change.path) && change.path !== "/srv/codex/AGENTS.md"))
       .toBe(false);

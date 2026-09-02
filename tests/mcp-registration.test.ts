@@ -23,7 +23,7 @@ describe("MCP_REGISTRABLE_AGENTS", () => {
   test("isMcpRegistrable matches the registrable set", () => {
     expect(isMcpRegistrable("claude-code")).toBe(true);
     expect(isMcpRegistrable("codex")).toBe(true);
-    expect(isMcpRegistrable("gemini-cli")).toBe(false);
+    expect(isMcpRegistrable("windsurf")).toBe(false);
     expect(isMcpRegistrable("goose")).toBe(false);
   });
 });

@@ -305,7 +305,7 @@ export async function runProject(
     if (targets.length === 0) {
       throw new Error(`project ${subCommand} requires --agent or --target`);
     }
-    // Several agents can share one target (e.g. gemini-cli/opencode both use
+    // Several agents can share one target (e.g. opencode/windsurf both use
     // agent-skills) — show the resolved directory, not just the target name,
     // so it's clear at confirmation time which physical folder this affects.
     const targetDirs = Object.fromEntries(
@@ -401,20 +401,22 @@ export async function runProject(
         request.skills.join(","),
       ),
     );
-    // Local MCP registration + instruction writing are independent of skill
-    // pins — only offered for agents with a verified project-scoped CLI
-    // command (currently just claude-code; see MCP_PROJECT_REGISTRABLE_AGENTS).
-    const registrableAgents = agents.filter((agent) =>
-      MCP_PROJECT_REGISTRABLE_AGENTS.includes(agent as AgentId),
-    );
-    let registerMcp = request.registerMcp;
-    if (registrableAgents.length > 0) {
-      registerMcp = await confirmAction(
+    request = { ...request, name, agents, skills };
+  }
+  // Local MCP registration + instruction writing are independent of skill
+  // pins — only offered for agents with a verified project-scoped CLI
+  // command (currently just claude-code; see MCP_PROJECT_REGISTRABLE_AGENTS).
+  const registrableAgents = request.agents.filter((agent) =>
+    MCP_PROJECT_REGISTRABLE_AGENTS.includes(agent as AgentId),
+  ) as AgentId[];
+  if (guided && registrableAgents.length > 0) {
+    request = {
+      ...request,
+      registerMcp: await confirmAction(
         `Also register skillmux as a project-scoped MCP server for ${registrableAgents.join(", ")}? ` +
           `This writes ${request.path}/.mcp.json, shared via git.`,
-      );
-    }
-    request = { ...request, name, agents, skills, registerMcp };
+      ),
+    };
   }
   const agentTargets = configuredTargetsForAgents(manifest, request.agents);
   const targets = [...new Set([...request.targets, ...agentTargets])];
@@ -429,9 +431,6 @@ export async function runProject(
   // The project-local instruction block only teaches an agent to call
   // resolve_skill/fetch_skill (MCP tools) — write it only for agents that
   // are actually getting a project-scoped MCP registration this run.
-  const registrableAgents = request.agents.filter((agent) =>
-    MCP_PROJECT_REGISTRABLE_AGENTS.includes(agent as AgentId),
-  ) as AgentId[];
   const mcpInstructionAgents = request.registerMcp ? registrableAgents : [];
   const instructionPlan = planProjectInstructionSetup(
     mcpInstructionAgents,
