@@ -127,6 +127,38 @@ function parseInitArgs(args: string[]): {
   };
 }
 
+interface InitJsonPayload {
+  command: "init";
+  phase: "plan" | "result";
+  dry_run: boolean;
+  applied: boolean;
+  plan: unknown;
+  result?: unknown;
+}
+
+/**
+ * init predates the shared emitSuccess envelope and shipped its own top-level
+ * keys, which existing automation reads. Emit the documented envelope
+ * (`target`/`data`/`error`, see docs/cli.md) so generic consumers work, while
+ * keeping the original keys so nothing breaks. init's error path already goes
+ * through the shared handler and needs no bridging.
+ *
+ * DEPRECATED: the duplicated top-level `command`/`phase`/`dry_run`/`applied`/
+ * `plan`/`result` keys should be dropped in the next major version, leaving
+ * only the standard envelope. init is local-only, so `target` is always
+ * "local".
+ */
+function initJsonEnvelope(payload: InitJsonPayload): string {
+  return JSON.stringify({
+    schema_version: 1,
+    ok: true,
+    target: "local",
+    data: payload,
+    error: null,
+    ...payload,
+  });
+}
+
 export async function runInit(
   args: string[],
   options: { isJson: boolean; dryRun: boolean },
@@ -438,9 +470,7 @@ export async function runInit(
   if (!hasChanges) {
     if (options.isJson) {
       console.log(
-        JSON.stringify({
-          schema_version: 1,
-          ok: true,
+        initJsonEnvelope({
           command: "init",
           phase: "plan",
           dry_run: options.dryRun,
@@ -466,9 +496,7 @@ export async function runInit(
   if (options.dryRun) {
     if (options.isJson) {
       console.log(
-        JSON.stringify({
-          schema_version: 1,
-          ok: true,
+        initJsonEnvelope({
           command: "init",
           phase: "plan",
           dry_run: true,
@@ -588,9 +616,7 @@ export async function runInit(
 
   if (options.isJson) {
     console.log(
-      JSON.stringify({
-        schema_version: 1,
-        ok: true,
+      initJsonEnvelope({
         command: "init",
         phase: "result",
         dry_run: false,

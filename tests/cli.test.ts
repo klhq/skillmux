@@ -1993,6 +1993,62 @@ describe("skillmux init CLI", () => {
     expect(envelope.plan.targets).toHaveLength(1);
     expect(envelope.plan.instructions).toHaveLength(1);
 
+    // init must also satisfy the envelope every other command emits
+    // (docs/cli.md "Automation and JSON output"), so a generic consumer
+    // reading target/data/error works here too.
+    expect(envelope.target).toBe("local");
+    expect(envelope.error).toBeNull();
+    expect(envelope.data).toMatchObject({
+      command: "init",
+      phase: "plan",
+      dry_run: true,
+      applied: false,
+    });
+    expect(envelope.data.plan).toEqual(envelope.plan);
+
+    rmSync(clientHome, { recursive: true, force: true });
+    rmSync(clientVault, { recursive: true, force: true });
+    rmSync(clientConfig, { force: true });
+  });
+
+  test("applied init JSON carries the standard envelope alongside legacy keys", async () => {
+    const clientHome = join(tmp, "json-result-home");
+    const clientVault = join(tmp, "json-result-vault");
+    const clientConfig = join(tmp, "json-result-config.toml");
+    mkdirSync(join(clientVault, "applied-core"), { recursive: true });
+    writeFileSync(
+      join(clientVault, "applied-core", "SKILL.md"),
+      "---\nname: applied-core\n---\n",
+    );
+    writeFileSync(
+      clientConfig,
+      `vault_path = ${JSON.stringify(clientVault)}\n`,
+    );
+
+    const result = await runCliEnv(
+      ["init", "--agent", "claude-code", "--core", "applied-core", "--yes", "--json"],
+      { HOME: clientHome, SKILLMUX_CONFIG: clientConfig },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const envelope = JSON.parse(result.stdout);
+    expect(envelope.schema_version).toBe(1);
+    expect(envelope.ok).toBe(true);
+    expect(envelope.target).toBe("local");
+    expect(envelope.error).toBeNull();
+    expect(envelope.data).toMatchObject({
+      command: "init",
+      phase: "result",
+      dry_run: false,
+      applied: true,
+    });
+    // The deprecated top-level duplicates must keep carrying identical content
+    // until they are dropped in the next major.
+    expect(envelope.phase).toBe("result");
+    expect(envelope.applied).toBe(true);
+    expect(envelope.data.plan).toEqual(envelope.plan);
+    expect(envelope.data.result).toEqual(envelope.result);
+
     rmSync(clientHome, { recursive: true, force: true });
     rmSync(clientVault, { recursive: true, force: true });
     rmSync(clientConfig, { force: true });
