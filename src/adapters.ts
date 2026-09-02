@@ -28,7 +28,7 @@ export interface Capabilities {
   restart_required_keys: string[];
 }
 
-export interface TargetAdapterOptions {
+export interface ContextAdapterOptions {
   configPath?: string;
   allowInsecure?: boolean;
   clients?: Clients;
@@ -46,10 +46,10 @@ export interface AuditPruneResult extends PruneResult {
 }
 
 /**
- * Target adapter: `local` = this CLI process has the Skillmux runtime (vault, index,
+ * Context adapter: `local` = this CLI process has the Skillmux runtime (vault, index,
  * audit db, embeddings/reranker clients) in-process; `remote` = thin network client to an external process.
  */
-export interface TargetAdapter {
+export interface ContextAdapter {
   getCapabilities(): Promise<Capabilities>;
   getConfigShow(): Promise<{ effective: Config; sources: Record<string, string>; active_revision: string }>;
   getConfigGet(key: string): Promise<unknown>;
@@ -74,11 +74,11 @@ export function isLoopbackHost(hostname: string): boolean {
   );
 }
 
-export class LocalAdapter implements TargetAdapter {
+export class LocalAdapter implements ContextAdapter {
   private configPath: string;
   private clients?: Clients;
 
-  constructor(opts?: TargetAdapterOptions) {
+  constructor(opts?: ContextAdapterOptions) {
     this.configPath = resolveConfigPath(opts?.configPath);
     this.clients = opts?.clients;
   }
@@ -132,7 +132,7 @@ export class LocalAdapter implements TargetAdapter {
     return setDottedKey(key, rawValStr, {
       configPath: this.configPath,
       dryRun: opts?.dryRun,
-      targetName: "local",
+      contextName: "local",
     });
   }
 
@@ -210,12 +210,12 @@ export class LocalAdapter implements TargetAdapter {
   }
 }
 
-export class RemoteAdapter implements TargetAdapter {
+export class RemoteAdapter implements ContextAdapter {
   private serverUrl: string;
   private tokenEnv?: string;
   private allowInsecure: boolean;
 
-  constructor(target: { server: string; token_env?: string }, opts?: TargetAdapterOptions) {
+  constructor(target: { server: string; token_env?: string }, opts?: ContextAdapterOptions) {
     this.serverUrl = target.server.replace(/\/$/, "");
     this.tokenEnv = target.token_env;
     this.allowInsecure = opts?.allowInsecure ?? false;
@@ -429,10 +429,10 @@ export class RemoteAdapter implements TargetAdapter {
   }
 }
 
-export function createTargetAdapter(target: ResolvedContext, opts?: TargetAdapterOptions): TargetAdapter {
-  if (target.type === "local") {
+export function createContextAdapter(context: ResolvedContext, opts?: ContextAdapterOptions): ContextAdapter {
+  if (context.type === "local") {
     return new LocalAdapter(opts);
   } else {
-    return new RemoteAdapter({ server: target.server, token_env: target.token_env }, opts);
+    return new RemoteAdapter({ server: context.server, token_env: context.token_env }, opts);
   }
 }

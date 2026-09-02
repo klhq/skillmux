@@ -17,7 +17,7 @@ import { type StatsResponse } from "./stats";
 import { scanVault } from "./vault";
 
 import { resolveContext, type ResolvedContext } from "./context";
-import { createTargetAdapter, isLoopbackHost, type TargetAdapter } from "./adapters";
+import { createContextAdapter, isLoopbackHost, type ContextAdapter } from "./adapters";
 import {
   emitSuccess,
   CliError,
@@ -71,19 +71,19 @@ export const KNOWN_COMMANDS = [
 ];
 
 /**
- * Declared target support for every command in KNOWN_COMMANDS — the single
+ * Declared context support for every command in KNOWN_COMMANDS — the single
  * source of truth getLocalOnlyCommand() enforces against. A command missing
- * from here, or misclassified, is a bug: see tests/cli-target-support.test.ts,
+ * from here, or misclassified, is a bug: see tests/cli-context-support.test.ts,
  * which fails the build rather than letting a command silently drift out of
- * sync the way `config init` did (it was never rejected for a remote target,
+ * sync the way `config init` did (it was never rejected for a remote context,
  * nor actually remote-capable — it just silently ran local logic that choked
  * on an unrecognized --context/--server flag with a confusing error).
  *
  * - "local-only": operates on this machine's vault/filesystem/agents only;
- *   a remote target is rejected outright.
- * - "remote-capable": routed through TargetAdapter — same command, backed by
- *   LocalAdapter or RemoteAdapter depending on the resolved target.
- * - "target-agnostic": the resolved target isn't used to decide behavior at
+ *   a remote context is rejected outright.
+ * - "remote-capable": routed through ContextAdapter — same command, backed by
+ *   LocalAdapter or RemoteAdapter depending on the resolved context.
+ * - "context-agnostic": the resolved context isn't used to decide behavior at
  *   all (context management is inherently local; completions never touch
  *   vault/server state).
  *
@@ -92,12 +92,12 @@ export const KNOWN_COMMANDS = [
  * local-only despite `config` overall being remote-capable) are handled in
  * getLocalOnlyCommand() itself, not in this top-level map.
  */
-export type CommandTargetSupport = "local-only" | "remote-capable" | "target-agnostic";
+export type CommandContextSupport = "local-only" | "remote-capable" | "context-agnostic";
 
-export const COMMAND_TARGET_SUPPORT: Record<string, CommandTargetSupport> = {
-  context: "target-agnostic",
+export const COMMAND_CONTEXT_SUPPORT: Record<string, CommandContextSupport> = {
+  context: "context-agnostic",
   config: "remote-capable",
-  completions: "target-agnostic",
+  completions: "context-agnostic",
   serve: "local-only",
   index: "local-only",
   sync: "local-only",
@@ -119,7 +119,7 @@ export const COMMAND_TARGET_SUPPORT: Record<string, CommandTargetSupport> = {
 };
 
 const LOCAL_ONLY_COMMANDS = new Set(
-  Object.entries(COMMAND_TARGET_SUPPORT)
+  Object.entries(COMMAND_CONTEXT_SUPPORT)
     .filter(([, support]) => support === "local-only")
     .map(([command]) => command),
 );
@@ -138,7 +138,7 @@ export function getLocalOnlyCommand(command: string, subCommand: string): string
 }
 
 /**
- * Why a local-only command can't take a remote target, keyed by the exact
+ * Why a local-only command can't take a remote context, keyed by the exact
  * string getLocalOnlyCommand() returns. Drives the guidance sentence
  * remoteContextUnsupported() appends, so the rejection points somewhere
  * useful instead of just saying no.
@@ -278,14 +278,14 @@ async function main() {
     else if (arg === "--server") flagServer = rawArgv[++i];
   }
 
-  let resolvedTarget: ResolvedContext = { type: "local", name: "local" };
+  let resolvedContext: ResolvedContext = { type: "local", name: "local" };
 
   if (
     process.env.RUNNING_IN_DOCKER === "true" &&
     isDockerHostManagementCommand(command, subCommand)
   ) {
     await handleError(containerCommandUnsupported(command, subCommand), {
-      target: resolvedTarget,
+      context: resolvedContext,
       isJson,
       isVerbose,
     });
@@ -300,38 +300,38 @@ async function main() {
   }
 
   try {
-    resolvedTarget = await resolveContext({
+    resolvedContext = await resolveContext({
       context: flagContext,
       server: flagServer,
     });
   } catch (err: any) {
-    await handleError(err, { target: resolvedTarget, isJson, isVerbose });
+    await handleError(err, { context: resolvedContext, isJson, isVerbose });
     return;
   }
 
   const localOnlyCommand = getLocalOnlyCommand(command, subCommand);
-  if (localOnlyCommand && resolvedTarget.type === "remote") {
+  if (localOnlyCommand && resolvedContext.type === "remote") {
     await handleError(remoteContextUnsupported(localOnlyCommand), {
-      target: resolvedTarget,
+      context: resolvedContext,
       isJson,
       isVerbose,
     });
     return;
   }
 
-  const adapter = createTargetAdapter(resolvedTarget, { allowInsecure });
+  const adapter = createContextAdapter(resolvedContext, { allowInsecure });
 
   try {
     switch (command) {
       case "context":
         await handleContextCommand(subCommand, commandArgs, {
-          target: resolvedTarget,
+          context: resolvedContext,
           isJson,
         });
         break;
       case "config":
         await handleConfigCommand(adapter, subCommand, commandArgs, {
-          target: resolvedTarget,
+          context: resolvedContext,
           isJson,
           dryRun: isDryRun,
         });
@@ -390,7 +390,7 @@ async function main() {
       case "report":
         await runReport(rawArgv.slice(1), {
           isJson,
-          target: resolvedTarget,
+          context: resolvedContext,
           allowInsecure,
           adapter,
         });
@@ -399,7 +399,7 @@ async function main() {
         await runAudit(subCommand, commandArgs, {
           isJson,
           dryRun: isDryRun,
-          target: resolvedTarget,
+          context: resolvedContext,
           adapter,
         });
         break;
@@ -421,13 +421,13 @@ async function main() {
         } else if (subCommand === "") {
           await runEval({ isJson, adapter });
         } else {
-          throw new Error(`usage: skillmux eval [promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]]`);
+          throw new Error(`usage: skillmux eval [promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]]`);
         }
         break;
       case "doctor":
         await runDoctor({
           isJson,
-          target: resolvedTarget,
+          context: resolvedContext,
           adapter,
           args: rawArgv.slice(1),
         });
@@ -462,7 +462,7 @@ async function main() {
       }
     }
   } catch (err: any) {
-    await handleError(err, { target: resolvedTarget, isJson, isVerbose });
+    await handleError(err, { context: resolvedContext, isJson, isVerbose });
   }
 }
 
@@ -477,7 +477,7 @@ async function handleCompletionsCommand(shell: string) {
 
 async function handleError(
   err: any,
-  opts: { target: ResolvedContext; isJson: boolean; isVerbose: boolean },
+  opts: { context: ResolvedContext; isJson: boolean; isVerbose: boolean },
 ) {
   const code = mapExitCode(err);
   process.exitCode = code;
@@ -498,7 +498,7 @@ async function handleError(
   if (opts.isJson) {
     const env = formatJsonEnvelope({
       ok: false,
-      target: opts.target,
+      context: opts.context,
       error: {
         code: err instanceof CliError ? err.code : `EXIT_${code}`,
         message: msg,
@@ -670,7 +670,7 @@ usage:
 
 usage:
   skillmux eval [--json]
-  skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
+  skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
 
 Accepts --context <name> / --server <url> to evaluate a remote deployment.`,
 
@@ -746,7 +746,7 @@ Init agents:
 Operations:
   skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
-  skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]
+  skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
   skillmux outdated [--allow-local-source] [--json]
   skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high] [--json]
 
@@ -823,7 +823,7 @@ async function runIndex(): Promise<void> {
   }
 }
 
-async function runEval(options: { isJson: boolean; adapter: TargetAdapter }): Promise<void> {
+async function runEval(options: { isJson: boolean; adapter: ContextAdapter }): Promise<void> {
   const config = await loadConfig();
   configure({ config, clients: createClients(config) });
 

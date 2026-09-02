@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { createTargetAdapter } from "../src/adapters";
+import { createContextAdapter } from "../src/adapters";
 import { startServer, type ServerHandle } from "../src/server";
 import { loadConfig } from "../src/config";
 import { insertAudit, insertFetch, openAudit } from "../src/db";
@@ -35,7 +35,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
   });
 
   it("local adapter executes config commands locally", async () => {
-    const adapter = createTargetAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
+    const adapter = createContextAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
     const show = await adapter.getConfigShow();
     expect(show.effective.vault_path).toBe(TEST_VAULT);
 
@@ -50,7 +50,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
   it("local adapter's configSet throws a CliError with exitCode 4 when externally managed", async () => {
     process.env.SKILLMUX_CONFIG_READONLY = "true";
     writeFileSync(CONFIG_FILE, `[config]\nenvironment_overrides = false\nvault_path = "${TEST_VAULT}"\nstate_dir = "${TEST_STATE}"\n`, "utf-8");
-    const adapter = createTargetAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
+    const adapter = createContextAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
 
     let caught: unknown;
     try {
@@ -64,13 +64,13 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
 
   it("remote adapter rejects non-loopback HTTP targets unless allowInsecure is true (AC10)", async () => {
     expect(() =>
-      createTargetAdapter(
+      createContextAdapter(
         { type: "remote", name: "remote-prod", server: "http://192.168.1.100:3000" },
         { allowInsecure: false }
       )
     ).toThrow(/insecure/i);
 
-    const allowedAdapter = createTargetAdapter(
+    const allowedAdapter = createContextAdapter(
       { type: "remote", name: "remote-prod", server: "http://192.168.1.100:3000" },
       { allowInsecure: true }
     );
@@ -92,7 +92,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     };
     serverHandle = await startServer({ transport: "http", port: 0, config });
     const serverUrl = `http://127.0.0.1:${serverHandle.port}`;
-    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+    const remoteAdapter = createContextAdapter({ type: "remote", name: "remote-test", server: serverUrl });
 
     let caught: unknown;
     try {
@@ -105,7 +105,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
   });
 
   it("remote adapter throws a CliError with exitCode 3 when the server is unreachable", async () => {
-    const adapter = createTargetAdapter({ type: "remote", name: "remote-unreachable", server: "http://127.0.0.1:1" });
+    const adapter = createContextAdapter({ type: "remote", name: "remote-unreachable", server: "http://127.0.0.1:1" });
 
     let caught: unknown;
     try {
@@ -134,7 +134,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     // different env var holding a wrong value, so client and server actually disagree
     // instead of both reading the same overwritten env var in this single test process.
     process.env.WRONG_ADMIN_TOKEN = "definitely-wrong";
-    const remoteAdapter = createTargetAdapter({
+    const remoteAdapter = createContextAdapter({
       type: "remote",
       name: "remote-test",
       server: serverUrl,
@@ -164,7 +164,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     };
     serverHandle = await startServer({ transport: "http", port: 0, config });
     const serverUrl = `http://127.0.0.1:${serverHandle.port}`;
-    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+    const remoteAdapter = createContextAdapter({ type: "remote", name: "remote-test", server: serverUrl });
 
     // Only the PATCH leg is faked (network boundary mock) to deterministically simulate
     // a concurrent write winning the race; GET calls still hit the real server.
@@ -206,8 +206,8 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     serverHandle = await startServer({ transport: "http", port: 0, config });
     const serverUrl = `http://127.0.0.1:${serverHandle.port}`;
 
-    const localAdapter = createTargetAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
-    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+    const localAdapter = createContextAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
+    const remoteAdapter = createContextAdapter({ type: "remote", name: "remote-test", server: serverUrl });
 
     const localShow = await localAdapter.getConfigShow();
     const remoteShow = await remoteAdapter.getConfigShow();
@@ -233,8 +233,8 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     serverHandle = await startServer({ transport: "http", port: 0, config });
     const serverUrl = `http://127.0.0.1:${serverHandle.port}`;
 
-    const localAdapter = createTargetAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
-    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+    const localAdapter = createContextAdapter({ type: "local", name: "local" }, { configPath: CONFIG_FILE });
+    const remoteAdapter = createContextAdapter({ type: "remote", name: "remote-test", server: serverUrl });
 
     const localStats = await localAdapter.getStats("30d");
     const remoteStats = await remoteAdapter.getStats("30d");
@@ -269,7 +269,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     });
     auditDb.close();
 
-    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+    const remoteAdapter = createContextAdapter({ type: "remote", name: "remote-test", server: serverUrl });
 
     const dryRes = await remoteAdapter.auditCount("30d");
     expect(dryRes.dry_run).toBe(true);
@@ -312,7 +312,7 @@ describe("Local and Remote Target Adapters (AC3, AC7, AC10)", () => {
     });
     auditDb.close();
 
-    const remoteAdapter = createTargetAdapter({ type: "remote", name: "remote-test", server: serverUrl });
+    const remoteAdapter = createContextAdapter({ type: "remote", name: "remote-test", server: serverUrl });
 
     const evalReport = await remoteAdapter.evalRun();
     expect(evalReport.queries).toBeDefined();

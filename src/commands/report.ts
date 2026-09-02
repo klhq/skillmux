@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { TargetAdapter } from "../adapters";
+import type { ContextAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
 import { emitSuccess } from "../output";
 import { getStats, renderStatsText } from "../stats";
@@ -36,14 +36,14 @@ function parseReportArgs(args: string[]): {
 
 export async function runReport(
   args: string[],
-  options: { isJson: boolean; target: ResolvedContext; allowInsecure: boolean; adapter: TargetAdapter },
+  options: { isJson: boolean; context: ResolvedContext; allowInsecure: boolean; adapter: ContextAdapter },
 ): Promise<void> {
   const { db: dbPath, since } = parseReportArgs(args);
   if (!since)
     throw new Error(
       "usage: skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]",
     );
-  if (dbPath && options.target.type === "remote")
+  if (dbPath && options.context.type === "remote")
     throw new Error("--db and --context/--server are mutually exclusive");
 
   if (dbPath) {

@@ -1,13 +1,13 @@
 import { emitSuccess } from "../output";
 import { confirmIfNeeded } from "./shared";
-import type { TargetAdapter } from "../adapters";
+import type { ContextAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
 import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 
 export async function runAudit(
   subCommand: string,
   args: string[],
-  options: { isJson: boolean; dryRun: boolean; target: ResolvedContext; adapter: TargetAdapter },
+  options: { isJson: boolean; dryRun: boolean; context: ResolvedContext; adapter: ContextAdapter },
 ): Promise<void> {
   if (subCommand !== "prune") {
     throw new Error("usage: skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]");

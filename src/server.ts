@@ -668,7 +668,7 @@ export async function startServer(opts?: {
               const auditChanges: AdminAuditChange[] = [];
               for (const [k, v] of Object.entries(body.changes ?? {})) {
                 lastResult = await setDottedKey(k, String(v), {
-                  targetName: "remote",
+                  contextName: "remote",
                 });
                 auditChanges.push({
                   key: k,

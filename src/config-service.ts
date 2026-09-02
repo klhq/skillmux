@@ -309,7 +309,7 @@ export async function getDottedKey(key: string, configPath?: string): Promise<un
 export async function setDottedKey(
   key: string,
   rawValStr: string,
-  opts?: { configPath?: string; dryRun?: boolean; targetName?: string }
+  opts?: { configPath?: string; dryRun?: boolean; contextName?: string }
 ): Promise<SetConfigResult> {
   validateDottedKey(key);
   if (isEnvMasked(key)) {
@@ -317,7 +317,7 @@ export async function setDottedKey(
   }
 
   const path = opts?.configPath ?? process.env.SKILLMUX_CONFIG ?? DEFAULT_CONFIG_PATH;
-  const targetName = opts?.targetName ?? "local";
+  const contextName = opts?.contextName ?? "local";
 
   const { effective: priorEffective, rawToml } = await getEffectiveConfig(path);
   const priorVal = getNestedValue(priorEffective as Record<string, any>, key);
@@ -364,7 +364,7 @@ export async function setDottedKey(
     key,
     prior_val: priorVal,
     resulting_val: parsedVal,
-    target: targetName,
+    target: contextName,
     prior_revision: priorRevision,
     resulting_revision: resultingRevision,
     persistence,

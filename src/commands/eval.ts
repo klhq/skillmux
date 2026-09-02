@@ -5,20 +5,22 @@ import { excludeExistingCases, parseEvalCases } from "../eval";
 import { emitSuccess, warn } from "../output";
 import { parseSince } from "../stats";
 import { confirmIfNeeded } from "./shared";
-import type { TargetAdapter } from "../adapters";
+import type { ContextAdapter } from "../adapters";
 import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 
 export async function runEvalPromote(
   args: string[],
-  options: { isJson: boolean; dryRun: boolean; adapter: TargetAdapter },
+  options: { isJson: boolean; dryRun: boolean; adapter: ContextAdapter },
 ): Promise<void> {
   let since: string | undefined;
+  let out: string | undefined;
   let target: string | undefined;
   let dryRun = options.dryRun;
   let yes = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--since") since = args[++i];
+    else if (arg === "--out") out = args[++i];
     else if (arg === "--target") target = args[++i];
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--yes") yes = true;
@@ -31,12 +33,20 @@ export async function runEvalPromote(
     }
   }
   if (!since) {
-    throw new Error("usage: skillmux eval promote --since <window> [--target <path>] [--dry-run] [--yes] [--json]");
+    throw new Error("usage: skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]");
+  }
+
+  if (out !== undefined && target !== undefined && out !== target) {
+    throw new Error("cannot specify conflicting --out and --target");
+  }
+
+  if (target !== undefined) {
+    warn("--target is deprecated, use --out instead");
   }
 
   const config = await loadConfig();
   const stateDir = expandHome(config.state_dir);
-  const targetPath = target ?? join(stateDir, "eval-observed.json");
+  const targetPath = out ?? target ?? join(stateDir, "eval-observed.json");
   const sinceDate = parseSince(since);
   const sinceIso = sinceDate.toISOString();
 

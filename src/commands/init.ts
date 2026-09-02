@@ -152,6 +152,7 @@ function initJsonEnvelope(payload: InitJsonPayload): string {
   return JSON.stringify({
     schema_version: 1,
     ok: true,
+    context: "local",
     target: "local",
     data: payload,
     error: null,

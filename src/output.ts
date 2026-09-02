@@ -3,6 +3,8 @@ import type { ResolvedContext } from "./context";
 export interface JsonEnvelope<T = any> {
   schema_version: 1;
   ok: boolean;
+  context: string | { name: string; server: string };
+  /** @deprecated Slated for removal in the next major version. Use `context` instead. */
   target: string | { name: string; server: string };
   data: T | null;
   error: { code: string; message: string; details?: any } | null;
@@ -10,27 +12,34 @@ export interface JsonEnvelope<T = any> {
 
 export function formatJsonEnvelope<T>(opts: {
   ok: boolean;
-  target: ResolvedContext | string | { name: string; server: string };
+  /** @deprecated Slated for removal in the next major version. Use `context` instead. */
+  target?: ResolvedContext | string | { name: string; server: string };
+  context?: ResolvedContext | string | { name: string; server: string };
   data?: T;
   error?: { code: string; message: string; details?: any } | null;
 }): JsonEnvelope<T> {
-  let targetVal: string | { name: string; server: string };
-  if (typeof opts.target === "string" || (typeof opts.target === "object" && "server" in opts.target && !("type" in opts.target))) {
-    targetVal = opts.target as any;
-  } else if (typeof opts.target === "object" && "type" in opts.target) {
-    if (opts.target.type === "local") {
-      targetVal = "local";
+  const input: ResolvedContext | string | { name: string; server: string } =
+    opts.context ?? opts.target ?? "local";
+  let contextVal: string | { name: string; server: string };
+  if (typeof input === "string") {
+    contextVal = input;
+  } else if (typeof input === "object" && input !== null) {
+    if ("type" in input && (input as any).type === "local") {
+      contextVal = "local";
+    } else if ("name" in input && "server" in input) {
+      contextVal = { name: input.name, server: input.server };
     } else {
-      targetVal = { name: opts.target.name, server: opts.target.server };
+      contextVal = "local";
     }
   } else {
-    targetVal = "local";
+    contextVal = "local";
   }
 
   return {
     schema_version: 1,
     ok: opts.ok,
-    target: targetVal,
+    context: contextVal,
+    target: contextVal,
     data: opts.data ?? null,
     error: opts.error ?? null,
   };
@@ -51,12 +60,18 @@ export class CliError extends Error {
 }
 
 export function emitSuccess<T>(
-  ctx: { isJson: boolean; target?: ResolvedContext | string | { name: string; server: string } },
+  ctx: {
+    isJson: boolean;
+    /** @deprecated Slated for removal in the next major version. Use `context` instead. */
+    target?: ResolvedContext | string | { name: string; server: string };
+    context?: ResolvedContext | string | { name: string; server: string };
+  },
   data: T,
   renderText: () => void,
 ): void {
   if (ctx.isJson) {
-    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, target: ctx.target ?? "local", data })));
+    const contextVal = ctx.context ?? ctx.target ?? "local";
+    console.log(JSON.stringify(formatJsonEnvelope({ ok: true, context: contextVal, target: contextVal, data })));
   } else {
     renderText();
   }
@@ -166,12 +181,12 @@ export function warn(line: string): void {
   console.error(yellow(`warning: ${line}`));
 }
 
-export function renderTargetBanner(target: ResolvedContext): void {
+export function renderContextBanner(context: ResolvedContext): void {
   if (!isInteractive()) return;
-  if (target.type === "local") {
-    console.log(`Target: local`);
+  if (context.type === "local") {
+    console.log(`Context: local`);
   } else {
-    console.log(`Target: remote (${target.name} -> ${target.server})`);
+    console.log(`Context: remote (${context.name} -> ${context.server})`);
   }
 }
 

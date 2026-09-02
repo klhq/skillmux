@@ -2080,6 +2080,8 @@ describe("skillmux init CLI", () => {
     // (docs/cli.md "Automation and JSON output"), so a generic consumer
     // reading target/data/error works here too.
     expect(envelope.target).toBe("local");
+    expect(envelope.context).toBe("local");
+    expect(envelope.context).toEqual(envelope.target);
     expect(envelope.error).toBeNull();
     expect(envelope.data).toMatchObject({
       command: "init",
@@ -2118,6 +2120,8 @@ describe("skillmux init CLI", () => {
     expect(envelope.schema_version).toBe(1);
     expect(envelope.ok).toBe(true);
     expect(envelope.target).toBe("local");
+    expect(envelope.context).toBe("local");
+    expect(envelope.context).toEqual(envelope.target);
     expect(envelope.error).toBeNull();
     expect(envelope.data).toMatchObject({
       command: "init",
@@ -2783,6 +2787,60 @@ describe("skillmux eval promote CLI (AC17, AC18)", () => {
     expect(parsed.data.promoted).toBe(1);
     expect(parsed.data.skipped_existing).toBe(0);
     expect(parsed.data.dry_run).toBe(false);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("--out works to specify output destination", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-out-"));
+    const promoteConfigPath = privateConfig(root);
+    seedCorrelatedFetch(root, "run docker logs", "docker-manager", "req-1");
+    const outPath = join(root, "custom-out.json");
+
+    const result = await runPromoteCli(promoteConfigPath, "--since", "30d", "--out", outPath, "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("wrote 1 case");
+    expect(result.stderr).not.toContain("--target is deprecated");
+    const written = JSON.parse(readFileSync(outPath, "utf-8"));
+    expect(written).toEqual([{ query: "run docker logs", split: "observed", relevant_skill_ids: ["docker-manager"] }]);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("--target still works as deprecated alias and warns naming --out", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-target-"));
+    const promoteConfigPath = privateConfig(root);
+    seedCorrelatedFetch(root, "run docker logs", "docker-manager", "req-1");
+    const targetPath = join(root, "legacy-target.json");
+
+    const result = await runPromoteCli(promoteConfigPath, "--since", "30d", "--target", targetPath, "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("wrote 1 case");
+    expect(result.stderr).toContain("warning: --target is deprecated, use --out instead");
+    const written = JSON.parse(readFileSync(targetPath, "utf-8"));
+    expect(written).toEqual([{ query: "run docker logs", split: "observed", relevant_skill_ids: ["docker-manager"] }]);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("rejects when both --out and --target are specified and disagree", async () => {
+    const root = mkdtempSync(join(tmpdir(), "skillmux-eval-promote-disagree-"));
+    const promoteConfigPath = privateConfig(root);
+    const outPath = join(root, "out.json");
+    const targetPath = join(root, "target.json");
+
+    const result = await runPromoteCli(
+      promoteConfigPath,
+      "--since",
+      "30d",
+      "--out",
+      outPath,
+      "--target",
+      targetPath,
+      "--yes",
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("cannot specify conflicting --out and --target");
     rmSync(root, { recursive: true, force: true });
   });
 });
