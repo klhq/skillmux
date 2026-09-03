@@ -116,8 +116,12 @@ Skillmux maps it to the product's skill directory and safe instruction-file
 conventions.
 
 A **target** is a physical directory managed by sync. Several agents can map
-to one target. Gemini CLI, OpenCode, GitHub Copilot, and Windsurf share
+to one target. OpenCode, GitHub Copilot, and Windsurf share
 `~/.agents/skills`, so Skillmux deduplicates that directory.
+
+The mapping is not total. `goose` and `hermes` use full-vault delivery and
+map to no target at all, so commands that take `--agent` as a stand-in for a
+target reject them.
 
 Custom targets let you manage another directory without adding a product
 adapter:

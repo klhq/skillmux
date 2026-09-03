@@ -543,6 +543,11 @@ usage:
   skillmux config diff
   skillmux config status
 
+config init bootstraps this machine's config file from a populated vault. It
+is not a prerequisite for anything: "skillmux init --vault <path>" runs the
+same bootstrap when no config exists, so reach for config init only when you
+are setting up the config without the guided init.
+
 Accepts --context <name> / --server <url> to target a remote deployment.`,
 
   completions: `completions: generate a shell completion script
@@ -621,6 +626,15 @@ usage:
   skillmux project attach <group> (--agent <id>... | --target <name>...) --yes
   skillmux project detach <group> (--agent <id>... | --target <name>...) --yes
 
+--agent and --target both name sync targets, and either may be repeated.
+--target <name> names a target directly, including a custom one created by
+"skillmux target add". --agent <id> is shorthand for "whatever target that
+agent maps to", resolved from the targets init already configured, so it
+fails if that agent was never set up or maps to no target at all (goose and
+hermes use full-vault delivery and have none). Several agents can share one
+target, so attaching two agents that map to the same directory attaches it
+once.
+
 --register-mcp is the project-local counterpart to "skillmux init
 --register-mcp": only for claude-code (the only agent whose own CLI has a
 project MCP scope — codex's mcp add has no scope flag, so it's always
@@ -639,7 +653,12 @@ usage:
   skillmux target remove <name> --yes
 
 --dir may be omitted when <name> is a built-in target with a deterministic
-path: agent-skills, claude-code, codex. Any other <name> requires --dir.`,
+path: agent-skills, claude-code, codex. Any other <name> requires --dir.
+
+A target is a directory, not a product. Several agents can map to the same
+one (opencode, github-copilot and windsurf all share agent-skills), which is
+why "skillmux project attach" accepts --agent as shorthand for the target
+that agent resolves to.`,
 
   core: `core: pin or unpin core-tier skills
 
@@ -771,7 +790,6 @@ See docs/deployment.md for server deployment examples.`);
   console.log(`usage: skillmux <command> [options]
 
 Setup:
-  skillmux config init --vault <path> --yes
   skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--show-mcp-setup] [--register-mcp]
                 [--no-instructions] [--no-sync]
@@ -780,9 +798,12 @@ Setup:
                 [--agent <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
-  skillmux target <list|show|add|remove>
+  skillmux target <list|show|add|remove>  (a target is a directory sync writes into)
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
   skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)
+  skillmux config init --vault <path> --yes
+                (bootstraps this machine's config on its own; not a
+                prerequisite, since "skillmux init --vault" does the same)
 
 Init agents:
   ${SUPPORTED_AGENT_IDS.join(", ")}
