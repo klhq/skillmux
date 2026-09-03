@@ -14,7 +14,15 @@ import {
 import { emitSuccess } from "../output";
 import { hashSkillContent, readSkillOrigin, writeSkillOrigin } from "../provenance";
 import type { SkillOrigin } from "../provenance";
-import { type ScanFinding, type ScanSeverity, scanExitCode } from "../scan";
+import {
+  FAIL_ON_USAGE,
+  parseFailOn,
+  resolveMutatingFailOn,
+  scanExitCode,
+  type FailOnOption,
+  type ScanFinding,
+  type ScanSeverity,
+} from "../scan";
 import { SKILL_ID_PATTERN } from "../vault";
 import { confirmIfNeeded } from "./shared";
 import { checkOutdated } from "./outdated";
@@ -175,14 +183,14 @@ function parseUpdateArgs(args: string[]): {
   yes: boolean;
   dryRun: boolean;
   force: boolean;
-  failOn?: ScanSeverity;
+  failOn?: FailOnOption;
   allowLocalSource: boolean;
 } {
   let skillId: string | undefined;
   let yes = false;
   let dryRun = false;
   let force = false;
-  let failOn: ScanSeverity | undefined;
+  let failOn: FailOnOption | undefined;
   let allowLocalSource = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -191,11 +199,7 @@ function parseUpdateArgs(args: string[]): {
     else if (arg === "--force") force = true;
     else if (arg === "--allow-local-source") allowLocalSource = true;
     else if (arg === "--fail-on") {
-      const value = args[++i];
-      if (value !== "low" && value !== "medium" && value !== "high") {
-        throw new Error("--fail-on must be low, medium, or high");
-      }
-      failOn = value;
+      failOn = parseFailOn(args[++i]);
     } else if (isGlobalFlag(arg, "--json")) {
       // handled globally
     } else if (arg?.startsWith("--")) {
@@ -215,7 +219,10 @@ export async function runUpdate(args: string[], options: { isJson: boolean }): P
   const vaultPath = expandHome(config.vault_path);
 
   const candidates = await resolveCandidateOrigins(vaultPath, skillId, allowLocalSource, config.egress?.allowed_hosts);
-  const plan = await buildPlan(vaultPath, candidates, failOn, force, config.egress?.allowed_hosts);
+  // Same default as install: block on a high-severity finding unless the
+  // caller explicitly opts out with --fail-on none.
+  const effectiveFailOn = resolveMutatingFailOn(failOn);
+  const plan = await buildPlan(vaultPath, candidates, effectiveFailOn, force, config.egress?.allowed_hosts);
   try {
     const toWrite = plan.filter((item) => item.kind === "update");
 
