@@ -649,12 +649,12 @@ Accepts --context <name> / --server <url> to prune a remote deployment's audit d
   scan: `scan: check the vault for install-time or integrity issues
 
 usage:
-  skillmux scan [path] [--format text|json] [--fail-on low|medium|high] [--json]`,
+  skillmux scan [path] [--fail-on low|medium|high|none] [--json]`,
 
   install: `install: install a skill from a git source
 
 usage:
-  skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--allow-local-source] [--json]`,
+  skillmux install <repo>[/path] [--force] [--fail-on low|medium|high|none] [--dry-run] [--allow-local-source] [--json]`,
 
   outdated: `outdated: list installed skills with a newer upstream version
 
@@ -664,7 +664,7 @@ usage:
   update: `update: update one or all skills to their latest source version
 
 usage:
-  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high] [--json]`,
+  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]`,
 
   eval: `eval: run retrieval evaluation against the holdout set
 
@@ -748,7 +748,7 @@ Operations:
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
   skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
   skillmux outdated [--allow-local-source] [--json]
-  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high] [--json]
+  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]
 
 Commands:
   serve, index, sync, init, project, target, core, report, audit, scan, install, outdated, update,

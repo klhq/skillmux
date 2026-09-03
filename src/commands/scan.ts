@@ -1,6 +1,7 @@
 import { expandHome, loadConfig } from "../config";
 import { emitSuccess } from "../output";
 import {
+  parseFailOn,
   renderScanJson,
   renderScanText,
   scanExitCode,
@@ -25,11 +26,11 @@ function parseScanArgs(args: string[]): {
         throw new Error("--format must be text or json");
       format = value;
     } else if (option === "--fail-on") {
-      const value = args[++i];
-      if (value !== "low" && value !== "medium" && value !== "high") {
-        throw new Error("--fail-on must be low, medium, or high");
-      }
-      failOn = value;
+      // scan accepts "none" for symmetry with install/update, where it is the
+      // opt-out. Here it is already the default: scan reports, and the caller
+      // opts into a non-zero exit code.
+      const parsed = parseFailOn(args[++i]);
+      failOn = parsed === "none" ? undefined : parsed;
     } else if (isGlobalFlag(option, "--json")) {
       // handled globally by main()'s isJson flag; recognized here so it isn't rejected
     } else if (option?.startsWith("--")) {
