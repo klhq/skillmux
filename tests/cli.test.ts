@@ -3025,6 +3025,25 @@ describe("Remote Target Parity CLI (Bucket B) (AC3-9)", () => {
 });
 
 describe("skillmux scan CLI", () => {
+  test("--format still prints bare JSON on stdout but warns on stderr", async () => {
+    // --format predates the shared envelope and is the last flag that emits
+    // JSON outside it. It keeps working for existing callers, so the warning
+    // must go to stderr or it would corrupt machine-parsed stdout.
+    const result = await runCli("scan", "--format", "json");
+
+    expect(() => JSON.parse(result.stdout)).not.toThrow();
+    expect(JSON.parse(result.stdout)).toHaveProperty("findings");
+    expect(result.stdout).not.toContain("deprecated");
+    expect(result.stderr).toContain("--format is deprecated");
+    expect(result.stderr).toContain("use --json instead");
+  });
+
+  test("does not warn when --format is absent", async () => {
+    const result = await runCli("scan", "--json");
+
+    expect(result.stderr).not.toContain("--format is deprecated");
+  });
+
   test("scans the configured vault by default and flags the pre-existing unparseable skill, but nothing else", async () => {
     // second-skill's SKILL.md was corrupted by the "index CLI" suite above (unterminated
     // frontmatter) — this test asserts that skip surfaces as a finding, not that the vault

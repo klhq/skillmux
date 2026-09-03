@@ -1,5 +1,5 @@
 import { expandHome, loadConfig } from "../config";
-import { emitSuccess } from "../output";
+import { emitSuccess, warn } from "../output";
 import {
   parseFailOn,
   renderScanJson,
@@ -13,10 +13,12 @@ import { isGlobalFlag } from "../global-flags";
 function parseScanArgs(args: string[]): {
   path?: string;
   format: "text" | "json";
+  formatExplicit: boolean;
   failOn?: ScanSeverity;
 } {
   let path: string | undefined;
   let format: "text" | "json" = "text";
+  let formatExplicit = false;
   let failOn: ScanSeverity | undefined;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
@@ -25,6 +27,7 @@ function parseScanArgs(args: string[]): {
       if (value !== "text" && value !== "json")
         throw new Error("--format must be text or json");
       format = value;
+      formatExplicit = true;
     } else if (option === "--fail-on") {
       // scan accepts "none" for symmetry with install/update, where it is the
       // opt-out. Here it is already the default: scan reports, and the caller
@@ -41,14 +44,20 @@ function parseScanArgs(args: string[]): {
       path = option;
     }
   }
-  return { path, format, failOn };
+  return { path, format, formatExplicit, failOn };
 }
 
 export async function runScan(
   args: string[],
   options: { isJson: boolean },
 ): Promise<void> {
-  const { path, format, failOn } = parseScanArgs(args);
+  const { path, format, formatExplicit, failOn } = parseScanArgs(args);
+  if (formatExplicit) {
+    // --format predates the shared --json envelope and is the last command
+    // flag that emits JSON outside it. Kept working for existing callers;
+    // the warning goes to stderr so stdout stays machine-parseable.
+    warn("--format is deprecated and will be removed in the next major version; use --json instead");
+  }
   const rootPath = path
     ? expandHome(path)
     : expandHome((await loadConfig()).vault_path);
