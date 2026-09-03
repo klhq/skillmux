@@ -566,7 +566,20 @@ usage:
   sync: `sync: apply the manifest to native agent target directories
 
 usage:
-  skillmux sync [--dry-run] [--restore-monolith] [--install-hook] [--yes] [--json]`,
+  skillmux sync [--dry-run] [--restore-monolith] [--install-hook] [--yes] [--json]
+
+--dry-run prints what would change without writing. --yes approves creating
+a target directory that does not exist yet; without it, an unseen directory
+is skipped rather than created.
+
+--install-hook installs a git post-merge hook in the vault checkout so a
+"git pull" re-syncs the targets automatically.
+
+--restore-monolith undoes managed-pin delivery for a target: instead of
+individual pinned skills, the target directory is replaced by a single
+symlink to the whole vault. It refuses to touch a directory skillmux does
+not own, one carrying a local_vault marker, or one whose marker points at a
+different vault.`,
 
   init: `init: guided setup for native skill management
 
@@ -649,22 +662,55 @@ Accepts --context <name> / --server <url> to prune a remote deployment's audit d
   scan: `scan: check the vault for install-time or integrity issues
 
 usage:
-  skillmux scan [path] [--fail-on low|medium|high|none] [--json]`,
+  skillmux scan [path] [--fail-on low|medium|high|none] [--json]
+
+Scans [path], or the configured vault when omitted. Reporting only: it
+exits 0 whatever it finds unless --fail-on names a severity, which is why
+it has no default threshold while install and update default to high.
+
+--format text|json is deprecated: it emits JSON outside the standard
+envelope. Use --json instead; --format will be removed in the next major.`,
 
   install: `install: install a skill from a git source
 
 usage:
-  skillmux install <repo>[/path] [--force] [--fail-on low|medium|high|none] [--dry-run] [--allow-local-source] [--json]`,
+  skillmux install <repo>[/path] [--force] [--fail-on low|medium|high|none] [--dry-run] [--allow-local-source] [--json]
+
+The fetched skill is scanned before it is written to the vault. --fail-on
+sets the severity that aborts the install and defaults to high; pass
+--fail-on none to install despite findings. A lower threshold is stricter:
+low aborts on low, medium and high.
+
+--force overwrites a skill that already exists in the vault instead of
+refusing. --dry-run reports where the skill would land without writing.
+--allow-local-source permits a file:// or local path source, which is
+otherwise rejected.`,
 
   outdated: `outdated: list installed skills with a newer upstream version
 
 usage:
-  skillmux outdated [--allow-local-source] [--json]`,
+  skillmux outdated [--allow-local-source] [--json]
+
+Read-only: it reports what "skillmux update" would change and writes
+nothing. --allow-local-source includes skills installed from a local or
+file:// source, which are skipped by default because their upstream is a
+path on this machine rather than a shared remote.`,
 
   update: `update: update one or all skills to their latest source version
 
 usage:
-  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]`,
+  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]
+
+Updates every installed skill, or just <skill-id>. --yes is required to
+apply non-interactively. --dry-run prints the plan without writing.
+
+--fail-on works exactly as it does for install and defaults to high, so a
+skill whose new version carries a high-severity finding is skipped rather
+than updated; --fail-on none restores the old permissive behavior.
+
+--force updates a skill whose local content no longer matches the hash
+recorded at install time, which otherwise blocks the update to avoid
+discarding local edits. --allow-local-source permits local/file:// sources.`,
 
   eval: `eval: run retrieval evaluation against the holdout set
 
@@ -727,7 +773,8 @@ See docs/deployment.md for server deployment examples.`);
 Setup:
   skillmux config init --vault <path> --yes
   skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
-                [--migrate-full-vault] [--no-instructions] [--no-sync]
+                [--migrate-full-vault] [--show-mcp-setup] [--register-mcp]
+                [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
                 [--agent <name>...] [--target <name>...] [--no-sync]
