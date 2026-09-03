@@ -1382,6 +1382,38 @@ describe("skillmux project CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("project attach refuses a full-vault agent instead of attaching nothing", async () => {
+    const manifest = `[core]\nskills = []\n\n[project.demo]\npaths = ["${tmp}"]\nskills = []\n\n[targets.agent-skills]\ndir = "~/.agents/skills"\nproject_groups = []\n`;
+    writeFileSync(join(vaultDir, "skillmux.toml"), manifest);
+
+    const alone = await runCli("project", "attach", "demo", "--agent", "goose", "--yes");
+    expect(alone.exitCode).not.toBe(0);
+    expect(alone.stderr).toContain("maps to no sync target");
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf8")).toContain(
+      `project_groups = []`,
+    );
+
+    // The partial case is the dangerous one: goose used to be dropped silently
+    // while windsurf attached, so the command reported success for both.
+    const mixed = await runCli(
+      "project",
+      "attach",
+      "demo",
+      "--agent",
+      "goose",
+      "--agent",
+      "windsurf",
+      "--yes",
+    );
+    expect(mixed.exitCode).not.toBe(0);
+    expect(mixed.stderr).toContain("maps to no sync target");
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf8")).toContain(
+      `project_groups = []`,
+    );
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("project attach shows the resolved target directory, not just its name", async () => {
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
