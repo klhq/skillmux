@@ -502,6 +502,12 @@ predate this envelope. They carry exactly the same content as `data` and are
 kept only so existing automation keeps working. Read `data` instead; the
 duplicated keys will be removed in the next major version.
 
+`skillmux scan --format json` is the one exception to the envelope. It
+predates this contract and prints a bare `{"scanned": N, "findings": [...]}`
+object instead. It is deprecated and warns on stderr, which leaves stdout
+parseable for existing consumers. Use the global `--json` for anything new,
+and read `data` for the same fields.
+
 ### Exit codes
 
 | Code | Meaning | Examples |
