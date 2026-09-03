@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1](https://github.com/klhq/skillmux/compare/v1.11.0...v1.11.1) (2026-09-03)
+
+
+### Added
+
+* **cli:** install asks before writing to the vault ([#185](https://github.com/klhq/skillmux/issues/185)) ([7f12d02](https://github.com/klhq/skillmux/commit/7f12d02def0f306d963d37920f2407c8cffe1c04))
+
+
+### Fixed
+
+* **cli:** reject full-vault agents on project attach, clarify agent vs target ([#184](https://github.com/klhq/skillmux/issues/184)) ([118aff5](https://github.com/klhq/skillmux/commit/118aff5f46fb9e83c8c0e068890b96fe0a02311d))
+* **security:** gate install/update on scan findings, plus CLI help cleanup ([#182](https://github.com/klhq/skillmux/issues/182)) ([daffd8a](https://github.com/klhq/skillmux/commit/daffd8af89ebee1fbd4c05870c328baf747bbea3))
+
 ## [1.11.0](https://github.com/klhq/skillmux/compare/v1.10.0...v1.11.0) (2026-09-02)
 
 
