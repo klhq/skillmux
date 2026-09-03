@@ -59,7 +59,23 @@ function configuredTargetsForAgents(
   manifest: ReturnType<typeof parseManifest>,
   agents: readonly string[],
 ): string[] {
-  return planAgentSurfaces(agents).surfaces.map((surface) => {
+  const plan = planAgentSurfaces(agents);
+
+  // planAgentSurfaces silently drops any agent with no surfaceId, which is how
+  // full-vault agents (goose, hermes) are modelled: they get the whole vault
+  // rather than a sync target directory. Dropping one here used to make
+  // "project attach --agent goose" a successful no-op, so refuse instead.
+  const covered = new Set<string>(plan.surfaces.flatMap((surface) => surface.agents));
+  for (const agent of agents) {
+    if (!covered.has(agent)) {
+      throw new Error(
+        `agent "${agent}" uses full-vault delivery and maps to no sync target; ` +
+          `name a target directly with --target instead`,
+      );
+    }
+  }
+
+  return plan.surfaces.map((surface) => {
     const target = configuredTargetForSurface(manifest, surface);
     if (target) return target;
     const agent = surface.agents[0]!;
