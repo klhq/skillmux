@@ -23,6 +23,7 @@ import {
   type FailOnOption,
 } from "../scan";
 import { isGlobalFlag } from "../global-flags";
+import { confirmIfNeeded } from "./shared";
 
 function parseInstallArgs(args: string[]): {
   repo?: string;
@@ -30,15 +31,18 @@ function parseInstallArgs(args: string[]): {
   dryRun: boolean;
   failOn?: FailOnOption;
   allowLocalSource: boolean;
+  yes: boolean;
 } {
   let repo: string | undefined;
   let force = false;
   let dryRun = false;
   let failOn: FailOnOption | undefined;
   let allowLocalSource = false;
+  let yes = false;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
     if (option === "--force") force = true;
+    else if (option === "--yes") yes = true;
     else if (option === "--dry-run") dryRun = true;
     else if (option === "--allow-local-source") allowLocalSource = true;
     else if (option === "--fail-on") {
@@ -53,17 +57,17 @@ function parseInstallArgs(args: string[]): {
       repo = option;
     }
   }
-  return { repo, force, dryRun, failOn, allowLocalSource };
+  return { repo, force, dryRun, failOn, allowLocalSource, yes };
 }
 
 export async function runInstall(
   args: string[],
   options: { isJson: boolean },
 ): Promise<void> {
-  const { repo, force, dryRun, failOn, allowLocalSource } = parseInstallArgs(args);
+  const { repo, force, dryRun, failOn, allowLocalSource, yes } = parseInstallArgs(args);
   if (!repo) {
     throw new Error(
-      `usage: skillmux install <repo>[/path] [--force] [--fail-on ${FAIL_ON_USAGE}] [--dry-run] [--allow-local-source] [--json]`,
+      `usage: skillmux install <repo>[/path] [--yes] [--force] [--fail-on ${FAIL_ON_USAGE}] [--dry-run] [--allow-local-source] [--json]`,
     );
   }
 
@@ -115,6 +119,16 @@ export async function runInstall(
       );
       return;
     }
+
+    // Confirm after the scan, so an interactive user decides with the findings
+    // already on screen, and after the --dry-run return, which writes nothing.
+    const proceed = await confirmIfNeeded({
+      confirmed: yes,
+      isJson: options.isJson,
+      prompt: `install:\n  ${resolved.skillId} <- ${source.url}\n?`,
+      nonInteractiveError: "skillmux install requires --yes when run non-interactively",
+    });
+    if (!proceed) return;
 
     const commit = resolveCloneCommit(cloneDir);
     const targetDir = installIntoVault(

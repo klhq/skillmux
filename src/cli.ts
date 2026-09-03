@@ -693,7 +693,11 @@ envelope. Use --json instead; --format will be removed in the next major.`,
   install: `install: install a skill from a git source
 
 usage:
-  skillmux install <repo>[/path] [--force] [--fail-on low|medium|high|none] [--dry-run] [--allow-local-source] [--json]
+  skillmux install <repo>[/path] [--yes] [--force] [--fail-on low|medium|high|none] [--dry-run] [--allow-local-source] [--json]
+
+--yes approves writing the skill into the vault. Without it an interactive
+run asks first, and a non-interactive one (no TTY, or --json) fails rather
+than installing unattended, matching "skillmux update".
 
 The fetched skill is scanned before it is written to the vault. --fail-on
 sets the severity that aborts the install and defaults to high; pass
