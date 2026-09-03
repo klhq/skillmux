@@ -264,3 +264,37 @@ export function scanExitCode(findings: RuleMatch[], failOn: ScanSeverity | undef
   const threshold = SEVERITY_RANK[failOn];
   return findings.some((f) => SEVERITY_RANK[f.severity] >= threshold) ? 1 : 0;
 }
+
+/**
+ * A parsed `--fail-on` value. "none" is accepted on the command line to mean
+ * "never fail" and is not a finding severity, which is why it is kept out of
+ * ScanSeverity itself.
+ *
+ * Note the ordering: a lower threshold is stricter. `low` fails on low, medium
+ * and high; `high` fails only on high.
+ */
+export type FailOnOption = ScanSeverity | "none";
+
+export const FAIL_ON_USAGE = "low|medium|high|none";
+
+export function parseFailOn(value: string | undefined): FailOnOption {
+  if (value !== "low" && value !== "medium" && value !== "high" && value !== "none") {
+    throw new Error("--fail-on must be low, medium, high, or none");
+  }
+  return value;
+}
+
+/**
+ * Resolves the threshold for the commands that fetch remote content into the
+ * vault (install, update). They default to blocking on a high-severity finding,
+ * because printing a warning and proceeding anyway is the wrong default on the
+ * supply-chain path. `--fail-on none` restores the permissive behavior.
+ *
+ * `skillmux scan` deliberately does NOT use this: it is a reporting command
+ * whose exit code the caller opts into, and giving it a default would change
+ * the exit code of existing CI pipelines that just run `skillmux scan`.
+ */
+export function resolveMutatingFailOn(failOn: FailOnOption | undefined): ScanSeverity | undefined {
+  if (failOn === undefined) return "high";
+  return failOn === "none" ? undefined : failOn;
+}

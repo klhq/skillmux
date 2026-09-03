@@ -14,20 +14,27 @@ import {
 } from "../install";
 import { emitSuccess } from "../output";
 import { hashSkillContent, writeSkillOrigin } from "../provenance";
-import { renderScanText, scanExitCode, type ScanSeverity } from "../scan";
+import {
+  FAIL_ON_USAGE,
+  parseFailOn,
+  renderScanText,
+  resolveMutatingFailOn,
+  scanExitCode,
+  type FailOnOption,
+} from "../scan";
 import { isGlobalFlag } from "../global-flags";
 
 function parseInstallArgs(args: string[]): {
   repo?: string;
   force: boolean;
   dryRun: boolean;
-  failOn?: ScanSeverity;
+  failOn?: FailOnOption;
   allowLocalSource: boolean;
 } {
   let repo: string | undefined;
   let force = false;
   let dryRun = false;
-  let failOn: ScanSeverity | undefined;
+  let failOn: FailOnOption | undefined;
   let allowLocalSource = false;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
@@ -35,11 +42,7 @@ function parseInstallArgs(args: string[]): {
     else if (option === "--dry-run") dryRun = true;
     else if (option === "--allow-local-source") allowLocalSource = true;
     else if (option === "--fail-on") {
-      const value = args[++i];
-      if (value !== "low" && value !== "medium" && value !== "high") {
-        throw new Error("--fail-on must be low, medium, or high");
-      }
-      failOn = value;
+      failOn = parseFailOn(args[++i]);
     } else if (isGlobalFlag(option, "--json", "--verbose")) {
       // handled globally by main()'s isJson/isVerbose flags; recognized here so they aren't rejected
     } else if (option?.startsWith("--")) {
@@ -60,7 +63,7 @@ export async function runInstall(
   const { repo, force, dryRun, failOn, allowLocalSource } = parseInstallArgs(args);
   if (!repo) {
     throw new Error(
-      "usage: skillmux install <repo>[/path] [--force] [--fail-on low|medium|high] [--dry-run] [--allow-local-source] [--json]",
+      `usage: skillmux install <repo>[/path] [--force] [--fail-on ${FAIL_ON_USAGE}] [--dry-run] [--allow-local-source] [--json]`,
     );
   }
 
@@ -85,10 +88,16 @@ export async function runInstall(
     );
     if (!options.isJson) console.log(renderScanText({ scanned: 1, findings }));
 
-    if (scanExitCode(findings, failOn) !== 0) {
+    // Defaults to blocking on a high-severity finding. Printing the findings
+    // and installing anyway is the wrong default for the command that pulls
+    // remote content into the vault.
+    const effectiveFailOn = resolveMutatingFailOn(failOn);
+    if (scanExitCode(findings, effectiveFailOn) !== 0) {
       process.exitCode = 1;
       console.error(
-        `aborting install: a finding met the --fail-on ${failOn} threshold`,
+        `aborting install: a finding met the --fail-on ${effectiveFailOn} threshold` +
+          (failOn === undefined ? " (the default)" : "") +
+          `; re-run with --fail-on none to install anyway`,
       );
       return;
     }
