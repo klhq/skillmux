@@ -2161,8 +2161,8 @@ describe("skillmux init CLI", () => {
       dry_run: false,
       applied: true,
     });
-    // The deprecated top-level duplicates must keep carrying identical content
-    // until they are dropped in the next major.
+    // The deprecated top-level duplicates are a permanent compatibility alias,
+    // so they must keep carrying content identical to `data`.
     expect(envelope.phase).toBe("result");
     expect(envelope.applied).toBe(true);
     expect(envelope.data.plan).toEqual(envelope.plan);

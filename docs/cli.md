@@ -494,13 +494,20 @@ When `--json` or `SKILLMUX_JSON=true` is set, all output is emitted to `stdout` 
 }
 ```
 
-The `context` field identifies the execution context (`"local"` or `{ "name": "<context>", "server": "<url>" }`). The `target` field carries identical content but is deprecated and slated for removal in the next major version; consumers should read `context`.
+The `context` field identifies the execution context (`"local"` or `{ "name": "<context>", "server": "<url>" }`). The `target` field carries identical content but is deprecated; consumers should read `context`. It stays in the payload as a compatibility alias so existing automation keeps parsing, and no removal is planned.
 
 `skillmux init` additionally repeats its payload as deprecated top-level
 `command`, `phase`, `dry_run`, `applied`, `plan`, and `result` keys, which
 predate this envelope. They carry exactly the same content as `data` and are
-kept only so existing automation keeps working. Read `data` instead; the
-duplicated keys will be removed in the next major version.
+kept only so existing automation keeps working. Read `data` instead. The
+duplicated keys stay for the same reason as `target` above, and no removal
+is planned.
+
+`skillmux scan --format json` is the one exception to the envelope. It
+predates this contract and prints a bare `{"scanned": N, "findings": [...]}`
+object instead. It is deprecated and warns on stderr, which leaves stdout
+parseable for existing consumers. Use the global `--json` for anything new,
+and read `data` for the same fields.
 
 ### Exit codes
 

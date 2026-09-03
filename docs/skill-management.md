@@ -86,13 +86,21 @@ Leaving `allowed_hosts` unset (the default) leaves both commands unrestricted.
 ```sh
 skillmux scan
 skillmux scan ~/skills/candidate
-skillmux scan --format json
+skillmux scan --json
 skillmux scan --fail-on medium
 ```
 
 With no path, `scan` checks the configured vault. `--json` wraps the result in
-the standard CLI automation envelope, while `--format json` selects the
-scanner's raw JSON rendering.
+the standard CLI automation envelope.
+
+Unlike `install` and `update`, `scan` has no default threshold: it reports
+what it finds and exits 0 regardless, so adding it to a pipeline never
+changes that pipeline's exit code by itself. Pass `--fail-on` when you want
+it to gate. The value names the lowest severity that still fails, so a lower
+value is stricter.
+
+`--format text|json` is deprecated. It still works, but it prints JSON
+outside the standard envelope and now warns on stderr. Use `--json` instead.
 
 ## Check and pull upstream updates
 

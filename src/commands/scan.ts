@@ -56,7 +56,7 @@ export async function runScan(
     // --format predates the shared --json envelope and is the last command
     // flag that emits JSON outside it. Kept working for existing callers;
     // the warning goes to stderr so stdout stays machine-parseable.
-    warn("--format is deprecated and will be removed in the next major version; use --json instead");
+    warn("--format is deprecated and will be removed in a future 1.x release; use --json instead");
   }
   const rootPath = path
     ? expandHome(path)

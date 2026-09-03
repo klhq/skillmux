@@ -102,6 +102,10 @@ skillmux install owner/repo
 skillmux install owner/repo/path/to/skill
 ```
 
+`install` scans the skill, shows what it found, and asks before writing to
+the vault. Add `--yes` to approve up front, which a non-interactive run
+requires. See [Managing skills](skill-management.md#install-from-git).
+
 Or create a small skill:
 
 ```sh

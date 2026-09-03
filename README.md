@@ -207,7 +207,14 @@ skillmux install owner/repo
 skillmux install owner/repo/path/to/skill
 ```
 
-Skillmux validates `SKILL.md` and scans candidate content before copying it into the vault. Use `--fail-on low|medium|high` to turn selected findings into an install gate.
+Skillmux validates `SKILL.md` and scans candidate content before copying it
+into the vault, then asks before writing. Pass `--yes` to approve up front;
+a non-interactive run needs it, because `install` refuses to write unattended.
+
+A high-severity finding aborts the install by default. `--fail-on
+low|medium|high|none` moves that threshold, and it names the lowest severity
+that still aborts, so a lower value is stricter: `low` aborts on low, medium
+and high, while `none` installs despite any finding.
 
 Useful management commands:
 
@@ -260,7 +267,7 @@ Read [MCP routing](docs/mcp-routing.md) for transports, client instructions, ret
 | --- | --- | --- |
 | Claude Code | `~/.claude/skills` | Configure in the agent |
 | Codex | `$CODEX_HOME/skills` or `~/.codex/skills` | Configure in the agent |
-| Gemini CLI, OpenCode, GitHub Copilot, Windsurf | `~/.agents/skills` | Configure in the agent |
+| OpenCode, GitHub Copilot, Windsurf | Shared `~/.agents/skills` | Configure in the agent |
 | Antigravity | `~/.gemini/config/skills` | Configure in the agent |
 | Goose, Hermes | Manual full-vault setup | Manual registration |
 | Custom agents | Any directory through a custom target | Stdio or Streamable HTTP |

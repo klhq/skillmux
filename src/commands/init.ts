@@ -144,9 +144,9 @@ interface InitJsonPayload {
  * through the shared handler and needs no bridging.
  *
  * DEPRECATED: the duplicated top-level `command`/`phase`/`dry_run`/`applied`/
- * `plan`/`result` keys should be dropped in the next major version, leaving
- * only the standard envelope. init is local-only, so `target` is always
- * "local".
+ * `plan`/`result` keys are a compatibility alias for `data`. They stay so
+ * existing automation keeps parsing, and no removal is planned. init is
+ * local-only, so `target` is always "local".
  */
 function initJsonEnvelope(payload: InitJsonPayload): string {
   return JSON.stringify({

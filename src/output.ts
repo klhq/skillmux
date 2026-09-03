@@ -4,7 +4,7 @@ export interface JsonEnvelope<T = any> {
   schema_version: 1;
   ok: boolean;
   context: string | { name: string; server: string };
-  /** @deprecated Slated for removal in the next major version. Use `context` instead. */
+  /** @deprecated Use `context` instead. Retained as a compatibility alias; no removal planned. */
   target: string | { name: string; server: string };
   data: T | null;
   error: { code: string; message: string; details?: any } | null;
@@ -12,7 +12,7 @@ export interface JsonEnvelope<T = any> {
 
 export function formatJsonEnvelope<T>(opts: {
   ok: boolean;
-  /** @deprecated Slated for removal in the next major version. Use `context` instead. */
+  /** @deprecated Use `context` instead. Retained as a compatibility alias; no removal planned. */
   target?: ResolvedContext | string | { name: string; server: string };
   context?: ResolvedContext | string | { name: string; server: string };
   data?: T;
@@ -62,7 +62,7 @@ export class CliError extends Error {
 export function emitSuccess<T>(
   ctx: {
     isJson: boolean;
-    /** @deprecated Slated for removal in the next major version. Use `context` instead. */
+    /** @deprecated Use `context` instead. Retained as a compatibility alias; no removal planned. */
     target?: ResolvedContext | string | { name: string; server: string };
     context?: ResolvedContext | string | { name: string; server: string };
   },
