@@ -688,7 +688,8 @@ exits 0 whatever it finds unless --fail-on names a severity, which is why
 it has no default threshold while install and update default to high.
 
 --format text|json is deprecated: it emits JSON outside the standard
-envelope. Use --json instead; --format will be removed in the next major.`,
+envelope. Use --json instead; --format will be removed in a future 1.x
+release.`,
 
   install: `install: install a skill from a git source
 
