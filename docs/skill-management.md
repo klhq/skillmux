@@ -27,20 +27,32 @@ Skillmux clones into a temporary directory, validates the selected skill,
 scans its text files, and copies it to `vault_path`. Existing skill IDs require
 `--force`.
 
-Preview the destination without copying:
+Nothing is written to the vault until you approve it. The scan result prints
+first, then `install` asks for confirmation, so you decide with the findings
+already on screen. Pass `--yes` to approve up front. A non-interactive run
+(no TTY, or `--json`) fails instead of installing unattended, the same way
+`skillmux update` behaves, so scripts and CI must opt in explicitly:
+
+```sh
+skillmux install owner/repo --yes
+```
+
+Preview the destination without copying. `--dry-run` writes nothing, so it
+never asks for confirmation:
 
 ```sh
 skillmux install owner/repo --dry-run
 ```
 
-Set a scan gate when you want findings to block installation:
+The scanner detects suspicious prompt-injection patterns, secrets, and risky
+instructions. A high-severity finding aborts the install by default. Use
+`--fail-on` to move that threshold, where a lower one is stricter, and
+`--fail-on none` to install despite any finding:
 
 ```sh
-skillmux install owner/repo --fail-on high
+skillmux install owner/repo --fail-on low     # also abort on low and medium
+skillmux install owner/repo --fail-on none    # never abort on findings
 ```
-
-The scanner detects suspicious prompt-injection patterns, secrets, and risky
-instructions. Findings remain advisory unless you pass `--fail-on`.
 
 `install` refuses a `file://` source by default — a `file://` URL reaches the
 local filesystem directly, so honoring one unconditionally would let anything
