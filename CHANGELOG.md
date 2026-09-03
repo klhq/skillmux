@@ -18,11 +18,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * **cli:** reject full-vault agents on project attach, clarify agent vs target ([#184](https://github.com/klhq/skillmux/issues/184)) ([118aff5](https://github.com/klhq/skillmux/commit/118aff5f46fb9e83c8c0e068890b96fe0a02311d))
 * **security:** gate install/update on scan findings, plus CLI help cleanup ([#182](https://github.com/klhq/skillmux/issues/182)) ([daffd8a](https://github.com/klhq/skillmux/commit/daffd8af89ebee1fbd4c05870c328baf747bbea3))
 
-
-### Chores
-
-* release 1.11.1 instead of 1.12.0 ([dc1d48d](https://github.com/klhq/skillmux/commit/dc1d48db74ec0bdabefc6e92bf8292b36bc2a0e2))
-
 ## [1.11.0](https://github.com/klhq/skillmux/compare/v1.10.0...v1.11.0) (2026-09-02)
 
 
