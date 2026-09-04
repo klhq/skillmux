@@ -302,9 +302,10 @@ When a managed target's marker still names a previous vault checkout after a
 vault move, use `skillmux target rehome <name> --yes`. It validates every
 recorded managed symlink in the target and its existing project pins before
 updating their `.skillmux` markers to the configured `vault_path`. Use
-`--dry-run` first to inspect the marker paths. Rehome never creates, removes,
-or retargets skill links, and it refuses legacy markers or any marker that
-cannot be proven to belong to the configured vault.
+`--dry-run` first to inspect the marker paths. Rehome never creates or removes
+skill links. It retargets a link only when it resolves exactly to the previous
+`vault_path` recorded in its marker, and it refuses legacy markers or any link
+that cannot be proven to belong to either the previous or configured vault.
 
 Restore a managed target to one symlink that exposes the full vault:
 
