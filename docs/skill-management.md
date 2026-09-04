@@ -298,6 +298,14 @@ command surface and route table.
 `skillmux target remove <name> --yes` removes the manifest record and preserves
 the target directory, marker, and files. Cleanup stays under your control.
 
+When a managed target's marker still names a previous vault checkout after a
+vault move, use `skillmux target rehome <name> --yes`. It validates every
+recorded managed symlink in the target and its existing project pins before
+updating their `.skillmux` markers to the configured `vault_path`. Use
+`--dry-run` first to inspect the marker paths. Rehome never creates, removes,
+or retargets skill links, and it refuses legacy markers or any marker that
+cannot be proven to belong to the configured vault.
+
 Restore a managed target to one symlink that exposes the full vault:
 
 ```sh
