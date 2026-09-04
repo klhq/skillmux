@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   rmSync,
   symlinkSync,
@@ -1608,6 +1609,96 @@ describe("skillmux target CLI", () => {
 
     rmSync(targetPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target rehome updates global and project markers without changing another target", async () => {
+    const homeTargetRoot = mkdtempSync(join(tmp, "skillmux-rehome-home-"));
+    const targetDir = join(homeTargetRoot, ".agents", "skills");
+    const projectPath = join(tmp, "rehome-project");
+    const projectPinDir = join(projectPath, ".agents", "skills");
+    const claudeTargetDir = join(homeTargetRoot, ".claude", "skills");
+    const oldVaultPath = join(tmp, "old-vault");
+    mkdirSync(projectPath, { recursive: true });
+    mkdirSync(join(oldVaultPath, "second-skill"), { recursive: true });
+    writeFileSync(join(oldVaultPath, "second-skill", "SKILL.md"), "---\nname: second-skill\n---\n");
+
+    syncTarget({
+      vaultPath: vaultDir,
+      targetDir,
+      targetName: "agent-skills",
+      coreSkillIds: ["first-skill"],
+    });
+    syncTarget({
+      vaultPath: vaultDir,
+      targetDir: projectPinDir,
+      targetName: "agent-skills",
+      coreSkillIds: ["second-skill"],
+    });
+    syncTarget({
+      vaultPath: vaultDir,
+      targetDir: claudeTargetDir,
+      targetName: "claude-code",
+      coreSkillIds: ["first-skill"],
+    });
+    for (const dir of [targetDir, projectPinDir]) {
+      const markerPath = join(dir, ".skillmux");
+      const marker = JSON.parse(readFileSync(markerPath, "utf8"));
+      writeFileSync(markerPath, JSON.stringify({ ...marker, vault_path: oldVaultPath }, null, 2));
+    }
+    rmSync(join(projectPinDir, "second-skill"));
+    symlinkSync(join(oldVaultPath, "second-skill"), join(projectPinDir, "second-skill"));
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      [
+        `[core]`,
+        `skills = ["first-skill"]`,
+        ``,
+        `[project.demo]`,
+        `paths = ["${projectPath}"]`,
+        `skills = ["second-skill"]`,
+        ``,
+        `[targets.agent-skills]`,
+        `dir = "${targetDir}"`,
+        `project_groups = ["demo"]`,
+        ``,
+        `[targets.claude-code]`,
+        `dir = "${claudeTargetDir}"`,
+        `project_groups = []`,
+      ].join("\n"),
+    );
+
+    try {
+      const globalMarkerBefore = readFileSync(join(targetDir, ".skillmux"), "utf8");
+      const projectMarkerBefore = readFileSync(join(projectPinDir, ".skillmux"), "utf8");
+      const dryRun = await runCliEnv(
+        ["target", "rehome", "agent-skills", "--dry-run", "--json"],
+        { HOME: homeTargetRoot },
+      );
+
+      expect(dryRun.exitCode).toBe(0);
+      expect(JSON.parse(dryRun.stdout).data.marker_paths).toEqual([
+        join(targetDir, ".skillmux"),
+        join(projectPinDir, ".skillmux"),
+      ]);
+      expect(readFileSync(join(targetDir, ".skillmux"), "utf8")).toBe(globalMarkerBefore);
+      expect(readFileSync(join(projectPinDir, ".skillmux"), "utf8")).toBe(projectMarkerBefore);
+
+      const result = await runCliEnv(
+        ["target", "rehome", "agent-skills", "--yes"],
+        { HOME: homeTargetRoot },
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(readSkillmuxMarker(targetDir)?.vault_path).toBe(vaultDir);
+      expect(readSkillmuxMarker(projectPinDir)?.vault_path).toBe(vaultDir);
+      expect(readlinkSync(join(projectPinDir, "second-skill"))).toBe(join(vaultDir, "second-skill"));
+      expect(readSkillmuxMarker(claudeTargetDir)?.vault_path).toBe(vaultDir);
+    } finally {
+      rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+      rmSync(homeTargetRoot, { recursive: true, force: true });
+      rmSync(projectPath, { recursive: true, force: true });
+      rmSync(oldVaultPath, { recursive: true, force: true });
+    }
   });
 });
 
@@ -4398,4 +4489,3 @@ describe("skillmux eval CLI", () => {
     }
   });
 });
-

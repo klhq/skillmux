@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { hostname } from "node:os";
 import { expandHome } from "../config";
 import {
   BUILT_IN_TARGET_NAMES,
@@ -8,6 +10,7 @@ import {
 import { planInitManifest, applyInit } from "../init";
 import { writeManifestAtomic } from "../manifest";
 import { emitSuccess, unknownSubcommandError } from "../output";
+import { applyTargetMarkerRehome, planTargetMarkerRehome, resolveProjectPinDir } from "../sync";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
 
 export async function runTarget(
@@ -15,7 +18,7 @@ export async function runTarget(
   args: string[],
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
-  const { vaultPath, manifestPath, manifest } = await loadManifestContext();
+  const { config, vaultPath, manifestPath, manifest } = await loadManifestContext();
 
   if (subCommand === "list" || subCommand === "show") {
     const names =
@@ -136,5 +139,57 @@ export async function runTarget(
     return;
   }
 
-  throw unknownSubcommandError("target", subCommand, ["list", "show", "add", "remove"]);
+  if (subCommand === "rehome") {
+    const name = args[0];
+    const target = name ? manifest.targets[name] : undefined;
+    if (!name || !target) {
+      throw new Error(name ? `target "${name}" does not exist` : "usage: skillmux target rehome <name> --yes");
+    }
+    if (target.host !== undefined && target.host !== hostname()) {
+      throw new Error(`target "${name}" is scoped to host ${target.host}, not ${hostname()}`);
+    }
+
+    const targetDir = expandHome(target.dir);
+    if (!existsSync(targetDir)) throw new Error(`target "${name}" directory does not exist: ${targetDir}`);
+    const dirs = [targetDir];
+    for (const groupName of target.project_groups) {
+      const group = manifest.project?.[groupName];
+      if (!group) continue;
+      for (const projectPath of group.paths) {
+        if (!existsSync(projectPath)) continue;
+        const pinDir = resolveProjectPinDir(targetDir, projectPath);
+        if (existsSync(pinDir)) dirs.push(pinDir);
+      }
+    }
+    const plans = dirs.map((dir) =>
+      planTargetMarkerRehome(dir, name, vaultPath, config.local_vault_paths.map(expandHome)),
+    );
+    const markerPaths = plans.map((plan) => plan.markerPath);
+    if (options.dryRun) {
+      emitSuccess(
+        { isJson: options.isJson },
+        { name, marker_paths: markerPaths },
+        () => console.log(`target rehome: ${name} (${markerPaths.length} markers, dry-run)`),
+      );
+      return;
+    }
+    if (
+      !(await confirmIfNeeded({
+        confirmed: args.includes("--yes"),
+        isJson: options.isJson,
+        prompt: `rehome ${markerPaths.length} ${name} marker(s) to ${vaultPath}?`,
+        nonInteractiveError: "skillmux target rehome requires --yes when run non-interactively",
+      }))
+    )
+      return;
+    applyTargetMarkerRehome(plans, vaultPath);
+    emitSuccess(
+      { isJson: options.isJson },
+      { name, marker_paths: markerPaths },
+      () => console.log(`target "${name}" rehomed ${markerPaths.length} marker(s) to ${vaultPath}`),
+    );
+    return;
+  }
+
+  throw unknownSubcommandError("target", subCommand, ["list", "show", "add", "remove", "rehome"]);
 }

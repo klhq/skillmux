@@ -1,6 +1,20 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { findSymlinks } from "./install";
 import { resolveSkillRoot } from "./vault";
 
@@ -76,7 +90,29 @@ function writeTargetMarker(
   const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
   const serialized = JSON.stringify(marker, null, 2);
   if (!existsSync(markerPath) || readFileSync(markerPath, "utf-8") !== serialized) {
-    writeFileSync(markerPath, serialized);
+    writeFileAtomic(markerPath, serialized);
+  }
+}
+
+function writeFileAtomic(path: string, contents: string): void {
+  const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(temporaryPath, contents);
+    renameSync(temporaryPath, path);
+  } catch (error) {
+    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+    throw error;
+  }
+}
+
+function replaceSymlinkAtomic(path: string, target: string): void {
+  const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    symlinkSync(target, temporaryPath);
+    renameSync(temporaryPath, path);
+  } catch (error) {
+    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+    throw error;
   }
 }
 
@@ -224,6 +260,102 @@ export function preflightAdoptTarget(dir: string, targetName: string, vaultPath:
     throw new Error(
       `${dir} marker recorded vault_path ${marker.vault_path}, currently configured vault_path is ${vaultPath}`,
     );
+  }
+}
+
+export interface TargetMarkerRehomePlan {
+  dir: string;
+  markerPath: string;
+  marker: SkillmuxMarker;
+  links: TargetLinkRehomePlan[];
+}
+
+interface TargetLinkRehomePlan {
+  entryPath: string;
+  previousTarget: string;
+  nextTarget: string;
+}
+
+/**
+ * Proves every managed entry resolves either to its active source or exactly to
+ * the vault recorded in its marker. Only the latter links are re-pointed.
+ */
+export function planTargetMarkerRehome(
+  dir: string,
+  targetName: string,
+  vaultPath: string,
+  localVaultPaths: string[] = [],
+): TargetMarkerRehomePlan {
+  const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
+  if (!existsSync(markerPath)) {
+    throw new Error(`${dir} has a legacy marker; rehome requires .skillmux ownership`);
+  }
+  const marker = readSkillmuxMarker(dir);
+  if (!marker) throw new Error(`${dir} is not owned by skillmux`);
+  if (marker.role !== "target") throw new Error(`${dir} has a local_vault marker, not target ownership`);
+  if (marker.schema_version !== 1) {
+    throw new Error(`${dir} has a legacy marker; rehome requires schema_version 1`);
+  }
+  if (marker.target !== targetName) {
+    throw new Error(`${dir} is owned by target "${marker.target}", not "${targetName}"`);
+  }
+
+  const links: TargetLinkRehomePlan[] = [];
+  for (const skillId of marker.managed_entries ?? []) {
+    if (basename(skillId) !== skillId) {
+      throw new Error(`${dir} marker has an invalid managed entry "${skillId}"`);
+    }
+    const entryPath = join(dir, skillId);
+    if (!lstatSync(entryPath).isSymbolicLink()) {
+      throw new Error(`${entryPath} is not the managed symlink recorded by ${dir}`);
+    }
+    const sourceRoot = resolveSkillRoot(skillId, vaultPath, localVaultPaths) ?? vaultPath;
+    const expectedPath = join(sourceRoot, skillId);
+    if (!existsSync(expectedPath)) {
+      throw new Error(`${entryPath} cannot be proven to resolve from the configured vault's ${skillId}`);
+    }
+    const resolvedEntryPath = realpathSync(entryPath);
+    if (resolvedEntryPath === realpathSync(expectedPath)) continue;
+
+    const previousPath = join(marker.vault_path!, skillId);
+    if (!existsSync(previousPath) || resolvedEntryPath !== realpathSync(previousPath)) {
+      throw new Error(`${entryPath} does not resolve to the configured vault's ${skillId}`);
+    }
+    links.push({ entryPath, previousTarget: readlinkSync(entryPath), nextTarget: expectedPath });
+  }
+
+  return { dir, markerPath, marker, links };
+}
+
+/** Applies only preflighted rehome plans. All plans are validated before the first write. */
+export function applyTargetMarkerRehome(plans: TargetMarkerRehomePlan[], vaultPath: string): void {
+  const completedLinks: TargetLinkRehomePlan[] = [];
+  const completedMarkers: TargetMarkerRehomePlan[] = [];
+  try {
+    for (const plan of plans) {
+      for (const link of plan.links) {
+        replaceSymlinkAtomic(link.entryPath, link.nextTarget);
+        completedLinks.push(link);
+      }
+    }
+    for (const plan of plans) {
+      writeTargetMarker(
+        plan.dir,
+        plan.marker.target!,
+        vaultPath,
+        plan.marker.managed_entries ?? [],
+        plan.marker.created_at,
+      );
+      completedMarkers.push(plan);
+    }
+  } catch (error) {
+    for (const plan of completedMarkers.reverse()) {
+      writeFileAtomic(plan.markerPath, JSON.stringify(plan.marker, null, 2));
+    }
+    for (const link of completedLinks.reverse()) {
+      replaceSymlinkAtomic(link.entryPath, link.previousTarget);
+    }
+    throw error;
   }
 }
 

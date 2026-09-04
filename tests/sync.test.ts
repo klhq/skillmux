@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -15,6 +16,7 @@ import { join } from "node:path";
 import {
   adoptTarget,
   installPostMergeHook,
+  planTargetMarkerRehome,
   readSkillmuxMarker,
   resolveProjectPinDir,
   restoreMonolith,
@@ -573,5 +575,29 @@ describe("readSkillmuxMarker role back-compat", () => {
     expect(() => readSkillmuxMarker(dir)).toThrow("vault_path");
 
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("planTargetMarkerRehome", () => {
+  test("rejects a versioned legacy marker instead of writing a second marker format", () => {
+    const vaultPath = tmpDir("skillmux-rehome-vault-");
+    writeSkillAt(vaultPath, "writing-clearly");
+    const targetDir = join(tmpDir("skillmux-rehome-target-"), "agents");
+    syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "agent-skills",
+      coreSkillIds: ["writing-clearly"],
+    });
+    renameSync(join(targetDir, ".skillmux"), join(targetDir, ".skr"));
+
+    expect(() => planTargetMarkerRehome(targetDir, "agent-skills", vaultPath)).toThrow(
+      "legacy marker",
+    );
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(false);
+    expect(existsSync(join(targetDir, ".skr"))).toBe(true);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
   });
 });
