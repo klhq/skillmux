@@ -45,7 +45,12 @@ export function resolveTargetDir(
   target: Target,
   options: { home?: string; codexHome?: string } = {},
 ): string {
-  if (BUILT_IN_TARGET_NAMES.has(name)) return resolveBuiltInTarget(name, options).path;
+  if (BUILT_IN_TARGET_NAMES.has(name)) {
+    return resolveBuiltInTarget(name, {
+      ...options,
+      codexHome: options.codexHome ?? (process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined),
+    }).path;
+  }
   if (!target.dir) throw new Error(`[targets.${name}] requires dir for a custom target`);
   return expandHome(target.dir);
 }
