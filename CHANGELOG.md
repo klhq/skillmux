@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.2](https://github.com/klhq/skillmux/compare/v1.11.1...v1.11.2) (2026-09-05)
+
+
+### Added
+
+* **target:** add built-in target migration ([#189](https://github.com/klhq/skillmux/issues/189)) ([fe85951](https://github.com/klhq/skillmux/commit/fe85951f1728907ce0faa9fe5df79677ea278973))
+* **target:** add safe marker rehome workflow ([#187](https://github.com/klhq/skillmux/issues/187)) ([b8601aa](https://github.com/klhq/skillmux/commit/b8601aa9dc81d2c4a882c6d810d9922ba596e701))
+
+
+### Chores
+
+* **release:** force version 1.11.2 ([1ee9cbc](https://github.com/klhq/skillmux/commit/1ee9cbcfbfcbd9650f8e7f2d2dbbd54cdb0777ac))
+
 ## [1.11.1](https://github.com/klhq/skillmux/compare/v1.11.0...v1.11.1) (2026-09-03)
 
 
