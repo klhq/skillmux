@@ -14,6 +14,7 @@ import {
   updateProjectTargets,
   upsertProject,
   validateManifest,
+  resolveTargetDir,
   writeManifestAtomic,
 } from "../manifest";
 import {
@@ -51,7 +52,7 @@ export function configuredTargetForSurface(
 ): string | undefined {
   if (manifest.targets[surface.targetName]) return surface.targetName;
   return Object.entries(manifest.targets).find(
-    ([, target]) => expandHome(target.dir) === surface.path,
+    ([name, target]) => resolveTargetDir(name, target) === surface.path,
   )?.[0];
 }
 
@@ -325,7 +326,10 @@ export async function runProject(
     // agent-skills) — show the resolved directory, not just the target name,
     // so it's clear at confirmation time which physical folder this affects.
     const targetDirs = Object.fromEntries(
-      targets.map((t) => [t, manifest.targets[t]?.dir ?? "(unknown)"]),
+      targets.map((t) => {
+        const target = manifest.targets[t];
+        return [t, target ? resolveTargetDir(t, target) : "(unknown)"];
+      }),
     );
     const targetsDisplay = targets
       .map((t) => `${t} (${targetDirs[t]})`)

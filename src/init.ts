@@ -22,6 +22,7 @@ import {
   CORE_SKILL_LIMIT,
   MANIFEST_FILENAME,
 } from "./manifest";
+import { BUILT_IN_TARGET_NAMES } from "./init-agents";
 import {
   adoptTarget,
   preflightAdoptTarget,
@@ -244,9 +245,13 @@ export function planInitManifest(
           const existingTarget = existingManifest.targets[target.name];
           return [
             target.name,
-            existingTarget
-              ? { ...existingTarget, dir: target.dir }
-              : { dir: target.dir, host: hostname(), project_groups: [] },
+            BUILT_IN_TARGET_NAMES.has(target.name)
+              ? existingTarget
+                ? { ...existingTarget, dir: undefined }
+                : { host: hostname(), project_groups: [] }
+              : existingTarget
+                ? { ...existingTarget, dir: target.dir }
+                : { dir: target.dir, host: hostname(), project_groups: [] },
           ];
         }),
       ),

@@ -8,7 +8,7 @@ import {
   SUPPORTED_AGENT_IDS,
 } from "../init-agents";
 import { planInitManifest, applyInit } from "../init";
-import { writeManifestAtomic } from "../manifest";
+import { resolveTargetDir, writeManifestAtomic } from "../manifest";
 import { emitSuccess, unknownSubcommandError } from "../output";
 import { applyTargetMarkerRehome, planTargetMarkerRehome, resolveProjectPinDir } from "../sync";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
@@ -30,9 +30,9 @@ export async function runTarget(
       const target = manifest.targets[name]!;
       const agents = SUPPORTED_AGENT_IDS.filter((agent) => {
         const surface = planAgentSurfaces([agent]).surfaces[0];
-        return surface !== undefined && surface.path === expandHome(target.dir);
+        return surface !== undefined && surface.path === resolveTargetDir(name, target);
       });
-      return { name, ...target, agents };
+      return { name, ...target, dir: resolveTargetDir(name, target), agents };
     });
     emitSuccess({ isJson: options.isJson }, { targets }, () => {
       if (targets.length === 0) {
@@ -109,7 +109,7 @@ export async function runTarget(
     if (options.dryRun) {
       emitSuccess(
         { isJson: options.isJson },
-        { name, preserved_dir: manifest.targets[name]!.dir },
+        { name, preserved_dir: resolveTargetDir(name, manifest.targets[name]!) },
         () => console.log(`target remove: ${name} (files preserved, dry-run)`),
       );
       return;
@@ -125,7 +125,7 @@ export async function runTarget(
     )
       return;
     const targets = { ...manifest.targets };
-    const removedDir = manifest.targets[name]!.dir;
+    const removedDir = resolveTargetDir(name, manifest.targets[name]!);
     delete targets[name];
     writeManifestAtomic(manifestPath, { ...manifest, targets });
     emitSuccess(
@@ -149,7 +149,7 @@ export async function runTarget(
       throw new Error(`target "${name}" is scoped to host ${target.host}, not ${hostname()}`);
     }
 
-    const targetDir = expandHome(target.dir);
+    const targetDir = resolveTargetDir(name, target);
     if (!existsSync(targetDir)) throw new Error(`target "${name}" directory does not exist: ${targetDir}`);
     const dirs = [targetDir];
     for (const groupName of target.project_groups) {

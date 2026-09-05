@@ -4,6 +4,7 @@ import {
   pinCore,
   pinProject,
   resolveManifestPath,
+  resolveTargetDir,
   serializeManifest,
   unpinCore,
   unpinProject,
@@ -134,6 +135,22 @@ project_groups = []
 `);
 
     expect(serializeManifest(manifest)).not.toContain("dir =");
+  });
+});
+
+describe("resolveTargetDir", () => {
+  test("derives a built-in target directory instead of using legacy dir", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.agent-skills]
+dir = "/ignored/legacy/path"
+project_groups = []
+`);
+
+    expect(resolveTargetDir("agent-skills", manifest.targets["agent-skills"]!, { home: "/home/test" }))
+      .toBe("/home/test/.agents/skills");
   });
 });
 

@@ -2,7 +2,7 @@ import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { expandHome } from "./config";
-import { BUILT_IN_TARGET_NAMES } from "./init-agents";
+import { BUILT_IN_TARGET_NAMES, resolveBuiltInTarget } from "./init-agents";
 import { resolveSkillRoot, SKILL_ID_PATTERN } from "./vault";
 
 export const MANIFEST_FILENAME = "skillmux.toml";
@@ -39,6 +39,16 @@ const manifestSchema = z.object({
 export type ProjectGroup = z.infer<typeof projectGroupSchema>;
 export type Target = z.infer<typeof targetSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
+
+export function resolveTargetDir(
+  name: string,
+  target: Target,
+  options: { home?: string; codexHome?: string } = {},
+): string {
+  if (BUILT_IN_TARGET_NAMES.has(name)) return resolveBuiltInTarget(name, options).path;
+  if (!target.dir) throw new Error(`[targets.${name}] requires dir for a custom target`);
+  return expandHome(target.dir);
+}
 
 export function parseManifest(toml: string): Manifest {
   const parsed = Bun.TOML.parse(toml) as Record<string, unknown>;
