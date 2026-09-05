@@ -28,6 +28,19 @@ function writeSkillAt(root: string, skillId: string) {
 }
 
 describe("parseManifest", () => {
+  test("accepts a built-in target without a persisted dir", () => {
+    expect(parseManifest(`
+[core]
+skills = []
+
+[targets.agent-skills]
+project_groups = []
+`)).toEqual({
+      core: { skills: [] },
+      targets: { "agent-skills": { project_groups: [] } },
+    });
+  });
+
   test("parses a valid skillmux.toml into typed core/project/targets", () => {
     const toml = `
 [core]
@@ -106,6 +119,21 @@ skills = []
       core: { skills: [] },
       targets: {},
     });
+  });
+});
+
+describe("serializeManifest", () => {
+  test("omits dir for a built-in target", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+
+[targets.agent-skills]
+dir = "/legacy/home/.agents/skills"
+project_groups = []
+`);
+
+    expect(serializeManifest(manifest)).not.toContain("dir =");
   });
 });
 
