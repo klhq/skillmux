@@ -12,7 +12,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, hostname, tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAuditRowByRequestId, insertAudit, insertFetch, openAudit } from "../src/db";
 import { hashSkillContent, readSkillOrigin } from "../src/provenance";
@@ -1416,39 +1416,29 @@ describe("skillmux project CLI", () => {
   });
 
   test("project attach shows the resolved target directory, not just its name", async () => {
+    const targetHome = join(tmp, "project-attach-home");
+    mkdirSync(targetHome, { recursive: true });
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
       `[core]\nskills = []\n\n[project.demo]\npaths = ["${tmp}"]\nskills = []\n\n[targets.agent-skills]\ndir = "~/.agents/skills"\nproject_groups = []\n`,
     );
 
-    const dryRun = await runCli(
-      "project",
-      "attach",
-      "demo",
-      "--agent",
-      "windsurf",
-      "--agent",
-      "opencode",
-      "--dry-run",
+    const dryRun = await runCliEnv(
+      ["project", "attach", "demo", "--agent", "windsurf", "--agent", "opencode", "--dry-run"],
+      { HOME: targetHome },
     );
-    expect(dryRun.stdout).toContain(`agent-skills (${join(homedir(), ".agents", "skills")})`);
+    expect(dryRun.stdout).toContain(`agent-skills (${join(targetHome, ".agents", "skills")})`);
 
-    const jsonResult = await runCli(
-      "project",
-      "attach",
-      "demo",
-      "--agent",
-      "windsurf",
-      "--agent",
-      "opencode",
-      "--yes",
-      "--json",
+    const jsonResult = await runCliEnv(
+      ["project", "attach", "demo", "--agent", "windsurf", "--agent", "opencode", "--yes", "--json"],
+      { HOME: targetHome },
     );
     expect(jsonResult.exitCode).toBe(0);
     const parsed = JSON.parse(jsonResult.stdout);
     expect(parsed.data.targets).toEqual(["agent-skills"]);
-    expect(parsed.data.target_dirs).toEqual({ "agent-skills": join(homedir(), ".agents", "skills") });
+    expect(parsed.data.target_dirs).toEqual({ "agent-skills": join(targetHome, ".agents", "skills") });
 
+    rmSync(targetHome, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
