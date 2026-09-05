@@ -298,6 +298,12 @@ command surface and route table.
 `skillmux target remove <name> --yes` removes the manifest record and preserves
 the target directory, marker, and files. Cleanup stays under your control.
 
+Built-in targets (`agent-skills`, `claude-code`, and `codex`) resolve their
+native directories from their names. Their manifest entries store only host and
+project-group configuration. Custom targets retain an explicit `dir`. To remove
+legacy built-in `dir` fields without changing any target files, run
+`skillmux target migrate --dry-run` and then `skillmux target migrate --yes`.
+
 When a managed target's marker still names a previous vault checkout after a
 vault move, use `skillmux target rehome <name> --yes`. It validates every
 recorded managed symlink in the target and its existing project pins before

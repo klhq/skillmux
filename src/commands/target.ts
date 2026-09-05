@@ -191,5 +191,35 @@ export async function runTarget(
     return;
   }
 
-  throw unknownSubcommandError("target", subCommand, ["list", "show", "add", "remove", "rehome"]);
+  if (subCommand === "migrate") {
+    const builtInTargets = Object.entries(manifest.targets).filter(([name]) =>
+      BUILT_IN_TARGET_NAMES.has(name),
+    );
+    if (options.dryRun) {
+      emitSuccess(
+        { isJson: options.isJson },
+        { migrated_targets: builtInTargets.map(([name]) => name) },
+        () => console.log(`target migrate: ${builtInTargets.length} built-in target(s) (dry-run)`),
+      );
+      return;
+    }
+    if (
+      !(await confirmIfNeeded({
+        confirmed: args.includes("--yes"),
+        isJson: options.isJson,
+        prompt: `remove redundant dir fields from ${builtInTargets.length} built-in target(s)?`,
+        nonInteractiveError: "skillmux target migrate requires --yes when run non-interactively",
+      }))
+    )
+      return;
+    writeManifestAtomic(manifestPath, manifest);
+    emitSuccess(
+      { isJson: options.isJson },
+      { migrated_targets: builtInTargets.map(([name]) => name) },
+      () => console.log(`target migrate: normalized ${builtInTargets.length} built-in target(s)`),
+    );
+    return;
+  }
+
+  throw unknownSubcommandError("target", subCommand, ["list", "show", "add", "remove", "rehome", "migrate"]);
 }

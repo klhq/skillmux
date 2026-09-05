@@ -1611,6 +1611,29 @@ describe("skillmux target CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("target migrate removes legacy built-in dirs without changing custom targets", async () => {
+    const customTarget = join(tmp, "migration-custom-target");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.agent-skills]\ndir = "/legacy/.agents/skills"\nproject_groups = []\n\n[targets.custom]\ndir = "${customTarget}"\nproject_groups = []\n`,
+    );
+    const manifestPath = join(vaultDir, "skillmux.toml");
+    const before = readFileSync(manifestPath, "utf8");
+
+    const dryRun = await runCli("target", "migrate", "--dry-run", "--json");
+    expect(dryRun.exitCode).toBe(0);
+    expect(JSON.parse(dryRun.stdout).data.migrated_targets).toEqual(["agent-skills"]);
+    expect(readFileSync(manifestPath, "utf8")).toBe(before);
+
+    const result = await runCli("target", "migrate", "--yes");
+    expect(result.exitCode).toBe(0);
+    const migrated = readFileSync(manifestPath, "utf8");
+    expect(migrated).not.toContain('dir = "/legacy/.agents/skills"');
+    expect(migrated).toContain(`dir = "${customTarget}"`);
+
+    rmSync(manifestPath, { force: true });
+  });
+
   test("target rehome updates global and project markers without changing another target", async () => {
     const homeTargetRoot = mkdtempSync(join(tmp, "skillmux-rehome-home-"));
     const targetDir = join(homeTargetRoot, ".agents", "skills");
