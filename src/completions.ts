@@ -138,7 +138,7 @@ ${commands}
     elif [[ "$words[2]" == "eval" && CURRENT == 3 ]]; then
         _values 'eval command' promote
     elif [[ "$words[2]" == "target" && CURRENT == 3 ]]; then
-        _values 'target command' list show add remove rehome
+        _values 'target command' list show add remove rehome migrate
     elif [[ "$words[2]" == "skill" && CURRENT == 3 ]]; then
         _values 'skill command' which
     elif [[ "$words[2]" == "core" && CURRENT == 3 ]]; then
@@ -185,7 +185,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subco
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l dry-run -d "Print the plan without writing"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l yes -d "Apply without prompts"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l json -d "Emit a JSON envelope"
-complete -c skillmux -n "__fish_seen_subcommand_from target" -a "list show add remove rehome" -d "Manage targets"
+complete -c skillmux -n "__fish_seen_subcommand_from target" -a "list show add remove rehome migrate" -d "Manage targets"
 complete -c skillmux -n "__fish_seen_subcommand_from core" -a "pin unpin" -d "Manage [core] pins"
 complete -c skillmux -n "__fish_seen_subcommand_from skill" -a "which" -d "Show which root resolves a skill_id"
 complete -c skillmux -n "__fish_seen_subcommand_from local-vault" -a "init" -d "Initialize a local_vault_paths marker"

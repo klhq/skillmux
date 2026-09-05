@@ -1416,39 +1416,29 @@ describe("skillmux project CLI", () => {
   });
 
   test("project attach shows the resolved target directory, not just its name", async () => {
+    const targetHome = join(tmp, "project-attach-home");
+    mkdirSync(targetHome, { recursive: true });
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
       `[core]\nskills = []\n\n[project.demo]\npaths = ["${tmp}"]\nskills = []\n\n[targets.agent-skills]\ndir = "~/.agents/skills"\nproject_groups = []\n`,
     );
 
-    const dryRun = await runCli(
-      "project",
-      "attach",
-      "demo",
-      "--agent",
-      "windsurf",
-      "--agent",
-      "opencode",
-      "--dry-run",
+    const dryRun = await runCliEnv(
+      ["project", "attach", "demo", "--agent", "windsurf", "--agent", "opencode", "--dry-run"],
+      { HOME: targetHome },
     );
-    expect(dryRun.stdout).toContain("agent-skills (~/.agents/skills)");
+    expect(dryRun.stdout).toContain(`agent-skills (${join(targetHome, ".agents", "skills")})`);
 
-    const jsonResult = await runCli(
-      "project",
-      "attach",
-      "demo",
-      "--agent",
-      "windsurf",
-      "--agent",
-      "opencode",
-      "--yes",
-      "--json",
+    const jsonResult = await runCliEnv(
+      ["project", "attach", "demo", "--agent", "windsurf", "--agent", "opencode", "--yes", "--json"],
+      { HOME: targetHome },
     );
     expect(jsonResult.exitCode).toBe(0);
     const parsed = JSON.parse(jsonResult.stdout);
     expect(parsed.data.targets).toEqual(["agent-skills"]);
-    expect(parsed.data.target_dirs).toEqual({ "agent-skills": "~/.agents/skills" });
+    expect(parsed.data.target_dirs).toEqual({ "agent-skills": join(targetHome, ".agents", "skills") });
 
+    rmSync(targetHome, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
@@ -1609,6 +1599,29 @@ describe("skillmux target CLI", () => {
 
     rmSync(targetPath, { recursive: true, force: true });
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("target migrate removes legacy built-in dirs without changing custom targets", async () => {
+    const customTarget = join(tmp, "migration-custom-target");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `[core]\nskills = []\n\n[targets.agent-skills]\ndir = "/legacy/.agents/skills"\nproject_groups = []\n\n[targets.custom]\ndir = "${customTarget}"\nproject_groups = []\n`,
+    );
+    const manifestPath = join(vaultDir, "skillmux.toml");
+    const before = readFileSync(manifestPath, "utf8");
+
+    const dryRun = await runCli("target", "migrate", "--dry-run", "--json");
+    expect(dryRun.exitCode).toBe(0);
+    expect(JSON.parse(dryRun.stdout).data.migrated_targets).toEqual(["agent-skills"]);
+    expect(readFileSync(manifestPath, "utf8")).toBe(before);
+
+    const result = await runCli("target", "migrate", "--yes");
+    expect(result.exitCode).toBe(0);
+    const migrated = readFileSync(manifestPath, "utf8");
+    expect(migrated).not.toContain('dir = "/legacy/.agents/skills"');
+    expect(migrated).toContain(`dir = "${customTarget}"`);
+
+    rmSync(manifestPath, { force: true });
   });
 
   test("target rehome updates global and project markers without changing another target", async () => {
@@ -1921,9 +1934,8 @@ describe("skillmux init CLI", () => {
     const manifest = readFileSync(join(clientVault, "skillmux.toml"), "utf8");
     expect(manifest.match(/\[targets\./g)).toHaveLength(1);
     expect(manifest).toContain("[targets.agent-skills]");
-    expect(manifest).toContain(
-      `dir = ${JSON.stringify(join(clientHome, ".agents", "skills"))}`,
-    );
+    expect(manifest).not.toContain("dir =");
+    expect(existsSync(join(clientHome, ".agents", "skills", ".skillmux"))).toBe(true);
     expect(result.stdout).toContain("windsurf readiness:");
     expect(result.stdout).toContain("skill surface:");
     expect(result.stdout).toContain("MCP registration:");
@@ -1962,9 +1974,8 @@ describe("skillmux init CLI", () => {
     expect(result.exitCode).toBe(0);
     const manifest = readFileSync(join(clientVault, "skillmux.toml"), "utf8");
     expect(manifest).toContain("[targets.codex]");
-    expect(manifest).toContain(
-      `dir = ${JSON.stringify(join(codexHome, "skills"))}`,
-    );
+    expect(manifest).not.toContain("dir =");
+    expect(existsSync(join(codexHome, "skills", ".skillmux"))).toBe(true);
 
     rmSync(codexHome, { recursive: true, force: true });
     rmSync(clientVault, { recursive: true, force: true });

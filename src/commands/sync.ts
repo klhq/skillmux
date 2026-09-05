@@ -5,6 +5,7 @@ import {
   parseManifest,
   resolveManifestPath,
   validateManifest,
+  resolveTargetDir,
 } from "../manifest";
 import { emitSuccess, isInteractive, warn } from "../output";
 import {
@@ -129,7 +130,7 @@ export async function runSync(args: string[]): Promise<void> {
       targetSummaries.push({ target: targetName, status: "skipped_host_mismatch" });
       continue;
     }
-    const targetDir = expandHome(target.dir);
+    const targetDir = resolveTargetDir(targetName, target);
 
     if (restoreMonolith) {
       const result = restoreMonolithTarget(targetDir, vaultPath);

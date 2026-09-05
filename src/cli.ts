@@ -652,6 +652,7 @@ usage:
   skillmux target add <name> [--dir <dir>] --yes
   skillmux target remove <name> --yes
   skillmux target rehome <name> --yes
+  skillmux target migrate --yes
 
 --dir may be omitted when <name> is a built-in target with a deterministic
 path: agent-skills, claude-code, codex. Any other <name> requires --dir.
@@ -804,7 +805,7 @@ Setup:
                 [--agent <name>...] [--target <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
-  skillmux target <list|show|add|remove|rehome>  (a target is a directory sync writes into)
+  skillmux target <list|show|add|remove|rehome|migrate>  (a target is a directory sync writes into)
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
   skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)
   skillmux config init --vault <path> --yes

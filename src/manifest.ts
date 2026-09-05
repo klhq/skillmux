@@ -2,6 +2,7 @@ import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { expandHome } from "./config";
+import { BUILT_IN_TARGET_NAMES, resolveBuiltInTarget } from "./init-agents";
 import { resolveSkillRoot, SKILL_ID_PATTERN } from "./vault";
 
 export const MANIFEST_FILENAME = "skillmux.toml";
@@ -24,7 +25,7 @@ const projectGroupSchema = z.object({
 }).strict();
 
 const targetSchema = z.object({
-  dir: z.string().min(1),
+  dir: z.string().min(1).optional(),
   host: z.string().min(1).optional(),
   project_groups: z.array(groupNameSchema).default([]),
 }).strict();
@@ -39,10 +40,31 @@ export type ProjectGroup = z.infer<typeof projectGroupSchema>;
 export type Target = z.infer<typeof targetSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 
+export function resolveTargetDir(
+  name: string,
+  target: Target,
+  options: { home?: string; codexHome?: string } = {},
+): string {
+  if (BUILT_IN_TARGET_NAMES.has(name)) {
+    return resolveBuiltInTarget(name, {
+      ...options,
+      codexHome: options.codexHome ?? (process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined),
+    }).path;
+  }
+  if (!target.dir) throw new Error(`[targets.${name}] requires dir for a custom target`);
+  return expandHome(target.dir);
+}
+
 export function parseManifest(toml: string): Manifest {
   const parsed = Bun.TOML.parse(toml) as Record<string, unknown>;
   try {
-    return manifestSchema.parse(parsed);
+    const manifest = manifestSchema.parse(parsed);
+    for (const [name, target] of Object.entries(manifest.targets)) {
+      if (!BUILT_IN_TARGET_NAMES.has(name) && !target.dir) {
+        throw new Error(`[targets.${name}] requires dir for a custom target`);
+      }
+    }
+    return manifest;
   } catch (error) {
     if (error instanceof z.ZodError) {
       for (const issue of error.issues) {
@@ -85,9 +107,10 @@ export function serializeManifest(manifest: Manifest): string {
   }
 
   for (const [name, target] of Object.entries(manifest.targets)) {
+    const dir = BUILT_IN_TARGET_NAMES.has(name) ? "" : `\ndir = ${JSON.stringify(target.dir)}`;
     const host = target.host ? `\nhost = ${JSON.stringify(target.host)}` : "";
     sections.push(
-      `[targets.${name}]\ndir = ${JSON.stringify(target.dir)}${host}\nproject_groups = ${tomlStringArray(target.project_groups)}`,
+      `[targets.${name}]${dir}${host}\nproject_groups = ${tomlStringArray(target.project_groups)}`,
     );
   }
 
