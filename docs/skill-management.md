@@ -171,7 +171,7 @@ skillmux core unpin csv-formatter --yes
 
 One command can change several skill IDs. Skillmux validates the complete
 change before writing, so a conflict prevents the whole operation. Core stays
-capped at 25 skills.
+capped at 25 skills by default, which `[core].limit` overrides.
 
 Run `skillmux sync` after a direct pin or unpin command.
 

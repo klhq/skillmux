@@ -143,7 +143,8 @@ skillmux init \
   --yes
 ```
 
-Core pins apply to each configured target and stay capped at 25 skills. Add
+Core pins apply to each configured target and stay capped at 25 skills, or at
+`[core].limit` when the manifest sets one. Add
 project-specific skills from a repository root:
 
 ```sh

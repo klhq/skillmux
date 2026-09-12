@@ -31,7 +31,10 @@ const targetSchema = z.object({
 }).strict();
 
 const manifestSchema = z.object({
-  core: z.object({ skills: z.array(skillIdSchema) }).strict(),
+  core: z.object({
+    skills: z.array(skillIdSchema),
+    limit: z.number().int().positive().optional(),
+  }).strict(),
   project: z.record(groupNameSchema, projectGroupSchema).optional(),
   targets: z.record(groupNameSchema, targetSchema).default({}),
 }).strict();
@@ -98,7 +101,10 @@ function tomlStringArray(values: string[]): string {
 
 /** Purpose-built serializer for this manifest's fixed shape — not a general TOML writer. */
 export function serializeManifest(manifest: Manifest): string {
-  const sections: string[] = [`[core]\nskills = ${tomlStringArray(manifest.core.skills)}`];
+  // An absent limit is left out rather than written as the default, so the file keeps saying
+  // "unset" and a future change to CORE_SKILL_LIMIT still reaches manifests that never opted in.
+  const coreLimit = manifest.core.limit === undefined ? "" : `\nlimit = ${manifest.core.limit}`;
+  const sections: string[] = [`[core]\nskills = ${tomlStringArray(manifest.core.skills)}${coreLimit}`];
 
   for (const [name, group] of Object.entries(manifest.project ?? {})) {
     sections.push(
@@ -140,14 +146,14 @@ export function pinCore(manifest: Manifest, skillId: string): Manifest {
   if (existing) {
     throw new Error(`skill "${skillId}" already pinned in ${existing}`);
   }
-  return { ...manifest, core: { skills: [...manifest.core.skills, skillId] } };
+  return { ...manifest, core: { ...manifest.core, skills: [...manifest.core.skills, skillId] } };
 }
 
 export function unpinCore(manifest: Manifest, skillId: string): Manifest {
   if (!manifest.core.skills.includes(skillId)) {
     throw new Error(`skill "${skillId}" is not pinned in [core]`);
   }
-  return { ...manifest, core: { skills: manifest.core.skills.filter((id) => id !== skillId) } };
+  return { ...manifest, core: { ...manifest.core, skills: manifest.core.skills.filter((id) => id !== skillId) } };
 }
 
 export function pinProject(manifest: Manifest, skillId: string, group: string, paths?: string[]): Manifest {
@@ -313,9 +319,10 @@ export function validateManifest(
   vaultPath: string,
   localVaultPaths: string[] = [],
 ): ManifestValidationResult {
-  if (manifest.core.skills.length > CORE_SKILL_LIMIT) {
+  const effectiveLimit = manifest.core.limit ?? CORE_SKILL_LIMIT;
+  if (manifest.core.skills.length > effectiveLimit) {
     throw new Error(
-      `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${CORE_SKILL_LIMIT}`,
+      `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${effectiveLimit}`,
     );
   }
 

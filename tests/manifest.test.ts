@@ -121,6 +121,40 @@ skills = []
       targets: {},
     });
   });
+
+  test("fails schema validation when limit is non-positive or non-integer", () => {
+    expect(() =>
+      parseManifest(`
+[core]
+limit = 0
+skills = []
+`),
+    ).toThrow();
+
+    expect(() =>
+      parseManifest(`
+[core]
+limit = -1
+skills = []
+`),
+    ).toThrow();
+
+    expect(() =>
+      parseManifest(`
+[core]
+limit = 2.5
+skills = []
+`),
+    ).toThrow();
+
+    expect(() =>
+      parseManifest(`
+[core]
+limit = "30"
+skills = []
+`),
+    ).toThrow();
+  });
 });
 
 describe("serializeManifest", () => {
@@ -135,6 +169,27 @@ project_groups = []
 `);
 
     expect(serializeManifest(manifest)).not.toContain("dir =");
+  });
+
+  test("writes a configured core limit back out so a pin does not erase it", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+limit = 30
+`);
+
+    expect(serializeManifest(manifest)).toContain("limit = 30");
+    expect(parseManifest(serializeManifest(manifest)).core.limit).toBe(30);
+  });
+
+  test("omits the limit entirely when the manifest never set one", () => {
+    const manifest = parseManifest(`
+[core]
+skills = []
+`);
+
+    expect(serializeManifest(manifest)).not.toContain("limit");
+    expect(parseManifest(serializeManifest(manifest)).core.limit).toBeUndefined();
   });
 });
 
@@ -223,6 +278,25 @@ dir = "~/.claude/skills"
 `);
 
     expect(() => unpinCore(manifest, "ghost-skill")).toThrow(/not pinned in \[core\]/);
+  });
+
+  test("limit survives a pin and an unpin round trip", () => {
+    const manifest = parseManifest(`
+[core]
+limit = 30
+skills = ["writing-clearly"]
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+
+    const pinned = pinCore(manifest, "code-review");
+    expect(pinned.core.limit).toBe(30);
+    expect(pinned.core.skills).toEqual(["writing-clearly", "code-review"]);
+
+    const unpinned = unpinCore(pinned, "code-review");
+    expect(unpinned.core.limit).toBe(30);
+    expect(unpinned.core.skills).toEqual(["writing-clearly"]);
   });
 });
 
@@ -526,7 +600,7 @@ dir = "~/.claude/skills"
     rmSync(vaultPath, { recursive: true, force: true });
   });
 
-  test("throws naming the count when [core] exceeds 25 skills", () => {
+  test("throws naming the count when [core] exceeds 25 skills (no limit specified)", () => {
     const vaultPath = tmpVault();
     const skillIds = Array.from({ length: 26 }, (_, i) => `skill-${i}`);
     for (const skillId of skillIds) writeSkillAt(vaultPath, skillId);
@@ -537,7 +611,45 @@ skills = ${JSON.stringify(skillIds)}
 [targets.claude]
 dir = "~/.claude/skills"
 `);
-    expect(() => validateManifest(manifest, vaultPath)).toThrow("26");
+    expect(() => validateManifest(manifest, vaultPath)).toThrow(
+      "[core] has 26 skills, exceeding the limit of 25",
+    );
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("a manifest with limit = 30 accepts 29 core skills", () => {
+    const vaultPath = tmpVault();
+    const skillIds = Array.from({ length: 29 }, (_, i) => `skill-${i}`);
+    for (const skillId of skillIds) writeSkillAt(vaultPath, skillId);
+    const manifest = parseManifest(`
+[core]
+limit = 30
+skills = ${JSON.stringify(skillIds)}
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    expect(() => validateManifest(manifest, vaultPath)).not.toThrow();
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("a manifest with limit = 30 still rejects 31 core skills", () => {
+    const vaultPath = tmpVault();
+    const skillIds = Array.from({ length: 31 }, (_, i) => `skill-${i}`);
+    for (const skillId of skillIds) writeSkillAt(vaultPath, skillId);
+    const manifest = parseManifest(`
+[core]
+limit = 30
+skills = ${JSON.stringify(skillIds)}
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    expect(() => validateManifest(manifest, vaultPath)).toThrow(
+      "[core] has 31 skills, exceeding the limit of 30",
+    );
 
     rmSync(vaultPath, { recursive: true, force: true });
   });

@@ -55,7 +55,8 @@ one.
 
 One skill can serve different roles across machines or projects, but the
 shared manifest prevents conflicting core and project assignments. Core stays
-capped at 25 skills to protect agent startup context.
+capped at 25 skills by default to protect agent startup context. Raise or lower that with
+`limit` under `[core]` in the manifest.
 
 Delivery tiers do not select a deployment. A local Skillmux process can serve
 routed skills over stdio, while a shared Skillmux process can serve its server
