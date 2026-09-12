@@ -284,7 +284,8 @@ Lives at the vault root (a legacy `skr.toml` is still read if present, never wri
 
 ```toml
 [core]
-skills = ["csv-formatter"]           # pinned into every [targets.*] dir; capped at 25
+skills = ["csv-formatter"]           # pinned into every [targets.*] dir; capped at 25 by default
+# limit = 30                        # optional: raise or lower that cap
 
 [project.repo1]
 paths = ["/Users/you/code/repo1"]    # only synced for paths that exist locally
@@ -295,12 +296,13 @@ host = "workhorse"                    # optional; init adds the current hostname
 project_groups = ["repo1"]           # which [project.*] groups materialize into this target; [] means none
 ```
 
-- `[core].skills`: symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills; `sync` fails if a listed skill id isn't actually in the vault.
+- `[core].skills`: symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills unless `[core].limit` says otherwise; `sync` fails if a listed skill id isn't actually in the vault.
+- `[core].limit` (optional, positive integer): the cap on `[core].skills`. Absent means 25. It lives in the manifest rather than machine config so the same manifest validates identically on every machine.
 - `[project.<group>].skills`: symlinked only into `<path>/<relative path from $HOME to the target dir>`, for each `paths` entry, and only for targets whose `project_groups` names that group. `paths` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
 - `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`). `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
 - `[targets.<name>]`: one entry per adopted surface. Built-in names (`agent-skills`, `claude-code`, and `codex`) derive their directories from the name and omit `dir`. A custom target requires `dir`; create one with `skillmux target add <name> --dir <dir> --yes`. `skillmux target migrate --yes` removes legacy built-in `dir` fields without touching target files. An optional `host` limits the target to an exact machine-hostname match; omit it for a global, backward-compatible target. A host mismatch is reported and skipped before any target filesystem operation. `project_groups` is an explicit list, not a boolean: a target only receives the specific groups it names, never every group in the manifest.
 
-**Pin/unpin without hand-editing.** `skillmux core pin`/`unpin` mutate `[core]` for you, and `skillmux project pin`/`unpin` mutate `[project.*]`, validating with the same rules `sync` enforces (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under the 25-skill cap) before writing anything:
+**Pin/unpin without hand-editing.** `skillmux core pin`/`unpin` mutate `[core]` for you, and `skillmux project pin`/`unpin` mutate `[project.*]`, validating with the same rules `sync` enforces (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under its cap) before writing anything:
 
 ```sh
 skillmux core pin csv-formatter --yes                                    # add to [core]

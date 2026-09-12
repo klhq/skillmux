@@ -322,7 +322,7 @@ command prints the preserved path so cleanup remains an explicit user action.
 ## Core skills (`skillmux core`)
 
 Pin or unpin skills into `[core]`, the tier every target receives by
-default, capped at 25 skills:
+default, capped at 25 skills unless `[core].limit` raises it:
 
 ```sh
 skillmux core pin csv-formatter --yes

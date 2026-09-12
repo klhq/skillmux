@@ -257,9 +257,10 @@ export function planInitManifest(
       ),
     },
   };
-  if (manifest.core.skills.length > CORE_SKILL_LIMIT) {
+  const effectiveLimit = manifest.core.limit ?? CORE_SKILL_LIMIT;
+  if (manifest.core.skills.length > effectiveLimit) {
     throw new Error(
-      `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${CORE_SKILL_LIMIT}`,
+      `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${effectiveLimit}`,
     );
   }
   for (const skillId of coreSkillIds) {

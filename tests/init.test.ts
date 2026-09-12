@@ -462,4 +462,18 @@ describe("applyInit", () => {
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(dirname(targetDir), { recursive: true, force: true });
   });
+
+  test("enforces core skill limit during init respecting effective limit", () => {
+    const vaultPath = tmpDir("skillmux-init-core-limit-vault-");
+    const targetDir = tmpDir("skillmux-init-core-limit-target-");
+    const skillIds = Array.from({ length: 26 }, (_, i) => `skill-${i}`);
+    for (const id of skillIds) writeSkill(vaultPath, id);
+
+    expect(() =>
+      applyInit(vaultPath, [{ name: "target", dir: targetDir }], undefined, skillIds),
+    ).toThrow("[core] has 26 skills, exceeding the limit of 25");
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
 });
