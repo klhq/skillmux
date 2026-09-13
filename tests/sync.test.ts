@@ -21,6 +21,7 @@ import {
   resolveProjectPinDir,
   restoreMonolith,
   syncProjectTargets,
+  planSyncDrift,
   syncTarget,
   writeLocalVaultMarker,
 } from "../src/sync";
@@ -599,5 +600,156 @@ describe("planTargetMarkerRehome", () => {
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
+describe("planSyncDrift", () => {
+  function vaultWith(skillIds: string[]): string {
+    const vaultPath = tmpDir("skillmux-drift-vault-");
+    for (const skillId of skillIds) writeSkillAt(vaultPath, skillId);
+    return vaultPath;
+  }
+
+  test("reports a target this host has never synced as drifted", () => {
+    const vaultPath = vaultWith(["writing-clearly", "code-review"]);
+    const targetDir = join(tmpDir("skillmux-drift-target-"), "claude");
+
+    const report = planSyncDrift({
+      vaultPath,
+      targets: [{ name: "claude", dir: targetDir, projectGroups: {} }],
+      coreSkillIds: ["writing-clearly", "code-review"],
+      currentHost: "cinnabon",
+    });
+
+    expect(report.drifted).toHaveLength(1);
+    expect(report.drifted[0]!.target).toBe("claude");
+    expect(report.drifted[0]!.added).toEqual(["writing-clearly", "code-review"]);
+    expect(report.drifted[0]!.removed).toEqual([]);
+    expect(report.unplannable).toEqual([]);
+    expect(existsSync(targetDir)).toBe(false);
+  });
+
+  test("reports nothing once the target matches the manifest", () => {
+    const vaultPath = vaultWith(["writing-clearly", "code-review"]);
+    const targetDir = join(tmpDir("skillmux-drift-target-"), "claude");
+    const coreSkillIds = ["writing-clearly", "code-review"];
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds });
+
+    const report = planSyncDrift({
+      vaultPath,
+      targets: [{ name: "claude", dir: targetDir, projectGroups: {} }],
+      coreSkillIds,
+      currentHost: "cinnabon",
+    });
+
+    expect(report.drifted).toEqual([]);
+    expect(report.unplannable).toEqual([]);
+  });
+
+  test("reports a pin added to the manifest since the last sync", () => {
+    const vaultPath = vaultWith(["writing-clearly", "code-review"]);
+    const targetDir = join(tmpDir("skillmux-drift-target-"), "claude");
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
+
+    const report = planSyncDrift({
+      vaultPath,
+      targets: [{ name: "claude", dir: targetDir, projectGroups: {} }],
+      coreSkillIds: ["writing-clearly", "code-review"],
+      currentHost: "cinnabon",
+    });
+
+    expect(report.drifted).toHaveLength(1);
+    expect(report.drifted[0]!.added).toEqual(["code-review"]);
+    expect(report.drifted[0]!.removed).toEqual([]);
+  });
+
+  test("reports an unpin the same way", () => {
+    const vaultPath = vaultWith(["writing-clearly", "code-review"]);
+    const targetDir = join(tmpDir("skillmux-drift-target-"), "claude");
+    syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "claude",
+      coreSkillIds: ["writing-clearly", "code-review"],
+    });
+
+    const report = planSyncDrift({
+      vaultPath,
+      targets: [{ name: "claude", dir: targetDir, projectGroups: {} }],
+      coreSkillIds: ["writing-clearly"],
+      currentHost: "cinnabon",
+    });
+
+    expect(report.drifted[0]!.removed).toEqual(["code-review"]);
+  });
+
+  test("skips a target scoped to another machine instead of planning it", () => {
+    const vaultPath = vaultWith(["writing-clearly"]);
+    const report = planSyncDrift({
+      vaultPath,
+      targets: [
+        {
+          name: "workhorse-claude",
+          dir: join(tmpDir("skillmux-drift-target-"), "claude"),
+          host: "workhorse",
+          projectGroups: {},
+        },
+      ],
+      coreSkillIds: ["writing-clearly"],
+      currentHost: "cinnabon",
+    });
+
+    expect(report.otherHosts).toEqual(["workhorse-claude"]);
+    expect(report.drifted).toEqual([]);
+  });
+
+  test("records a target it cannot plan without failing the whole report", () => {
+    const vaultPath = vaultWith(["writing-clearly", "code-review"]);
+    const okDir = join(tmpDir("skillmux-drift-target-"), "claude");
+    // An existing directory that already holds an unmanaged entry named like a core
+    // skill: syncTarget refuses it, and doctor still has to report every other target.
+    const collidedDir = tmpDir("skillmux-drift-collision-");
+    mkdirSync(join(collidedDir, "writing-clearly"));
+
+    const report = planSyncDrift({
+      vaultPath,
+      targets: [
+        { name: "claude", dir: okDir, projectGroups: {} },
+        { name: "codex", dir: collidedDir, projectGroups: {} },
+      ],
+      coreSkillIds: ["writing-clearly", "code-review"],
+      currentHost: "cinnabon",
+    });
+
+    expect(report.unplannable).toHaveLength(1);
+    expect(report.unplannable[0]!.target).toBe("codex");
+    expect(report.drifted.map((entry) => entry.target)).toEqual(["claude"]);
+  });
+
+  test("plans project pin directories alongside the core target", () => {
+    const vaultPath = vaultWith(["writing-clearly", "langgraph-cli"]);
+    const targetDir = join(homedir(), ".skillmux-drift-test", "claude");
+    const projectPath = tmpDir("skillmux-drift-project-");
+    rmSync(join(homedir(), ".skillmux-drift-test"), { recursive: true, force: true });
+    syncTarget({ vaultPath, targetDir, targetName: "claude", coreSkillIds: ["writing-clearly"] });
+
+    const report = planSyncDrift({
+      vaultPath,
+      targets: [
+        {
+          name: "claude",
+          dir: targetDir,
+          projectGroups: { fpbs: { paths: [projectPath], skills: ["langgraph-cli"] } },
+        },
+      ],
+      coreSkillIds: ["writing-clearly"],
+      currentHost: "cinnabon",
+    });
+
+    expect(report.drifted).toHaveLength(1);
+    expect(report.drifted[0]!.group).toBe("fpbs");
+    expect(report.drifted[0]!.added).toEqual(["langgraph-cli"]);
+
+    rmSync(join(homedir(), ".skillmux-drift-test"), { recursive: true, force: true });
   });
 });

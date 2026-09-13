@@ -480,3 +480,100 @@ export function installPostMergeHook(vaultPath: string): InstallHookResult {
   chmodSync(hookPath, 0o755);
   return { installed: true };
 }
+
+export interface TargetDrift {
+  target: string;
+  targetDir: string;
+  group?: string;
+  added: string[];
+  removed: string[];
+}
+
+export interface SyncDriftReport {
+  /** Targets whose contents do not match what the manifest pins. */
+  drifted: TargetDrift[];
+  /** Targets a dry-run could not plan, e.g. an unadopted or collided directory. */
+  unplannable: { target: string; targetDir: string; reason: string }[];
+  /** Targets skipped because they belong to another machine. */
+  otherHosts: string[];
+}
+
+/**
+ * Plans every sync this host would perform without touching the filesystem, so callers
+ * can tell whether the manifest and the target directories still agree.
+ *
+ * `skillmux core pin` and `skillmux target add` write the manifest and stop, which leaves
+ * the two out of step until someone remembers to run `skillmux sync`. Nothing surfaced
+ * that gap before: `outdated` reports skills whose upstream moved on, which is a different
+ * axis entirely. This is the planner behind both the `doctor` drift check and the
+ * next-step hint those two commands print.
+ *
+ * A target directory that does not exist yet is reported as drifted rather than
+ * unplannable — `sync` is what creates it, behind its own approval gate, so "this host
+ * has never synced that target" is exactly the drift worth reporting.
+ */
+export function planSyncDrift(params: {
+  vaultPath: string;
+  targets: {
+    name: string;
+    dir: string;
+    host?: string;
+    projectGroups: Record<string, ProjectGroupInput>;
+  }[];
+  localVaultPaths?: string[];
+  coreSkillIds: string[];
+  currentHost: string;
+}): SyncDriftReport {
+  const { vaultPath, targets, coreSkillIds, currentHost, localVaultPaths = [] } = params;
+  const report: SyncDriftReport = { drifted: [], unplannable: [], otherHosts: [] };
+
+  for (const target of targets) {
+    if (target.host !== undefined && target.host !== currentHost) {
+      report.otherHosts.push(target.name);
+      continue;
+    }
+    const record = (drift: TargetDrift) => {
+      if (drift.added.length > 0 || drift.removed.length > 0) report.drifted.push(drift);
+    };
+    try {
+      const core = syncTarget(
+        {
+          vaultPath,
+          targetDir: target.dir,
+          targetName: target.name,
+          coreSkillIds,
+          localVaultPaths,
+        },
+        { dryRun: true },
+      );
+      record({ target: target.name, targetDir: target.dir, added: core.added, removed: core.removed });
+
+      for (const result of syncProjectTargets(
+        {
+          vaultPath,
+          targetDir: target.dir,
+          targetName: target.name,
+          projectGroups: target.projectGroups,
+          localVaultPaths,
+        },
+        { dryRun: true },
+      )) {
+        record({
+          target: target.name,
+          targetDir: result.pinDir,
+          group: result.group,
+          added: result.added,
+          removed: result.removed,
+        });
+      }
+    } catch (error) {
+      report.unplannable.push({
+        target: target.name,
+        targetDir: target.dir,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return report;
+}

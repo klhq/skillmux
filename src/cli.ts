@@ -649,7 +649,7 @@ MCP is actually being registered.`,
 usage:
   skillmux target list
   skillmux target show <name>
-  skillmux target add <name> [--dir <dir>] --yes
+  skillmux target add <name> [--dir <dir>] --yes [--no-sync]
   skillmux target remove <name> --yes
   skillmux target rehome <name> --yes
   skillmux target migrate --yes
@@ -665,8 +665,14 @@ that agent resolves to.`,
   core: `core: pin or unpin core-tier skills
 
 usage:
-  skillmux core pin <skill_id>... --yes
-  skillmux core unpin <skill_id>... --yes`,
+  skillmux core pin <skill_id>... --yes [--no-sync]
+  skillmux core unpin <skill_id>... --yes [--no-sync]
+
+Pinning writes the manifest and then syncs, so the change reaches every target
+directory in one command. --no-sync writes the manifest alone, for batching
+several pins before a single sync. A target directory this machine has never
+synced still needs its own approval and is reported as skipped, so a pin never
+creates one.`,
 
   report: `report: show routing/fetch-outcome audit statistics
 

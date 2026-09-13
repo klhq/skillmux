@@ -297,7 +297,7 @@ project_groups = ["repo1"]           # which [project.*] groups materialize into
 ```
 
 - `[core].skills`: symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills unless `[core].limit` says otherwise; `sync` fails if a listed skill id isn't actually in the vault.
-- `[core].limit` (optional, positive integer): the cap on `[core].skills`. Absent means 25. It lives in the manifest rather than machine config so the same manifest validates identically on every machine.
+- `[core].limit` (optional, positive integer): the cap on `[core].skills`. Absent means 25. Exceeding it fails with an error naming this key, because the cap is a budget on how much skill frontmatter every agent carries in its system prompt, not a structural limit. It lives in the manifest rather than machine config so the same manifest validates identically on every machine.
 - `[project.<group>].skills`: symlinked only into `<path>/<relative path from $HOME to the target dir>`, for each `paths` entry, and only for targets whose `project_groups` names that group. `paths` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
 - `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`). `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
 - `[targets.<name>]`: one entry per adopted surface. Built-in names (`agent-skills`, `claude-code`, and `codex`) derive their directories from the name and omit `dir`. A custom target requires `dir`; create one with `skillmux target add <name> --dir <dir> --yes`. `skillmux target migrate --yes` removes legacy built-in `dir` fields without touching target files. An optional `host` limits the target to an exact machine-hostname match; omit it for a global, backward-compatible target. A host mismatch is reported and skipped before any target filesystem operation. `project_groups` is an explicit list, not a boolean: a target only receives the specific groups it names, never every group in the manifest.
@@ -313,7 +313,15 @@ skillmux core unpin csv-formatter pdf-extractor --yes                    # unpin
 skillmux project unpin repo1 pdf-extractor --yes                         # remove from a group (group stays, even if empty)
 ```
 
-Both commands accept one or more `skill_id` arguments per call; all of them are validated and applied against a single in-memory manifest before anything is written, so if any one of them is already pinned elsewhere (or, for unpin, not currently pinned), the whole call fails and the manifest file is left untouched: no partial pins. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
+Both commands accept one or more `skill_id` arguments per call; all of them are validated and applied against a single in-memory manifest before anything is written, so if any one of them is already pinned elsewhere (or, for unpin, not currently pinned), the whole call fails and the manifest file is left untouched: no partial pins.
+
+Pinning syncs. Writing the manifest is only half the job, since the pin stays invisible to
+every agent until the symlinks move, so both commands run the sync themselves and report
+what each target gained or lost. Under `--json` that arrives inside the same envelope as a
+`targets` array, never as a second document. Pass `--no-sync` to write the manifest alone,
+which is what you want when batching several pins before one sync. The pin's own `--yes`
+answers "pin this skill" and is deliberately not forwarded: a target directory this machine
+has never synced still needs its own approval, so a pin can never silently create one. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
 
 > **Breaking change:** `skillmux manifest pin`/`unpin` is removed. `[core]` pinning is now `skillmux core pin`/`unpin`; `[project.*]` pinning was already available as `skillmux project pin`/`unpin` and is now the only way to do it. There's no more `--path`-based inline group creation from a pin call; use `project add-path` to create the group first.
 >
@@ -326,7 +334,14 @@ Every `[core]`/`[project.*]` skill_id must resolve from the configured
 `local_vault_paths` entry (see below) fails `sync` with a distinct error, since
 the manifest is meant to be portable across machines and a machine-local
 override wouldn't exist elsewhere. `doctor` validates the manifest as part of
-its checks, surfacing any violation without writing anything back.
+its checks, surfacing any violation without writing anything back. Its `sync_drift` check
+goes one step further and plans (never performs) the sync this machine would run, naming
+every target directory whose contents no longer match what the manifest pins. A manifest
+pulled in from another machine, a `--no-sync` pin, and a hand-edit can all produce that
+gap. A target scoped to another `host` is left out, since this machine is not the one that
+syncs it, and the check is omitted entirely in a container: targets are a local delivery
+concern, and a container serving the MCP surface reads the vault to answer `resolve_skill`
+and `fetch_skill` without owning a target directory at all.
 
 ### Ownership marker
 

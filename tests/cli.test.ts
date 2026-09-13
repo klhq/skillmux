@@ -873,7 +873,7 @@ describe("skillmux sync CLI", () => {
 });
 
 describe("skillmux core CLI", () => {
-  function writeManifest(coreSkills: string[]) {
+  function writeManifest(coreSkills: string[], targetDir = "~/does-not-matter") {
     writeFileSync(
       join(vaultDir, "skillmux.toml"),
       [
@@ -881,7 +881,7 @@ describe("skillmux core CLI", () => {
         `skills = ${JSON.stringify(coreSkills)}`,
         ``,
         `[targets.test]`,
-        `dir = "~/does-not-matter"`,
+        `dir = "${targetDir}"`,
       ].join("\n"),
     );
   }
@@ -909,6 +909,80 @@ describe("skillmux core CLI", () => {
     expect(parsed.schema_version).toBe(1);
     expect(parsed.ok).toBe(true);
     expect(parsed.data.skill_ids).toEqual(["second-skill"]);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  // Mirrors the real world, where the target directory already exists because init or an
+  // earlier sync created it; a pin is then the only command the user has to run.
+  async function syncedTarget(prefix: string, coreSkills: string[]): Promise<string> {
+    const targetDir = join(mkdtempSync(join(tmpdir(), prefix)), "claude");
+    writeManifest(coreSkills, targetDir);
+    await runCli("sync", "--yes");
+    return targetDir;
+  }
+
+  test("core pin --yes syncs, so the pin reaches the target directory in one command", async () => {
+    const targetDir = await syncedTarget("core-pin-target-", ["first-skill"]);
+
+    const result = await runCli("core", "pin", "second-skill", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(targetDir, "second-skill", "SKILL.md"))).toBe(true);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("core unpin --yes removes the symlink as well as the manifest entry", async () => {
+    const targetDir = await syncedTarget("core-unpin-target-", ["first-skill", "second-skill"]);
+    expect(existsSync(join(targetDir, "second-skill"))).toBe(true);
+
+    const result = await runCli("core", "unpin", "second-skill", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(targetDir, "second-skill"))).toBe(false);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("core pin --yes --json folds the sync into one envelope rather than a second document", async () => {
+    await syncedTarget("core-pin-json-target-", ["first-skill"]);
+
+    const result = await runCli("core", "pin", "second-skill", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed.data.synced).toBe(true);
+    expect(parsed.data.targets).toHaveLength(1);
+    expect(parsed.data.targets[0].added).toEqual(["second-skill"]);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("core pin --no-sync writes the manifest and leaves the target directory alone", async () => {
+    const targetDir = await syncedTarget("core-pin-nosync-target-", ["first-skill"]);
+
+    const result = await runCli("core", "pin", "second-skill", "--yes", "--no-sync");
+
+    expect(result.exitCode).toBe(0);
+    expect(readFileSync(join(vaultDir, "skillmux.toml"), "utf-8")).toContain("second-skill");
+    expect(existsSync(join(targetDir, "second-skill"))).toBe(false);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("core pin --yes does not create a target directory this host has never synced", async () => {
+    const targetDir = join(mkdtempSync(join(tmpdir(), "core-pin-unseen-target-")), "claude");
+    writeManifest(["first-skill"], targetDir);
+
+    // --yes answers "pin this skill", never "create a directory nobody has approved", so
+    // the sync reports the target as skipped instead of silently materialising it.
+    const result = await runCli("core", "pin", "second-skill", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(targetDir)).toBe(false);
+    expect(JSON.parse(result.stdout).data.targets[0].status).toBe("skipped_not_approved");
 
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });

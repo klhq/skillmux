@@ -58,6 +58,30 @@ export function resolveTargetDir(
   return expandHome(target.dir);
 }
 
+/**
+ * Flattens the manifest into the resolved target list `planSyncDrift` plans against, so
+ * the drift check and the real sync agree on which directories a target owns and which
+ * project groups it carries.
+ */
+export function resolveSyncTargets(manifest: Manifest): {
+  name: string;
+  dir: string;
+  host?: string;
+  projectGroups: Record<string, ProjectGroup>;
+}[] {
+  const allGroups = manifest.project ?? {};
+  return Object.entries(manifest.targets).map(([name, target]) => ({
+    name,
+    dir: resolveTargetDir(name, target),
+    host: target.host,
+    projectGroups: Object.fromEntries(
+      target.project_groups
+        .filter((group) => allGroups[group] !== undefined)
+        .map((group) => [group, allGroups[group]!]),
+    ),
+  }));
+}
+
 export function parseManifest(toml: string): Manifest {
   const parsed = Bun.TOML.parse(toml) as Record<string, unknown>;
   try {
@@ -301,6 +325,23 @@ export interface ManifestValidationResult {
 
 export const CORE_SKILL_LIMIT = 25;
 
+/**
+ * The limit is a budget on how much skill frontmatter every agent carries in its system
+ * prompt, not a structural constraint, so whoever hits it needs to know the number is
+ * theirs to move. Naming the key beats making them go read the schema. Shared by
+ * validateManifest and planInitManifest so the two paths cannot drift apart.
+ */
+export function coreLimitExceeded(count: number, explicitLimit: number | undefined): Error {
+  const effectiveLimit = explicitLimit ?? CORE_SKILL_LIMIT;
+  const remedy =
+    explicitLimit === undefined
+      ? `unpin a skill, or set "limit" under [core] to raise the default`
+      : `unpin a skill, or raise "limit" under [core]`;
+  return new Error(
+    `[core] has ${count} skills, exceeding the limit of ${effectiveLimit} — ${remedy}`,
+  );
+}
+
 function requireCoreVaultRoot(skillId: string, vaultPath: string, localVaultPaths: string[], location: string): void {
   const root = resolveSkillRoot(skillId, vaultPath, localVaultPaths);
   if (root === null) {
@@ -321,9 +362,7 @@ export function validateManifest(
 ): ManifestValidationResult {
   const effectiveLimit = manifest.core.limit ?? CORE_SKILL_LIMIT;
   if (manifest.core.skills.length > effectiveLimit) {
-    throw new Error(
-      `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${effectiveLimit}`,
-    );
+    throw coreLimitExceeded(manifest.core.skills.length, manifest.core.limit);
   }
 
   const coreSet = new Set(manifest.core.skills);

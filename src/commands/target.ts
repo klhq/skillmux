@@ -12,6 +12,7 @@ import { resolveTargetDir, writeManifestAtomic } from "../manifest";
 import { emitSuccess, unknownSubcommandError } from "../output";
 import { applyTargetMarkerRehome, planTargetMarkerRehome, resolveProjectPinDir } from "../sync";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
+import { executeSync } from "./sync";
 
 export async function runTarget(
   subCommand: string,
@@ -53,6 +54,7 @@ export async function runTarget(
   }
 
   if (subCommand === "add") {
+    const sync = !args.includes("--no-sync");
     const name = args[0];
     const dirIndex = args.indexOf("--dir");
     const rawPath = dirIndex === -1 ? undefined : args[dirIndex + 1];
@@ -91,8 +93,23 @@ export async function runTarget(
     )
       return;
     applyInit(vaultPath, [{ name, dir: path }]);
-    emitSuccess({ isJson: options.isJson }, { name, dir: path }, () =>
-      console.log(`target "${name}" added at ${path}`),
+    if (!options.isJson) console.log(`target "${name}" added at ${path}`);
+
+    // Adding a target records the directory; it does not populate it. Unlike a core pin,
+    // the approval just given named this exact directory, so it carries through to
+    // executeSync's new-target gate rather than making the user answer for it twice.
+    const synced = sync
+      ? await executeSync({
+          config,
+          yes: true,
+          log: options.isJson ? undefined : (line: string) => console.log(line),
+        })
+      : undefined;
+
+    emitSuccess(
+      { isJson: options.isJson },
+      { name, dir: path, synced: synced !== undefined, targets: synced?.targets ?? [] },
+      () => {},
     );
     return;
   }

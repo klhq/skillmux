@@ -16,6 +16,7 @@ import {
   syncTarget,
   type ProjectGroupInput,
 } from "../sync";
+import type { Config } from "../types";
 import { confirmAction } from "./shared";
 
 function parseSyncArgs(args: string[]): {
@@ -55,15 +56,13 @@ async function confirmNewSyncTarget(
   label: string,
   dir: string,
   yes: boolean,
-  isJson: boolean,
+  log: (line: string) => void,
 ): Promise<boolean> {
   if (yes) return true;
   if (!isInteractive()) {
-    if (!isJson) {
-      console.log(
-        `${label}: skipped — ${dir} does not exist yet; creating it requires approval. Re-run "skillmux sync --yes", or run "skillmux sync" interactively, once you've confirmed this target is expected.`,
-      );
-    }
+    log(
+      `${label}: skipped — ${dir} does not exist yet; creating it requires approval. Re-run "skillmux sync --yes", or run "skillmux sync" interactively, once you've confirmed this target is expected.`,
+    );
     return false;
   }
   return confirmAction(`${label}: create new target directory ${dir}?`);
@@ -89,31 +88,40 @@ interface SyncTargetSummary {
   }[];
 }
 
-export async function runSync(args: string[]): Promise<void> {
-  const { dryRun, restoreMonolith, installHook, yes, isJson } = parseSyncArgs(args);
-  const config = await loadConfig();
-  const vaultPath = expandHome(config.vault_path);
-  const log = (line: string) => {
-    if (!isJson) console.log(line);
-  };
-  const warnLine = (line: string) => {
-    if (!isJson) warn(line);
-  };
+export interface ExecuteSyncOptions {
+  dryRun?: boolean;
+  restoreMonolith?: boolean;
+  /** Approves creating target directories this host has not synced before. */
+  yes?: boolean;
+  /** Where per-target progress lines go. Omit to run silently, as a --json caller must. */
+  log?: (line: string) => void;
+  warn?: (line: string) => void;
+  /** An already-loaded config, so a caller that needed one does not pay for a second read. */
+  config?: Config;
+}
 
-  let hookInstalled: boolean | undefined;
-  if (installHook) {
-    const result = installPostMergeHook(vaultPath);
-    hookInstalled = result.installed;
-    log(result.installed ? "installed post-merge hook" : "post-merge hook already installed");
-  }
+export interface ExecuteSyncResult {
+  manifestFound: boolean;
+  notes: string[];
+  targets: SyncTargetSummary[];
+}
+
+/**
+ * Performs the sync and returns what it did, leaving every rendering decision to the
+ * caller. `skillmux sync` is one caller. `skillmux core pin` is the other: it needs the
+ * summaries as data so it can fold them into its own `--json` envelope instead of
+ * emitting a second document, which is what made an in-command sync impossible while
+ * this logic still owned its own output.
+ */
+export async function executeSync(options: ExecuteSyncOptions = {}): Promise<ExecuteSyncResult> {
+  const { dryRun = false, restoreMonolith = false, yes = false } = options;
+  const log = options.log ?? (() => {});
+  const warnLine = options.warn ?? (() => {});
+  const config = options.config ?? (await loadConfig());
+  const vaultPath = expandHome(config.vault_path);
 
   const manifestPath = resolveManifestPath(vaultPath);
-  if (!manifestPath) {
-    emitSuccess({ isJson }, { hook_installed: hookInstalled ?? null, targets: [] }, () =>
-      console.log("no skillmux.toml found at vault root — nothing to sync"),
-    );
-    return;
-  }
+  if (!manifestPath) return { manifestFound: false, notes: [], targets: [] };
 
   const manifest = parseManifest(await Bun.file(manifestPath).text());
   const localVaultPaths = config.local_vault_paths.map(expandHome);
@@ -147,7 +155,7 @@ export async function runSync(args: string[]): Promise<void> {
     }
 
     if (!dryRun && !existsSync(targetDir)) {
-      const approved = await confirmNewSyncTarget(targetName, targetDir, yes, isJson);
+      const approved = await confirmNewSyncTarget(targetName, targetDir, yes, log);
       if (!approved) {
         if (isInteractive()) {
           log(`${targetName}: skipped — creating ${targetDir} was not approved`);
@@ -195,7 +203,7 @@ export async function runSync(args: string[]): Promise<void> {
             approvedPaths.push(path);
             continue;
           }
-          const approved = await confirmNewSyncTarget(`${targetName}/${groupName}`, pinDir, yes, isJson);
+          const approved = await confirmNewSyncTarget(`${targetName}/${groupName}`, pinDir, yes, log);
           if (approved) approvedPaths.push(path);
         }
         projectGroups[groupName] = { ...group, paths: approvedPaths };
@@ -225,9 +233,38 @@ export async function runSync(args: string[]): Promise<void> {
     targetSummaries.push(summary);
   }
 
+  return { manifestFound: true, notes, targets: targetSummaries };
+}
+
+export async function runSync(args: string[]): Promise<void> {
+  const { dryRun, restoreMonolith, installHook, yes, isJson } = parseSyncArgs(args);
+  const config = await loadConfig();
+  const log = isJson ? undefined : (line: string) => console.log(line);
+
+  let hookInstalled: boolean | undefined;
+  if (installHook) {
+    const result = installPostMergeHook(expandHome(config.vault_path));
+    hookInstalled = result.installed;
+    log?.(result.installed ? "installed post-merge hook" : "post-merge hook already installed");
+  }
+
+  const result = await executeSync({
+    dryRun,
+    restoreMonolith,
+    yes,
+    config,
+    log,
+    warn: isJson ? undefined : (line: string) => warn(line),
+  });
+  if (!result.manifestFound) {
+    emitSuccess({ isJson }, { hook_installed: hookInstalled ?? null, targets: [] }, () =>
+      console.log("no skillmux.toml found at vault root — nothing to sync"),
+    );
+    return;
+  }
   emitSuccess(
     { isJson },
-    { hook_installed: hookInstalled ?? null, notes, targets: targetSummaries },
+    { hook_installed: hookInstalled ?? null, notes: result.notes, targets: result.targets },
     () => {},
   );
 }

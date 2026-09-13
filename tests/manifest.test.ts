@@ -654,6 +654,43 @@ dir = "~/.claude/skills"
     rmSync(vaultPath, { recursive: true, force: true });
   });
 
+  test("points at the [core] limit key so whoever hits the default knows it can move", () => {
+    const vaultPath = tmpVault();
+    const skillIds = Array.from({ length: 26 }, (_, i) => `skill-${i}`);
+    for (const skillId of skillIds) writeSkillAt(vaultPath, skillId);
+    const manifest = parseManifest(`
+[core]
+skills = ${JSON.stringify(skillIds)}
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    expect(() => validateManifest(manifest, vaultPath)).toThrow(
+      'unpin a skill, or set "limit" under [core] to raise the default',
+    );
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
+  test("tells someone who already set a limit to raise that key rather than to set it", () => {
+    const vaultPath = tmpVault();
+    const skillIds = Array.from({ length: 31 }, (_, i) => `skill-${i}`);
+    for (const skillId of skillIds) writeSkillAt(vaultPath, skillId);
+    const manifest = parseManifest(`
+[core]
+limit = 30
+skills = ${JSON.stringify(skillIds)}
+
+[targets.claude]
+dir = "~/.claude/skills"
+`);
+    expect(() => validateManifest(manifest, vaultPath)).toThrow(
+      'unpin a skill, or raise "limit" under [core]',
+    );
+
+    rmSync(vaultPath, { recursive: true, force: true });
+  });
+
   test("throws when a target's project_groups references an undefined [project.*] group", () => {
     const vaultPath = tmpVault();
     const manifest = parseManifest(`
