@@ -12,6 +12,13 @@
       "devDependencies": {
         "bun-types": "^1.3.14",
       },
+      "optionalDependencies": {
+        "@klhapp/skillmux-darwin-arm64": "1.12.0",
+        "@klhapp/skillmux-darwin-x64": "1.12.0",
+        "@klhapp/skillmux-linux-arm64": "1.12.0",
+        "@klhapp/skillmux-linux-x64": "1.12.0",
+        "@klhapp/skillmux-win32-x64": "1.12.0",
+      },
     },
   },
   "trustedDependencies": [

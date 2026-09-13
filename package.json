@@ -15,13 +15,13 @@
   },
   "homepage": "https://github.com/klhq/skillmux#readme",
   "bin": {
-    "skillmux": "./src/cli.ts"
+    "skillmux": "./bin/skillmux.js"
   },
   "publishConfig": {
     "access": "public"
   },
   "files": [
-    "src",
+    "bin",
     "docs",
     "README.md",
     "LICENSE",
@@ -51,5 +51,12 @@
   "trustedDependencies": [
     "onnxruntime-node",
     "protobufjs"
-  ]
+  ],
+  "optionalDependencies": {
+    "@klhapp/skillmux-darwin-arm64": "1.12.0",
+    "@klhapp/skillmux-darwin-x64": "1.12.0",
+    "@klhapp/skillmux-linux-arm64": "1.12.0",
+    "@klhapp/skillmux-linux-x64": "1.12.0",
+    "@klhapp/skillmux-win32-x64": "1.12.0"
+  }
 }
