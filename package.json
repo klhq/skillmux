@@ -36,7 +36,8 @@
     "eval": "bun run src/cli.ts eval",
     "doctor": "bun run src/cli.ts doctor",
     "models:download": "bun run src/cli.ts models download",
-    "build": "bun build --compile src/cli.ts --outfile dist/skillmux"
+    "build": "bun build --compile src/cli.ts --outfile dist/skillmux",
+    "build:binaries": "bun run scripts/build-binaries.ts"
   },
   "devDependencies": {
     "bun-types": "^1.3.14"

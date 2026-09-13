@@ -12,3 +12,9 @@ describe("package.json binary rename (skillmux)", () => {
     expect(pkg.scripts.build).toBe("bun build --compile src/cli.ts --outfile dist/skillmux");
   });
 });
+
+describe("package.json binary distribution (AC1)", () => {
+  test("build:binaries stages every platform executable under dist/bin", () => {
+    expect(pkg.scripts["build:binaries"]).toBe("bun run scripts/build-binaries.ts");
+  });
+});
