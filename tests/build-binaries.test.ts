@@ -135,3 +135,13 @@ describe("build-binaries target selection (AC1)", () => {
     expect(() => selectTargets("linux-amd64")).toThrow(/linux-amd64/);
   });
 });
+
+describe("build-binaries host target (AC1)", () => {
+  test('resolves "host" to the target matching this machine', () => {
+    expect(selectTargets("host")).toEqual([
+      BINARY_TARGETS.find(
+        (target) => target.platform === process.platform && target.arch === process.arch,
+      )!,
+    ]);
+  });
+});

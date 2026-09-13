@@ -36,7 +36,7 @@
     "eval": "bun run src/cli.ts eval",
     "doctor": "bun run src/cli.ts doctor",
     "models:download": "bun run src/cli.ts models download",
-    "build": "bun build --compile src/cli.ts --outfile dist/skillmux",
+    "build": "bun run scripts/build-binaries.ts host",
     "build:binaries": "bun run scripts/build-binaries.ts",
     "build:npm-packages": "bun run scripts/package-npm-binaries.ts"
   },

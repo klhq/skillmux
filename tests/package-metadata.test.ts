@@ -11,8 +11,10 @@ describe("package.json binary rename (skillmux)", () => {
     expect(pkg.bin).toEqual({ skillmux: "./bin/skillmux.js" });
   });
 
-  test("build script compiles dist/skillmux", () => {
-    expect(pkg.scripts.build).toBe("bun build --compile src/cli.ts --outfile dist/skillmux");
+  test("build compiles this machine's executable through the packaging path", () => {
+    // A raw `bun build --compile` skips the sharp stub, and the executable it
+    // produces cannot load the local embedding pipeline at all.
+    expect(pkg.scripts.build).toBe("bun run scripts/build-binaries.ts host");
   });
 });
 

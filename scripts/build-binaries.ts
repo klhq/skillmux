@@ -107,7 +107,8 @@ export async function buildBinary(target: BinaryTarget, outDir: string): Promise
 export function selectTargets(spec?: string): BinaryTarget[] {
   if (!spec) return BINARY_TARGETS;
 
-  const selected = BINARY_TARGETS.filter((target) => `${target.platform}-${target.arch}` === spec);
+  const wanted = spec === "host" ? `${process.platform}-${process.arch}` : spec;
+  const selected = BINARY_TARGETS.filter((target) => `${target.platform}-${target.arch}` === wanted);
   if (selected.length === 0) {
     const known = BINARY_TARGETS.map((target) => `${target.platform}-${target.arch}`).join(", ");
     throw new Error(`unknown build target "${spec}"; expected one of ${known}`);
@@ -131,7 +132,8 @@ export async function buildAll(
 
 if (import.meta.main) {
   const outDir = process.env.SKILLMUX_BINARY_OUT_DIR ?? join(import.meta.dir, "..", "dist", "bin");
-  for (const outfile of await buildAll(outDir, selectTargets(process.env.SKILLMUX_BINARY_TARGET))) {
+  const spec = process.argv[2] ?? process.env.SKILLMUX_BINARY_TARGET;
+  for (const outfile of await buildAll(outDir, selectTargets(spec))) {
     console.log(outfile);
   }
 }
