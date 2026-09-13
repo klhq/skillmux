@@ -5,19 +5,78 @@
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": false,
   "changelog-sections": [
-    { "type": "feat", "section": "Added" },
-    { "type": "fix", "section": "Fixed" },
-    { "type": "perf", "section": "Changed" },
-    { "type": "refactor", "section": "Changed" },
-    { "type": "docs", "section": "Docs", "hidden": true },
-    { "type": "chore", "section": "Chores", "hidden": true },
-    { "type": "ci", "section": "CI", "hidden": true },
-    { "type": "build", "section": "Build", "hidden": true },
-    { "type": "test", "section": "Tests", "hidden": true }
+    {
+      "type": "feat",
+      "section": "Added"
+    },
+    {
+      "type": "fix",
+      "section": "Fixed"
+    },
+    {
+      "type": "perf",
+      "section": "Changed"
+    },
+    {
+      "type": "refactor",
+      "section": "Changed"
+    },
+    {
+      "type": "docs",
+      "section": "Docs",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Chores",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "CI",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Build",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    }
   ],
   "packages": {
     ".": {
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.optionalDependencies['@klhapp/skillmux-darwin-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.optionalDependencies['@klhapp/skillmux-darwin-x64']"
+        },
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.optionalDependencies['@klhapp/skillmux-linux-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.optionalDependencies['@klhapp/skillmux-linux-x64']"
+        },
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.optionalDependencies['@klhapp/skillmux-win32-x64']"
+        }
+      ]
     }
   }
 }
