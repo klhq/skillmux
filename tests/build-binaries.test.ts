@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import packageJson from "../package.json" with { type: "json" };
-import { BINARY_TARGETS, buildAll, buildBinary } from "../scripts/build-binaries";
+import { BINARY_TARGETS, buildAll, buildBinary, selectTargets } from "../scripts/build-binaries";
 
 describe("build-binaries target matrix (AC1)", () => {
   test("maps every compile target to its npm platform and arch names", () => {
@@ -124,4 +124,14 @@ describe("build-binaries full matrix (AC1)", () => {
       rmSync(outDir, { recursive: true, force: true });
     }
   }, 600_000);
+});
+
+describe("build-binaries target selection (AC1)", () => {
+  test("narrows to one target and rejects an unknown one", () => {
+    expect(selectTargets("linux-arm64")).toEqual([
+      { target: "bun-linux-arm64", platform: "linux", arch: "arm64", binaryName: "skillmux" },
+    ]);
+    expect(selectTargets()).toEqual(BINARY_TARGETS);
+    expect(() => selectTargets("linux-amd64")).toThrow(/linux-amd64/);
+  });
 });

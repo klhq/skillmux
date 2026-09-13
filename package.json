@@ -41,11 +41,9 @@
     "build:npm-packages": "bun run scripts/package-npm-binaries.ts"
   },
   "devDependencies": {
-    "bun-types": "^1.3.14"
-  },
-  "dependencies": {
     "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "bun-types": "^1.3.14",
     "zod": "^4.4.3"
   },
   "trustedDependencies": [

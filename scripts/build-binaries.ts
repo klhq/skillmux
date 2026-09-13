@@ -99,12 +99,31 @@ export async function buildBinary(target: BinaryTarget, outDir: string): Promise
   return outfile;
 }
 
-/** Compiles every supported target into `outDir`, sequentially. */
-export async function buildAll(outDir: string): Promise<string[]> {
+/**
+ * Narrows the matrix to a single `<platform>-<arch>` target, or returns all of
+ * them. The container build compiles only the architecture it is producing, so
+ * an image build does not pay for the other four.
+ */
+export function selectTargets(spec?: string): BinaryTarget[] {
+  if (!spec) return BINARY_TARGETS;
+
+  const selected = BINARY_TARGETS.filter((target) => `${target.platform}-${target.arch}` === spec);
+  if (selected.length === 0) {
+    const known = BINARY_TARGETS.map((target) => `${target.platform}-${target.arch}`).join(", ");
+    throw new Error(`unknown build target "${spec}"; expected one of ${known}`);
+  }
+  return selected;
+}
+
+/** Compiles the given targets into `outDir`, sequentially. */
+export async function buildAll(
+  outDir: string,
+  targets: BinaryTarget[] = BINARY_TARGETS,
+): Promise<string[]> {
   mkdirSync(outDir, { recursive: true });
 
   const outfiles: string[] = [];
-  for (const target of BINARY_TARGETS) {
+  for (const target of targets) {
     outfiles.push(await buildBinary(target, outDir));
   }
   return outfiles;
@@ -112,7 +131,7 @@ export async function buildAll(outDir: string): Promise<string[]> {
 
 if (import.meta.main) {
   const outDir = process.env.SKILLMUX_BINARY_OUT_DIR ?? join(import.meta.dir, "..", "dist", "bin");
-  for (const outfile of await buildAll(outDir)) {
+  for (const outfile of await buildAll(outDir, selectTargets(process.env.SKILLMUX_BINARY_TARGET))) {
     console.log(outfile);
   }
 }

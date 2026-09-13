@@ -25,6 +25,10 @@ describe("package.json binary distribution (AC1)", () => {
     expect(pkg.scripts["build:npm-packages"]).toBe("bun run scripts/package-npm-binaries.ts");
   });
 
+  test("declares no runtime dependencies, since the executable bundles them", () => {
+    expect(pkg.dependencies).toBeUndefined();
+  });
+
   test("every platform package is an optional dependency pinned to this version", () => {
     const expected = Object.fromEntries(
       BINARY_TARGETS.map((target) => [platformPackageName(target), pkg.version]),
