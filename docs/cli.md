@@ -315,7 +315,8 @@ skillmux target remove custom-agent --yes
 `target add` uses the same ownership, symlink, full-vault, rollback, and
 current-host scoping checks as `skillmux init`. `target remove` removes the
 manifest entry and preserves the directory, marker, and skill files. The
-command prints the preserved path so cleanup remains an explicit user action.
+command prints the preserved path so cleanup remains an explicit user action. `target add` records the directory without populating it, so it closes with a
+`next: skillmux sync` line counting the targets still out of date.
 
 ---
 
@@ -333,7 +334,10 @@ skillmux core unpin csv-formatter --yes
 One or more `skill_id` arguments are accepted per call and applied
 atomically against a single in-memory manifest: if any one of them is
 already pinned elsewhere (or, for `unpin`, not currently pinned), the
-whole call fails and the manifest file is left untouched. To pin into a
+whole call fails and the manifest file is left untouched. Pinning writes
+the manifest only, leaving every target directory as the last `sync` left
+it, so both commands close with a `next: skillmux sync` line counting the
+targets still out of date (`sync_pending_targets` under `--json`). To pin into a
 `[project.<group>]` tier instead, use `skillmux project pin` (see
 [Project Setup](#project-setup-skillmux-project-init)).
 
@@ -466,6 +470,8 @@ Named CLI contexts (`--context <name>` or `--server <url>`) support the followin
 - `skillmux eval`: executes ranking evaluation against the remote server's in-process runtime via `POST /admin/v1/eval`.
 - `skillmux eval promote --since <window>`: fetches promotable candidates from the remote server's audit db via `POST /admin/v1/eval/promote`, dedups against the local fixture file, and writes locally.
 - `skillmux doctor`: inspects remote server status, readiness, deployment runtime, and capabilities without requiring local vault access.
+
+Run locally, `doctor` also reports `sync_drift`: a planned-but-never-performed sync naming every target directory whose contents no longer match what the manifest pins. Targets scoped to another `host` are excluded.
 
 ---
 

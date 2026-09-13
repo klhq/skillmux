@@ -1,9 +1,15 @@
 import { existsSync, mkdirSync } from "node:fs";
+import { hostname } from "node:os";
 import { createClients, RemoteInferenceError } from "./clients";
 import { embeddingDimension, expandHome, isLoopbackBindHost } from "./config";
 import { describeDeployment, type DeploymentIdentity } from "./deployment";
-import { parseManifest, resolveManifestPath, validateManifest } from "./manifest";
-import { readSkillmuxMarker } from "./sync";
+import {
+  parseManifest,
+  resolveManifestPath,
+  resolveSyncTargets,
+  validateManifest,
+} from "./manifest";
+import { planSyncDrift, readSkillmuxMarker } from "./sync";
 import type { Config } from "./types";
 import { findShadowedSkills } from "./vault";
 
@@ -122,8 +128,43 @@ export async function diagnose(
   } else {
     try {
       const manifest = parseManifest(await Bun.file(manifestPath).text());
-      validateManifest(manifest, vaultPath, config.local_vault_paths.map(expandHome));
+      const localVaultPaths = config.local_vault_paths.map(expandHome);
+      validateManifest(manifest, vaultPath, localVaultPaths);
       checks.push({ name: "manifest", ok: true, detail: manifestPath });
+
+      // A valid manifest still says nothing about whether the target directories match it.
+      // "skillmux core pin" and "skillmux target add" write the manifest and stop, so the
+      // two drift apart until someone runs "skillmux sync", and until now nothing reported
+      // that ("outdated" covers a different axis: skills whose upstream moved on).
+      const drift = planSyncDrift({
+        vaultPath,
+        targets: resolveSyncTargets(manifest),
+        localVaultPaths,
+        coreSkillIds: manifest.core.skills,
+        currentHost: hostname(),
+      });
+      for (const entry of drift.unplannable) {
+        checks.push({
+          name: `sync_drift:${entry.target}`,
+          ok: false,
+          detail: `cannot plan a sync for ${entry.targetDir} — ${entry.reason}`,
+          failure_kind: "configuration",
+        });
+      }
+      checks.push({
+        name: "sync_drift",
+        ok: drift.drifted.length === 0,
+        detail:
+          drift.drifted.length === 0
+            ? "targets match the manifest"
+            : `${drift.drifted
+                .map(
+                  (entry) =>
+                    `${entry.group ? `${entry.target}/${entry.group}` : entry.target} (${entry.targetDir}) +${entry.added.length} -${entry.removed.length}`,
+                )
+                .join("; ")} — run: skillmux sync`,
+        failure_kind: drift.drifted.length === 0 ? undefined : "configuration",
+      });
     } catch (error) {
       checks.push({
         name: `manifest:${manifestPath}`,

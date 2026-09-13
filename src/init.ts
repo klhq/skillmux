@@ -20,6 +20,7 @@ import {
   serializeManifest,
   type Manifest,
   CORE_SKILL_LIMIT,
+  coreLimitExceeded,
   MANIFEST_FILENAME,
 } from "./manifest";
 import { BUILT_IN_TARGET_NAMES } from "./init-agents";
@@ -257,11 +258,8 @@ export function planInitManifest(
       ),
     },
   };
-  const effectiveLimit = manifest.core.limit ?? CORE_SKILL_LIMIT;
-  if (manifest.core.skills.length > effectiveLimit) {
-    throw new Error(
-      `[core] has ${manifest.core.skills.length} skills, exceeding the limit of ${effectiveLimit}`,
-    );
+  if (manifest.core.skills.length > (manifest.core.limit ?? CORE_SKILL_LIMIT)) {
+    throw coreLimitExceeded(manifest.core.skills.length, manifest.core.limit);
   }
   for (const skillId of coreSkillIds) {
     if (!SKILL_ID_PATTERN.test(skillId) || !existsSync(join(vaultPath, skillId, "SKILL.md"))) {

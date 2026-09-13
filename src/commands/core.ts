@@ -1,7 +1,7 @@
 import { expandHome } from "../config";
 import { pinCore, unpinCore, validateManifest, writeManifestAtomic } from "../manifest";
 import { emitSuccess, unknownSubcommandError } from "../output";
-import { confirmIfNeeded, loadManifestContext } from "./shared";
+import { confirmIfNeeded, loadManifestContext, pendingSyncTargets } from "./shared";
 export async function runCore(
   subCommand: string,
   args: string[],
@@ -48,9 +48,24 @@ export async function runCore(
   )
     return;
   writeManifestAtomic(manifestPath, updated);
+  // Pinning only records the intent; the symlinks in every target directory are still
+  // whatever the last sync left behind. Say so rather than letting the manifest and the
+  // directories quietly disagree until someone notices a skill is missing.
+  const pending = pendingSyncTargets(
+    vaultPath,
+    updated,
+    config.local_vault_paths.map(expandHome),
+  );
   emitSuccess(
     { isJson: options.isJson },
-    { subcommand: subCommand, skill_ids: skillIds },
-    () => console.log(`${subCommand}: [core] ${skillIds.join(", ")}`),
+    { subcommand: subCommand, skill_ids: skillIds, sync_pending_targets: pending },
+    () => {
+      console.log(`${subCommand}: [core] ${skillIds.join(", ")}`);
+      if (pending > 0) {
+        console.log(
+          `next: skillmux sync — ${pending} target${pending === 1 ? "" : "s"} still out of date`,
+        );
+      }
+    },
   );
 }

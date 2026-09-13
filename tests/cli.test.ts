@@ -913,6 +913,30 @@ describe("skillmux core CLI", () => {
     rmSync(join(vaultDir, "skillmux.toml"), { force: true });
   });
 
+  test("core pin --yes says a sync is still owed, because pinning only writes the manifest", async () => {
+    writeManifest(["first-skill"]);
+
+    const result = await runCli("core", "pin", "second-skill", "--yes");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("next: skillmux sync");
+    expect(result.stdout).toContain("1 target still out of date");
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
+  test("core pin --yes --json reports the owed sync as a field rather than a second document", async () => {
+    writeManifest(["first-skill"]);
+
+    const result = await runCli("core", "pin", "second-skill", "--yes", "--json");
+
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.data.sync_pending_targets).toBe(1);
+
+    rmSync(join(vaultDir, "skillmux.toml"), { force: true });
+  });
+
   test("core unpin <skill_id> --yes removes the skill_id from [core].skills", async () => {
     writeManifest(["first-skill", "second-skill"]);
 

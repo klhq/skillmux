@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openIndex, upsertSkill } from "../src/db";
 import { diagnose } from "../src/doctor";
+import { syncTarget } from "../src/sync";
 import type { Config } from "../src/types";
 
 const server = Bun.serve({
@@ -335,6 +336,80 @@ dir = "~/.claude/skills"
       ok: true,
       detail: join(vaultDir, "skillmux.toml"),
     });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("fails sync_drift when a target directory does not match what the manifest pins", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-drift-"));
+    writeSkillAt(vaultDir, "core-skill");
+    const targetDir = join(mkdtempSync(join(tmpdir(), "doctor-drift-target-")), "claude");
+    syncTarget({ vaultPath: vaultDir, targetDir, targetName: "claude", coreSkillIds: [] });
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `
+[core]
+skills = ["core-skill"]
+
+[targets.claude]
+dir = "${targetDir}"
+`,
+    );
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+
+    const drift = report.checks.find((check) => check.name === "sync_drift");
+    expect(drift).toMatchObject({ ok: false, failure_kind: "configuration" });
+    expect(drift?.detail).toContain("+1 -0");
+    expect(drift?.detail).toContain("run: skillmux sync");
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("passes sync_drift once the target directory matches the manifest", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-no-drift-"));
+    writeSkillAt(vaultDir, "core-skill");
+    const targetDir = join(mkdtempSync(join(tmpdir(), "doctor-no-drift-target-")), "claude");
+    syncTarget({ vaultPath: vaultDir, targetDir, targetName: "claude", coreSkillIds: ["core-skill"] });
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `
+[core]
+skills = ["core-skill"]
+
+[targets.claude]
+dir = "${targetDir}"
+`,
+    );
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+
+    expect(report.checks.find((check) => check.name === "sync_drift")).toMatchObject({
+      ok: true,
+      detail: "targets match the manifest",
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
+  test("does not report drift for a target scoped to another machine", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-other-host-"));
+    writeSkillAt(vaultDir, "core-skill");
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `
+[core]
+skills = ["core-skill"]
+
+[targets.elsewhere]
+dir = "/nonexistent/elsewhere/skills"
+host = "some-other-machine"
+`,
+    );
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+
+    expect(report.checks.find((check) => check.name === "sync_drift")).toMatchObject({ ok: true });
 
     rmSync(vaultDir, { recursive: true, force: true });
   });

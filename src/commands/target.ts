@@ -11,7 +11,7 @@ import { planInitManifest, applyInit } from "../init";
 import { resolveTargetDir, writeManifestAtomic } from "../manifest";
 import { emitSuccess, unknownSubcommandError } from "../output";
 import { applyTargetMarkerRehome, planTargetMarkerRehome, resolveProjectPinDir } from "../sync";
-import { confirmIfNeeded, loadManifestContext } from "./shared";
+import { confirmIfNeeded, loadManifestContext, pendingSyncTargets } from "./shared";
 
 export async function runTarget(
   subCommand: string,
@@ -90,9 +90,25 @@ export async function runTarget(
       }))
     )
       return;
-    applyInit(vaultPath, [{ name, dir: path }]);
-    emitSuccess({ isJson: options.isJson }, { name, dir: path }, () =>
-      console.log(`target "${name}" added at ${path}`),
+    const updated = applyInit(vaultPath, [{ name, dir: path }]);
+    // Adding a target records the directory; it does not populate it. Without this the
+    // new target sits empty until someone independently thinks to run a sync.
+    const pending = pendingSyncTargets(
+      vaultPath,
+      updated,
+      config.local_vault_paths.map(expandHome),
+    );
+    emitSuccess(
+      { isJson: options.isJson },
+      { name, dir: path, sync_pending_targets: pending },
+      () => {
+        console.log(`target "${name}" added at ${path}`);
+        if (pending > 0) {
+          console.log(
+            `next: skillmux sync — ${pending} target${pending === 1 ? "" : "s"} still out of date`,
+          );
+        }
+      },
     );
     return;
   }
