@@ -22,6 +22,22 @@ describe("release ordering (AC14)", () => {
     expect(staged).toContain("dist/release/skillmux-linux-amd64");
     expect(staged).toContain("dist/release/skillmux-linux-arm64");
   });
+
+  test("attaches an executable for every platform the launcher points at", () => {
+    const uploaded = workflow.jobs["release-assets"]!.steps!.map((step) => step.run ?? "").join("\n");
+
+    // The missing-package message sends every platform to the releases page,
+    // so a macOS or Windows reader has to find something there.
+    for (const asset of [
+      "skillmux-linux-amd64",
+      "skillmux-linux-arm64",
+      "skillmux-darwin-arm64",
+      "skillmux-darwin-x64",
+      "skillmux-win32-x64.exe",
+    ]) {
+      expect(uploaded).toContain(asset);
+    }
+  });
 });
 
 describe("release version pins (AC4)", () => {

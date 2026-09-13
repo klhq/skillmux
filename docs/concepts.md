@@ -80,8 +80,8 @@ flowchart TD
 | Local MCP | Beside one client | stdio | Skillmux CLI |
 | Shared MCP | Server or container host | Streamable HTTP | Skillmux server (full image) |
 
-The **Skillmux CLI** is available as either the Bun package or the standalone
-Linux executable; both expose the same commands. The **full image** is the
+The **Skillmux CLI** is one native executable per platform, installed through
+npm, bun, or a direct download; every path exposes the same commands. The **full image** is the
 default Skillmux server deployment. The **slim image** is an
 advanced variant for configured remote embeddings or intentional lexical-only
 retrieval. The CLI can also serve HTTP, and Docker can serve stdio for clients

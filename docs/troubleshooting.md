@@ -29,7 +29,7 @@ downloads, contexts, evaluation, project/target/local-vault
 management, or `config init`/`config set`, install and use the host CLI:
 
 ```sh
-bun add -g @klhapp/skillmux
+npm install -g @klhapp/skillmux
 skillmux <the-command Docker rejected>
 ```
 
@@ -50,9 +50,24 @@ uname -m
 sha256sum skillmux-linux-amd64
 ```
 
-Download the file again with the [standalone installation procedure](getting-started.md#install-the-cli).
+Download the file again with the [standalone installation procedure](getting-started.md#standalone-executable).
 For GitHub build-provenance verification instead of the published SHA-256
 digest, use the [GitHub CLI attestation procedure](getting-started.md#install-with-github-cli-attestation).
+
+### `no native executable for <platform>-<arch>`
+
+The launcher could not find the platform package that carries the executable.
+This usually means the install skipped optional dependencies, which is what
+`npm install --no-optional` and `npm ci --omit=optional` do. Reinstall without
+that flag:
+
+```sh
+npm install -g @klhapp/skillmux
+```
+
+If the platform genuinely has no published build, install the
+[standalone executable](getting-started.md#standalone-executable) for it, or
+point `SKILLMUX_BINARY` at an executable you already have.
 
 ### `skillmux: command not found` after installation
 
@@ -167,6 +182,7 @@ step depends on the installation:
 | Installation | Expected action |
 | --- | --- |
 | Skillmux CLI with local inference | Download the local model and rebuild the index |
+| Skillmux CLI on Intel macOS | Expected: no ONNX Runtime exists for that platform. Configure remote embeddings |
 | Skillmux server (full image) | Inspect `doctor`, `/health/ready`, or `skill_router_deployment_info` for `image_variant=full`; do not infer it from the tag |
 | Skillmux server (slim image) | Configure remote embeddings or keep lexical fallback |
 

@@ -162,14 +162,17 @@ jobs:
           mkdir -p dist/release
           cp dist/bin/skillmux-linux-x64 dist/release/skillmux-linux-amd64
           cp dist/bin/skillmux-linux-arm64 dist/release/skillmux-linux-arm64
+          cp dist/bin/skillmux-darwin-arm64 dist/release/skillmux-darwin-arm64
+          cp dist/bin/skillmux-darwin-x64 dist/release/skillmux-darwin-x64
+          cp dist/bin/skillmux-win32-x64.exe dist/release/skillmux-win32-x64.exe
       - uses: actions/attest-build-provenance@v4
         if: github.event.repository.visibility == 'public'
         with:
-          subject-path: dist/release/skillmux-linux-*
+          subject-path: dist/release/skillmux-*
       - uses: actions/upload-artifact@v7
         with:
           name: release-binaries
-          path: dist/release/skillmux-linux-*
+          path: dist/release/skillmux-*
       - uses: actions/upload-artifact@v7
         with:
           name: npm-platform-packages
@@ -450,5 +453,8 @@ jobs:
           gh release upload "$RELEASE_TAG" \
             dist/skillmux-linux-amd64 \
             dist/skillmux-linux-arm64 \
+            dist/skillmux-darwin-arm64 \
+            dist/skillmux-darwin-x64 \
+            dist/skillmux-win32-x64.exe \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
