@@ -10,13 +10,6 @@
         "bun-types": "^1.3.14",
         "zod": "^4.4.3",
       },
-      "optionalDependencies": {
-        "@klhapp/skillmux-darwin-arm64": "1.13.0",
-        "@klhapp/skillmux-darwin-x64": "1.13.0",
-        "@klhapp/skillmux-linux-arm64": "1.13.0",
-        "@klhapp/skillmux-linux-x64": "1.13.0",
-        "@klhapp/skillmux-win32-x64": "1.13.0",
-      },
     },
   },
   "trustedDependencies": [
@@ -83,16 +76,6 @@
     "@img/sharp-win32-ia32": ["@img/sharp-win32-ia32@0.34.5", "", { "os": "win32", "cpu": "ia32" }, "sha512-FV9m/7NmeCmSHDD5j4+4pNI8Cp3aW+JvLoXcTUo0IqyjSfAZJ8dIUmijx1qaJsIiU+Hosw6xM5KijAWRJCSgNg=="],
 
     "@img/sharp-win32-x64": ["@img/sharp-win32-x64@0.34.5", "", { "os": "win32", "cpu": "x64" }, "sha512-+29YMsqY2/9eFEiW93eqWnuLcWcufowXewwSNIT6UwZdUUCrM3oFjMWH/Z6/TMmb4hlFenmfAVbpWeup2jryCw=="],
-
-    "@klhapp/skillmux-darwin-arm64": ["@klhapp/skillmux-darwin-arm64@1.13.0", "", { "os": "darwin", "cpu": "arm64", "bin": { "skillmux": "skillmux" } }, "sha512-ner3Yo3h25b8F3xjTX0WD67YWErIpSIXhbFNkwN/un7PnqumPjVJZGf081b99erqTKB2TiYqRRaD9lISSeXhJw=="],
-
-    "@klhapp/skillmux-darwin-x64": ["@klhapp/skillmux-darwin-x64@1.13.0", "", { "os": "darwin", "cpu": "x64", "bin": { "skillmux": "skillmux" } }, "sha512-nseKQCCdYatHCg40Mx608BV3fqpVkTrpFUVcVO1jTz5la3HlHWDKFclQJXcf4AAAeLVKT8SYDPNxAN0KVN3cDw=="],
-
-    "@klhapp/skillmux-linux-arm64": ["@klhapp/skillmux-linux-arm64@1.13.0", "", { "os": "linux", "cpu": "arm64", "bin": { "skillmux": "skillmux" } }, "sha512-SxDntHy2rxhUCFDbvMTkH/RzYxDiebabT/Pj2rn8P6WVhFNYvJDCJd57X1t+KhsdvK+GZJa5exhCxHwY4gEsDQ=="],
-
-    "@klhapp/skillmux-linux-x64": ["@klhapp/skillmux-linux-x64@1.13.0", "", { "os": "linux", "cpu": "x64", "bin": { "skillmux": "skillmux" } }, "sha512-0nTFcMFgvKdUTWcgSTx/Gb+lZExiLjnmDdbs5VaYGw1tmZdgpBbdDcjcpf0uLdpIwXT0coBh8ZpQfPpVwIGcUQ=="],
-
-    "@klhapp/skillmux-win32-x64": ["@klhapp/skillmux-win32-x64@1.13.0", "", { "os": "win32", "cpu": "x64", "bin": { "skillmux": "skillmux.exe" } }, "sha512-elkjzCIo4vBsjyCPR1cm6hlRk2QXDxK7lRhzDuncmcea8oqdiebZmVPgn9VRx55kxmjnsoV1wF/WMl0MLUIKKA=="],
 
     "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.29.0", "", { "dependencies": { "@hono/node-server": "^1.19.9", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.2.1", "express-rate-limit": "^8.2.1", "hono": "^4.11.4", "jose": "^6.1.3", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ=="],
 

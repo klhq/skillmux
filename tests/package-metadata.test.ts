@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { BINARY_TARGETS } from "../scripts/build-binaries";
+import { applyPlatformPins } from "../scripts/apply-platform-pins";
 import { platformPackageName } from "../scripts/package-npm-binaries";
 
 const pkg = await Bun.file(join(import.meta.dir, "..", "package.json")).json();
@@ -31,12 +34,41 @@ describe("package.json binary distribution (AC1)", () => {
     expect(pkg.dependencies).toBeUndefined();
   });
 
-  test("every platform package is an optional dependency pinned to this version", () => {
-    const expected = Object.fromEntries(
-      BINARY_TARGETS.map((target) => [platformPackageName(target), pkg.version]),
-    );
+  test("the committed manifest declares no platform packages", () => {
+    // Declaring them here would make the root package depend on artifacts this
+    // repository builds, so every install would pull down the previous
+    // release's binaries, and the lockfile would go stale on every version
+    // bump. They are injected at publish time instead.
+    expect(pkg.optionalDependencies).toBeUndefined();
+  });
 
-    expect(pkg.optionalDependencies).toEqual(expected);
+  test("the publish-time injection pins every platform package to the manifest version", () => {
+    const manifest = join(tmpdir(), `skillmux-pins-${Date.now()}.json`);
+    writeFileSync(manifest, JSON.stringify({ name: "@klhapp/skillmux", version: "9.9.9" }));
+    try {
+      applyPlatformPins(manifest);
+      const written = JSON.parse(readFileSync(manifest, "utf8")) as {
+        optionalDependencies: Record<string, string>;
+      };
+
+      expect(written.optionalDependencies).toEqual(
+        Object.fromEntries(
+          BINARY_TARGETS.map((target) => [platformPackageName(target), "9.9.9"]),
+        ),
+      );
+    } finally {
+      rmSync(manifest, { force: true });
+    }
+  });
+
+  test("the injection refuses a manifest with no version rather than pinning nothing", () => {
+    const manifest = join(tmpdir(), `skillmux-pins-bad-${Date.now()}.json`);
+    writeFileSync(manifest, JSON.stringify({ name: "@klhapp/skillmux" }));
+    try {
+      expect(() => applyPlatformPins(manifest)).toThrow(/no version/);
+    } finally {
+      rmSync(manifest, { force: true });
+    }
   });
 });
 

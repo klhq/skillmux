@@ -87,7 +87,21 @@ manual publish before its Trusted Publisher can be configured; if so, publish
 that first version by hand and let the workflow take over from the next
 release. Order matters at publish time as well as at install time: the root
 package pins the platform packages exactly, so publishing it first would leave
-every install resolving a version that does not exist yet. The GitHub Packages job uses the workflow's
+every install resolving a version that does not exist yet.
+
+Those pins are not in the committed `package.json`. The root package depends on
+artifacts this repository builds, so declaring them in the working tree makes
+the dependency graph circular: `bun install` would fetch the previous release's
+compiled binary, about 100MB of it, to build the next one. It also broke
+`bun install --frozen-lockfile`, because Release Please bumped the pins through
+its `extra-files` updater, which edits the manifest without re-running the
+package manager, leaving the lockfile stale after every release. Both publish
+jobs therefore run `bun run pin:platform-packages` immediately before
+`npm publish`, writing all five entries at the manifest's own version. A test
+asserts that step runs before the publish in both jobs, because publishing
+without it ships a launcher with no executable behind it.
+
+The GitHub Packages job uses the workflow's
 scoped `GITHUB_TOKEN` and changes only its runner-local package name to
 `@klhq/skillmux`; the source package remains `@klhapp/skillmux` for npmjs.
 

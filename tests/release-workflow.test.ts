@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { BINARY_TARGETS } from "../scripts/build-binaries";
+import { platformPins } from "../scripts/apply-platform-pins";
 import { platformPackageName } from "../scripts/package-npm-binaries";
 
 const repoRoot = join(import.meta.dir, "..");
@@ -41,19 +42,38 @@ describe("release ordering (AC14)", () => {
 });
 
 describe("release version pins (AC4)", () => {
-  test("Release Please rewrites every platform pin alongside the version", () => {
+  test("Release Please no longer rewrites the pins in the committed manifest", () => {
     const config = JSON.parse(readFileSync(join(repoRoot, "release-please-config.json"), "utf8")) as {
       packages: Record<string, { "extra-files"?: { path: string; jsonpath: string }[] }>;
     };
     const extraFiles = config.packages["."]!["extra-files"] ?? [];
 
-    expect(extraFiles.map((entry) => entry.jsonpath).sort()).toEqual(
-      BINARY_TARGETS.map(
-        (target) => `$.optionalDependencies['${platformPackageName(target)}']`,
-      ).sort(),
-    );
-    // "$.a.['b']" is a jsonpath parse error, and a broken updater silently
-    // leaves the pins behind at release time.
-    for (const entry of extraFiles) expect(entry.jsonpath).not.toContain(".['");
+    // The updater edits package.json without re-running the package manager,
+    // which left the lockfile stale after every release. The pins moved to
+    // publish time, so nothing here should touch optionalDependencies.
+    for (const entry of extraFiles) {
+      expect(entry.jsonpath).not.toContain("optionalDependencies");
+    }
+  });
+
+  for (const job of ["npmjs", "github-npm"]) {
+    test(`${job} pins the platform packages before it publishes`, () => {
+      const steps = workflow.jobs[job]!.steps!.map((step) => step.run ?? "");
+      const pinned = steps.findIndex((run) => run.includes("pin:platform-packages"));
+      const published = steps.findIndex((run) => /^npm publish\b/m.test(run.trim()));
+
+      // Publishing without this step ships a root package whose platform
+      // packages are absent, which leaves every user a launcher and no
+      // executable.
+      expect(pinned).toBeGreaterThanOrEqual(0);
+      expect(published).toBeGreaterThanOrEqual(0);
+      expect(pinned).toBeLessThan(published);
+    });
+  }
+
+  test("the pinned names come from the same target list the build uses", () => {
+    const expected = BINARY_TARGETS.map((target) => platformPackageName(target)).sort();
+
+    expect(Object.keys(platformPins("1.0.0")).sort()).toEqual(expected);
   });
 });
