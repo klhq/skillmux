@@ -17,4 +17,8 @@ describe("package.json binary distribution (AC1)", () => {
   test("build:binaries stages every platform executable under dist/bin", () => {
     expect(pkg.scripts["build:binaries"]).toBe("bun run scripts/build-binaries.ts");
   });
+
+  test("build:npm-packages turns staged executables into platform packages", () => {
+    expect(pkg.scripts["build:npm-packages"]).toBe("bun run scripts/package-npm-binaries.ts");
+  });
 });
