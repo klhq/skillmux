@@ -9,7 +9,7 @@ where skills need to appear and where Skillmux should run.
 
 1. [Install the Skillmux CLI](getting-started.md#install-the-cli) for native
    skills or one local MCP client.
-2. On Linux, use the [standalone executable install](getting-started.md#install-the-cli)
+2. Use the [standalone executable install](getting-started.md#standalone-executable)
    when you want a pinned, checksum-verified CLI without `gh`; the
    [GitHub CLI attestation path](getting-started.md#install-with-github-cli-attestation)
    is also available for provenance verification.
@@ -19,9 +19,9 @@ where skills need to appear and where Skillmux should run.
 
 You can combine native management and local MCP retrieval on one machine. For
 native pins plus shared retrieval, run Skillmux CLI on each machine that owns
-agent directories and deploy Skillmux server for HTTP MCP. The Bun package is
-the cross-platform CLI installation method; the standalone Linux executable is
-its Linux alternative. Git and the deployment process, not Skillmux, replicate
+agent directories and deploy Skillmux server for HTTP MCP. The CLI installs
+through npm or bun on every supported platform, with a direct executable
+download as the package-manager-free alternative. Git and the deployment process, not Skillmux, replicate
 vault checkouts and determine their freshness; see
 [Deployment](deployment.md#native-pins-with-shared-retrieval).
 

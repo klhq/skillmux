@@ -1,7 +1,7 @@
 # CLI reference and automation
 
-The Bun package and standalone Linux executable expose the same Skillmux CLI.
-For Linux installation, use the [pinned checksum-verified download](getting-started.md#install-the-cli)
+Every installation path delivers the same Skillmux CLI executable. For a
+package-manager-free install, use the [pinned checksum-verified download](getting-started.md#standalone-executable)
 or, when provenance verification is required, the
 [attested GitHub CLI path](getting-started.md#install-with-github-cli-attestation).
 Native management belongs on the machine that owns the agent skill directories:

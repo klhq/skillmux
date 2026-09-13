@@ -26,18 +26,44 @@ vault.
 
 ## Install the CLI
 
-Use the Bun package on macOS, Linux, or Windows. It requires
-[Bun 1.3 or newer](https://bun.sh/docs/installation):
+Skillmux ships as a native executable for each supported platform, so no
+runtime needs to be present. Use whichever package manager you already have:
 
 ```sh
+npm install -g @klhapp/skillmux
 bun add -g @klhapp/skillmux
-skillmux --help
+npx @klhapp/skillmux --help
 ```
+
+The package declares one `optionalDependencies` entry per platform, each
+marked with its `os` and `cpu`. npm and bun install the single entry that
+matches the current machine and skip the rest, so an install fetches one
+executable rather than five.
 
 Native target sync needs permission to create directory symlinks on Windows.
 
-Linux users can install the standalone executable without the GitHub CLI or a
-package manager. This example selects AMD64 or ARM64, downloads the pinned
+### Platform support
+
+| Platform | Executable | Local embedding inference |
+| --- | --- | --- |
+| macOS Apple Silicon | Yes | Yes |
+| macOS Intel | Yes | No, lexical recall only |
+| Linux x86-64 | Yes | Yes |
+| Linux ARM64 | Yes | Yes |
+| Windows x86-64 | Yes | Yes |
+
+Intel macOS is the one gap, and it is not a deliberate one. `onnxruntime-node`
+stopped shipping its Intel macOS binding in the 1.23 series, so there is no
+ONNX Runtime to embed for that platform. Everything else works there; only the
+embedding lane falls back to lexical recall. Configure
+[remote inference](configuration.md) if you need ranked retrieval on an Intel
+Mac. Skillmux detects the binding at build time rather than consulting a fixed
+list, so the platform regains local inference as soon as upstream restores it.
+
+### Standalone executable
+
+Every release also attaches one executable per platform, which skips package
+managers entirely. This example selects AMD64 or ARM64, downloads the pinned
 `v1.3.4` release, verifies the SHA-256 digest published for that release, and
 installs to the user-writable default `~/.local/bin`:
 
@@ -77,8 +103,7 @@ gh attestation verify "$bin_dir/$asset" --repo klhq/skillmux
 install -m755 "$bin_dir/$asset" "$bin_dir/skillmux"
 ```
 
-The Bun package and standalone Linux executable expose the same Skillmux CLI
-commands.
+Every installation path delivers the same executable and the same commands.
 
 ## Prepare a vault checkout
 

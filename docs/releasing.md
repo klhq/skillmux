@@ -35,11 +35,16 @@ accidentally republish an existing npm version.
 
 The release workflow publishes:
 
+- `@klhapp/skillmux-<platform>-<arch>` for each of the five supported
+  platforms, published before the root package
 - `@klhapp/skillmux` to the public npm registry
 - `@klhq/skillmux` to GitHub Packages, linked to this repository
 - `skillmux-linux-amd64`
 - `skillmux-linux-arm64`
-- SHA-256 digests for the Linux binaries in the GitHub Release asset metadata
+- `skillmux-darwin-arm64`
+- `skillmux-darwin-x64`
+- `skillmux-win32-x64.exe`
+- SHA-256 digests for the binaries in the GitHub Release asset metadata
 - GitHub build provenance attestations when the repository is public
 - Skillmux server full image to GHCR and Docker Hub: `:<version>`, `:<major>.<minor>`,
   and `:latest`; this variant includes GTE-small
@@ -72,7 +77,17 @@ The `production-release` GitHub environment provides the
 `DOCKERHUB_USERNAME` variable and `DOCKERHUB_TOKEN` secret. The npmjs job also
 uses this environment as its Trusted Publisher identity; configure npm with
 workflow `release-please.yml` and environment `production-release`. No
-long-lived npm token is required. The GitHub Packages job uses the workflow's
+long-lived npm token is required.
+
+The `npm-platform` job publishes the five platform packages under the same
+identity, so each of those package names needs its own Trusted Publisher entry
+with the same workflow and environment. Configure all five before the first
+release that includes them. A package name npm has never seen may need one
+manual publish before its Trusted Publisher can be configured; if so, publish
+that first version by hand and let the workflow take over from the next
+release. Order matters at publish time as well as at install time: the root
+package pins the platform packages exactly, so publishing it first would leave
+every install resolving a version that does not exist yet. The GitHub Packages job uses the workflow's
 scoped `GITHUB_TOKEN` and changes only its runner-local package name to
 `@klhq/skillmux`; the source package remains `@klhapp/skillmux` for npmjs.
 

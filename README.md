@@ -41,8 +41,8 @@ See [Configuration](docs/configuration.md#machine-config-bootstrap) and
 Choose a setup by the job:
 
 1. Need native skills or local MCP for one agent? Install the **Skillmux CLI**.
-2. On Linux when Bun is undesirable? Use the **standalone Linux executable**;
-   it is the same Skillmux CLI.
+2. Want a single file and no package manager? Download the **standalone
+   executable**; it is the same Skillmux CLI.
 3. Need one shared HTTP MCP service? Deploy the **full image**, the
    self-contained default with GTE-small.
 4. Already have remote embeddings, or intentionally want lexical-only
@@ -73,19 +73,28 @@ model runs in the Skillmux process. Both stdio and HTTP expose the same
 
 ## Install the CLI
 
-The Bun package supports macOS, Linux, and Windows and requires
-[Bun 1.3 or newer](https://bun.sh/docs/installation):
+Skillmux ships as a native executable, so there is no runtime to install
+alongside it. Any of these works on macOS, Linux, and Windows:
 
 ```sh
+npm install -g @klhapp/skillmux
 bun add -g @klhapp/skillmux
-skillmux --help
+npx @klhapp/skillmux --help
 ```
 
-Native target sync needs permission to create directory symlinks on Windows.
+Installing pulls exactly one platform-specific executable through
+`optionalDependencies`, so you download the build for your machine and not the
+other four. Native target sync needs permission to create directory symlinks
+on Windows.
 
-On Linux, you can install a standalone executable instead. This path needs no
-GitHub CLI or package manager. It selects AMD64 or ARM64, downloads the pinned
-`v1.3.4` release, and verifies the SHA-256 digest published for that release:
+Local embedding inference is included on every platform except Intel macOS.
+See [platform support](docs/getting-started.md#platform-support) for what that
+costs and why.
+
+You can also install a standalone executable and skip package managers
+entirely. Every release attaches one per platform. This path needs no GitHub
+CLI. It selects AMD64 or ARM64, downloads the pinned `v1.3.4` release, and
+verifies the SHA-256 digest published for that release:
 
 ```sh
 version=v1.3.4
