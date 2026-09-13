@@ -392,6 +392,38 @@ dir = "${targetDir}"
     rmSync(vaultDir, { recursive: true, force: true });
   });
 
+  test("omits sync_drift entirely in a container, where nothing syncs a target directory", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-docker-"));
+    writeSkillAt(vaultDir, "core-skill");
+    const targetDir = join(mkdtempSync(join(tmpdir(), "doctor-docker-target-")), "claude");
+    syncTarget({ vaultPath: vaultDir, targetDir, targetName: "claude", coreSkillIds: [] });
+    writeFileSync(
+      join(vaultDir, "skillmux.toml"),
+      `
+[core]
+skills = ["core-skill"]
+
+[targets.claude]
+dir = "${targetDir}"
+`,
+    );
+
+    // On a host this exact manifest fails sync_drift; a container only reads the vault to
+    // answer resolve/fetch, so the check would report drift nobody there can act on.
+    const onHost = await diagnose(testConfig({ vault_path: vaultDir }));
+    expect(onHost.checks.find((check) => check.name === "sync_drift")).toMatchObject({ ok: false });
+
+    const inDocker = await diagnose(testConfig({ vault_path: vaultDir }), {
+      ...process.env,
+      RUNNING_IN_DOCKER: "true",
+    });
+    expect(inDocker.runtime).toBe("docker");
+    expect(inDocker.checks.find((check) => check.name.startsWith("sync_drift"))).toBeUndefined();
+    expect(inDocker.checks.find((check) => check.name === "manifest")).toMatchObject({ ok: true });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
   test("does not report drift for a target scoped to another machine", async () => {
     const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-other-host-"));
     writeSkillAt(vaultDir, "core-skill");

@@ -1,7 +1,8 @@
 import { expandHome } from "../config";
 import { pinCore, unpinCore, validateManifest, writeManifestAtomic } from "../manifest";
 import { emitSuccess, unknownSubcommandError } from "../output";
-import { confirmIfNeeded, loadManifestContext, pendingSyncTargets } from "./shared";
+import { confirmIfNeeded, loadManifestContext } from "./shared";
+import { executeSync } from "./sync";
 export async function runCore(
   subCommand: string,
   args: string[],
@@ -12,9 +13,12 @@ export async function runCore(
   }
   const skillIds = args.filter((arg) => !arg.startsWith("-"));
   if (skillIds.length === 0) {
-    throw new Error(`usage: skillmux core ${subCommand} <skill_id>... --yes`);
+    throw new Error(
+      `usage: skillmux core ${subCommand} <skill_id>... --yes [--no-sync]`,
+    );
   }
   const yes = args.includes("--yes");
+  const sync = !args.includes("--no-sync");
   const { config, vaultPath, manifestPath, manifest } =
     await loadManifestContext();
   let updated = manifest;
@@ -48,24 +52,31 @@ export async function runCore(
   )
     return;
   writeManifestAtomic(manifestPath, updated);
-  // Pinning only records the intent; the symlinks in every target directory are still
-  // whatever the last sync left behind. Say so rather than letting the manifest and the
-  // directories quietly disagree until someone notices a skill is missing.
-  const pending = pendingSyncTargets(
-    vaultPath,
-    updated,
-    config.local_vault_paths.map(expandHome),
-  );
+  if (!options.isJson) console.log(`${subCommand}: [core] ${skillIds.join(", ")}`);
+
+  // Writing the manifest is only half the job: until the symlinks move, the pin is
+  // invisible to every agent. `init` already syncs for exactly this reason, so a pin that
+  // stopped at the file was the odd one out. `--no-sync` keeps the old behaviour for
+  // anyone batching several pins before a single sync.
+  //
+  // The pin's own --yes is deliberately not forwarded. It answers "pin this skill", not
+  // "create a directory this host has never synced", so executeSync's new-target gate
+  // still stands on its own.
+  const synced = sync
+    ? await executeSync({
+        config,
+        log: options.isJson ? undefined : (line: string) => console.log(line),
+      })
+    : undefined;
+
   emitSuccess(
     { isJson: options.isJson },
-    { subcommand: subCommand, skill_ids: skillIds, sync_pending_targets: pending },
-    () => {
-      console.log(`${subCommand}: [core] ${skillIds.join(", ")}`);
-      if (pending > 0) {
-        console.log(
-          `next: skillmux sync — ${pending} target${pending === 1 ? "" : "s"} still out of date`,
-        );
-      }
+    {
+      subcommand: subCommand,
+      skill_ids: skillIds,
+      synced: synced !== undefined,
+      targets: synced?.targets ?? [],
     },
+    () => {},
   );
 }

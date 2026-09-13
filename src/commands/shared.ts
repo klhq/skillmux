@@ -1,14 +1,7 @@
-import { hostname } from "node:os";
 import { expandHome, loadConfig } from "../config";
-import {
-  parseManifest,
-  resolveManifestPath,
-  resolveSyncTargets,
-  type Manifest,
-} from "../manifest";
+import { parseManifest, resolveManifestPath } from "../manifest";
 import { isInteractive } from "../output";
 import { askQuestion, type PromptIO } from "../prompts";
-import { planSyncDrift } from "../sync";
 
 export async function confirmAction(
   prompt: string,
@@ -29,30 +22,6 @@ export async function loadManifestContext() {
   }
   const manifest = parseManifest(await Bun.file(manifestPath).text());
   return { config, vaultPath, manifestPath, manifest };
-}
-
-/**
- * How many target directories a `skillmux sync` would still have to touch.
- *
- * Commands that write the manifest and stop — `core pin`, `core unpin`, `target add` —
- * use this to tell the user the write is only half the job. Returning 0 means the
- * manifest and every directory this host owns already agree, so there is nothing to say.
- * An unplannable target counts too: `sync` is where its error surfaces, so it is still
- * the next thing to run.
- */
-export function pendingSyncTargets(
-  vaultPath: string,
-  manifest: Manifest,
-  localVaultPaths: string[],
-): number {
-  const drift = planSyncDrift({
-    vaultPath,
-    targets: resolveSyncTargets(manifest),
-    localVaultPaths,
-    coreSkillIds: manifest.core.skills,
-    currentHost: hostname(),
-  });
-  return drift.drifted.length + drift.unplannable.length;
 }
 
 export async function confirmIfNeeded(opts: {

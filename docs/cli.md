@@ -315,8 +315,10 @@ skillmux target remove custom-agent --yes
 `target add` uses the same ownership, symlink, full-vault, rollback, and
 current-host scoping checks as `skillmux init`. `target remove` removes the
 manifest entry and preserves the directory, marker, and skill files. The
-command prints the preserved path so cleanup remains an explicit user action. `target add` records the directory without populating it, so it closes with a
-`next: skillmux sync` line counting the targets still out of date.
+command prints the preserved path so cleanup remains an explicit user action. `target add` syncs once the
+target is recorded, so the new directory is populated in one command; the
+approval just given named that exact directory, so it carries through. Pass
+`--no-sync` to record the target without populating it.
 
 ---
 
@@ -329,15 +331,17 @@ default, capped at 25 skills unless `[core].limit` raises it:
 skillmux core pin csv-formatter --yes
 skillmux core pin csv-formatter pdf-extractor terraform-plans --yes
 skillmux core unpin csv-formatter --yes
+skillmux core pin csv-formatter --yes --no-sync   # manifest only; sync later
 ```
 
 One or more `skill_id` arguments are accepted per call and applied
 atomically against a single in-memory manifest: if any one of them is
 already pinned elsewhere (or, for `unpin`, not currently pinned), the
-whole call fails and the manifest file is left untouched. Pinning writes
-the manifest only, leaving every target directory as the last `sync` left
-it, so both commands close with a `next: skillmux sync` line counting the
-targets still out of date (`sync_pending_targets` under `--json`). To pin into a
+whole call fails and the manifest file is left untouched. Both commands
+then sync, so a pin reaches every target directory in one command; `--json`
+returns the per-target result in the same envelope. Pass `--no-sync` to
+write the manifest alone. A target directory this machine has never synced
+still needs its own approval, so a pin never creates one. To pin into a
 `[project.<group>]` tier instead, use `skillmux project pin` (see
 [Project Setup](#project-setup-skillmux-project-init)).
 
@@ -471,7 +475,7 @@ Named CLI contexts (`--context <name>` or `--server <url>`) support the followin
 - `skillmux eval promote --since <window>`: fetches promotable candidates from the remote server's audit db via `POST /admin/v1/eval/promote`, dedups against the local fixture file, and writes locally.
 - `skillmux doctor`: inspects remote server status, readiness, deployment runtime, and capabilities without requiring local vault access.
 
-Run locally, `doctor` also reports `sync_drift`: a planned-but-never-performed sync naming every target directory whose contents no longer match what the manifest pins. Targets scoped to another `host` are excluded.
+Run on a host, `doctor` also reports `sync_drift`: a planned-but-never-performed sync naming every target directory whose contents no longer match what the manifest pins. Targets scoped to another `host` are excluded, and the check is omitted altogether in a container, which serves skills without owning a target directory.
 
 ---
 

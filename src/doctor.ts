@@ -8,6 +8,7 @@ import {
   resolveManifestPath,
   resolveSyncTargets,
   validateManifest,
+  type Manifest,
 } from "./manifest";
 import { planSyncDrift, readSkillmuxMarker } from "./sync";
 import type { Config } from "./types";
@@ -121,6 +122,7 @@ export async function diagnose(
     });
   }
 
+  const deployment = describeDeployment(config, environment);
   const vaultPath = expandHome(config.vault_path);
   const manifestPath = resolveManifestPath(vaultPath);
   if (!manifestPath) {
@@ -132,39 +134,11 @@ export async function diagnose(
       validateManifest(manifest, vaultPath, localVaultPaths);
       checks.push({ name: "manifest", ok: true, detail: manifestPath });
 
-      // A valid manifest still says nothing about whether the target directories match it.
-      // "skillmux core pin" and "skillmux target add" write the manifest and stop, so the
-      // two drift apart until someone runs "skillmux sync", and until now nothing reported
-      // that ("outdated" covers a different axis: skills whose upstream moved on).
-      const drift = planSyncDrift({
-        vaultPath,
-        targets: resolveSyncTargets(manifest),
-        localVaultPaths,
-        coreSkillIds: manifest.core.skills,
-        currentHost: hostname(),
-      });
-      for (const entry of drift.unplannable) {
-        checks.push({
-          name: `sync_drift:${entry.target}`,
-          ok: false,
-          detail: `cannot plan a sync for ${entry.targetDir} — ${entry.reason}`,
-          failure_kind: "configuration",
-        });
-      }
-      checks.push({
-        name: "sync_drift",
-        ok: drift.drifted.length === 0,
-        detail:
-          drift.drifted.length === 0
-            ? "targets match the manifest"
-            : `${drift.drifted
-                .map(
-                  (entry) =>
-                    `${entry.group ? `${entry.target}/${entry.group}` : entry.target} (${entry.targetDir}) +${entry.added.length} -${entry.removed.length}`,
-                )
-                .join("; ")} — run: skillmux sync`,
-        failure_kind: drift.drifted.length === 0 ? undefined : "configuration",
-      });
+      // Targets and project groups are a local delivery concern: they say which directories
+      // on this machine get symlinks. A container serving the MCP surface reads the vault
+      // and returns skills; it syncs nothing and owns no target directory, so planning one
+      // there would report drift nobody in that deployment can or should act on.
+      if (deployment.runtime === "host") checks.push(...syncDriftChecks(vaultPath, manifest, localVaultPaths));
     } catch (error) {
       checks.push({
         name: `manifest:${manifestPath}`,
@@ -198,7 +172,6 @@ export async function diagnose(
       ? { detail: error.message, failure_kind: error.kind }
       : { detail: "unexpected inference failure", failure_kind: "unexpected" };
 
-  const deployment = describeDeployment(config, environment);
   const lexicalOnlySlim = deployment.image_variant === "slim" && config.inference.mode === "local";
   if (lexicalOnlySlim) {
     checks.push({
@@ -243,4 +216,46 @@ export async function diagnose(
     retrieval_capability: rerankerReady ? "reranked" : inferenceReady ? "hybrid" : "lexical",
     checks,
   };
+}
+
+/**
+ * A valid manifest still says nothing about whether the target directories match it.
+ * `skillmux core pin` and `skillmux target add` now sync on their own, but a manifest
+ * pulled in from another machine, a `--no-sync` pin, or a hand-edit can all still leave
+ * the two out of step, and nothing else reports that (`outdated` covers a different axis:
+ * skills whose upstream moved on).
+ */
+function syncDriftChecks(
+  vaultPath: string,
+  manifest: Manifest,
+  localVaultPaths: string[],
+): DoctorCheck[] {
+  const drift = planSyncDrift({
+    vaultPath,
+    targets: resolveSyncTargets(manifest),
+    localVaultPaths,
+    coreSkillIds: manifest.core.skills,
+    currentHost: hostname(),
+  });
+  const checks: DoctorCheck[] = drift.unplannable.map((entry) => ({
+    name: `sync_drift:${entry.target}`,
+    ok: false,
+    detail: `cannot plan a sync for ${entry.targetDir} — ${entry.reason}`,
+    failure_kind: "configuration" as const,
+  }));
+  checks.push({
+    name: "sync_drift",
+    ok: drift.drifted.length === 0,
+    detail:
+      drift.drifted.length === 0
+        ? "targets match the manifest"
+        : `${drift.drifted
+            .map(
+              (entry) =>
+                `${entry.group ? `${entry.target}/${entry.group}` : entry.target} (${entry.targetDir}) +${entry.added.length} -${entry.removed.length}`,
+            )
+            .join("; ")} — run: skillmux sync`,
+    failure_kind: drift.drifted.length === 0 ? undefined : "configuration",
+  });
+  return checks;
 }

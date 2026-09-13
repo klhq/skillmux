@@ -315,11 +315,13 @@ skillmux project unpin repo1 pdf-extractor --yes                         # remov
 
 Both commands accept one or more `skill_id` arguments per call; all of them are validated and applied against a single in-memory manifest before anything is written, so if any one of them is already pinned elsewhere (or, for unpin, not currently pinned), the whole call fails and the manifest file is left untouched: no partial pins.
 
-Pinning writes the manifest and nothing else. The symlinks in every target directory stay
-as the last `sync` left them, so a pin is only half the job. Both commands close with a
-`next: skillmux sync` line counting the targets still out of date (and a
-`sync_pending_targets` field under `--json`), and `skillmux doctor` reports the same gap as
-its `sync_drift` check. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
+Pinning syncs. Writing the manifest is only half the job, since the pin stays invisible to
+every agent until the symlinks move, so both commands run the sync themselves and report
+what each target gained or lost. Under `--json` that arrives inside the same envelope as a
+`targets` array, never as a second document. Pass `--no-sync` to write the manifest alone,
+which is what you want when batching several pins before one sync. The pin's own `--yes`
+answers "pin this skill" and is deliberately not forwarded: a target directory this machine
+has never synced still needs its own approval, so a pin can never silently create one. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
 
 > **Breaking change:** `skillmux manifest pin`/`unpin` is removed. `[core]` pinning is now `skillmux core pin`/`unpin`; `[project.*]` pinning was already available as `skillmux project pin`/`unpin` and is now the only way to do it. There's no more `--path`-based inline group creation from a pin call; use `project add-path` to create the group first.
 >
@@ -334,8 +336,12 @@ the manifest is meant to be portable across machines and a machine-local
 override wouldn't exist elsewhere. `doctor` validates the manifest as part of
 its checks, surfacing any violation without writing anything back. Its `sync_drift` check
 goes one step further and plans (never performs) the sync this machine would run, naming
-every target directory whose contents no longer match what the manifest pins. A target
-scoped to another `host` is left out, since this machine is not the one that syncs it.
+every target directory whose contents no longer match what the manifest pins. A manifest
+pulled in from another machine, a `--no-sync` pin, and a hand-edit can all produce that
+gap. A target scoped to another `host` is left out, since this machine is not the one that
+syncs it, and the check is omitted entirely in a container: targets are a local delivery
+concern, and a container serving the MCP surface reads the vault to answer `resolve_skill`
+and `fetch_skill` without owning a target directory at all.
 
 ### Ownership marker
 
