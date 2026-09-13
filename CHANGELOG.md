@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0](https://github.com/klhq/skillmux/compare/v1.12.0...v1.13.0) (2026-09-13)
+
+
+### Added
+
+* **cli:** ship native launcher and platform packages ([#193](https://github.com/klhq/skillmux/issues/193)) ([87701d4](https://github.com/klhq/skillmux/commit/87701d44d1b647501d1dff9d205da8ffbe6a3c05))
+* **sync:** make pins reach their targets, and report drift when they have not ([#192](https://github.com/klhq/skillmux/issues/192)) ([5f9c6ec](https://github.com/klhq/skillmux/commit/5f9c6ecaaaf216e4d01fa4a521ac686ae43681d3))
+
 ## [1.12.0](https://github.com/klhq/skillmux/compare/v1.11.2...v1.12.0) (2026-09-12)
 
 
