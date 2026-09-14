@@ -237,6 +237,13 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
       - run: npm install --global npm@11
+      # The platform packages are not in the committed manifest: the root
+      # package depends on artifacts this repository builds, so declaring them
+      # in the working tree makes every install pull down the previous
+      # release's binaries and leaves the lockfile stale after each version
+      # bump. They are written in here instead, pinned to this version.
+      - name: Pin the platform packages into the published manifest
+        run: bun run pin:platform-packages
       - run: npm publish --provenance --access public
 
   github-npm:
@@ -263,6 +270,11 @@ jobs:
           package-manager-cache: false
       - name: Set the GitHub Packages name
         run: npm pkg set name="@klhq/skillmux"
+      # Same injection as the npmjs job, so both registries publish the same
+      # manifest. The platform packages themselves only exist on npmjs, which
+      # was already true before this step existed.
+      - name: Pin the platform packages into the published manifest
+        run: bun run pin:platform-packages
       - name: Publish to GitHub Packages
         run: npm publish
         env:

@@ -38,7 +38,8 @@
     "models:download": "bun run src/cli.ts models download",
     "build": "bun run scripts/build-binaries.ts host",
     "build:binaries": "bun run scripts/build-binaries.ts",
-    "build:npm-packages": "bun run scripts/package-npm-binaries.ts"
+    "build:npm-packages": "bun run scripts/package-npm-binaries.ts",
+    "pin:platform-packages": "bun run scripts/apply-platform-pins.ts"
   },
   "devDependencies": {
     "@huggingface/transformers": "^4.2.0",
@@ -49,12 +50,5 @@
   "trustedDependencies": [
     "onnxruntime-node",
     "protobufjs"
-  ],
-  "optionalDependencies": {
-    "@klhapp/skillmux-darwin-arm64": "1.13.0",
-    "@klhapp/skillmux-darwin-x64": "1.13.0",
-    "@klhapp/skillmux-linux-arm64": "1.13.0",
-    "@klhapp/skillmux-linux-x64": "1.13.0",
-    "@klhapp/skillmux-win32-x64": "1.13.0"
-  }
+  ]
 }
