@@ -208,8 +208,18 @@ jobs:
       - name: Restore executable permissions
         run: find dist/npm -type f -name 'skillmux' -exec chmod +x {} +
       - name: Publish platform packages
+        # A rerun after a partial failure must not re-publish a package that
+        # already made it to the registry: npm rejects publishing over an
+        # existing version, which would stop the loop before it reaches the
+        # packages that still need it.
         run: |
           for package in dist/npm/@klhapp/*/; do
+            name="$(jq -r .name "$package/package.json")"
+            version="$(jq -r .version "$package/package.json")"
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "skipping $name@$version (already published)"
+              continue
+            fi
             echo "publishing $package"
             npm publish --provenance --access public "$package"
           done
