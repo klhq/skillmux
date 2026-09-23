@@ -93,24 +93,38 @@ costs and why.
 
 You can also install a standalone executable and skip package managers
 entirely. Every release attaches one per platform. This path needs no GitHub
-CLI. It selects AMD64 or ARM64, downloads the pinned `v1.3.4` release, and
-verifies the SHA-256 digest published for that release:
+CLI. It selects the right Linux or macOS build for your architecture,
+downloads the pinned `v1.13.2` release, and verifies the SHA-256 digest
+published for that release:
 
 ```sh
-version=v1.3.4
-case "$(uname -m)" in
-  x86_64|amd64) asset=skillmux-linux-amd64; sha256=0d0155475748a937ac9b5878c57e1fa14d8fe6957317cb43bbdafd710cbc1966 ;;
-  aarch64|arm64) asset=skillmux-linux-arm64; sha256=8cd186707221a8fefbb79eac46ef14d0c5fdae08a2d76e64a01af17a80af0e06 ;;
-  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+version=v1.13.2
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64|Linux-amd64) asset=skillmux-linux-amd64; sha256=10226fc2515469fdbbaad14a3822257a2b679a4ecc4e03f0d14c550fbf461a15 ;;
+  Linux-aarch64|Linux-arm64) asset=skillmux-linux-arm64; sha256=844b963b79ae444eb45ea1a044dfd3062348cbf3ca045010c2e8d141dfdade9a ;;
+  Darwin-arm64) asset=skillmux-darwin-arm64; sha256=5276efdaf9703dc9607c4034c132f24941d3ea52a891ade9ee3ab3a7b1786b99 ;;
+  Darwin-x86_64) asset=skillmux-darwin-x64; sha256=3ebd34dd9e3056b5a3b99dd12b9003f9369eb6d14ccbd1ba43d778f3179558e9 ;;
+  *) echo "Unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 esac
 bin_dir="${SKILLMUX_BIN_DIR:-$HOME/.local/bin}"
 curl --fail --location --output "$asset" "https://github.com/klhq/skillmux/releases/download/$version/$asset"
-printf '%s  %s\n' "$sha256" "$asset" | sha256sum --check -
-install -Dm755 "$asset" "$bin_dir/skillmux"
+if command -v sha256sum >/dev/null 2>&1; then
+  printf '%s  %s\n' "$sha256" "$asset" | sha256sum --check -
+else
+  printf '%s  %s\n' "$sha256" "$asset" | shasum -a 256 --check -
+fi
+mkdir -p "$bin_dir"
+install -m755 "$asset" "$bin_dir/skillmux"
 ```
 
+macOS ships `shasum` instead of `sha256sum` and its `install` lacks GNU's `-D`
+flag, so the snippet detects the former and creates the target directory
+itself instead of relying on the latter. On Windows, use one of the
+package-manager installs above, or download `skillmux-win32-x64.exe` directly
+from the [release page](https://github.com/klhq/skillmux/releases/tag/v1.13.2).
+
 Ensure `~/.local/bin` is on `PATH`. To install system-wide, explicitly choose
-the target: `sudo install -Dm755 "$asset" /usr/local/bin/skillmux`. For GitHub
+the target: `sudo install -m755 "$asset" /usr/local/bin/skillmux`. For GitHub
 build-provenance verification, use the [attested GitHub CLI procedure](docs/getting-started.md#install-with-github-cli-attestation).
 See [Deployment](docs/deployment.md) for the full and slim images of Skillmux
 server.
