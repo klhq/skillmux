@@ -105,8 +105,8 @@ and its full/slim images never manage host agent directories. See
 [Deployment](deployment.md#http-surfaces).
 
 The full image bundles GTE-small. The slim image contains no model
-files, so it uses configured remote embeddings or lexical fallback. The CLI
-downloads and caches GTE-small when local inference first loads it;
+files, so it uses configured remote embeddings or lexical fallback. The Bun
+package downloads and caches GTE-small when local inference first loads it;
 `skillmux models download` prefetches it. Neither Skillmux server image
 bundles a local reranker; configure one remotely when needed.
 

@@ -116,7 +116,7 @@ Verify a downloaded binary with its published SHA-256 digest, or use GitHub
 CLI build-provenance attestation. Keep the release tag pinned:
 
 ```bash
-version=v1.13.2
+version=v1.3.4
 gh release download "$version" --repo klhq/skillmux --pattern skillmux-linux-amd64
 gh attestation verify skillmux-linux-amd64 --repo klhq/skillmux
 ./skillmux-linux-amd64 config show
