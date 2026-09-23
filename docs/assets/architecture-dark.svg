@@ -107,9 +107,9 @@
 
     <text x="62" y="570" class="body">Install Skillmux CLI with</text>
     <rect x="270" y="550" width="85" height="27" rx="8" fill="#30363d" stroke="#444c56"/>
-    <text x="312.5" y="568" text-anchor="middle" class="chip" style="font-size: 10px" fill="#e2e8f0">NPM PACKAGE</text>
+    <text x="312.5" y="568" text-anchor="middle" class="chip" style="font-size: 10px" fill="#e2e8f0">BUN PACKAGE</text>
     <rect x="361" y="550" width="87" height="27" rx="8" fill="#21262d" stroke="#30363d"/>
-    <text x="404.5" y="561" text-anchor="middle" class="chip" style="font-size: 10px" fill="#94a3b8"><tspan x="404.5">STANDALONE</tspan><tspan x="404.5" dy="11">EXECUTABLE</tspan></text>
+    <text x="404.5" y="561" text-anchor="middle" class="chip" style="font-size: 10px" fill="#94a3b8"><tspan x="404.5">LINUX</tspan><tspan x="404.5" dy="11">EXECUTABLE</tspan></text>
   </g>
 
   <!-- MCP retrieval sub-card (blue) -->
