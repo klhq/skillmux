@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync, utimesSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -314,6 +314,25 @@ describe("audit log contract", () => {
 });
 
 describe("on-demand lazy indexing (First Principles #2)", () => {
+  test("indexes a skill added within the same timestamp tick as the last index", async () => {
+    await fetchSkill({ skill_id: "alpha-skill" });
+    const tick = statSync(join(vaultDir, "alpha-skill", "SKILL.md")).mtime;
+    for (const id of ["alpha-skill", "beta-skill", "gamma-skill", "router-core"]) {
+      utimesSync(join(vaultDir, id, "SKILL.md"), tick, tick);
+      utimesSync(join(vaultDir, id), tick, tick);
+    }
+    utimesSync(vaultDir, tick, tick);
+    await fetchSkill({ skill_id: "alpha-skill" });
+
+    writeSkill("same-tick-skill", "Added in the same timestamp tick as the previous index.");
+    for (const path of [join(vaultDir, "same-tick-skill", "SKILL.md"), join(vaultDir, "same-tick-skill"), vaultDir]) {
+      utimesSync(path, tick, tick);
+    }
+
+    const fetched = await fetchSkill({ skill_id: "same-tick-skill" });
+    expect(fetched.skill_id).toBe("same-tick-skill");
+  });
+
   test("synchronizes the index before query execution if files changed on disk", async () => {
     const dir = join(vaultDir, "lazy-test-skill");
     mkdirSync(dir, { recursive: true });
