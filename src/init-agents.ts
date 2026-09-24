@@ -1,23 +1,9 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isAgentId, SUPPORTED_AGENT_IDS, type AgentId } from "./agent-ids";
 
-export const SUPPORTED_AGENT_IDS = [
-  "claude-code",
-  "codex",
-  "opencode",
-  "github-copilot",
-  "windsurf",
-  "antigravity",
-  "goose",
-  "hermes",
-] as const;
-
-export type AgentId = (typeof SUPPORTED_AGENT_IDS)[number];
-
-export function isAgentId(value: string): value is AgentId {
-  return (SUPPORTED_AGENT_IDS as readonly string[]).includes(value);
-}
+export { isAgentId, SUPPORTED_AGENT_IDS, type AgentId };
 
 /**
  * The directory an agent reads skills from. Internal: users only ever name

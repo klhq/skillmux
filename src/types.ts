@@ -1,4 +1,4 @@
-import type { AgentId } from "./init-agents";
+import type { AgentId } from "./agent-ids";
 
 export interface RecallConfig {
   k_lexical: number;

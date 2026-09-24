@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { SUPPORTED_AGENT_IDS } from "./init-agents";
+import { SUPPORTED_AGENT_IDS } from "./agent-ids";
 import type { Config, ONNXDevice, ONNXDtype } from "./types";
 
 const onnxDeviceSchema = z.enum([
