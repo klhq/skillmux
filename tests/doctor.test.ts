@@ -40,6 +40,7 @@ function testConfig(overrides: Partial<Config> = {}): Config {
   return {
     vault_path: "/unused",
     local_vault_paths: [],
+    agents: [],
     state_dir: mkdtempSync(join(tmpdir(), "doctor-state-")),
     recall: { k_lexical: 15, k_vector: 15, k_rerank: 10 },
     output: { top_k: 10, max_top_k: 50 },
@@ -296,8 +297,6 @@ skills = ["shared-skill"]
 paths = []
 skills = ["shared-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `,
     );
 
@@ -325,8 +324,6 @@ skills = ["core-skill"]
 paths = []
 skills = ["infra-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `,
     );
 
@@ -340,108 +337,120 @@ dir = "~/.claude/skills"
     rmSync(vaultDir, { recursive: true, force: true });
   });
 
-  test("fails sync_drift when a target directory does not match what the manifest pins", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-drift-"));
-    writeSkillAt(vaultDir, "core-skill");
-    const targetDir = join(mkdtempSync(join(tmpdir(), "doctor-drift-target-")), "claude");
-    syncTarget({ vaultPath: vaultDir, targetDir, targetName: "claude", coreSkillIds: [] });
-    writeFileSync(
-      join(vaultDir, "skillmux.toml"),
-      `
+  // diagnose resolves agent directories from the environment it is handed, so a
+  // fake HOME keeps these tests off the real ~/.claude/skills.
+  function withHome<T>(fn: (home: string, env: Record<string, string | undefined>) => Promise<T>): Promise<T> {
+    const home = mkdtempSync(join(tmpdir(), "doctor-home-"));
+    return fn(home, { ...process.env, HOME: home, CODEX_HOME: undefined }).finally(() =>
+      rmSync(home, { recursive: true, force: true }),
+    );
+  }
+
+  function writeCoreManifest(vaultDir: string): void {
+    writeFileSync(join(vaultDir, "skillmux.toml"), `
 [core]
 skills = ["core-skill"]
+`);
+  }
 
-[targets.claude]
-dir = "${targetDir}"
-`,
-    );
+  test("fails sync_drift when an agent directory does not match what the manifest pins", async () => {
+    await withHome(async (home, env) => {
+      const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-drift-"));
+      writeSkillAt(vaultDir, "core-skill");
+      const targetDir = join(home, ".claude", "skills");
+      syncTarget({ vaultPath: vaultDir, targetDir, targetName: "claude-code", coreSkillIds: [] });
+      writeCoreManifest(vaultDir);
 
-    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+      const report = await diagnose(testConfig({ vault_path: vaultDir, agents: ["claude-code"] }), env);
 
-    const drift = report.checks.find((check) => check.name === "sync_drift");
-    expect(drift).toMatchObject({ ok: false, failure_kind: "configuration" });
-    expect(drift?.detail).toContain("+1 -0");
-    expect(drift?.detail).toContain("run: skillmux sync");
+      const drift = report.checks.find((check) => check.name === "sync_drift");
+      expect(drift).toMatchObject({ ok: false, failure_kind: "configuration" });
+      expect(drift?.detail).toContain(`${targetDir} +1 -0`);
+      expect(drift?.detail).toContain("run: skillmux sync");
 
-    rmSync(vaultDir, { recursive: true, force: true });
-  });
-
-  test("passes sync_drift once the target directory matches the manifest", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-no-drift-"));
-    writeSkillAt(vaultDir, "core-skill");
-    const targetDir = join(mkdtempSync(join(tmpdir(), "doctor-no-drift-target-")), "claude");
-    syncTarget({ vaultPath: vaultDir, targetDir, targetName: "claude", coreSkillIds: ["core-skill"] });
-    writeFileSync(
-      join(vaultDir, "skillmux.toml"),
-      `
-[core]
-skills = ["core-skill"]
-
-[targets.claude]
-dir = "${targetDir}"
-`,
-    );
-
-    const report = await diagnose(testConfig({ vault_path: vaultDir }));
-
-    expect(report.checks.find((check) => check.name === "sync_drift")).toMatchObject({
-      ok: true,
-      detail: "targets match the manifest",
+      rmSync(vaultDir, { recursive: true, force: true });
     });
+  });
+
+  test("passes sync_drift once the agent directory matches the manifest", async () => {
+    await withHome(async (home, env) => {
+      const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-no-drift-"));
+      writeSkillAt(vaultDir, "core-skill");
+      syncTarget({
+        vaultPath: vaultDir,
+        targetDir: join(home, ".claude", "skills"),
+        targetName: "claude-code",
+        coreSkillIds: ["core-skill"],
+      });
+      writeCoreManifest(vaultDir);
+
+      const report = await diagnose(testConfig({ vault_path: vaultDir, agents: ["claude-code"] }), env);
+
+      expect(report.checks.find((check) => check.name === "sync_drift")).toMatchObject({
+        ok: true,
+        detail: "agent directories match the manifest",
+      });
+
+      rmSync(vaultDir, { recursive: true, force: true });
+    });
+  });
+
+  test("omits sync_drift entirely in a container, where nothing syncs an agent directory", async () => {
+    await withHome(async (home, env) => {
+      const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-docker-"));
+      writeSkillAt(vaultDir, "core-skill");
+      syncTarget({
+        vaultPath: vaultDir,
+        targetDir: join(home, ".claude", "skills"),
+        targetName: "claude-code",
+        coreSkillIds: [],
+      });
+      writeCoreManifest(vaultDir);
+      const config = testConfig({ vault_path: vaultDir, agents: ["claude-code"] });
+
+      // On a host this exact setup fails sync_drift; a container only reads the vault to
+      // answer resolve/fetch, so the check would report drift nobody there can act on.
+      const onHost = await diagnose(config, env);
+      expect(onHost.checks.find((check) => check.name === "sync_drift")).toMatchObject({ ok: false });
+
+      const inDocker = await diagnose(config, { ...env, RUNNING_IN_DOCKER: "true" });
+      expect(inDocker.runtime).toBe("docker");
+      expect(inDocker.checks.find((check) => check.name.startsWith("sync_drift"))).toBeUndefined();
+      expect(inDocker.checks.find((check) => check.name === "manifest")).toMatchObject({ ok: true });
+
+      rmSync(vaultDir, { recursive: true, force: true });
+    });
+  });
+
+  test("notes a machine with no agents instead of failing", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-no-agents-"));
+    writeSkillAt(vaultDir, "core-skill");
+    writeCoreManifest(vaultDir);
+
+    const report = await diagnose(testConfig({ vault_path: vaultDir, agents: [] }));
+
+    expect(report.checks.find((check) => check.name === "agents")).toMatchObject({ ok: true });
+    expect(report.checks.find((check) => check.name.startsWith("sync_drift"))).toBeUndefined();
 
     rmSync(vaultDir, { recursive: true, force: true });
   });
 
-  test("omits sync_drift entirely in a container, where nothing syncs a target directory", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-docker-"));
-    writeSkillAt(vaultDir, "core-skill");
-    const targetDir = join(mkdtempSync(join(tmpdir(), "doctor-docker-target-")), "claude");
-    syncTarget({ vaultPath: vaultDir, targetDir, targetName: "claude", coreSkillIds: [] });
-    writeFileSync(
-      join(vaultDir, "skillmux.toml"),
-      `
+  test("fails the manifest check for a legacy [targets] table", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-legacy-targets-"));
+    writeFileSync(join(vaultDir, "skillmux.toml"), `
 [core]
-skills = ["core-skill"]
+skills = []
 
 [targets.claude]
-dir = "${targetDir}"
-`,
-    );
-
-    // On a host this exact manifest fails sync_drift; a container only reads the vault to
-    // answer resolve/fetch, so the check would report drift nobody there can act on.
-    const onHost = await diagnose(testConfig({ vault_path: vaultDir }));
-    expect(onHost.checks.find((check) => check.name === "sync_drift")).toMatchObject({ ok: false });
-
-    const inDocker = await diagnose(testConfig({ vault_path: vaultDir }), {
-      ...process.env,
-      RUNNING_IN_DOCKER: "true",
-    });
-    expect(inDocker.runtime).toBe("docker");
-    expect(inDocker.checks.find((check) => check.name.startsWith("sync_drift"))).toBeUndefined();
-    expect(inDocker.checks.find((check) => check.name === "manifest")).toMatchObject({ ok: true });
-
-    rmSync(vaultDir, { recursive: true, force: true });
-  });
-
-  test("does not report drift for a target scoped to another machine", async () => {
-    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-vault-other-host-"));
-    writeSkillAt(vaultDir, "core-skill");
-    writeFileSync(
-      join(vaultDir, "skillmux.toml"),
-      `
-[core]
-skills = ["core-skill"]
-
-[targets.elsewhere]
-dir = "/nonexistent/elsewhere/skills"
-host = "some-other-machine"
-`,
-    );
+dir = "~/.claude/skills"
+host = "workhorse"
+project_groups = []
+`);
 
     const report = await diagnose(testConfig({ vault_path: vaultDir }));
-
-    expect(report.checks.find((check) => check.name === "sync_drift")).toMatchObject({ ok: true });
+    const manifestCheck = report.checks.find((check) => check.name.startsWith("manifest"));
+    expect(manifestCheck).toMatchObject({ ok: false });
+    expect(manifestCheck?.detail).toContain("[targets] is no longer supported");
 
     rmSync(vaultDir, { recursive: true, force: true });
   });
@@ -454,8 +463,6 @@ host = "some-other-machine"
 [core]
 skills = ["core-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `;
     writeFileSync(manifestPath, original);
 

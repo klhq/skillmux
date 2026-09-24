@@ -60,8 +60,8 @@ export async function runCore(
   // anyone batching several pins before a single sync.
   //
   // The pin's own --yes is deliberately not forwarded. It answers "pin this skill", not
-  // "create a directory this host has never synced", so executeSync's new-target gate
-  // still stands on its own.
+  // "create a project directory this machine has never synced", so executeSync's
+  // project-path gate still stands on its own.
   const synced = sync
     ? await executeSync({
         config,
@@ -75,7 +75,7 @@ export async function runCore(
       subcommand: subCommand,
       skill_ids: skillIds,
       synced: synced !== undefined,
-      targets: synced?.targets ?? [],
+      dirs: synced?.dirs ?? [],
     },
     () => {},
   );

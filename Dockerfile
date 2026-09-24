@@ -30,12 +30,13 @@ RUN set -eux; \
 
 # Stage 3: Default local model bundle
 # Copies only the closed import set the prefetch needs (download-models.ts ->
-# config.ts -> types.ts, plus models.ts) rather than all of src/. Copying the
+# config.ts -> agent-ids.ts and types.ts, plus models.ts) rather than all of
+# src/; tests/dockerfile.test.ts checks the set stays closed. Copying the
 # whole tree invalidates this layer — and re-downloads the 34MB bundle from
 # HuggingFace — on every unrelated source change, which is what made CI flaky.
 FROM base AS models
 COPY scripts/download-models.ts scripts/
-COPY src/config.ts src/models.ts src/types.ts src/
+COPY src/agent-ids.ts src/config.ts src/models.ts src/types.ts src/
 ENV SKILLMUX_MODELS_DIR=/models
 RUN bun run scripts/download-models.ts
 

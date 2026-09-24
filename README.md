@@ -84,7 +84,7 @@ npx @klhapp/skillmux --help
 
 Installing pulls exactly one platform-specific executable through
 `optionalDependencies`, so you download the build for your machine and not the
-other four. Native target sync needs permission to create directory symlinks
+other four. Native skill sync needs permission to create directory symlinks
 on Windows.
 
 Local embedding inference is included on every platform except Intel macOS.
@@ -166,7 +166,8 @@ skillmux init \
   --yes
 ```
 
-Core pins apply to each configured target and stay capped at 25 skills, or at
+`init` records the agents in `agents` in `config.toml`. Core pins apply to
+each configured agent's directory and stay capped at 25 skills, or at
 `[core].limit` when the manifest sets one. Add
 project-specific skills from a repository root:
 
@@ -251,7 +252,7 @@ skillmux skill which csv-formatter
 skillmux report --since 7d
 ```
 
-Read [Managing skills](docs/skill-management.md) for target ownership, project groups, local overrides, recovery, and reporting.
+Read [Managing skills](docs/skill-management.md) for directory ownership, project groups, local overrides, recovery, and reporting.
 
 ## MCP retrieval
 
@@ -292,17 +293,18 @@ Read [MCP routing](docs/mcp-routing.md) for transports, client instructions, ret
 | Claude Code | `~/.claude/skills` | Configure in the agent |
 | Codex | `$CODEX_HOME/skills` or `~/.codex/skills` | Configure in the agent |
 | OpenCode, GitHub Copilot, Windsurf | Shared `~/.agents/skills` | Configure in the agent |
+| Goose, Hermes | Shared `~/.agents/skills` | Manual registration |
 | Antigravity | `~/.gemini/config/skills` | Configure in the agent |
-| Goose, Hermes | Manual full-vault setup | Manual registration |
-| Custom agents | Any directory through a custom target | Stdio or Streamable HTTP |
 
-Skillmux preserves existing instruction files and unmanaged target content. Run `skillmux init --dry-run` to inspect every planned filesystem change.
+Other tools are not supported yet; each new one needs an entry in the agent
+registry. Skillmux preserves existing instruction files and unmanaged content
+in agent directories. Run `skillmux init --dry-run` to inspect every planned filesystem change.
 
 ## Guarantees
 
 - **Controlled sources:** pins come from the configured vault checkout, while routed delivery follows the configured overlay order.
-- **Scoped writes:** management commands write only to documented config, vault, state, and adopted target paths.
-- **Managed ownership:** sync removes only entries recorded in the target's `.skillmux` marker.
+- **Scoped writes:** management commands write only to documented config, vault, state, and adopted agent directories.
+- **Managed ownership:** sync removes only entries recorded in the directory's `.skillmux` marker.
 - **Current bytes:** MCP delivery hashes the file on disk and never serves a stale indexed body.
 - **Graceful retrieval:** embedding and reranker failures fall back without hiding the active capability.
 - **Auditable decisions:** each `resolve_skill` call records its query, retrieval capability, candidates, scores, and latency in the state database.

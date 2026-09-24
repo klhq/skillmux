@@ -112,7 +112,7 @@ The supported container commands are `serve`, `index`, `doctor`, `report`,
 `config validate`, `config diff`, and `config status`.
 
 The image rejects host-management commands, including `init`, `sync`,
-`install`, `project`, `target`, `core`, `local-vault`, `models download`,
+`install`, `project`, `agent`, `core`, `local-vault`, `models download`,
 context management, evaluation, and configuration initialization
 or mutation. Install the Skillmux CLI on the host when a command needs to
 manage a local vault or agent directory.

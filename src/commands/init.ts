@@ -27,7 +27,7 @@ import {
   planInstructionSetup,
   rollbackInstructionPlan,
 } from "../init-instructions";
-import { parseManifest, resolveManifestPath } from "../manifest";
+import { rollbackConfigAgents, writeConfigAgents, type ConfigAgentsWrite } from "../agents-config";
 import {
   MCP_REGISTRABLE_AGENTS,
   registerMcpServer,
@@ -48,7 +48,6 @@ import {
   rollbackConfigInit,
   type ConfigInitPlan,
 } from "../setup";
-import { configuredTargetForSurface } from "./project";
 import { confirmAction } from "./shared";
 import { runSync } from "./sync";
 
@@ -184,6 +183,7 @@ export async function runInit(
   const configPath = resolveConfigPath();
   let configPlan: ConfigInitPlan | undefined;
   let vaultPath: string;
+  let existingAgents: AgentId[] = [];
   if (!existsSync(configPath)) {
     let bootstrapVaultPath = requestedVaultPath;
     if (!bootstrapVaultPath) {
@@ -206,6 +206,7 @@ export async function runInit(
   } else {
     const config = await loadConfig();
     vaultPath = expandHome(config.vault_path);
+    existingAgents = config.agents;
     if (requestedVaultPath && expandHome(requestedVaultPath) !== vaultPath) {
       throw new Error(
         `machine config already uses vault_path ${vaultPath}; --vault does not overwrite existing config`,
@@ -236,7 +237,10 @@ export async function runInit(
         detail: evidence.has(agent)
           ? `detected: ${evidence.get(agent)}`
           : undefined,
-        selected: evidence.has(agent) || requestedAgents.includes(agent),
+        selected:
+          evidence.has(agent) ||
+          requestedAgents.includes(agent) ||
+          existingAgents.includes(agent),
       })),
     );
   }
@@ -310,20 +314,13 @@ export async function runInit(
       detail: "no MCP requested — see --show-mcp-setup / --register-mcp",
     };
   }
-  const existingManifestPath = resolveManifestPath(vaultPath);
-  const existingManifest = existingManifestPath
-    ? parseManifest(await Bun.file(existingManifestPath).text())
-    : undefined;
   const targetByPath = new Map<string, string>();
-  for (const surface of agentPlan.surfaces) {
-    targetByPath.set(
-      surface.path,
-      existingManifest
-        ? (configuredTargetForSurface(existingManifest, surface) ??
-            surface.targetName)
-        : surface.targetName,
-    );
-  }
+  for (const surface of agentPlan.surfaces) targetByPath.set(surface.path, surface.id);
+  const nextAgents = [
+    ...new Set([...existingAgents, ...agentPlan.agents.map((agent) => agent.id)]),
+  ];
+  const hasAgentsWrite =
+    nextAgents.length !== existingAgents.length || configPlan?.action === "create";
   const candidatePaths = [
     ...new Set([
       ...surfaceCandidates().map(expandHome),
@@ -403,7 +400,8 @@ export async function runInit(
     requestedTargets.length === 0 &&
     !hasInstructionWrites &&
     selectedCoreSkillIds.length === 0 &&
-    !hasConfigWrite
+    !hasConfigWrite &&
+    !(hasAgentsWrite && nextAgents.length > 0)
   );
 
   const byName = new Map(
@@ -433,13 +431,14 @@ export async function runInit(
   );
   for (const name of requestedTargets) {
     if (!byName.has(name)) {
-      if (allCandidatesByName.get(name)?.state === "full-vault") {
+      const candidate = allCandidatesByName.get(name);
+      if (candidate?.state === "full-vault") {
         throw new Error(
-          `target "${name}" is a full-vault surface; re-run with --migrate-full-vault to convert it to managed pins`,
+          `${candidate.path} is a symlink to the whole vault; re-run with --migrate-full-vault to convert it to managed pins`,
         );
       }
       throw new Error(
-        `target "${name}" not among detected surfaces`,
+        `${candidate?.path ?? name} cannot be managed (${candidate?.state ?? "not detected"})`,
       );
     }
   }
@@ -452,18 +451,14 @@ export async function runInit(
       ...(candidate.state === "full-vault" ? { migrateFullVault: true } : {}),
     };
   });
-  const plannedManifest = planInitManifest(
-    vaultPath,
-    confirmedTargets,
-    selectedCoreSkillIds,
-  );
+  const plannedManifest = planInitManifest(vaultPath, selectedCoreSkillIds);
   const serializedPlan = {
     vault_path: vaultPath,
     config: configPlan
       ? { path: configPlan.configPath, action: configPlan.action }
       : { path: configPath, action: "preserve" },
-    agents: agentPlan.agents.map((agent) => agent.id),
-    targets: confirmedTargets,
+    agents: nextAgents,
+    dirs: agentPlan.surfaces.map((surface) => ({ dir: surface.path, agents: surface.agents })),
     core: plannedManifest.core.skills,
     instructions: instructionPlan.changes.map(({ path, agents, status }) => ({
       path,
@@ -485,7 +480,7 @@ export async function runInit(
         }),
       );
     } else {
-      console.log("\nno managed-pins surface selected — nothing written.");
+      console.log("\nno agents selected; nothing written.");
     }
     return;
   }
@@ -494,7 +489,7 @@ export async function runInit(
       (target) => target.migrateFullVault,
     )) {
       console.log(
-        `full-vault migration ${target.name}: ${vaultHealth.skillCount} visible skills -> ` +
+        `full-vault migration ${target.dir}: ${vaultHealth.skillCount} visible skills -> ` +
           `${plannedManifest.core.skills.length} core ${plannedManifest.core.skills.length === 1 ? "skill" : "skills"} after sync`,
       );
     }
@@ -512,7 +507,7 @@ export async function runInit(
       );
     } else {
       console.log(
-        `\ndry-run: ${confirmedTargets.length} target(s), ` +
+        `\ndry-run: agents ${nextAgents.join(", ") || "(none)"}, ` +
           `${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} instruction file(s), ` +
           `core: ${plannedManifest.core.skills.join(", ") || "(unchanged)"}, ` +
           `MCP registration: ${registerMcp ? registrableAgents.join(", ") || "(none)" : "(none)"}`,
@@ -525,9 +520,9 @@ export async function runInit(
     if (!options.isJson && isInteractive()) {
       if (guided) {
         console.log("\nReview");
-        console.log(`  agents: ${selectedAgents.join(", ") || "(none)"}`);
+        console.log(`  agents: ${nextAgents.join(", ") || "(none)"}`);
         console.log(
-          `  targets: ${confirmedTargets.map((target) => `${target.name} -> ${target.dir}`).join(", ") || "(none)"}`,
+          `  directories: ${confirmedTargets.map((target) => target.dir).join(", ") || "(none)"}`,
         );
         console.log(
           `  instructions: ${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} file(s)`,
@@ -545,9 +540,10 @@ export async function runInit(
         }
       } else {
         const prompts = [
-          ...confirmedTargets.map(
-            (target) => `adopt ${target.name} at ${target.dir}?`,
-          ),
+          ...(hasAgentsWrite
+            ? [`set agents = [${nextAgents.join(", ")}] in ${configPath}?`]
+            : []),
+          ...confirmedTargets.map((target) => `manage ${target.dir}?`),
           ...instructionPlan.changes
             .filter((change) => change.status !== "unchanged")
             .map(
@@ -567,23 +563,26 @@ export async function runInit(
       }
     } else {
       throw new Error(
-        "skillmux init requires --yes before applying target, instruction, or core changes non-interactively",
+        "skillmux init requires --yes before applying agent, instruction, or core changes non-interactively",
       );
     }
   }
 
   let configCreated = false;
   let instructionsApplied = false;
+  let agentsWrite: ConfigAgentsWrite | undefined;
   const applyAdditional = () => {
     try {
       if (configPlan?.action === "create") {
         configCreated = applyConfigInit(configPlan) === "created";
       }
+      if (hasAgentsWrite) agentsWrite = writeConfigAgents(configPath, nextAgents);
       if (hasInstructionWrites) {
         applyInstructionPlan(instructionPlan);
         instructionsApplied = true;
       }
     } catch (error) {
+      if (agentsWrite) rollbackConfigAgents(agentsWrite);
       if (configCreated && configPlan) rollbackConfigInit(configPlan);
       configCreated = false;
       throw error;
@@ -591,6 +590,7 @@ export async function runInit(
   };
   const rollbackAdditional = () => {
     if (instructionsApplied) rollbackInstructionPlan(instructionPlan);
+    if (agentsWrite) rollbackConfigAgents(agentsWrite);
     if (configCreated && configPlan) rollbackConfigInit(configPlan);
   };
 
@@ -600,12 +600,7 @@ export async function runInit(
     applyInit(
       vaultPath,
       confirmedTargets,
-      hasInstructionWrites || hasConfigWrite
-        ? {
-            apply: applyAdditional,
-            rollback: rollbackAdditional,
-          }
-        : undefined,
+      { apply: applyAdditional, rollback: rollbackAdditional },
       selectedCoreSkillIds,
     );
   }
@@ -630,7 +625,8 @@ export async function runInit(
         plan: serializedPlan,
         result: {
           config_created: configCreated,
-          targets_adopted: confirmedTargets.map((target) => target.name),
+          agents: nextAgents,
+          dirs_managed: confirmedTargets.map((target) => target.dir),
           instructions_changed: instructionPlan.changes
             .filter((change) => change.status !== "unchanged")
             .map((change) => change.path),
@@ -642,12 +638,14 @@ export async function runInit(
     return;
   }
   if (configCreated) console.log(`created ${configPath}`);
+  if (hasAgentsWrite) {
+    console.log(`\nagents = [${nextAgents.join(", ")}] in ${configPath}`);
+  }
   if (confirmedTargets.length > 0) {
-    console.log(
-      `\nwrote ${join(vaultPath, "skillmux.toml")}, adopted: ${confirmedTargets.map((t) => t.name).join(", ")}`,
-    );
-  } else if (selectedCoreSkillIds.length > 0) {
-    console.log(`\nwrote ${join(vaultPath, "skillmux.toml")}`);
+    console.log(`managing: ${confirmedTargets.map((target) => target.dir).join(", ")}`);
+  }
+  if (selectedCoreSkillIds.length > 0) {
+    console.log(`wrote ${join(vaultPath, "skillmux.toml")}`);
   }
   if (plannedManifest.core.skills.length === 0 && confirmedTargets.length > 0) {
     console.log("next: skillmux core pin <skill_id> --yes");
@@ -664,9 +662,7 @@ export async function runInit(
     console.log(`\n${printLastMile()}`);
   }
   // Reaching this point already required approval above (--yes, or an accepted
-  // confirmAction naming these exact targets/dirs) — that approval covers whatever
-  // new target directories this init just adopted, so runSync's own new-target
-  // confirmation gate would just be a redundant (and non-interactively,
-  // silently-skipping) re-ask.
+  // confirmAction naming these exact directories), which also covers any
+  // project directories the first sync creates.
   if (sync && confirmedTargets.length > 0) await runSync(["--yes"]);
 }

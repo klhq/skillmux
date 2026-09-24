@@ -12,7 +12,6 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { hostname } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   parseManifest,
@@ -23,7 +22,6 @@ import {
   coreLimitExceeded,
   MANIFEST_FILENAME,
 } from "./manifest";
-import { BUILT_IN_TARGET_NAMES } from "./init-agents";
 import {
   adoptTarget,
   preflightAdoptTarget,
@@ -163,7 +161,7 @@ export function detectSurfaces(candidatePaths: string[], vaultPath?: string): Su
  * at TDD time (spec.md, "skr init" AC) — evidence-only, nothing proposed
  * until a concrete heuristic is agreed.
  */
-export function proposeManifest(_candidates: SurfaceCandidate[]): Pick<Manifest, "core" | "project"> {
+export function proposeManifest(_candidates: SurfaceCandidate[]): Manifest {
   return { core: { skills: [] }, project: {} };
 }
 
@@ -172,6 +170,7 @@ export function deriveTargetName(path: string): string {
   return basename(dirname(path)).replace(/^\./, "").toLowerCase();
 }
 
+/** An agent directory init/agent add will create or adopt; `name` is its surface id. */
 export interface ConfirmedTarget {
   name: string;
   dir: string;
@@ -201,15 +200,15 @@ function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]):
         continue;
       }
       throw new Error(
-        `target "${target.name}" (${target.dir}) is a symbolic link; classify or migrate it before managed-pins adoption`,
+        `${target.dir} is a symbolic link; classify or migrate it before skillmux can manage it`,
       );
     }
     if (!stat.isDirectory()) {
-      throw new Error(`target "${target.name}" (${target.dir}) is not a directory`);
+      throw new Error(`${target.dir} is not a directory`);
     }
     if (realpathSync(target.dir) === canonicalVaultPath) {
       throw new Error(
-        `target "${target.name}" (${target.dir}) is the full-vault surface; it cannot be adopted as managed-pins`,
+        `${target.dir} is the vault itself; it cannot be managed as an agent directory`,
       );
     }
     preflightAdoptTarget(target.dir, target.name, vaultPath);
@@ -217,45 +216,20 @@ function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]):
 }
 
 /**
- * Writes skillmux.toml with the conservative-default core/project and the
- * confirmed targets, then adopts each confirmed dir in place (creating it
- * first if it doesn't exist yet). Unconfirmed candidates are simply never
- * passed in — this function never discovers paths on its own.
+ * The manifest init would leave behind: the existing one (or an empty one)
+ * with `coreSkillIds` added to [core]. Agent selection lives in config.toml,
+ * not here, so this only ever touches the shared vault's skill curation.
  */
-export function planInitManifest(
-  vaultPath: string,
-  confirmedTargets: ConfirmedTarget[],
-  coreSkillIds: string[] = [],
-): Manifest {
-  preflightManagedTargets(vaultPath, confirmedTargets);
-
+export function planInitManifest(vaultPath: string, coreSkillIds: string[] = []): Manifest {
   const existingManifestPath = resolveManifestPath(vaultPath);
-  const existingManifest = existingManifestPath
+  const existingManifest: Manifest = existingManifestPath
     ? parseManifest(readFileSync(existingManifestPath, "utf-8"))
-    : { ...proposeManifest([]), targets: {} };
+    : proposeManifest([]);
   const manifest: Manifest = {
     ...existingManifest,
     core: {
       ...existingManifest.core,
       skills: [...new Set([...existingManifest.core.skills, ...coreSkillIds])],
-    },
-    targets: {
-      ...existingManifest.targets,
-      ...Object.fromEntries(
-        confirmedTargets.map((target) => {
-          const existingTarget = existingManifest.targets[target.name];
-          return [
-            target.name,
-            BUILT_IN_TARGET_NAMES.has(target.name)
-              ? existingTarget
-                ? { ...existingTarget, dir: undefined }
-                : { host: hostname(), project_groups: [] }
-              : existingTarget
-                ? { ...existingTarget, dir: target.dir }
-                : { dir: target.dir, host: hostname(), project_groups: [] },
-          ];
-        }),
-      ),
     },
   };
   if (manifest.core.skills.length > (manifest.core.limit ?? CORE_SKILL_LIMIT)) {
@@ -274,22 +248,21 @@ export function planInitManifest(
   return manifest;
 }
 
-export function applyInit(
+/**
+ * Creates or adopts each confirmed agent directory in place, then runs the
+ * participant (config.toml, instruction files, …), rolling every step back if
+ * anything fails. Callers pass only confirmed candidates; this function
+ * never discovers paths on its own.
+ */
+export function adoptSurfaces(
   vaultPath: string,
   confirmedTargets: ConfirmedTarget[],
   participant?: InitTransactionParticipant,
-  coreSkillIds: string[] = [],
-): Manifest {
-  const manifest = planInitManifest(vaultPath, confirmedTargets, coreSkillIds);
-
-  const manifestPath = join(vaultPath, MANIFEST_FILENAME);
-  const serializedManifest = serializeManifest(manifest);
-  const shouldWriteManifest =
-    !existsSync(manifestPath) || readFileSync(manifestPath, "utf-8") !== serializedManifest;
+): void {
+  preflightManagedTargets(vaultPath, confirmedTargets);
   const createdDirs: string[] = [];
   const adoptedDirs: string[] = [];
   const migratedFullVaultDirs: Array<{ dir: string; linkTarget: string }> = [];
-  let participantApplied = false;
 
   try {
     for (const target of confirmedTargets) {
@@ -302,7 +275,7 @@ export function applyInit(
       if (targetStat?.isSymbolicLink()) {
         if (!target.migrateFullVault || realpathSync(target.dir) !== realpathSync(vaultPath)) {
           throw new Error(
-            `target "${target.name}" (${target.dir}) changed to an unsafe symbolic link after preflight`,
+            `${target.dir} changed to an unsafe symbolic link after preflight`,
           );
         }
         const linkTarget = readlinkSync(target.dir);
@@ -310,7 +283,7 @@ export function applyInit(
         mkdirSync(target.dir, { recursive: true });
         migratedFullVaultDirs.push({ dir: target.dir, linkTarget });
       } else if (targetStat && !targetStat.isDirectory()) {
-        throw new Error(`target "${target.name}" (${target.dir}) changed to a non-directory after preflight`);
+        throw new Error(`${target.dir} changed to a non-directory after preflight`);
       }
       if (!existsSync(target.dir)) {
         mkdirSync(target.dir, { recursive: true });
@@ -320,43 +293,63 @@ export function applyInit(
         adoptedDirs.push(target.dir);
       }
     }
-
-    if (participant) {
-      participant.apply();
-      participantApplied = true;
+    participant?.apply();
+  } catch (error) {
+    for (const dir of adoptedDirs.reverse()) {
+      const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
+      if (existsSync(markerPath)) unlinkSync(markerPath);
     }
+    for (const migration of migratedFullVaultDirs.reverse()) {
+      if (existsSync(migration.dir)) rmdirSync(migration.dir);
+      symlinkSync(migration.linkTarget, migration.dir);
+    }
+    for (const dir of createdDirs.reverse()) {
+      if (existsSync(dir)) rmdirSync(dir);
+    }
+    throw error;
+  }
+}
 
-    if (shouldWriteManifest) {
+/**
+ * `init`'s whole write: adopt the agent directories, run the participant, and
+ * write skillmux.toml. The manifest write happens only when the file is
+ * missing or [core] gained skills, so selecting agents never rewrites the
+ * shared manifest.
+ */
+export function applyInit(
+  vaultPath: string,
+  confirmedTargets: ConfirmedTarget[],
+  participant?: InitTransactionParticipant,
+  coreSkillIds: string[] = [],
+): Manifest {
+  const manifest = planInitManifest(vaultPath, coreSkillIds);
+  const manifestPath = resolveManifestPath(vaultPath) ?? join(vaultPath, MANIFEST_FILENAME);
+  const existingCore = existsSync(manifestPath)
+    ? parseManifest(readFileSync(manifestPath, "utf-8")).core.skills.length
+    : -1;
+  const shouldWriteManifest = existingCore !== manifest.core.skills.length;
+  let participantApplied = false;
+
+  adoptSurfaces(vaultPath, confirmedTargets, {
+    apply: () => {
+      participant?.apply();
+      participantApplied = true;
+      if (!shouldWriteManifest) return;
       const temporaryManifestPath = join(
         vaultPath,
         `.${MANIFEST_FILENAME}.${process.pid}-${Date.now()}.tmp`,
       );
       try {
-        writeFileSync(temporaryManifestPath, serializedManifest);
-        renameSync(temporaryManifestPath, manifestPath);
+        writeFileSync(temporaryManifestPath, serializeManifest(manifest));
+        renameSync(temporaryManifestPath, join(vaultPath, MANIFEST_FILENAME));
       } catch (error) {
         if (existsSync(temporaryManifestPath)) unlinkSync(temporaryManifestPath);
+        if (participantApplied) participant?.rollback();
         throw error;
       }
-    }
-  } catch (error) {
-    try {
-      if (participantApplied) participant?.rollback();
-    } finally {
-      for (const dir of adoptedDirs.reverse()) {
-        const markerPath = join(dir, SKILLMUX_MARKER_FILENAME);
-        if (existsSync(markerPath)) unlinkSync(markerPath);
-      }
-      for (const migration of migratedFullVaultDirs.reverse()) {
-        if (existsSync(migration.dir)) rmdirSync(migration.dir);
-        symlinkSync(migration.linkTarget, migration.dir);
-      }
-      for (const dir of createdDirs.reverse()) {
-        if (existsSync(dir)) rmdirSync(dir);
-      }
-    }
-    throw error;
-  }
+    },
+    rollback: () => {},
+  });
 
   return manifest;
 }

@@ -27,7 +27,7 @@ CLI. Its `skillmux --help` surface is intentionally limited to `serve`,
 `index`, `doctor`, `report`, `audit prune`, `eval promote`, `scan`,
 `skill which`, and read-only `config` inspection (`show`, `get`, `validate`,
 `diff`, and `status`). Run `init`, `install`, pinning, `sync`, project or
-target management, model downloads, contexts, and bare `eval` (vault ranking
+agent management, model downloads, contexts, and bare `eval` (vault ranking
 evaluation, which needs an embeddings client and the vault) on the host.
 
 When the image rejects one of those commands, it exits with code 2. JSON mode
@@ -40,7 +40,7 @@ command contract](deployment.md#container-command-contract) for examples.
 Commands that operate directly on the local vault checkout reject `--context` and
 `--server` (or a configured remote default context) with exit code 2. These 14
 commands are local-only: `install`, `update`, `outdated`, `sync`, `core`,
-`project`, `target`, `local-vault`, `index`, `models`, `scan`, `init`, `serve`,
+`project`, `agent`, `local-vault`, `index`, `models`, `scan`, `init`, `serve`,
 and `skill which`.
 
 When one of these commands receives a remote context, it exits with code 2.
@@ -79,7 +79,7 @@ system:
 
 1. Which vault checkout backs Core/Project pinning — always a local Git checkout
    on the machine running the CLI. `install`/`update`/`sync`/`core`/`project`/
-   `target`/`local-vault`/`index`/`models`/`scan`/`init`/`outdated`/`serve`/
+   `agent`/`local-vault`/`index`/`models`/`scan`/`init`/`outdated`/`serve`/
    `skill which` operate on it. There is no remote version of this — Git and the
    deployment process move content between checkouts, not Skillmux's own
    commands.
@@ -189,15 +189,15 @@ Skillmux supports these agent IDs:
 |--------|----------------|
 | `claude-code` | `~/.claude/skills` |
 | `codex` | `$CODEX_HOME/skills`, falling back to `~/.codex/skills` |
-| `opencode`, `github-copilot`, `windsurf` | Shared `~/.agents/skills` surface |
+| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes` | Shared `~/.agents/skills` |
 | `antigravity` | `~/.gemini/config/skills` |
-| `goose`, `hermes` | Manual full-vault configuration |
 
-There's no agent ID for "just MCP" — pass `--show-mcp-setup` to also print
-the MCP registration snippet, independent of which (if any) agents you
-select. A tool not in this table isn't supported by `init` yet; for an
-arbitrary directory not tied to any supported agent, use `skillmux target
-add <name> --dir <dir> --yes` directly instead of `init`.
+`init` records the selected agents in `agents` in `config.toml`, merged with
+any already listed there, and adopts their directories. There's no agent ID
+for "just MCP": pass `--show-mcp-setup` to also print the MCP registration
+snippet, independent of which (if any) agents you select. Skillmux does not
+support a tool missing from this table yet. Add it to the agent registry
+rather than pointing skillmux at a directory by hand.
 
 `--show-mcp-setup` only prints the snippet; it never registers anything.
 For `claude-code` and `codex`, `--register-mcp` goes further and runs that
@@ -215,14 +215,14 @@ all when `--show-mcp-setup` is set. A purely native run (neither flag) writes
 no instruction files, by design; `--no-instructions` forces that off even
 when MCP flags are present.
 
-`--dry-run` prints the config, target, instruction, and core plan without
+`--dry-run` prints the config, agent, instruction, and core plan without
 prompting or writing. `--json` emits one schema-versioned plan or result
 object. Noninteractive writes require `--yes`. `--interactive` forces the
 wizard and seeds it with supplied flags. `--no-sync` saves setup without
 materializing links.
 
-Skillmux rejects a target that currently links to the whole vault. Convert it
-only after reviewing the smaller post-sync skill set:
+Skillmux rejects an agent directory that currently links to the whole vault.
+Convert it only after reviewing the smaller post-sync skill set:
 
 ```sh
 skillmux init --agent claude-code --migrate-full-vault \
@@ -262,11 +262,14 @@ skillmux project init ~/code/skillmux \
   --yes
 ```
 
-`--agent` maps product names to configured, deduplicated targets. Advanced
-callers can attach a configured target with repeated `--target <name>`.
-Re-running the command merges missing paths, skills, and target attachments.
-It validates the complete manifest before an atomic write and runs `sync` by
-default. Use `--no-sync` when another process will materialize the links.
+`--agent` names the agents that should see the project's skills; Skillmux
+stores them in `[project.<group>].agents` in the shared manifest. Without
+`--agent`, the project takes this machine's own `agents`, and `project init`
+fails when that list is empty too, so a project never records an agent list
+that syncs nowhere. Re-running the command merges missing paths, skills, and
+agents. It validates the complete manifest before an atomic write and runs
+`sync` by default. Use `--no-sync` when another process will materialize the
+links.
 
 `--register-mcp` is the project-local counterpart to `skillmux init
 --register-mcp`, narrowed to `claude-code` — the only agent whose own CLI
@@ -289,42 +292,46 @@ skillmux project remove-path skillmux ~/old/skillmux --yes
 skillmux project pin skillmux sdd-tdd code-context --yes
 skillmux project unpin skillmux old-skill --yes
 skillmux project attach skillmux --agent claude-code --agent codex --yes
-skillmux project detach skillmux --target codex --yes
+skillmux project detach skillmux --agent codex --yes
 ```
 
 `add-path` and `remove-path` detect the current Git root when the path is
-omitted. Agent attachments map to configured physical targets and deduplicate
-agents that share `~/.agents/skills`. Mutating commands validate the complete
-manifest and replace it atomically. Run `skillmux sync` after direct
-maintenance commands to materialize the new state.
+omitted. `attach` and `detach` edit `[project.<group>].agents`. On each machine,
+`sync` pins the group into every configured agent directory that one of those
+agents reads, matched by directory, so `opencode` and `hermes` reach the same
+`~/.agents/skills`. Mutating commands validate the complete manifest and replace
+it atomically. Run `skillmux sync` after direct maintenance commands to
+materialize the new state.
 
 ---
 
-## Advanced targets (`skillmux target`)
+## Agents (`skillmux agent`)
 
-Most users should select products with `init --agent`. Use `target` commands
-for custom delivery directories and manifest inspection:
+`skillmux agent` edits `agents` in this machine's `config.toml`:
 
 ```sh
-skillmux target list
-skillmux target show claude-code
-skillmux target add custom-agent --dir /srv/custom-agent/skills --yes
-skillmux target remove custom-agent --yes
+skillmux agent list
+skillmux agent add claude-code codex --yes
+skillmux agent remove codex --yes
+skillmux agent rehome --yes
 ```
 
-`target add` uses the same ownership, symlink, full-vault, rollback, and
-current-host scoping checks as `skillmux init`. `target remove` removes the
-manifest entry and preserves the directory, marker, and skill files. The
-command prints the preserved path so cleanup remains an explicit user action. `target add` syncs once the
-target is recorded, so the new directory is populated in one command; the
-approval just given named that exact directory, so it carries through. Pass
-`--no-sync` to record the target without populating it.
+`agent list` prints one line per directory with the agents that read it and
+whether skillmux manages it yet. `agent add` rewrites the `agents` line in
+place, keeps your comments, adopts each new directory with the same ownership
+and rollback checks as `init`, and syncs. Pass `--no-sync` to only record the
+agents. `agent remove` stops syncing a directory and leaves its files and
+marker where they are, so cleanup stays an explicit step. `agent rehome`
+re-points managed links after `vault_path` moves.
+
+`skillmux target` no longer exists. Running it prints a pointer to `skillmux
+agent`. See [Migrating from targets](configuration.md#migrating-from-targets).
 
 ---
 
 ## Core skills (`skillmux core`)
 
-Pin or unpin skills into `[core]`, the tier every target receives by
+Pin or unpin skills into `[core]`, the tier every agent directory receives by
 default, capped at 25 skills unless `[core].limit` raises it:
 
 ```sh
@@ -338,9 +345,9 @@ One or more `skill_id` arguments are accepted per call and applied
 atomically against a single in-memory manifest: if any one of them is
 already pinned elsewhere (or, for `unpin`, not currently pinned), the
 whole call fails and the manifest file is left untouched. Both commands
-then sync, so a pin reaches every target directory in one command; `--json`
-returns the per-target result in the same envelope. Pass `--no-sync` to
-write the manifest alone. A target directory this machine has never synced
+then sync, so a pin reaches every agent directory in one command; `--json`
+returns the per-directory result in the same envelope. Pass `--no-sync` to
+write the manifest alone. A project directory this machine has never synced
 still needs its own approval, so a pin never creates one. To pin into a
 `[project.<group>]` tier instead, use `skillmux project pin` (see
 [Project Setup](#project-setup-skillmux-project-init)).
@@ -475,7 +482,7 @@ Named CLI contexts (`--context <name>` or `--server <url>`) support the followin
 - `skillmux eval promote --since <window>`: fetches promotable candidates from the remote server's audit db via `POST /admin/v1/eval/promote`, dedups against the local fixture file, and writes locally.
 - `skillmux doctor`: inspects remote server status, readiness, deployment runtime, and capabilities without requiring local vault access.
 
-Run on a host, `doctor` also reports `sync_drift`: a planned-but-never-performed sync naming every target directory whose contents no longer match what the manifest pins. Targets scoped to another `host` are excluded, and the check is omitted altogether in a container, which serves skills without owning a target directory.
+Run on a host, `doctor` also reports `sync_drift`: a planned-but-never-performed sync naming every agent directory whose contents no longer match what the manifest pins. A machine with no `agents` gets an `agents` note instead. `doctor` omits the check in a container, which serves skills without owning an agent directory.
 
 ---
 

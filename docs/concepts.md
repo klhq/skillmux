@@ -45,8 +45,8 @@ Skillmux applies three policies to one vault checkout:
 
 | Tier | Scope | Delivery |
 | --- | --- | --- |
-| Core | Each configured target | Native agent skill directory |
-| Project | Selected project paths and targets | Project-local native skill directory |
+| Core | Each configured agent on this machine | Native agent skill directory |
+| Project | Selected project paths and agents | Project-local native skill directory |
 | Routed | Full indexed vault | MCP on demand |
 
 Core and project skills are **pinned**. `skillmux sync` creates managed
@@ -110,39 +110,38 @@ downloads and caches GTE-small when local inference first loads it;
 `skillmux models download` prefetches it. Neither Skillmux server image
 bundles a local reranker; configure one remotely when needed.
 
-## Agents and targets
+## Agents
 
 An **agent** is a supported product name such as `claude-code` or `codex`.
-Skillmux maps it to the product's skill directory and safe instruction-file
-conventions.
+Each machine lists the agents it runs in `agents` in its own `config.toml`.
+Skillmux maps each agent to the product's skill directory and safe
+instruction-file conventions:
 
-A **target** is a physical directory managed by sync. Several agents can map
-to one target. OpenCode, GitHub Copilot, and Windsurf share
-`~/.agents/skills`, so Skillmux deduplicates that directory.
+| Agent | Directory |
+| --- | --- |
+| `claude-code` | `~/.claude/skills` |
+| `codex` | `$CODEX_HOME/skills` |
+| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes` | `~/.agents/skills` |
+| `antigravity` | `~/.gemini/config/skills` |
 
-The mapping is not total. `goose` and `hermes` use full-vault delivery and
-map to no target at all, so commands that take `--agent` as a stand-in for a
-target reject them.
-
-Custom targets let you manage another directory without adding a product
-adapter:
-
-```sh
-skillmux target add custom-agent --dir /srv/custom-agent/skills --yes
-```
+Several agents read `~/.agents/skills`, so Skillmux syncs that directory once
+however many of them you list. You name agents, never directories, which keeps
+one owner per directory on every machine. The shared vault manifest describes
+skills and projects and holds no hostnames or directory paths.
 
 ## Ownership markers
 
-Each managed target contains a `.skillmux` marker. The marker records the
-target name, vault, schema version, and entries created by Skillmux.
+Each managed agent directory contains a `.skillmux` marker. The marker records
+the directory's owner, vault, schema version, and entries created by Skillmux.
 
 Sync removes only recorded entries. It refuses to adopt an unmarked directory,
-overwrite unmanaged collisions, or treat a local overlay marker as a target
-marker.
+overwrite unmanaged collisions, or treat a local overlay marker as an agent
+directory marker. A marker written under an old hand-picked target name
+belongs to the same directory, and the next sync rewrites the name in place.
 
-Run `skillmux init --dry-run` before changing a target. Read
-[Managing skills](skill-management.md#target-ownership-and-recovery) before
-undoing an adopted target.
+Run `skillmux init --dry-run` before changing an agent directory. Read
+[Managing skills](skill-management.md#directory-ownership-and-recovery) before
+undoing an adopted directory.
 
 ## Project groups
 
@@ -150,12 +149,14 @@ A project group connects:
 
 - one or more local project paths;
 - a set of skill IDs;
-- selected targets.
+- the agents that should see those skills.
 
-Skillmux materializes each group inside the project using the target's path
-relative to the user's home directory. A shared `skillmux.toml` can list
-checkout paths from several machines. Sync skips paths that do not exist on
-the current machine.
+Skillmux materializes each group inside the project, at each agent
+directory's path relative to your home directory, for example
+`<project>/.claude/skills`. A shared `skillmux.toml` can list checkout paths
+from several machines. Sync skips paths that do not exist on the current
+machine, and pins the group only into directories that this machine's own
+agents read.
 
 ## Local vault overlays
 

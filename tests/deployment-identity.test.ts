@@ -7,6 +7,7 @@ function config(inference: Config["inference"]): Config {
   return {
     vault_path: "/test/vault",
     local_vault_paths: [],
+    agents: [],
     state_dir: "/test/state",
     recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
     output: { top_k: 10, max_top_k: 50 },

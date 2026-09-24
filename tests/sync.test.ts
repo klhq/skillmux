@@ -314,6 +314,42 @@ describe("syncTarget", () => {
   });
 });
 
+describe("syncTarget legacy owner names", () => {
+  test("adopts a hand-named target marker under the surface id and reports the old name", () => {
+    const vaultPath = tmpDir("skillmux-sync-rename-vault-");
+    writeSkillAt(vaultPath, "writing-clearly");
+    writeSkillAt(vaultPath, "code-review");
+    const targetDir = join(tmpDir("skillmux-sync-rename-target-"), "skills");
+    syncTarget({ vaultPath, targetDir, targetName: "agents-albatron", coreSkillIds: ["writing-clearly"] });
+
+    const planned = syncTarget(
+      { vaultPath, targetDir, targetName: "agent-skills", coreSkillIds: ["writing-clearly", "code-review"] },
+      { dryRun: true },
+    );
+    expect(planned).toEqual({ added: ["code-review"], removed: [], skipped: [], renamedFrom: "agents-albatron" });
+    expect(readSkillmuxMarker(targetDir)?.target).toBe("agents-albatron");
+
+    const applied = syncTarget({
+      vaultPath,
+      targetDir,
+      targetName: "agent-skills",
+      coreSkillIds: ["writing-clearly", "code-review"],
+    });
+    expect(applied.renamedFrom).toBe("agents-albatron");
+    const marker = readSkillmuxMarker(targetDir);
+    expect(marker?.target).toBe("agent-skills");
+    expect(marker?.managed_entries).toEqual(["writing-clearly", "code-review"]);
+
+    expect(
+      syncTarget({ vaultPath, targetDir, targetName: "agent-skills", coreSkillIds: ["writing-clearly", "code-review"] })
+        .renamedFrom,
+    ).toBeUndefined();
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+});
+
 describe("restoreMonolith", () => {
   test("replaces a .skillmux-marked target directory with a symlink to the vault root", () => {
     const vaultPath = tmpDir("skillmux-sync-vault-");
@@ -517,14 +553,17 @@ describe("adoptTarget", () => {
     rmSync(vaultPath, { recursive: true, force: true });
   });
 
-  test("rejects adoption when existing target ownership names another target or vault", () => {
+  test("re-owns a legacy target name under the surface id, but still rejects another vault", () => {
     const dir = tmpDir("skillmux-sync-adopt-conflict-");
     const firstVault = tmpDir("skillmux-sync-adopt-vault-");
     const secondVault = tmpDir("skillmux-sync-adopt-vault-");
-    adoptTarget(dir, "claude", firstVault);
+    adoptTarget(dir, "agents-albatron", firstVault);
+    const createdAt = readSkillmuxMarker(dir)?.created_at;
 
-    expect(() => adoptTarget(dir, "codex", firstVault)).toThrow('target "claude"');
-    expect(() => adoptTarget(dir, "claude", secondVault)).toThrow("vault_path");
+    expect(adoptTarget(dir, "agent-skills", firstVault).adopted).toBe(false);
+    expect(readSkillmuxMarker(dir)?.target).toBe("agent-skills");
+    expect(readSkillmuxMarker(dir)?.created_at).toBe(createdAt);
+    expect(() => adoptTarget(dir, "agent-skills", secondVault)).toThrow("vault_path");
 
     rmSync(dir, { recursive: true, force: true });
     rmSync(firstVault, { recursive: true, force: true });
@@ -618,7 +657,6 @@ describe("planSyncDrift", () => {
       vaultPath,
       targets: [{ name: "claude", dir: targetDir, projectGroups: {} }],
       coreSkillIds: ["writing-clearly", "code-review"],
-      currentHost: "cinnabon",
     });
 
     expect(report.drifted).toHaveLength(1);
@@ -639,7 +677,6 @@ describe("planSyncDrift", () => {
       vaultPath,
       targets: [{ name: "claude", dir: targetDir, projectGroups: {} }],
       coreSkillIds,
-      currentHost: "cinnabon",
     });
 
     expect(report.drifted).toEqual([]);
@@ -655,7 +692,6 @@ describe("planSyncDrift", () => {
       vaultPath,
       targets: [{ name: "claude", dir: targetDir, projectGroups: {} }],
       coreSkillIds: ["writing-clearly", "code-review"],
-      currentHost: "cinnabon",
     });
 
     expect(report.drifted).toHaveLength(1);
@@ -677,30 +713,9 @@ describe("planSyncDrift", () => {
       vaultPath,
       targets: [{ name: "claude", dir: targetDir, projectGroups: {} }],
       coreSkillIds: ["writing-clearly"],
-      currentHost: "cinnabon",
     });
 
     expect(report.drifted[0]!.removed).toEqual(["code-review"]);
-  });
-
-  test("skips a target scoped to another machine instead of planning it", () => {
-    const vaultPath = vaultWith(["writing-clearly"]);
-    const report = planSyncDrift({
-      vaultPath,
-      targets: [
-        {
-          name: "workhorse-claude",
-          dir: join(tmpDir("skillmux-drift-target-"), "claude"),
-          host: "workhorse",
-          projectGroups: {},
-        },
-      ],
-      coreSkillIds: ["writing-clearly"],
-      currentHost: "cinnabon",
-    });
-
-    expect(report.otherHosts).toEqual(["workhorse-claude"]);
-    expect(report.drifted).toEqual([]);
   });
 
   test("records a target it cannot plan without failing the whole report", () => {
@@ -718,7 +733,6 @@ describe("planSyncDrift", () => {
         { name: "codex", dir: collidedDir, projectGroups: {} },
       ],
       coreSkillIds: ["writing-clearly", "code-review"],
-      currentHost: "cinnabon",
     });
 
     expect(report.unplannable).toHaveLength(1);
@@ -743,7 +757,6 @@ describe("planSyncDrift", () => {
         },
       ],
       coreSkillIds: ["writing-clearly"],
-      currentHost: "cinnabon",
     });
 
     expect(report.drifted).toHaveLength(1);

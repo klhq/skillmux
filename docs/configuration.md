@@ -53,7 +53,45 @@ vault_path = "/home/you/skills"
 It validates that the path resolves to a directory with at least one
 `SKILL.md`, preserves an existing config byte-for-byte, and leaves
 `local_vault_paths` unset. `skillmux init --vault ~/skills --yes` uses the
-same bootstrap when the machine config does not exist.
+same bootstrap when the machine config does not exist, then records the agents
+you selected in `agents`.
+
+## Agents
+
+`agents` in `config.toml` lists the agents this machine syncs skills to:
+
+```toml
+vault_path = "~/skills"
+agents = ["claude-code", "codex", "opencode"]
+```
+
+Each agent reads a fixed directory, and `sync` derives the directories from
+this list. You never name a directory yourself:
+
+| Agent | Directory |
+|---|---|
+| `claude-code` | `~/.claude/skills` |
+| `codex` | `$CODEX_HOME/skills` (default `~/.codex/skills`) |
+| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes` | `~/.agents/skills` |
+| `antigravity` | `~/.gemini/config/skills` |
+
+Agents that share a directory share one sync, so listing `opencode` and
+`hermes` together fills `~/.agents/skills` once. An unknown name fails config
+validation with the list of supported agents. To support a new tool, add it to
+the agent registry in `src/init-agents.ts`; config has no custom-directory
+escape hatch, which keeps one directory to one owner on every machine.
+
+`agents` defaults to `[]`, and a machine with no agents syncs nothing.
+`skillmux sync` and `skillmux doctor` both print a note in that case. Edit the
+list with `skillmux agent add <agent>... --yes` and `skillmux agent remove
+<agent>... --yes`, or by hand. Both commands rewrite the `agents` line in place
+and leave the rest of the file, comments included, as you wrote it. If a
+dotfiles manager renders `config.toml` from a template, set `agents` in the
+template instead, since the next render replaces whatever the CLI wrote.
+
+Because `agents` lives in this machine's own config, `sync` creates an agent
+directory the first time without asking. Nothing in the shared vault can point
+it somewhere new.
 
 ## Local inference
 
@@ -284,23 +322,25 @@ Lives at the vault root (a legacy `skr.toml` is still read if present, never wri
 
 ```toml
 [core]
-skills = ["csv-formatter"]           # pinned into every [targets.*] dir; capped at 25 by default
+skills = ["csv-formatter"]           # pinned into every configured agent's directory; capped at 25 by default
 # limit = 30                        # optional: raise or lower that cap
 
 [project.repo1]
 paths = ["/Users/you/code/repo1"]    # only synced for paths that exist locally
 skills = ["pdf-extractor"]           # must not overlap [core]
-
-[targets.claude-code]
-host = "workhorse"                    # optional; init adds the current hostname
-project_groups = ["repo1"]           # which [project.*] groups materialize into this target; [] means none
+agents = ["claude-code", "codex"]    # which agents see this project's skills; [] means none
 ```
 
-- `[core].skills`: symlinked into every `[targets.*]` dir on `sync`. Capped at 25 skills unless `[core].limit` says otherwise; `sync` fails if a listed skill id isn't actually in the vault.
+The manifest holds what every machine shares: skill curation and project
+associations. Which agents a machine runs lives in that machine's
+[`agents`](#agents), never here, so the manifest carries no hostnames and no
+directory paths.
+
+- `[core].skills`: symlinked into each configured agent's directory on `sync`. Capped at 25 skills unless `[core].limit` says otherwise; `sync` fails if a listed skill id isn't actually in the vault.
 - `[core].limit` (optional, positive integer): the cap on `[core].skills`. Absent means 25. Exceeding it fails with an error naming this key, because the cap is a budget on how much skill frontmatter every agent carries in its system prompt, not a structural limit. It lives in the manifest rather than machine config so the same manifest validates identically on every machine.
-- `[project.<group>].skills`: symlinked only into `<path>/<relative path from $HOME to the target dir>`, for each `paths` entry, and only for targets whose `project_groups` names that group. `paths` entries must resolve under `$HOME` (that's how the pin path is derived). A skill can't appear in both `[core]` and the same `[project.*]` group.
+- `[project.<group>].skills`: symlinked into `<path>/<agent directory relative to $HOME>` for each `paths` entry, for example `/Users/you/code/repo1/.claude/skills`. The agent directory must sit under `$HOME`, because `sync` derives the pin path from it. A skill can't appear in both `[core]` and the same `[project.*]` group.
+- `[project.<group>].agents`: the agents that should see the group's skills. `sync` matches by directory: a machine pins the group into each of its own agent directories that one of these agents reads. A project listing `opencode` therefore also reaches a machine that only runs `hermes`, since both read `~/.agents/skills`. `project init` and `project attach` always write this list, so an empty or missing list means you removed it and the group syncs nowhere.
 - `[project.<group>].paths` can list the same project's checkout on more than one machine (e.g. `["/home/alice/code/repo1", "/Users/alice/code/repo1"]`). `sync` silently skips any entry that doesn't exist on the machine it's running on (see below), so one shared manifest can span machines with different checkout locations without needing per-machine manifests.
-- `[targets.<name>]`: one entry per adopted surface. Built-in names (`agent-skills`, `claude-code`, and `codex`) derive their directories from the name and omit `dir`. A custom target requires `dir`; create one with `skillmux target add <name> --dir <dir> --yes`. `skillmux target migrate --yes` removes legacy built-in `dir` fields without touching target files. An optional `host` limits the target to an exact machine-hostname match; omit it for a global, backward-compatible target. A host mismatch is reported and skipped before any target filesystem operation. `project_groups` is an explicit list, not a boolean: a target only receives the specific groups it names, never every group in the manifest.
 
 **Pin/unpin without hand-editing.** `skillmux core pin`/`unpin` mutate `[core]` for you, and `skillmux project pin`/`unpin` mutate `[project.*]`, validating with the same rules `sync` enforces (skill must resolve from `vault_path`, no duplicate pins, `[core]` stays under its cap) before writing anything:
 
@@ -317,15 +357,14 @@ Both commands accept one or more `skill_id` arguments per call; all of them are 
 
 Pinning syncs. Writing the manifest is only half the job, since the pin stays invisible to
 every agent until the symlinks move, so both commands run the sync themselves and report
-what each target gained or lost. Under `--json` that arrives inside the same envelope as a
-`targets` array, never as a second document. Pass `--no-sync` to write the manifest alone,
-which is what you want when batching several pins before one sync. The pin's own `--yes`
-answers "pin this skill" and is deliberately not forwarded: a target directory this machine
-has never synced still needs its own approval, so a pin can never silently create one. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
+what each agent directory gained or lost. Under `--json` that arrives inside the same
+envelope as a `dirs` array, never as a second document. Pass `--no-sync` to write the
+manifest alone, which is what you want when batching several pins before one sync. The
+pin's own `--yes` answers "pin this skill" and is deliberately not forwarded: a project
+directory this machine has never synced still needs its own approval, so a pin can never
+silently create one. To pin into a `[project.<group>]` tier that doesn't exist yet, create it first with `skillmux project add-path <group> <path> --yes`. Hand-editing `skillmux.toml` directly is still fully supported; these commands are a convenience layer over the same file, not a replacement for it.
 
 > **Breaking change:** `skillmux manifest pin`/`unpin` is removed. `[core]` pinning is now `skillmux core pin`/`unpin`; `[project.*]` pinning was already available as `skillmux project pin`/`unpin` and is now the only way to do it. There's no more `--path`-based inline group creation from a pin call; use `project add-path` to create the group first.
->
-> **Breaking change:** `[targets.<name>].project` (a boolean) has been replaced by `project_groups` (an array of `[project.*]` names). A manifest still using the old field fails to parse with an error pointing at the new one. To migrate, replace `project = true` with `project_groups = [...]` listing every group that target previously received (previously *all* groups, unconditionally); replace `project = false` with `project_groups = []`.
 >
 > **Breaking change:** `[project.<group>].repos` has been renamed to `paths`. It was never required to be a git repository, just a local directory, and the old name collided in meaning with `skillmux install <repo>`'s unrelated git-source `repo` concept. A manifest still using `repos` fails to parse with an error pointing at `paths`; migrate by renaming the key (values are unchanged).
 
@@ -336,36 +375,55 @@ the manifest is meant to be portable across machines and a machine-local
 override wouldn't exist elsewhere. `doctor` validates the manifest as part of
 its checks, surfacing any violation without writing anything back. Its `sync_drift` check
 goes one step further and plans (never performs) the sync this machine would run, naming
-every target directory whose contents no longer match what the manifest pins. A manifest
+every agent directory whose contents no longer match what the manifest pins. A manifest
 pulled in from another machine, a `--no-sync` pin, and a hand-edit can all produce that
-gap. A target scoped to another `host` is left out, since this machine is not the one that
-syncs it, and the check is omitted entirely in a container: targets are a local delivery
+gap. `doctor` skips the check in a container: agent directories are a local delivery
 concern, and a container serving the MCP surface reads the vault to answer `resolve_skill`
-and `fetch_skill` without owning a target directory at all.
+and `fetch_skill` without owning an agent directory at all.
+
+### Migrating from targets
+
+skillmux no longer reads `[targets.*]` in `skillmux.toml`. A manifest that still
+has one fails to parse, and `sync` and `doctor` report how to fix it. Migrate
+in three steps:
+
+1. On each machine, list the agents it runs in `config.toml`, for example
+   `agents = ["claude-code", "opencode"]`. Run `skillmux agent add <agent>...
+   --yes`, or set it in your dotfiles template.
+2. For each `[project.<group>]`, replace the old `project_groups` references
+   with `agents = [...]` on the group itself, naming the agents whose
+   directories used to list that group.
+3. Delete every `[targets.*]` table from `skillmux.toml` and push the vault.
+
+Existing agent directories keep working. A `.skillmux` marker written under an
+old hand-picked name, such as `agents-workhorse`, belongs to the same directory
+the new agent maps to, so the next `sync` rewrites the owner name and prints
+`adopted marker from legacy target "<name>"`. You don't need to recreate any
+directory.
 
 ### Ownership marker
 
-Every directory `sync` manages gets a versioned `.skillmux` marker. A target
-marker records `schema_version: 1`, `managed_by: "skillmux"`, `role:
-"target"`, its target name, `vault_path`, `created_at`, and
+Every directory `sync` manages gets a versioned `.skillmux` marker. An agent
+directory's marker records `schema_version: 1`, `managed_by: "skillmux"`,
+`role: "target"`, the directory's owner (`agent-skills`, `claude-code`,
+`codex`, or `antigravity`), `vault_path`, `created_at`, and
 `managed_entries`. The last field is the exact list of directory entries
 Skillmux created. Sync removes only those tracked entries, preserves unrelated
 content, and rejects a desired skill that collides with an unmanaged entry
 before changing anything.
 
 `sync` refuses to touch a directory that exists but has no marker; run
-`skillmux init --agent <name> --yes` (or `skillmux target add <name> --dir
-<dir> --yes` for a directory not tied to any supported agent) first, which
-either creates the directory fresh or adopts an existing one in place
-(contents untouched).
+`skillmux init --agent <name> --yes` or `skillmux agent add <name> --yes`
+first, which either creates the directory fresh or adopts an existing one in
+place (contents untouched).
 `sync --restore-monolith` likewise refuses a `local_vault` marker or any
-unmanaged target content before replacing a target directory with a symlink
-to the vault.
+unmanaged content before replacing an agent directory with a symlink to the
+vault.
 
 The same `.skillmux` filename is used for `local_vault_paths` entries (see
-below), distinguished by `role: "local_vault"` and never accepted as target
-ownership. Legacy unversioned markers are read for compatibility. An empty
-legacy target is upgraded safely on its next sync; one containing untracked
+below), distinguished by `role: "local_vault"` and never accepted as agent
+directory ownership. Legacy unversioned markers are read for compatibility. An
+empty legacy directory is upgraded safely on its next sync; one containing untracked
 entries is rejected with a migration diagnostic because their ownership
 cannot be inferred.
 

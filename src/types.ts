@@ -1,3 +1,5 @@
+import type { AgentId } from "./agent-ids";
+
 export interface RecallConfig {
   k_lexical: number;
   k_vector: number;
@@ -123,6 +125,8 @@ export interface Config {
   vault_path: string;
   local_vault_paths: string[];
   state_dir: string;
+  /** Agents this machine syncs skills to. See docs/configuration.md#agents. */
+  agents: AgentId[];
   recall: RecallConfig;
   output: OutputConfig;
   inference: InferenceConfig;
