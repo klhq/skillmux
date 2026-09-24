@@ -136,21 +136,25 @@ someone may have hand-edited it. Pass `--force` to overwrite anyway. Like
 
 ## Plan agent delivery
 
-Use product names for common agents:
+Name the agents this machine runs:
 
 ```sh
 skillmux init --agent claude-code --agent codex --dry-run
 ```
 
-For a directory that isn't tied to any supported agent, use `target add`
-directly instead of `init`:
+`init` writes them to `agents` in `config.toml`. Add or remove one later
+without rerunning setup:
 
 ```sh
-skillmux target add my-agent --dir /srv/my-agent/skills --yes
+skillmux agent add opencode --yes
+skillmux agent remove codex --yes
 ```
 
-Skillmux refuses to adopt a target that points to the whole vault because sync
-would reduce its visible skills. Review that migration first:
+If a dotfiles manager renders `config.toml`, set `agents` in its template
+instead. The next render replaces whatever the CLI wrote.
+
+Skillmux refuses to adopt an agent directory that points to the whole vault
+because sync would reduce its visible skills. Review that migration first:
 
 ```sh
 skillmux init --agent claude-code --migrate-full-vault \
@@ -161,7 +165,7 @@ skillmux init --agent claude-code --migrate-full-vault \
 
 ## Manage core pins
 
-Core skills go to each configured target:
+Core skills go to each configured agent's directory:
 
 ```sh
 skillmux core pin csv-formatter --yes
@@ -192,23 +196,27 @@ skillmux project add-path my-project ~/code/my-project --yes
 skillmux project pin my-project code-context --yes
 skillmux project attach my-project --agent claude-code --agent codex --yes
 skillmux project unpin my-project code-context --yes
-skillmux project detach my-project --target codex --yes
+skillmux project detach my-project --agent codex --yes
 skillmux project remove-path my-project ~/code/my-project --yes
 ```
 
-Create the group with `project init` or `project add-path` before pinning.
+`attach` and `detach` edit the group's `agents`. The vault shares that list, so
+every machine that runs one of those agents, and has the project checked out,
+gets the project's skills. Create the group with `project init` or `project
+add-path` before pinning.
 Project setup syncs by default. Direct maintenance commands update the
 manifest but leave materialization to the next `skillmux sync`.
 
-## Synchronize targets
+## Synchronize agent directories
 
 ```sh
 skillmux sync --dry-run
 skillmux sync
 ```
 
-Sync compares the manifest with entries recorded in each target's `.skillmux`
-marker. It creates missing symlinks and removes stale managed links.
+Sync compares the manifest with entries recorded in each agent directory's
+`.skillmux` marker. It creates missing symlinks and removes stale managed
+links.
 
 Install a vault-checkout Git hook when merges can change `skillmux.toml`:
 
@@ -293,35 +301,32 @@ named deployment instead of the local vault and audit db. See [CLI
 reference](cli.md#administrative-http-api-adminv1) for the full remote
 command surface and route table.
 
-## Target ownership and recovery
+## Directory ownership and recovery
 
-`skillmux target remove <name> --yes` removes the manifest record and preserves
-the target directory, marker, and files. Cleanup stays under your control.
+`skillmux agent remove <agent> --yes` stops syncing that agent's directory and
+leaves the directory, marker, and files in place. Cleanup stays under your
+control.
 
-Built-in targets (`agent-skills`, `claude-code`, and `codex`) resolve their
-native directories from their names. Their manifest entries store only host and
-project-group configuration. Custom targets retain an explicit `dir`. To remove
-legacy built-in `dir` fields without changing any target files, run
-`skillmux target migrate --dry-run` and then `skillmux target migrate --yes`.
+When a managed directory's marker still names a previous vault checkout after
+a vault move, run `skillmux agent rehome --yes`. It covers every configured
+agent directory and its existing project pins, validates each recorded managed
+symlink, and then updates the `.skillmux` markers to the configured
+`vault_path`. Use `--dry-run` first to inspect the marker paths. Rehome never
+creates or removes skill links. It retargets a link only when it resolves
+exactly to the previous `vault_path` recorded in its marker, and it refuses
+legacy markers or any link that cannot be proven to belong to either the
+previous or configured vault.
 
-When a managed target's marker still names a previous vault checkout after a
-vault move, use `skillmux target rehome <name> --yes`. It validates every
-recorded managed symlink in the target and its existing project pins before
-updating their `.skillmux` markers to the configured `vault_path`. Use
-`--dry-run` first to inspect the marker paths. Rehome never creates or removes
-skill links. It retargets a link only when it resolves exactly to the previous
-`vault_path` recorded in its marker, and it refuses legacy markers or any link
-that cannot be proven to belong to either the previous or configured vault.
-
-Restore a managed target to one symlink that exposes the full vault:
+Restore managed agent directories to one symlink each that exposes the full
+vault:
 
 ```sh
 skillmux sync --restore-monolith
 ```
 
-This operation removes the target marker and per-skill links. It refuses to
-run when unmanaged content makes the replacement unsafe. Re-adopt the target
-with `skillmux init` before running managed sync again.
+This operation removes the marker and per-skill links. It refuses to run when
+unmanaged content makes the replacement unsafe. Re-adopt the directory with
+`skillmux init` or `skillmux agent add` before running managed sync again.
 
 Do not delete `.skillmux` markers by hand. The marker gives sync the ownership
 record it needs to preserve unrelated content.

@@ -2,7 +2,12 @@ import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { expandHome } from "./config";
-import { BUILT_IN_TARGET_NAMES, resolveBuiltInTarget } from "./init-agents";
+import {
+  planAgentSurfaces,
+  SUPPORTED_AGENT_IDS,
+  type AgentId,
+  type SurfaceId,
+} from "./init-agents";
 import { resolveSkillRoot, SKILL_ID_PATTERN } from "./vault";
 
 export const MANIFEST_FILENAME = "skillmux.toml";
@@ -22,12 +27,7 @@ const skillIdSchema = z.string().regex(SKILL_ID_PATTERN);
 const projectGroupSchema = z.object({
   paths: z.array(z.string().min(1)),
   skills: z.array(skillIdSchema),
-}).strict();
-
-const targetSchema = z.object({
-  dir: z.string().min(1).optional(),
-  host: z.string().min(1).optional(),
-  project_groups: z.array(groupNameSchema).default([]),
+  agents: z.array(z.enum(SUPPORTED_AGENT_IDS)).default([]),
 }).strict();
 
 const manifestSchema = z.object({
@@ -36,74 +36,62 @@ const manifestSchema = z.object({
     limit: z.number().int().positive().optional(),
   }).strict(),
   project: z.record(groupNameSchema, projectGroupSchema).optional(),
-  targets: z.record(groupNameSchema, targetSchema).default({}),
 }).strict();
 
 export type ProjectGroup = z.infer<typeof projectGroupSchema>;
-export type Target = z.infer<typeof targetSchema>;
 export type Manifest = z.infer<typeof manifestSchema>;
 
-export function resolveTargetDir(
-  name: string,
-  target: Target,
-  options: { home?: string; codexHome?: string } = {},
-): string {
-  if (BUILT_IN_TARGET_NAMES.has(name)) {
-    return resolveBuiltInTarget(name, {
-      ...options,
-      codexHome: options.codexHome ?? (process.env.CODEX_HOME ? expandHome(process.env.CODEX_HOME) : undefined),
-    }).path;
-  }
-  if (!target.dir) throw new Error(`[targets.${name}] requires dir for a custom target`);
-  return expandHome(target.dir);
+export const LEGACY_TARGETS_ERROR =
+  "skillmux.toml: [targets] is no longer supported. Each machine now lists its agents in " +
+  'config.toml (agents = ["claude-code", ...]) and each project lists its agents in ' +
+  "[project.<group>].agents. Delete the [targets.*] tables from skillmux.toml; see " +
+  "docs/configuration.md#migrating-from-targets.";
+
+export interface SyncSurface {
+  id: SurfaceId;
+  dir: string;
+  /** Configured agents on this machine that read this directory. */
+  agents: AgentId[];
+  /** Project groups whose agents share this directory. */
+  projectGroups: Record<string, ProjectGroup>;
 }
 
 /**
- * Flattens the manifest into the resolved target list `planSyncDrift` plans against, so
- * the drift check and the real sync agree on which directories a target owns and which
- * project groups it carries.
+ * Everything one machine syncs: a directory per distinct surface its
+ * configured agents read, carrying the project groups that surface should
+ * receive. A project reaches a surface when any of its agents reads that
+ * directory. Matching goes by directory, not agent name, because the files land in
+ * the same place whichever reader asked for them. Shared by sync and doctor's
+ * drift check so the two can never disagree about what this machine owns.
  */
-export function resolveSyncTargets(manifest: Manifest): {
-  name: string;
-  dir: string;
-  host?: string;
-  projectGroups: Record<string, ProjectGroup>;
-}[] {
-  const allGroups = manifest.project ?? {};
-  return Object.entries(manifest.targets).map(([name, target]) => ({
+export function resolveSyncSurfaces(
+  manifest: Manifest,
+  agents: readonly string[],
+  options: { home?: string; codexHome?: string } = {},
+): SyncSurface[] {
+  const groups = Object.entries(manifest.project ?? {}).map(([name, group]) => ({
     name,
-    dir: resolveTargetDir(name, target),
-    host: target.host,
+    group,
+    dirs: new Set(planAgentSurfaces(group.agents, options).surfaces.map((surface) => surface.path)),
+  }));
+  return planAgentSurfaces(agents, options).surfaces.map((surface) => ({
+    id: surface.id,
+    dir: surface.path,
+    agents: surface.agents,
     projectGroups: Object.fromEntries(
-      target.project_groups
-        .filter((group) => allGroups[group] !== undefined)
-        .map((group) => [group, allGroups[group]!]),
+      groups.filter(({ dirs }) => dirs.has(surface.path)).map(({ name, group }) => [name, group]),
     ),
   }));
 }
 
 export function parseManifest(toml: string): Manifest {
   const parsed = Bun.TOML.parse(toml) as Record<string, unknown>;
+  if ("targets" in parsed) throw new Error(LEGACY_TARGETS_ERROR);
   try {
-    const manifest = manifestSchema.parse(parsed);
-    for (const [name, target] of Object.entries(manifest.targets)) {
-      if (!BUILT_IN_TARGET_NAMES.has(name) && !target.dir) {
-        throw new Error(`[targets.${name}] requires dir for a custom target`);
-      }
-    }
-    return manifest;
+    return manifestSchema.parse(parsed);
   } catch (error) {
     if (error instanceof z.ZodError) {
       for (const issue of error.issues) {
-        if (
-          issue.code === "unrecognized_keys" &&
-          issue.path[0] === "targets" &&
-          issue.keys.includes("project")
-        ) {
-          throw new Error(
-            `[targets.${String(issue.path[1])}] uses the removed field "project" (boolean) — replace it with "project_groups" (an array of [project.<group>] names).`,
-          );
-        }
         if (
           issue.code === "unrecognized_keys" &&
           issue.path[0] === "project" &&
@@ -132,15 +120,7 @@ export function serializeManifest(manifest: Manifest): string {
 
   for (const [name, group] of Object.entries(manifest.project ?? {})) {
     sections.push(
-      `[project.${name}]\npaths = ${tomlStringArray(group.paths)}\nskills = ${tomlStringArray(group.skills)}`,
-    );
-  }
-
-  for (const [name, target] of Object.entries(manifest.targets)) {
-    const dir = BUILT_IN_TARGET_NAMES.has(name) ? "" : `\ndir = ${JSON.stringify(target.dir)}`;
-    const host = target.host ? `\nhost = ${JSON.stringify(target.host)}` : "";
-    sections.push(
-      `[targets.${name}]${dir}${host}\nproject_groups = ${tomlStringArray(target.project_groups)}`,
+      `[project.${name}]\npaths = ${tomlStringArray(group.paths)}\nskills = ${tomlStringArray(group.skills)}\nagents = ${tomlStringArray(group.agents)}`,
     );
   }
 
@@ -196,7 +176,7 @@ export function pinProject(manifest: Manifest, skillId: string, group: string, p
     }
     return {
       ...manifest,
-      project: { ...manifest.project, [group]: { paths, skills: [skillId] } },
+      project: { ...manifest.project, [group]: { paths, skills: [skillId], agents: [] } },
     };
   }
 
@@ -234,7 +214,7 @@ export interface UpsertProjectOptions {
   name: string;
   paths: string[];
   skills: string[];
-  targets: string[];
+  agents: AgentId[];
 }
 
 export function upsertProject(manifest: Manifest, options: UpsertProjectOptions): Manifest {
@@ -244,7 +224,7 @@ export function upsertProject(manifest: Manifest, options: UpsertProjectOptions)
     );
   }
 
-  const existingGroup = manifest.project?.[options.name] ?? { paths: [], skills: [] };
+  const existingGroup = manifest.project?.[options.name] ?? { paths: [], skills: [], agents: [] };
   for (const skillId of options.skills) {
     if (!skillIdSchema.safeParse(skillId).success) {
       throw new Error(`invalid skill ID "${skillId}"`);
@@ -254,16 +234,6 @@ export function upsertProject(manifest: Manifest, options: UpsertProjectOptions)
     if (existing) throw new Error(`skill "${skillId}" already pinned in ${existing}`);
   }
 
-  const targets = { ...manifest.targets };
-  for (const targetName of options.targets) {
-    const target = targets[targetName];
-    if (!target) throw new Error(`target "${targetName}" does not exist`);
-    targets[targetName] = {
-      ...target,
-      project_groups: [...new Set([...target.project_groups, options.name])],
-    };
-  }
-
   return {
     ...manifest,
     project: {
@@ -271,9 +241,9 @@ export function upsertProject(manifest: Manifest, options: UpsertProjectOptions)
       [options.name]: {
         paths: [...new Set([...existingGroup.paths, ...options.paths])],
         skills: [...new Set([...existingGroup.skills, ...options.skills])],
+        agents: [...new Set([...existingGroup.agents, ...options.agents])],
       },
     },
-    targets,
   };
 }
 
@@ -296,26 +266,19 @@ export function updateProjectPaths(
   };
 }
 
-export function updateProjectTargets(
+export function updateProjectAgents(
   manifest: Manifest,
   group: string,
-  changes: { attach?: string[]; detach?: string[] },
+  changes: { attach?: AgentId[]; detach?: AgentId[] },
 ): Manifest {
-  if (!manifest.project?.[group]) throw new Error(`[project.${group}] does not exist`);
-  const attach = new Set(changes.attach ?? []);
+  const existingGroup = manifest.project?.[group];
+  if (!existingGroup) throw new Error(`[project.${group}] does not exist`);
   const detach = new Set(changes.detach ?? []);
-  const requested = new Set([...attach, ...detach]);
-  for (const target of requested) {
-    if (!manifest.targets[target]) throw new Error(`target "${target}" does not exist`);
-  }
+  const agents = [...new Set([...existingGroup.agents, ...(changes.attach ?? [])])]
+    .filter((agent) => !detach.has(agent));
   return {
     ...manifest,
-    targets: Object.fromEntries(Object.entries(manifest.targets).map(([name, target]) => {
-      let groups = target.project_groups;
-      if (attach.has(name)) groups = [...new Set([...groups, group])];
-      if (detach.has(name)) groups = groups.filter((item) => item !== group);
-      return [name, { ...target, project_groups: groups }];
-    })),
+    project: { ...manifest.project, [group]: { ...existingGroup, agents } },
   };
 }
 
@@ -368,15 +331,6 @@ export function validateManifest(
   const coreSet = new Set(manifest.core.skills);
   for (const skillId of manifest.core.skills) {
     requireCoreVaultRoot(skillId, vaultPath, localVaultPaths, "[core]");
-  }
-
-  const groupNames = new Set(Object.keys(manifest.project ?? {}));
-  for (const [targetName, target] of Object.entries(manifest.targets)) {
-    for (const groupName of target.project_groups) {
-      if (!groupNames.has(groupName)) {
-        throw new Error(`[targets.${targetName}] project_groups references undefined group "${groupName}"`);
-      }
-    }
   }
 
   const notes: string[] = [];

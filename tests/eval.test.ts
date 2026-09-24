@@ -22,6 +22,7 @@ const vault = join(tmp, "vault");
 const config: Config = {
   vault_path: vault,
   local_vault_paths: [],
+  agents: [],
   state_dir: join(tmp, "state"),
   recall: { k_lexical: 5, k_vector: 5, k_rerank: 5 },
   output: { top_k: 5, max_top_k: 50 },

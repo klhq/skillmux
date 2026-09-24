@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { SUPPORTED_AGENT_IDS } from "./init-agents";
 import type { Config, ONNXDevice, ONNXDtype } from "./types";
 
 const onnxDeviceSchema = z.enum([
@@ -32,6 +33,7 @@ const configSchema = z.object({
   vault_path: z.string().min(1),
   local_vault_paths: z.array(z.string()),
   state_dir: z.string().min(1),
+  agents: z.array(z.enum(SUPPORTED_AGENT_IDS)).default([]),
   recall: z.object({
     k_lexical: z.number().int().positive(),
     k_vector: z.number().int().positive(),
@@ -117,6 +119,7 @@ const DEFAULTS: Config = {
   vault_path: "~/skills",
   local_vault_paths: [],
   state_dir: "~/.local/state/skillmux",
+  agents: [],
   recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
   output: { top_k: 10, max_top_k: 50 },
   inference: {

@@ -33,6 +33,7 @@ async function harness() {
   const config: Config = {
     vault_path: vaultPath,
     local_vault_paths: [],
+    agents: [],
     state_dir: stateDir,
     recall: { k_lexical: 20, k_vector: 20, k_rerank: 10 },
     output: { top_k: 10, max_top_k: 50 },

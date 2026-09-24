@@ -1,12 +1,11 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { hostname } from "node:os";
 import { createClients, RemoteInferenceError } from "./clients";
 import { embeddingDimension, expandHome, isLoopbackBindHost } from "./config";
 import { describeDeployment, type DeploymentIdentity } from "./deployment";
 import {
   parseManifest,
   resolveManifestPath,
-  resolveSyncTargets,
+  resolveSyncSurfaces,
   validateManifest,
   type Manifest,
 } from "./manifest";
@@ -134,11 +133,13 @@ export async function diagnose(
       validateManifest(manifest, vaultPath, localVaultPaths);
       checks.push({ name: "manifest", ok: true, detail: manifestPath });
 
-      // Targets and project groups are a local delivery concern: they say which directories
-      // on this machine get symlinks. A container serving the MCP surface reads the vault
-      // and returns skills; it syncs nothing and owns no target directory, so planning one
-      // there would report drift nobody in that deployment can or should act on.
-      if (deployment.runtime === "host") checks.push(...syncDriftChecks(vaultPath, manifest, localVaultPaths));
+      // Agent directories are a local delivery concern: they say which directories on
+      // this machine get symlinks. A container serving the MCP surface reads the vault and
+      // returns skills; it syncs nothing and owns no agent directory, so planning one there
+      // would report drift nobody in that deployment can or should act on.
+      if (deployment.runtime === "host") {
+        checks.push(...syncDriftChecks(vaultPath, manifest, config.agents, localVaultPaths, environment));
+      }
     } catch (error) {
       checks.push({
         name: `manifest:${manifestPath}`,
@@ -220,7 +221,7 @@ export async function diagnose(
 
 /**
  * A valid manifest still says nothing about whether the target directories match it.
- * `skillmux core pin` and `skillmux target add` now sync on their own, but a manifest
+ * `skillmux core pin` and `skillmux agent add` now sync on their own, but a manifest
  * pulled in from another machine, a `--no-sync` pin, or a hand-edit can all still leave
  * the two out of step, and nothing else reports that (`outdated` covers a different axis:
  * skills whose upstream moved on).
@@ -228,17 +229,32 @@ export async function diagnose(
 function syncDriftChecks(
   vaultPath: string,
   manifest: Manifest,
+  agents: Config["agents"],
   localVaultPaths: string[],
+  environment: Record<string, string | undefined>,
 ): DoctorCheck[] {
+  if (agents.length === 0) {
+    return [{
+      name: "agents",
+      ok: true,
+      detail: 'none configured in config.toml, so sync has nothing to do (set agents = [...] if that is not intended)',
+    }];
+  }
   const drift = planSyncDrift({
     vaultPath,
-    targets: resolveSyncTargets(manifest),
+    targets: resolveSyncSurfaces(manifest, agents, {
+      home: environment.HOME,
+      codexHome: environment.CODEX_HOME,
+    }).map((surface) => ({
+      name: surface.id,
+      dir: surface.dir,
+      projectGroups: surface.projectGroups,
+    })),
     localVaultPaths,
     coreSkillIds: manifest.core.skills,
-    currentHost: hostname(),
   });
   const checks: DoctorCheck[] = drift.unplannable.map((entry) => ({
-    name: `sync_drift:${entry.target}`,
+    name: `sync_drift:${entry.targetDir}`,
     ok: false,
     detail: `cannot plan a sync for ${entry.targetDir} — ${entry.reason}`,
     failure_kind: "configuration" as const,
@@ -248,11 +264,11 @@ function syncDriftChecks(
     ok: drift.drifted.length === 0,
     detail:
       drift.drifted.length === 0
-        ? "targets match the manifest"
+        ? "agent directories match the manifest"
         : `${drift.drifted
             .map(
               (entry) =>
-                `${entry.group ? `${entry.target}/${entry.group}` : entry.target} (${entry.targetDir}) +${entry.added.length} -${entry.removed.length}`,
+                `${entry.targetDir}${entry.group ? ` [project.${entry.group}]` : ""} +${entry.added.length} -${entry.removed.length}`,
             )
             .join("; ")} — run: skillmux sync`,
     failure_kind: drift.drifted.length === 0 ? undefined : "configuration",

@@ -46,6 +46,7 @@ async function vaultSnapshot(): Promise<Map<string, string>> {
 const config: Config = {
   vault_path: vaultDir,
   local_vault_paths: [],
+  agents: [],
   state_dir: join(tmp, "state"),
   recall: { k_lexical: 15, k_vector: 15, k_rerank: 10 },
   output: { top_k: 10, max_top_k: 50 },

@@ -3,7 +3,6 @@ import {
   assessAgentReadiness,
   detectInstalledAgents,
   getAgentDefinition,
-  resolveBuiltInTarget,
   SUPPORTED_AGENT_IDS,
   planAgentSurfaces,
 } from "../src/init-agents";
@@ -43,9 +42,7 @@ describe("init agent registry", () => {
     expect(plan.surfaces).toEqual([
       {
         id: "agent-skills",
-        targetName: "agent-skills",
         path: "/home/tester/.agents/skills",
-        deliveryMode: "managed-pins",
         agents: ["opencode", "github-copilot", "windsurf"],
       },
     ]);
@@ -61,37 +58,32 @@ describe("init agent registry", () => {
     expect(plan.surfaces[0]?.agents).toEqual(["claude-code"]);
   });
 
-  test("resolves built-in targets without vague names", () => {
-    expect(resolveBuiltInTarget("agent-skills", { home: "/home/tester" })).toEqual({
-      targetName: "agent-skills",
-      path: "/home/tester/.agents/skills",
-    });
-    expect(resolveBuiltInTarget("codex", {
+  test("goose and hermes read the shared ~/.agents/skills directory", () => {
+    const plan = planAgentSurfaces(["opencode", "goose", "hermes"], { home: "/home/tester" });
+    expect(plan.surfaces).toEqual([
+      {
+        id: "agent-skills",
+        path: "/home/tester/.agents/skills",
+        agents: ["opencode", "goose", "hermes"],
+      },
+    ]);
+  });
+
+  test("resolves each surface to its fixed directory, honoring codexHome", () => {
+    const plan = planAgentSurfaces(["claude-code", "codex", "antigravity"], {
       home: "/home/tester",
       codexHome: "/srv/codex",
-    })).toEqual({
-      targetName: "codex",
-      path: "/srv/codex/skills",
     });
+    expect(plan.surfaces.map(({ id, path }) => ({ id, path }))).toEqual([
+      { id: "claude-code", path: "/home/tester/.claude/skills" },
+      { id: "codex", path: "/srv/codex/skills" },
+      { id: "antigravity", path: "/home/tester/.gemini/config/skills" },
+    ]);
   });
 
-  test("rejects the retired agents/claude legacy target aliases", () => {
-    expect(() => resolveBuiltInTarget("agents", { home: "/home/tester" }))
-      .toThrow('unknown --target "agents"; supported targets: agent-skills, claude-code, codex, custom');
-    expect(() => resolveBuiltInTarget("claude", { home: "/home/tester" }))
-      .toThrow('unknown --target "claude"; supported targets: agent-skills, claude-code, codex, custom');
-  });
-
-  test("requires an explicit path for the custom target", () => {
-    expect(() => resolveBuiltInTarget("custom", { home: "/home/tester" }))
-      .toThrow("--target custom requires --path <dir>");
-    expect(resolveBuiltInTarget("custom", {
-      home: "/home/tester",
-      customPath: "/srv/my-agent/skills",
-    })).toEqual({
-      targetName: "custom",
-      path: "/srv/my-agent/skills",
-    });
+  test("rejects an agent the registry does not know", () => {
+    expect(() => planAgentSurfaces(["pi"], { home: "/home/tester" }))
+      .toThrow(/unsupported agent "pi"/);
   });
 
   test("reports skill surface, MCP registration, and instructions separately", () => {
@@ -109,35 +101,22 @@ describe("init agent registry", () => {
       },
       {
         agent: "goose",
-        skillSurface: { status: "manual", detail: "configure the full vault in Goose" },
+        skillSurface: { status: "planned", detail: "/home/tester/.agents/skills" },
         mcpRegistration: { status: "not-applicable", detail: "native skill loading" },
         instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
       },
       {
         agent: "hermes",
-        skillSurface: { status: "manual", detail: "configure the full vault in Hermes external_dirs" },
+        skillSurface: { status: "planned", detail: "/home/tester/.agents/skills" },
         mcpRegistration: { status: "not-applicable", detail: "native skill loading" },
         instructionSetup: { status: "manual", detail: "instruction adapter not applied" },
       },
     ]);
   });
 
-  test("every agent declares a deliveryMode, and every managed-pins agent has a surface or a manual message", () => {
+  test("every agent maps to a skill directory", () => {
     for (const id of SUPPORTED_AGENT_IDS) {
-      const def = getAgentDefinition(id);
-      expect(def.deliveryMode === "managed-pins" || def.deliveryMode === "full-vault").toBe(true);
-      if (def.deliveryMode === "managed-pins") {
-        expect(def.surfaceId, `${id} is managed-pins but declares no surfaceId`).toBeDefined();
-      } else {
-        expect(
-          def.surfaceId === undefined,
-          `${id} is full-vault but also declares a surfaceId`,
-        ).toBe(true);
-        expect(
-          def.manualSkillSurfaceMessage,
-          `${id} is full-vault but has no manualSkillSurfaceMessage for readiness reporting`,
-        ).toBeDefined();
-      }
+      expect(getAgentDefinition(id).surfaceId, `${id} declares no surfaceId`).toBeDefined();
     }
   });
 });

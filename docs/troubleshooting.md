@@ -25,7 +25,7 @@ continues with its last known good configuration.
 The server image can inspect and serve a mounted vault, but it cannot manage
 agent directories or mutate host configuration. Its help lists the supported
 server commands. For `init`, `sync`, install or pin management, model
-downloads, contexts, evaluation, project/target/local-vault
+downloads, contexts, evaluation, project/agent/local-vault
 management, or `config init`/`config set`, install and use the host CLI:
 
 ```sh
@@ -123,7 +123,7 @@ also reveals local-overlay shadowing.
 
 ## Sync failures
 
-### Target has no ownership marker
+### Agent directory has no ownership marker
 
 Skillmux will not change an existing unmarked directory. Adopt it first:
 
@@ -132,7 +132,7 @@ skillmux init --agent claude-code --dry-run
 skillmux init --agent claude-code --yes
 ```
 
-### Target points to the full vault
+### Agent directory points to the full vault
 
 Review the smaller pinned set before converting:
 
@@ -147,14 +147,28 @@ Apply the same command with `--yes` after checking the plan.
 
 ### Unmanaged file collides with a pin
 
-Skillmux preserves unmanaged target content. Rename or remove the conflicting
+Skillmux preserves unmanaged content in agent directories. Rename or remove the conflicting
 entry yourself, then rerun `skillmux sync`.
 
-### Target belongs to another host
+### Sync does nothing on a new machine
 
-New targets include the current hostname. `sync` skips a target when its
-manifest `host` differs. Run `skillmux target show <name>` and add a separate
-target for the current machine instead of reusing the other machine's path.
+`sync` prints `note: no agents configured in config.toml` when this machine
+lists no agents. Add the agents you run:
+
+```sh
+skillmux agent add claude-code opencode --yes
+```
+
+If a dotfiles manager renders `config.toml`, set `agents` in its template
+instead.
+
+### skillmux.toml still has `[targets]`
+
+skillmux moved agent selection out of the shared manifest, and `sync`
+refuses a manifest that still has `[targets.*]` tables. Follow
+[Migrating from targets](configuration.md#migrating-from-targets): list each
+machine's agents in its `config.toml`, move project attachments to
+`[project.<group>].agents`, and delete the `[targets.*]` tables.
 
 ### A local-overlay skill cannot be pinned
 
@@ -270,7 +284,7 @@ Skillmux rejects removed fields with migration guidance:
 - replace obsolete `[thresholds]` table and `inference.thresholds` with `[output]` and `top_k`;
 - replace obsolete `output.ambiguous_candidate_limit` with `output.top_k`;
 - remove obsolete `inference.calibration` and use `skillmux eval` for ranking evaluation;
-- replace `[targets.<name>].project` with `project_groups = [...]`;
+- remove `[targets.*]` from `skillmux.toml`, set `agents` in each machine's `config.toml`, and set `[project.<group>].agents`;
 - rename `[project.<group>].repos` to `paths`;
 - use `skillmux core pin|unpin` instead of removed `manifest pin|unpin`;
 - replace legacy reranker base-URL variables with

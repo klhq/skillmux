@@ -1,7 +1,7 @@
 import { existsSync, lstatSync } from "node:fs";
 import { basename } from "node:path";
 import { expandHome } from "../config";
-import { planAgentSurfaces, SUPPORTED_AGENT_IDS, type AgentId } from "../init-agents";
+import { isAgentId, planAgentSurfaces, SUPPORTED_AGENT_IDS, type AgentId } from "../init-agents";
 import {
   applyInstructionPlan,
   planProjectInstructionSetup,
@@ -10,11 +10,10 @@ import {
   parseManifest,
   pinProject,
   unpinProject,
+  updateProjectAgents,
   updateProjectPaths,
-  updateProjectTargets,
   upsertProject,
   validateManifest,
-  resolveTargetDir,
   writeManifestAtomic,
 } from "../manifest";
 import {
@@ -33,57 +32,36 @@ import { emitSuccess, isInteractive, unknownSubcommandError } from "../output";
 import { confirmAction, confirmIfNeeded, loadManifestContext } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 const PROJECT_INIT_USAGE =
-  "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--agent <id>...] [--target <name>...] [--register-mcp] [--yes] [--no-sync]";
+  "usage: skillmux project init [path] [--name <group>] [--skill <id>...] [--agent <id>...] [--register-mcp] [--yes] [--no-sync]";
 
 interface ProjectInitArgs {
   path: string;
   name: string;
   skills: string[];
   agents: string[];
-  targets: string[];
   registerMcp: boolean;
   yes: boolean;
   sync: boolean;
 }
 
-export function configuredTargetForSurface(
-  manifest: ReturnType<typeof parseManifest>,
-  surface: { targetName: string; path: string },
-): string | undefined {
-  if (manifest.targets[surface.targetName]) return surface.targetName;
-  return Object.entries(manifest.targets).find(
-    ([name, target]) => resolveTargetDir(name, target) === surface.path,
-  )?.[0];
-}
+const TARGET_FLAG_REMOVED =
+  "--target was removed; name the agents that should see the project's skills with --agent";
 
-function configuredTargetsForAgents(
-  manifest: ReturnType<typeof parseManifest>,
-  agents: readonly string[],
-): string[] {
-  const plan = planAgentSurfaces(agents);
-
-  // planAgentSurfaces silently drops any agent with no surfaceId, which is how
-  // full-vault agents (goose, hermes) are modelled: they get the whole vault
-  // rather than a sync target directory. Dropping one here used to make
-  // "project attach --agent goose" a successful no-op, so refuse instead.
-  const covered = new Set<string>(plan.surfaces.flatMap((surface) => surface.agents));
+function requireAgentIds(agents: readonly string[]): AgentId[] {
   for (const agent of agents) {
-    if (!covered.has(agent)) {
+    if (!isAgentId(agent)) {
       throw new Error(
-        `agent "${agent}" uses full-vault delivery and maps to no sync target; ` +
-          `name a target directly with --target instead`,
+        `unsupported agent "${agent}"; supported agents: ${SUPPORTED_AGENT_IDS.join(", ")}`,
       );
     }
   }
+  return [...new Set(agents as AgentId[])];
+}
 
-  return plan.surfaces.map((surface) => {
-    const target = configuredTargetForSurface(manifest, surface);
-    if (target) return target;
-    const agent = surface.agents[0]!;
-    throw new Error(
-      `agent target for "${agent}" is not configured; run "skillmux init --agent ${agent} --yes" first`,
-    );
-  });
+function describeAgents(agents: readonly AgentId[]): string {
+  return planAgentSurfaces(agents)
+    .surfaces.map((surface) => `${surface.agents.join(", ")} (${surface.path})`)
+    .join("; ");
 }
 
 function parseProjectInitArgs(args: string[]): ProjectInitArgs {
@@ -91,7 +69,6 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
   let name: string | undefined;
   const skills: string[] = [];
   const agents: string[] = [];
-  const targets: string[] = [];
   let registerMcp = false;
   let yes = false;
   let sync = true;
@@ -106,9 +83,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
       if (!skill) throw new Error("--skill requires a skill_id");
       skills.push(skill);
     } else if (arg === "--target") {
-      const target = args[++i];
-      if (!target) throw new Error("--target requires a name");
-      targets.push(target);
+      throw new Error(TARGET_FLAG_REMOVED);
     } else if (arg === "--agent") {
       const agent = args[++i];
       if (!agent) throw new Error("--agent requires a name");
@@ -141,7 +116,6 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
     name: name ?? suggestProjectName(basename(path)),
     skills,
     agents,
-    targets,
     registerMcp,
     yes,
     sync,
@@ -170,9 +144,7 @@ export async function runProject(
       name,
       paths: manifest.project?.[name]!.paths ?? [],
       skills: manifest.project?.[name]!.skills ?? [],
-      targets: Object.entries(manifest.targets)
-        .filter(([, target]) => target.project_groups.includes(name))
-        .map(([target]) => target),
+      agents: manifest.project?.[name]!.agents ?? [],
     }));
     emitSuccess({ isJson: options.isJson }, { projects }, () => {
       if (projects.length === 0) {
@@ -182,7 +154,7 @@ export async function runProject(
           console.log(`${project.name}:`);
           console.log(`  paths: ${project.paths.join(", ") || "(none)"}`);
           console.log(`  skills: ${project.skills.join(", ") || "(none)"}`);
-          console.log(`  targets: ${project.targets.join(", ") || "(none)"}`);
+          console.log(`  agents: ${project.agents.join(", ") || "(none)"}`);
         }
       }
     });
@@ -292,21 +264,16 @@ export async function runProject(
   }
   if (subCommand === "attach" || subCommand === "detach") {
     const group = args[0];
-    if (!group)
-      throw new Error(
-        `usage: skillmux project ${subCommand} <group> (--agent <id>... | --target <name>...) --yes`,
-      );
-    const agents: string[] = [];
-    const requestedTargets: string[] = [];
+    const usage = `usage: skillmux project ${subCommand} <group> --agent <id>... --yes`;
+    if (!group) throw new Error(usage);
+    const requested: string[] = [];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--agent") {
         const value = args[++i];
         if (!value) throw new Error("--agent requires a name");
-        agents.push(value);
+        requested.push(value);
       } else if (args[i] === "--target") {
-        const value = args[++i];
-        if (!value) throw new Error("--target requires a name");
-        requestedTargets.push(value);
+        throw new Error(TARGET_FLAG_REMOVED);
       } else if (
         args[i] !== "--yes" &&
         args[i] !== "--dry-run" &&
@@ -315,41 +282,30 @@ export async function runProject(
         throw new Error(`unknown project ${subCommand} option: ${args[i]}`);
       }
     }
+    if (requested.length === 0) throw new Error(usage);
+    const agents = requireAgentIds(requested);
     const { config, vaultPath, manifestPath, manifest } =
       await loadManifestContext();
-    const agentTargets = configuredTargetsForAgents(manifest, agents);
-    const targets = [...new Set([...requestedTargets, ...agentTargets])];
-    if (targets.length === 0) {
-      throw new Error(`project ${subCommand} requires --agent or --target`);
-    }
-    // Several agents can share one target (e.g. opencode/windsurf both use
-    // agent-skills) — show the resolved directory, not just the target name,
-    // so it's clear at confirmation time which physical folder this affects.
-    const targetDirs = Object.fromEntries(
-      targets.map((t) => {
-        const target = manifest.targets[t];
-        return [t, target ? resolveTargetDir(t, target) : "(unknown)"];
-      }),
-    );
-    const targetsDisplay = targets
-      .map((t) => `${t} (${targetDirs[t]})`)
-      .join(", ");
-    const updated = updateProjectTargets(manifest, group, {
-      ...(subCommand === "attach" ? { attach: targets } : { detach: targets }),
+    const updated = updateProjectAgents(manifest, group, {
+      ...(subCommand === "attach" ? { attach: agents } : { detach: agents }),
     });
     validateManifest(
       updated,
       vaultPath,
       config.local_vault_paths.map(expandHome),
     );
+    // Several agents share one directory (e.g. opencode/windsurf both read
+    // ~/.agents/skills), so show the directory too, making it clear at
+    // confirmation time which folder inside the project this affects.
+    const display = describeAgents(agents);
+    const payload = {
+      subcommand: subCommand,
+      group,
+      agents: updated.project![group]!.agents,
+    };
     if (options.dryRun) {
-      emitSuccess(
-        { isJson: options.isJson },
-        { subcommand: subCommand, group, targets, target_dirs: targetDirs },
-        () =>
-          console.log(
-            `${subCommand}: [project.${group}] ${targetsDisplay} (dry-run)`,
-          ),
+      emitSuccess({ isJson: options.isJson }, payload, () =>
+        console.log(`${subCommand}: [project.${group}] ${display} (dry-run)`),
       );
       return;
     }
@@ -357,16 +313,14 @@ export async function runProject(
       !(await confirmIfNeeded({
         confirmed: args.includes("--yes"),
         isJson: options.isJson,
-        prompt: `${subCommand} [project.${group}] to ${targetsDisplay}?`,
+        prompt: `${subCommand} [project.${group}] ${subCommand === "attach" ? "to" : "from"} ${display}?`,
         nonInteractiveError: `skillmux project ${subCommand} requires --yes when run non-interactively`,
       }))
     )
       return;
     writeManifestAtomic(manifestPath, updated);
-    emitSuccess(
-      { isJson: options.isJson },
-      { subcommand: subCommand, group, targets, target_dirs: targetDirs },
-      () => console.log(`${subCommand}: [project.${group}] ${targetsDisplay}`),
+    emitSuccess({ isJson: options.isJson }, payload, () =>
+      console.log(`${subCommand}: [project.${group}] ${display}`),
     );
     return;
   }
@@ -399,20 +353,15 @@ export async function runProject(
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   if (guided) {
     const name = await promptText("Project group", request.name);
-    const availableAgents = SUPPORTED_AGENT_IDS.filter((agent) => {
-      const surface = planAgentSurfaces([agent]).surfaces[0];
-      return (
-        surface !== undefined &&
-        configuredTargetForSurface(manifest, surface) !== undefined
-      );
-    });
     const agents = await promptMultiSelect(
       "Which agents should receive project skills?",
-      availableAgents.map((agent) => ({
+      SUPPORTED_AGENT_IDS.map((agent) => ({
         value: agent,
         label: agent,
         selected:
-          request.agents.length === 0 || request.agents.includes(agent),
+          request.agents.length === 0
+            ? config.agents.includes(agent)
+            : request.agents.includes(agent),
       })),
     );
     const skills = parseCommaList(
@@ -438,13 +387,22 @@ export async function runProject(
       ),
     };
   }
-  const agentTargets = configuredTargetsForAgents(manifest, request.agents);
-  const targets = [...new Set([...request.targets, ...agentTargets])];
+  // A project always records its agents explicitly: with no --agent, it
+  // takes this machine's own agents rather than an empty list that would
+  // silently sync nowhere.
+  const projectAgents = requireAgentIds(
+    request.agents.length > 0 ? request.agents : config.agents,
+  );
+  if (projectAgents.length === 0) {
+    throw new Error(
+      "project init needs --agent <id> (no agents are configured in config.toml to default to)",
+    );
+  }
   const updated = upsertProject(manifest, {
     name: request.name,
     paths: [request.path],
     skills: request.skills,
-    targets,
+    agents: projectAgents,
   });
   const { notes } = validateManifest(updated, vaultPath, localVaultPaths);
 
@@ -465,8 +423,7 @@ export async function runProject(
     project: request.name,
     path: request.path,
     skills: request.skills,
-    agents: request.agents,
-    targets,
+    agents: projectAgents,
     sync: request.sync,
     notes,
     instructions: instructionPlan.changes.map(({ path, agents, status }) => ({
@@ -489,7 +446,7 @@ export async function runProject(
         console.log("\nReview");
         console.log(`  project: ${request.name}`);
         console.log(`  path: ${request.path}`);
-        console.log(`  agents: ${request.agents.join(", ") || "(none)"}`);
+        console.log(`  agents: ${projectAgents.join(", ")}`);
         console.log(`  skills: ${request.skills.join(", ") || "(none)"}`);
         console.log(
           `  instructions: ${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} file(s)`,
@@ -529,10 +486,9 @@ export async function runProject(
   if (request.sync) {
     try {
       // Reaching here already required approval above (request.yes, or an
-      // accepted interactive confirmAction) — that approval covers whatever
-      // new target/pin directories this project setup implies, so the
-      // downstream sync's own new-target confirmation gate would just be a
-      // redundant (and, non-interactively, silently-skipping) re-ask.
+      // accepted interactive confirmAction), which covers the project
+      // directories this setup implies, so sync's own project-path gate would
+      // just be a redundant (and, non-interactively, silently-skipping) re-ask.
       await options.sync(["--yes"]);
     } catch (error) {
       throw new Error(

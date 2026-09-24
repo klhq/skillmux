@@ -42,7 +42,7 @@ import { runProject } from "./commands/project";
 import { runReport } from "./commands/report";
 import { runScan } from "./commands/scan";
 import { runSkill } from "./commands/skill";
-import { runTarget } from "./commands/target";
+import { runAgent } from "./commands/agent";
 import { runSync } from "./commands/sync";
 import { runInit } from "./commands/init";
 
@@ -55,7 +55,7 @@ export const KNOWN_COMMANDS = [
   "sync",
   "init",
   "project",
-  "target",
+  "agent",
   "core",
   "report",
   "audit",
@@ -103,7 +103,7 @@ export const COMMAND_CONTEXT_SUPPORT: Record<string, CommandContextSupport> = {
   sync: "local-only",
   init: "local-only",
   project: "local-only",
-  target: "local-only",
+  agent: "local-only",
   core: "local-only",
   report: "remote-capable",
   audit: "remote-capable",
@@ -152,7 +152,7 @@ const LOCAL_ONLY_REASON: Record<string, LocalOnlyReason> = {
   scan: "vault-content",
   init: "native-delivery",
   sync: "native-delivery",
-  target: "native-delivery",
+  agent: "native-delivery",
   core: "native-delivery",
   project: "native-delivery",
   "local-vault": "native-delivery",
@@ -197,7 +197,7 @@ function isDockerHostManagementCommand(command: string, subCommand: string): boo
       "outdated",
       "update",
       "project",
-      "target",
+      "agent",
       "core",
       "local-vault",
       "models",
@@ -381,8 +381,8 @@ async function main() {
           sync: runSync,
         });
         break;
-      case "target":
-        await runTarget(subCommand, commandArgs, { isJson, dryRun: isDryRun });
+      case "agent":
+        await runAgent(subCommand, commandArgs, { isJson, dryRun: isDryRun });
         break;
       case "core":
         await runCore(subCommand, commandArgs, { isJson, dryRun: isDryRun });
@@ -453,11 +453,16 @@ async function main() {
           throw new Error("usage: skillmux models download");
         await runModelDownload({ isJson });
         break;
+      case "target":
+        throw new Error(
+          '"skillmux target" was replaced by "skillmux agent": list agents in config.toml ' +
+            '(agents = [...]) instead of naming directories. See "skillmux agent --help"',
+        );
       default: {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|target|core pin/unpin|report|audit prune|scan|install|outdated|update|eval|doctor|skill which|local-vault init|config show|models download>`;
+          : `usage: skillmux <serve|index|sync|init|project|agent|core pin/unpin|report|audit prune|scan|install|outdated|update|eval|doctor|skill which|local-vault init|config show|models download>`;
         throw new Error(msg);
       }
     }
@@ -568,20 +573,25 @@ alongside a stdio transport without opening the full HTTP surface.`,
 usage:
   skillmux index`,
 
-  sync: `sync: apply the manifest to native agent target directories
+  sync: `sync: apply the manifest to the skill directories of this machine's agents
 
 usage:
   skillmux sync [--dry-run] [--restore-monolith] [--install-hook] [--yes] [--json]
 
+Agents come from "agents" in config.toml; each one's skill directory is fixed
+(several agents can share one, e.g. ~/.agents/skills). [core] goes into every
+one, and a [project.*] group goes into <path>/<dir> for the directories its own
+"agents" read.
+
 --dry-run prints what would change without writing. --yes approves creating
-a target directory that does not exist yet; without it, an unseen directory
-is skipped rather than created.
+a project skill directory that does not exist yet (its path comes from the
+shared vault); without it, an unseen one is skipped rather than created.
 
 --install-hook installs a git post-merge hook in the vault checkout so a
-"git pull" re-syncs the targets automatically.
+"git pull" re-syncs automatically.
 
---restore-monolith undoes managed-pin delivery for a target: instead of
-individual pinned skills, the target directory is replaced by a single
+--restore-monolith undoes managed-pin delivery: instead of individual pinned
+skills, each agent directory is replaced by a single
 symlink to the whole vault. It refuses to touch a directory skillmux does
 not own, one carrying a local_vault marker, or one whose marker points at a
 different vault.`,
@@ -607,15 +617,14 @@ agents with a verified registration command), and writes the instruction
 block just for those; interactively, init asks about this only when
 you've selected one of those two. --no-instructions forces instruction
 writes off even when an MCP flag is set. A tool not in the agents list
-above isn't supported by init yet — add it to SUPPORTED_AGENT_IDS rather
-than guessing a directory. To adopt an arbitrary existing directory
-directly, use "skillmux target add <name> --dir <dir>" instead of init.`,
+above isn't supported yet. Add it to SUPPORTED_AGENT_IDS rather than
+guessing a directory. Selected agents are written to "agents" in config.toml.`,
 
   project: `project: manage project-scoped skill pins and sync groups
 
 usage:
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
-                [--agent <name>...] [--target <name>...] [--register-mcp]
+                [--agent <name>...] [--register-mcp]
                 [--no-sync] [--interactive|--yes|--dry-run] [--json]
   skillmux project list
   skillmux project show <group>
@@ -623,17 +632,13 @@ usage:
   skillmux project remove-path <group> [path] --yes
   skillmux project pin <group> <skill_id>... --yes
   skillmux project unpin <group> <skill_id>... --yes
-  skillmux project attach <group> (--agent <id>... | --target <name>...) --yes
-  skillmux project detach <group> (--agent <id>... | --target <name>...) --yes
+  skillmux project attach <group> --agent <id>... --yes
+  skillmux project detach <group> --agent <id>... --yes
 
---agent and --target both name sync targets, and either may be repeated.
---target <name> names a target directly, including a custom one created by
-"skillmux target add". --agent <id> is shorthand for "whatever target that
-agent maps to", resolved from the targets init already configured, so it
-fails if that agent was never set up or maps to no target at all (goose and
-hermes use full-vault delivery and have none). Several agents can share one
-target, so attaching two agents that map to the same directory attaches it
-once.
+A project lists the agents that should see its skills in
+[project.<group>].agents, shared through the vault. On each machine the
+group's skills land in <path>/<dir> for every configured agent directory
+one of those agents reads; a machine without any of them skips the group.
 
 --register-mcp is the project-local counterpart to "skillmux init
 --register-mcp": only for claude-code (the only agent whose own CLI has a
@@ -644,23 +649,20 @@ project-root CLAUDE.md with the resolve_skill/fetch_skill discovery
 paragraph — same reasoning as init: no instruction file is written unless
 MCP is actually being registered.`,
 
-  target: `target: manage native sync target directories
+  agent: `agent: choose which agents this machine syncs skills to
 
 usage:
-  skillmux target list
-  skillmux target show <name>
-  skillmux target add <name> [--dir <dir>] --yes [--no-sync]
-  skillmux target remove <name> --yes
-  skillmux target rehome <name> --yes
-  skillmux target migrate --yes
+  skillmux agent list
+  skillmux agent add <agent>... --yes [--no-sync]
+  skillmux agent remove <agent>... --yes
+  skillmux agent rehome --yes
 
---dir may be omitted when <name> is a built-in target with a deterministic
-path: agent-skills, claude-code, codex. Any other <name> requires --dir.
+agents: ${SUPPORTED_AGENT_IDS.join(", ")}
 
-A target is a directory, not a product. Several agents can map to the same
-one (opencode, github-copilot and windsurf all share agent-skills), which is
-why "skillmux project attach" accepts --agent as shorthand for the target
-that agent resolves to.`,
+add/remove edit "agents" in config.toml. Each agent's skill directory is
+fixed, and agents that read the same directory share it: opencode,
+github-copilot, windsurf, goose and hermes all use ~/.agents/skills. remove
+leaves files in place. rehome re-points managed links after vault_path moves.`,
 
   core: `core: pin or unpin core-tier skills
 
@@ -668,9 +670,9 @@ usage:
   skillmux core pin <skill_id>... --yes [--no-sync]
   skillmux core unpin <skill_id>... --yes [--no-sync]
 
-Pinning writes the manifest and then syncs, so the change reaches every target
+Pinning writes the manifest and then syncs, so the change reaches every agent
 directory in one command. --no-sync writes the manifest alone, for batching
-several pins before a single sync. A target directory this machine has never
+several pins before a single sync. A project directory this machine has never
 synced still needs its own approval and is reported as skipped, so a pin never
 creates one.`,
 
@@ -808,10 +810,10 @@ Setup:
                 [--no-instructions] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
-                [--agent <name>...] [--target <name>...] [--no-sync]
+                [--agent <name>...] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
-  skillmux target <list|show|add|remove|rehome|migrate>  (a target is a directory sync writes into)
+  skillmux agent <list|add|remove|rehome>  (which agents this machine syncs skills to)
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
   skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)
   skillmux config init --vault <path> --yes
@@ -832,7 +834,7 @@ Operations:
   skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]
 
 Commands:
-  serve, index, sync, init, project, target, core, report, audit, scan, install, outdated, update,
+  serve, index, sync, init, project, agent, core, report, audit, scan, install, outdated, update,
   eval, doctor, skill, local-vault, config, models, context, completions
 
 Run "skillmux <command> --help" for a command's full usage.`);

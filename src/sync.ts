@@ -144,6 +144,10 @@ export interface SyncTargetResult {
    *  the vault (install/update already reject them, but a shared git-backed vault
    *  can still be tampered with directly). */
   skipped: string[];
+  /** Set when the directory's marker carried an owner name from the old [targets] format
+   *  (e.g. a hand-named target like "agents-albatron") and was rewritten to the
+   *  directory's surface id. */
+  renamedFrom?: string;
 }
 
 export interface SyncTargetOptions {
@@ -188,9 +192,11 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   if (marker.role === "local_vault") {
     throw new Error(`${targetDir} has a local_vault marker, not target ownership`);
   }
-  if (marker.target !== targetName) {
-    throw new Error(`${targetDir} is owned by target "${marker.target}", not "${targetName}"`);
-  }
+  // Every directory now belongs to exactly one surface, so an owner name that
+  // differs can only be a hand-picked name from the old [targets] format for this same
+  // directory. The marker still proves skillmux owns it; adopt it under the
+  // surface id instead of refusing.
+  const renamedFrom = marker.target !== targetName ? marker.target : undefined;
   if (marker.schema_version === undefined) {
     const legacyEntries = readdirSync(targetDir).filter(
       (name) => name !== SKILLMUX_MARKER_FILENAME && name !== LEGACY_MARKER_FILENAME,
@@ -228,7 +234,8 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   const removed = [...managedEntries].filter((name) => existing.includes(name) && !desired.has(name));
   const addedCandidates = coreSkillIds.filter((skillId) => !existing.includes(skillId));
   const { syncable: added, skipped } = partitionSyncable(addedCandidates, skillSource);
-  if (dryRun) return { added, removed, skipped };
+  const renamed = renamedFrom === undefined ? {} : { renamedFrom };
+  if (dryRun) return { added, removed, skipped, ...renamed };
 
   for (const name of removed) unlinkSync(join(targetDir, name));
   for (const skillId of added) symlinkSync(join(skillSource(skillId), skillId), join(targetDir, skillId));
@@ -240,7 +247,7 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
     marker.created_at,
   );
 
-  return { added, removed, skipped };
+  return { added, removed, skipped, ...renamed };
 }
 
 export interface AdoptTargetResult {
@@ -253,9 +260,6 @@ export function preflightAdoptTarget(dir: string, targetName: string, vaultPath:
     throw new Error(`${dir} has a local_vault marker, not target ownership`);
   }
   if (!marker) return;
-  if (marker.target !== targetName) {
-    throw new Error(`${dir} is already owned by target "${marker.target}", not "${targetName}"`);
-  }
   if (marker.schema_version !== undefined && marker.vault_path !== vaultPath) {
     throw new Error(
       `${dir} marker recorded vault_path ${marker.vault_path}, currently configured vault_path is ${vaultPath}`,
@@ -267,6 +271,8 @@ export interface TargetMarkerRehomePlan {
   dir: string;
   markerPath: string;
   marker: SkillmuxMarker;
+  /** Owner name written back; differs from marker.target for a legacy name. */
+  targetName: string;
   links: TargetLinkRehomePlan[];
 }
 
@@ -296,9 +302,6 @@ export function planTargetMarkerRehome(
   if (marker.schema_version !== 1) {
     throw new Error(`${dir} has a legacy marker; rehome requires schema_version 1`);
   }
-  if (marker.target !== targetName) {
-    throw new Error(`${dir} is owned by target "${marker.target}", not "${targetName}"`);
-  }
 
   const links: TargetLinkRehomePlan[] = [];
   for (const skillId of marker.managed_entries ?? []) {
@@ -324,7 +327,7 @@ export function planTargetMarkerRehome(
     links.push({ entryPath, previousTarget: readlinkSync(entryPath), nextTarget: expectedPath });
   }
 
-  return { dir, markerPath, marker, links };
+  return { dir, markerPath, marker, targetName, links };
 }
 
 /** Applies only preflighted rehome plans. All plans are validated before the first write. */
@@ -341,7 +344,7 @@ export function applyTargetMarkerRehome(plans: TargetMarkerRehomePlan[], vaultPa
     for (const plan of plans) {
       writeTargetMarker(
         plan.dir,
-        plan.marker.target!,
+        plan.targetName,
         vaultPath,
         plan.marker.managed_entries ?? [],
         plan.marker.created_at,
@@ -368,7 +371,13 @@ export function applyTargetMarkerRehome(plans: TargetMarkerRehomePlan[], vaultPa
  */
 export function adoptTarget(dir: string, targetName: string, vaultPath: string): AdoptTargetResult {
   preflightAdoptTarget(dir, targetName, vaultPath);
-  if (readSkillmuxMarker(dir)) return { adopted: false };
+  const marker = readSkillmuxMarker(dir);
+  if (marker) {
+    if (marker.schema_version === 1 && marker.target !== targetName) {
+      writeTargetMarker(dir, targetName, vaultPath, marker.managed_entries ?? [], marker.created_at);
+    }
+    return { adopted: false };
+  }
   writeTargetMarker(dir, targetName, vaultPath, []);
   return { adopted: true };
 }
@@ -494,15 +503,13 @@ export interface SyncDriftReport {
   drifted: TargetDrift[];
   /** Targets a dry-run could not plan, e.g. an unadopted or collided directory. */
   unplannable: { target: string; targetDir: string; reason: string }[];
-  /** Targets skipped because they belong to another machine. */
-  otherHosts: string[];
 }
 
 /**
  * Plans every sync this host would perform without touching the filesystem, so callers
  * can tell whether the manifest and the target directories still agree.
  *
- * `skillmux core pin` and `skillmux target add` write the manifest and stop, which leaves
+ * `skillmux core pin --no-sync` and `skillmux agent add --no-sync` write config and stop, which leaves
  * the two out of step until someone remembers to run `skillmux sync`. Nothing surfaced
  * that gap before: `outdated` reports skills whose upstream moved on, which is a different
  * axis entirely. This is the planner behind both the `doctor` drift check and the
@@ -517,21 +524,15 @@ export function planSyncDrift(params: {
   targets: {
     name: string;
     dir: string;
-    host?: string;
     projectGroups: Record<string, ProjectGroupInput>;
   }[];
   localVaultPaths?: string[];
   coreSkillIds: string[];
-  currentHost: string;
 }): SyncDriftReport {
-  const { vaultPath, targets, coreSkillIds, currentHost, localVaultPaths = [] } = params;
-  const report: SyncDriftReport = { drifted: [], unplannable: [], otherHosts: [] };
+  const { vaultPath, targets, coreSkillIds, localVaultPaths = [] } = params;
+  const report: SyncDriftReport = { drifted: [], unplannable: [] };
 
   for (const target of targets) {
-    if (target.host !== undefined && target.host !== currentHost) {
-      report.otherHosts.push(target.name);
-      continue;
-    }
     const record = (drift: TargetDrift) => {
       if (drift.added.length > 0 || drift.removed.length > 0) report.drifted.push(drift);
     };

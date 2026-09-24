@@ -3,13 +3,14 @@ import {
   parseManifest,
   pinCore,
   pinProject,
+  LEGACY_TARGETS_ERROR,
   resolveManifestPath,
-  resolveTargetDir,
+  resolveSyncSurfaces,
   serializeManifest,
   unpinCore,
   unpinProject,
+  updateProjectAgents,
   updateProjectPaths,
-  updateProjectTargets,
   upsertProject,
   validateManifest,
   writeManifestAtomic,
@@ -29,20 +30,22 @@ function writeSkillAt(root: string, skillId: string) {
 }
 
 describe("parseManifest", () => {
-  test("accepts a built-in target without a persisted dir", () => {
-    expect(parseManifest(`
+  test("rejects a legacy [targets] table and says how to migrate", () => {
+    const toml = `
 [core]
 skills = []
 
-[targets.agent-skills]
+[targets.claude]
+dir = "~/.claude/skills"
+host = "workhorse"
 project_groups = []
-`)).toEqual({
-      core: { skills: [] },
-      targets: { "agent-skills": { project_groups: [] } },
-    });
+`;
+    expect(() => parseManifest(toml)).toThrow(LEGACY_TARGETS_ERROR);
+    expect(LEGACY_TARGETS_ERROR).toContain("agents");
+    expect(LEGACY_TARGETS_ERROR).toContain("config.toml");
   });
 
-  test("parses a valid skillmux.toml into typed core/project/targets", () => {
+  test("parses core and project groups, defaulting a project's agents to none", () => {
     const toml = `
 [core]
 skills = ["writing-clearly", "code-review"]
@@ -50,32 +53,31 @@ skills = ["writing-clearly", "code-review"]
 [project.infra]
 paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
+agents = ["claude-code", "codex"]
 
-[targets.claude]
-dir = "~/.claude/skills"
-host = "workhorse"
-project_groups = ["infra"]
+[project.docs]
+paths = ["~/workspace/docs"]
+skills = []
 `;
-    const manifest = parseManifest(toml);
-    expect(manifest).toEqual({
+    expect(parseManifest(toml)).toEqual({
       core: { skills: ["writing-clearly", "code-review"] },
-      project: { infra: { paths: ["~/workspace/infra"], skills: ["terraform-plans"] } },
-      targets: {
-        claude: { dir: "~/.claude/skills", host: "workhorse", project_groups: ["infra"] },
+      project: {
+        infra: { paths: ["~/workspace/infra"], skills: ["terraform-plans"], agents: ["claude-code", "codex"] },
+        docs: { paths: ["~/workspace/docs"], skills: [], agents: [] },
       },
     });
   });
 
-  test("rejects the removed [targets.*].project boolean field", () => {
-    const toml = `
+  test("rejects a project agent the registry does not know", () => {
+    expect(() => parseManifest(`
 [core]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
-project = true
-`;
-    expect(() => parseManifest(toml)).toThrow(/project_groups/);
+[project.infra]
+paths = []
+skills = []
+agents = ["pi"]
+`)).toThrow();
   });
 
   test("rejects the renamed [project.*].repos field", () => {
@@ -87,16 +89,12 @@ skills = []
 repos = ["~/workspace/infra"]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
 `;
     expect(() => parseManifest(toml)).toThrow(/paths/);
   });
 
   test("rejects a manifest missing the required [core] section", () => {
     const toml = `
-[targets.claude]
-dir = "~/.claude/skills"
 `;
     expect(() => parseManifest(toml)).toThrow();
   });
@@ -106,19 +104,16 @@ dir = "~/.claude/skills"
 [core]
 skills = ["Invalid_ID"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `;
     expect(() => parseManifest(toml)).toThrow();
   });
 
-  test("parses a core-only manifest with no configured targets", () => {
+  test("parses a core-only manifest", () => {
     expect(parseManifest(`
 [core]
 skills = []
 `)).toEqual({
       core: { skills: [] },
-      targets: {},
     });
   });
 
@@ -158,17 +153,18 @@ skills = []
 });
 
 describe("serializeManifest", () => {
-  test("omits dir for a built-in target", () => {
+  test("writes each project's agents", () => {
     const manifest = parseManifest(`
 [core]
 skills = []
 
-[targets.agent-skills]
-dir = "/legacy/home/.agents/skills"
-project_groups = []
+[project.infra]
+paths = ["/work/infra"]
+skills = []
+agents = ["claude-code"]
 `);
 
-    expect(serializeManifest(manifest)).not.toContain("dir =");
+    expect(serializeManifest(manifest)).toContain('agents = ["claude-code"]');
   });
 
   test("writes a configured core limit back out so a pin does not erase it", () => {
@@ -193,19 +189,53 @@ skills = []
   });
 });
 
-describe("resolveTargetDir", () => {
-  test("derives a built-in target directory instead of using legacy dir", () => {
-    const manifest = parseManifest(`
+describe("resolveSyncSurfaces", () => {
+  const manifest = parseManifest(`
 [core]
 skills = []
 
-[targets.agent-skills]
-dir = "/ignored/legacy/path"
-project_groups = []
+[project.web]
+paths = ["/work/web"]
+skills = []
+agents = ["claude-code"]
+
+[project.tools]
+paths = ["/work/tools"]
+skills = []
+agents = ["opencode"]
+
+[project.none]
+paths = ["/work/none"]
+skills = []
 `);
 
-    expect(resolveTargetDir("agent-skills", manifest.targets["agent-skills"]!, { home: "/home/test" }))
-      .toBe("/home/test/.agents/skills");
+  test("syncs one directory per distinct surface of this machine's agents", () => {
+    const surfaces = resolveSyncSurfaces(manifest, ["claude-code", "windsurf", "hermes"], {
+      home: "/home/test",
+    });
+    expect(surfaces.map(({ id, dir, agents }) => ({ id, dir, agents }))).toEqual([
+      { id: "claude-code", dir: "/home/test/.claude/skills", agents: ["claude-code"] },
+      { id: "agent-skills", dir: "/home/test/.agents/skills", agents: ["windsurf", "hermes"] },
+    ]);
+  });
+
+  test("a project reaches a directory any of its agents reads, matched by directory", () => {
+    const surfaces = resolveSyncSurfaces(manifest, ["claude-code", "hermes"], { home: "/home/test" });
+    const groups = Object.fromEntries(
+      surfaces.map((surface) => [surface.id, Object.keys(surface.projectGroups)]),
+    );
+    // tools names opencode, which this machine does not use — but hermes reads
+    // the same ~/.agents/skills, so the project's skills still land there.
+    expect(groups).toEqual({ "claude-code": ["web"], "agent-skills": ["tools"] });
+  });
+
+  test("a project with no agents syncs nowhere", () => {
+    const surfaces = resolveSyncSurfaces(manifest, ["claude-code", "opencode"], { home: "/home/test" });
+    for (const surface of surfaces) expect(surface.projectGroups).not.toHaveProperty("none");
+  });
+
+  test("a machine with no agents syncs nothing", () => {
+    expect(resolveSyncSurfaces(manifest, [], { home: "/home/test" })).toEqual([]);
   });
 });
 
@@ -215,8 +245,6 @@ describe("pinCore", () => {
 [core]
 skills = ["writing-clearly"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     const updated = pinCore(manifest, "code-review");
@@ -229,8 +257,6 @@ dir = "~/.claude/skills"
 [core]
 skills = ["writing-clearly"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => pinCore(manifest, "writing-clearly")).toThrow(/already pinned in \[core\]/);
@@ -245,8 +271,6 @@ skills = []
 paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => pinCore(manifest, "terraform-plans")).toThrow(/already pinned/);
@@ -259,8 +283,6 @@ describe("unpinCore", () => {
 [core]
 skills = ["writing-clearly", "code-review"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     const updated = unpinCore(manifest, "writing-clearly");
@@ -273,8 +295,6 @@ dir = "~/.claude/skills"
 [core]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => unpinCore(manifest, "ghost-skill")).toThrow(/not pinned in \[core\]/);
@@ -286,8 +306,6 @@ dir = "~/.claude/skills"
 limit = 30
 skills = ["writing-clearly"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     const pinned = pinCore(manifest, "code-review");
@@ -306,13 +324,11 @@ describe("pinProject", () => {
 [core]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     const updated = pinProject(manifest, "terraform-plans", "infra", ["~/workspace/infra"]);
 
-    expect(updated.project?.infra).toEqual({ paths: ["~/workspace/infra"], skills: ["terraform-plans"] });
+    expect(updated.project?.infra).toEqual({ paths: ["~/workspace/infra"], skills: ["terraform-plans"], agents: [] });
   });
 
   test("throws when the group does not exist and no --path was given", () => {
@@ -320,8 +336,6 @@ dir = "~/.claude/skills"
 [core]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => pinProject(manifest, "terraform-plans", "infra")).toThrow(
@@ -338,8 +352,6 @@ skills = []
 paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     const updated = pinProject(manifest, "another-skill", "infra");
@@ -356,8 +368,6 @@ skills = []
 paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => pinProject(manifest, "another-skill", "infra", ["~/workspace/other"])).toThrow(
@@ -370,8 +380,6 @@ dir = "~/.claude/skills"
 [core]
 skills = ["writing-clearly"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => pinProject(manifest, "writing-clearly", "infra", ["~/workspace/infra"])).toThrow(
@@ -384,8 +392,6 @@ dir = "~/.claude/skills"
 [core]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => pinProject(manifest, "some-skill", "Bad Group!", ["~/workspace/x"])).toThrow(
@@ -395,7 +401,7 @@ dir = "~/.claude/skills"
 });
 
 describe("upsertProject", () => {
-  test("merges paths, skills, and target attachments without duplicates", () => {
+  test("merges paths, skills, and agents without duplicates", () => {
     const manifest = parseManifest(`
 [core]
 skills = []
@@ -403,24 +409,21 @@ skills = []
 [project.infra]
 paths = ["/work/infra"]
 skills = ["terraform-plans"]
-
-[targets.claude]
-dir = "~/.claude/skills"
-project_groups = []
+agents = ["codex"]
 `);
 
     const updated = upsertProject(manifest, {
       name: "infra",
       paths: ["/work/infra", "/Users/me/infra"],
       skills: ["terraform-plans", "incident-response"],
-      targets: ["claude"],
+      agents: ["codex", "claude-code"],
     });
 
     expect(updated.project?.infra).toEqual({
       paths: ["/work/infra", "/Users/me/infra"],
       skills: ["terraform-plans", "incident-response"],
+      agents: ["codex", "claude-code"],
     });
-    expect(updated.targets.claude?.project_groups).toEqual(["infra"]);
   });
 
   test("rejects an invalid project skill ID before manifest validation", () => {
@@ -428,15 +431,13 @@ project_groups = []
 [core]
 skills = []
 
-[targets.test]
-dir = "~/.agents/skills"
 `);
 
     expect(() => upsertProject(manifest, {
       name: "demo",
       paths: ["/work/demo"],
       skills: ["../../outside"],
-      targets: [],
+      agents: [],
     })).toThrow(/invalid skill ID/);
   });
 });
@@ -451,8 +452,6 @@ skills = []
 paths = ["/work/one"]
 skills = ["first-skill"]
 
-[targets.test]
-dir = "~/.agents/skills"
 `);
 
     const added = updateProjectPaths(manifest, "demo", {
@@ -465,11 +464,12 @@ dir = "~/.agents/skills"
     expect(removed.project?.demo).toEqual({
       paths: ["/work/two"],
       skills: ["first-skill"],
+      agents: [],
     });
   });
 });
 
-test("updateProjectTargets attaches and detaches a group idempotently", () => {
+test("updateProjectAgents attaches and detaches agents idempotently", () => {
   const manifest = parseManifest(`
 [core]
 skills = []
@@ -477,23 +477,18 @@ skills = []
 [project.demo]
 paths = ["/work/demo"]
 skills = []
-
-[targets.one]
-dir = "~/.one/skills"
-project_groups = []
-
-[targets.two]
-dir = "~/.two/skills"
-project_groups = ["demo"]
+agents = ["codex"]
 `);
 
-  const updated = updateProjectTargets(manifest, "demo", {
-    attach: ["one", "one"],
-    detach: ["two"],
+  const updated = updateProjectAgents(manifest, "demo", {
+    attach: ["claude-code", "claude-code"],
+    detach: ["codex"],
   });
 
-  expect(updated.targets.one?.project_groups).toEqual(["demo"]);
-  expect(updated.targets.two?.project_groups).toEqual([]);
+  expect(updated.project?.demo?.agents).toEqual(["claude-code"]);
+  expect(() => updateProjectAgents(manifest, "missing", { attach: ["codex"] })).toThrow(
+    "[project.missing] does not exist",
+  );
 });
 
 describe("unpinProject", () => {
@@ -506,13 +501,11 @@ skills = []
 paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     const updated = unpinProject(manifest, "terraform-plans", "infra");
 
-    expect(updated.project?.infra).toEqual({ paths: ["~/workspace/infra"], skills: [] });
+    expect(updated.project?.infra).toEqual({ paths: ["~/workspace/infra"], skills: [], agents: [] });
   });
 
   test("throws when the group does not exist", () => {
@@ -520,8 +513,6 @@ dir = "~/.claude/skills"
 [core]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => unpinProject(manifest, "terraform-plans", "infra")).toThrow(/\[project\.infra\] does not exist/);
@@ -536,8 +527,6 @@ skills = []
 paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     expect(() => unpinProject(manifest, "ghost-skill", "infra")).toThrow(/not pinned in \[project\.infra\]/);
@@ -552,8 +541,6 @@ describe("validateManifest", () => {
 [core]
 skills = ["ghost-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath)).toThrow("ghost-skill");
 
@@ -571,8 +558,6 @@ skills = ["shared-skill"]
 paths = []
 skills = ["shared-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath)).toThrow("shared-skill");
 
@@ -591,8 +576,6 @@ skills = ["core-skill"]
 paths = []
 skills = ["infra-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     const result = validateManifest(manifest, vaultPath);
     expect(result.notes).toEqual([]);
@@ -608,8 +591,6 @@ dir = "~/.claude/skills"
 [core]
 skills = ${JSON.stringify(skillIds)}
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath)).toThrow(
       "[core] has 26 skills, exceeding the limit of 25",
@@ -627,8 +608,6 @@ dir = "~/.claude/skills"
 limit = 30
 skills = ${JSON.stringify(skillIds)}
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath)).not.toThrow();
 
@@ -644,8 +623,6 @@ dir = "~/.claude/skills"
 limit = 30
 skills = ${JSON.stringify(skillIds)}
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath)).toThrow(
       "[core] has 31 skills, exceeding the limit of 30",
@@ -662,8 +639,6 @@ dir = "~/.claude/skills"
 [core]
 skills = ${JSON.stringify(skillIds)}
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath)).toThrow(
       'unpin a skill, or set "limit" under [core] to raise the default',
@@ -681,31 +656,10 @@ dir = "~/.claude/skills"
 limit = 30
 skills = ${JSON.stringify(skillIds)}
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath)).toThrow(
       'unpin a skill, or raise "limit" under [core]',
     );
-
-    rmSync(vaultPath, { recursive: true, force: true });
-  });
-
-  test("throws when a target's project_groups references an undefined [project.*] group", () => {
-    const vaultPath = tmpVault();
-    const manifest = parseManifest(`
-[core]
-skills = []
-
-[project.infra]
-paths = []
-skills = []
-
-[targets.claude]
-dir = "~/.claude/skills"
-project_groups = ["nonexistent"]
-`);
-    expect(() => validateManifest(manifest, vaultPath)).toThrow("nonexistent");
 
     rmSync(vaultPath, { recursive: true, force: true });
   });
@@ -720,8 +674,6 @@ skills = []
 paths = ["/does/not/exist/on/this/machine"]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     const result = validateManifest(manifest, vaultPath);
     expect(result.notes).toEqual(["[project.infra] paths entry not found locally, skipped: /does/not/exist/on/this/machine"]);
@@ -737,8 +689,6 @@ dir = "~/.claude/skills"
 [core]
 skills = ["local-only-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath, [localVault])).toThrow("local-only-skill");
 
@@ -758,8 +708,6 @@ skills = []
 paths = []
 skills = ["local-only-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     expect(() => validateManifest(manifest, vaultPath, [localVault])).toThrow("local-only-skill");
 
@@ -775,8 +723,6 @@ dir = "~/.claude/skills"
 [core]
 skills = ["core-skill"]
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
     const result = validateManifest(manifest, vaultPath, [localVault]);
     expect(result.notes).toEqual([]);
@@ -787,7 +733,7 @@ dir = "~/.claude/skills"
 });
 
 describe("serializeManifest", () => {
-  test("round-trips through parseManifest for core, project, and targets", () => {
+  test("round-trips through parseManifest for core and project", () => {
     const manifest = parseManifest(`
 [core]
 skills = ["writing-clearly", "code-review"]
@@ -795,11 +741,7 @@ skills = ["writing-clearly", "code-review"]
 [project.infra]
 paths = ["~/workspace/infra"]
 skills = ["terraform-plans"]
-
-[targets.claude]
-dir = "~/.claude/skills"
-host = "workhorse"
-project_groups = ["infra"]
+agents = ["claude-code", "codex"]
 `);
 
     const roundTripped = parseManifest(serializeManifest(manifest));
@@ -807,13 +749,11 @@ project_groups = ["infra"]
     expect(roundTripped).toEqual(manifest);
   });
 
-  test("serializes an empty manifest (no project groups, no targets) parseably", () => {
+  test("serializes an empty manifest (no project groups) parseably", () => {
     const manifest = parseManifest(`
 [core]
 skills = []
 
-[targets.claude]
-dir = "~/.claude/skills"
 `);
 
     const roundTripped = parseManifest(serializeManifest(manifest));
@@ -829,8 +769,6 @@ test("writeManifestAtomic replaces a manifest with parseable content", () => {
 [core]
 skills = []
 
-[targets.test]
-dir = "~/.agents/skills"
 `);
 
   writeManifestAtomic(path, manifest);

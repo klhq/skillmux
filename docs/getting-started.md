@@ -40,7 +40,7 @@ marked with its `os` and `cpu`. npm and bun install the single entry that
 matches the current machine and skip the rest, so an install fetches one
 executable rather than five.
 
-Native target sync needs permission to create directory symlinks on Windows.
+Native skill sync needs permission to create directory symlinks on Windows.
 
 ### Platform support
 
@@ -178,12 +178,13 @@ The planner:
 1. validates the vault;
 2. detects agents from filesystem evidence;
 3. asks which skills belong in the core tier;
-4. shows the config, target, instruction, and sync plan;
+4. shows the config, agent, instruction, and sync plan;
 5. applies the plan after confirmation.
 
-Skillmux writes machine config under `~/.config/skillmux`, stores tier policy
-in the configured vault checkout's `skillmux.toml`, and records its entries in
-each target's `.skillmux` marker. It preserves unmanaged files and existing
+Skillmux writes machine config, including your `agents`, under
+`~/.config/skillmux`, stores tier policy in the configured vault checkout's
+`skillmux.toml`, and records its entries in each agent directory's `.skillmux`
+marker. It preserves unmanaged files and existing
 instruction text.
 
 Use explicit flags for automation:
@@ -228,7 +229,7 @@ skillmux project init ~/code/my-project \
   --yes
 ```
 
-Continue with [Managing skills](skill-management.md) for pinning, target
+Continue with [Managing skills](skill-management.md) for pinning, directory
 ownership, overlays, and recovery.
 
 ## Add local MCP retrieval
