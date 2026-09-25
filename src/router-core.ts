@@ -43,7 +43,7 @@ import type {
 import { reciprocalRankFusion } from "./rrf";
 import {
   decodeUtf8Strict,
-  getVaultMaxMtime,
+  getVaultFingerprint,
   listSupportingFiles,
   parseSkillMd,
   readSkill,
@@ -53,8 +53,8 @@ import {
   SKILL_ID_PATTERN,
 } from "./vault";
 
-function maxVaultMtime(vaultPath: string, localVaultPaths: string[]): number {
-  return Math.max(getVaultMaxMtime(vaultPath), ...localVaultPaths.map(getVaultMaxMtime));
+function vaultFingerprint(vaultPath: string, localVaultPaths: string[]): string {
+  return [vaultPath, ...localVaultPaths].map((root) => `${root}=${getVaultFingerprint(root)}`).join("\n");
 }
 
 export { buildAuditRow } from "./audit";
@@ -111,8 +111,9 @@ async function getEnv(): Promise<Env> {
     if (skillCount(db) === 0) {
       const vaultPath = expandHome(config.vault_path);
       const localVaultPaths = config.local_vault_paths.map(expandHome);
+      const fingerprint = vaultFingerprint(vaultPath, localVaultPaths);
       ingestVault(db, await scanVaults(vaultPath, localVaultPaths));
-      setIndexMeta(db, "last_indexed_mtime", String(maxVaultMtime(vaultPath, localVaultPaths)));
+      setIndexMeta(db, "last_indexed_fingerprint", fingerprint);
     }
     resolvedEnv = { config, db, auditDb };
     return resolvedEnv;
@@ -233,7 +234,7 @@ export async function rebuildIndex(
   const { config, db } = await getEnv();
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
-  const currentMtime = maxVaultMtime(vaultPath, localVaultPaths);
+  const fingerprint = vaultFingerprint(vaultPath, localVaultPaths);
   const invalidIds: string[] = [];
   const skills = await scanVaults(vaultPath, localVaultPaths, (skillId, error) => {
     invalidIds.push(skillId);
@@ -256,23 +257,22 @@ export async function rebuildIndex(
     }
   }
   replaceSkills(db, rows);
-  setIndexMeta(db, "last_indexed_mtime", String(currentMtime));
+  setIndexMeta(db, "last_indexed_fingerprint", fingerprint);
   return { indexed: rows.length, retained };
 }
 
 /**
  * On-Demand Lazy Indexing (First Principles #2):
- * Checks the max mtime of the vault directory and re-indexes only if files have changed.
+ * Compares the vault's stat fingerprint with the last index and re-indexes only when it changed.
  * This runs synchronously to block queries until the lexical index is correct.
  */
 export async function syncVaultIfNeeded(): Promise<void> {
   const { config, db } = await getEnv();
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
-  const currentMtime = maxVaultMtime(vaultPath, localVaultPaths);
-  const lastIndexed = getIndexMeta(db, "last_indexed_mtime");
+  const fingerprint = vaultFingerprint(vaultPath, localVaultPaths);
 
-  if (lastIndexed === null || currentMtime > Number(lastIndexed)) {
+  if (getIndexMeta(db, "last_indexed_fingerprint") !== fingerprint) {
     const invalidIds: string[] = [];
     const skills = await scanVaults(vaultPath, localVaultPaths, (skillId, error) => {
       invalidIds.push(skillId);
@@ -290,7 +290,7 @@ export async function syncVaultIfNeeded(): Promise<void> {
       }
     }
     replaceSkills(db, rows);
-    setIndexMeta(db, "last_indexed_mtime", String(currentMtime));
+    setIndexMeta(db, "last_indexed_fingerprint", fingerprint);
     backfillEmbeddings().catch(() => {});
   }
 }

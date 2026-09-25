@@ -182,6 +182,37 @@ export function listSupportingFiles(vaultPath: string, skillId: string): string[
   return files.sort();
 }
 
+/**
+ * Identifies one vault root's indexable state from the stat of each skill
+ * directory and its SKILL.md. File clocks advance in coarse steps, so a skill
+ * added in the same step as the last index leaves the newest mtime unchanged;
+ * the directory listing, sizes, and inodes in this fingerprint still change.
+ */
+export function getVaultFingerprint(vaultPath: string): string {
+  let root;
+  try {
+    root = statSync(vaultPath);
+  } catch {
+    return "absent";
+  }
+  const parts = [`${root.mtimeMs}:${root.ino}`];
+  const entries = readdirSync(vaultPath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && SKILL_ID_PATTERN.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  for (const name of entries) {
+    const folderPath = join(vaultPath, name);
+    try {
+      const folder = statSync(folderPath);
+      const file = statSync(join(folderPath, "SKILL.md"));
+      parts.push(`${name}:${folder.mtimeMs}:${file.mtimeMs}:${file.size}:${file.ino}`);
+    } catch {
+      parts.push(`${name}:unreadable`);
+    }
+  }
+  return sha256Hex(parts.join("\n"));
+}
+
 export function getVaultMaxMtime(vaultPath: string): number {
   try {
     let maxMtime = statSync(vaultPath).mtimeMs;

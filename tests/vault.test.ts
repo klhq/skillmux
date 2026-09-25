@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  getVaultFingerprint,
+  getVaultMaxMtime,
   SKILL_ID_PATTERN,
   parseSkillMd,
   decodeUtf8Strict,
@@ -255,5 +257,53 @@ describe("findShadowedSkills", () => {
 
     rmSync(vaultPath, { recursive: true, force: true });
     rmSync(localA, { recursive: true, force: true });
+  });
+});
+
+describe("getVaultFingerprint", () => {
+  function skill(vault: string, id: string, body = "body") {
+    mkdirSync(join(vault, id), { recursive: true });
+    writeFileSync(join(vault, id, "SKILL.md"), `---\nname: ${id}\n---\n\n${body}\n`);
+  }
+
+  test("stays stable while nothing changes", () => {
+    const vault = mkdtempSync(join(tmpdir(), "skillmux-fingerprint-stable-"));
+    skill(vault, "first-skill");
+    expect(getVaultFingerprint(vault)).toBe(getVaultFingerprint(vault));
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  test("changes for a skill added within the same timestamp tick, which the newest mtime misses", () => {
+    const vault = mkdtempSync(join(tmpdir(), "skillmux-fingerprint-tick-"));
+    skill(vault, "first-skill");
+    const tick = statSync(join(vault, "first-skill", "SKILL.md")).mtime;
+    utimesSync(vault, tick, tick);
+    const beforeMtime = getVaultMaxMtime(vault);
+    const beforeFingerprint = getVaultFingerprint(vault);
+
+    // Filesystem clocks advance in coarse steps, so a write right after an index
+    // routinely lands on the same mtime. Pin every timestamp to that step.
+    skill(vault, "second-skill");
+    for (const path of [join(vault, "second-skill", "SKILL.md"), join(vault, "second-skill"), vault]) {
+      utimesSync(path, tick, tick);
+    }
+
+    expect(getVaultMaxMtime(vault)).toBe(beforeMtime);
+    expect(getVaultFingerprint(vault)).not.toBe(beforeFingerprint);
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  test("changes when a same-tick edit changes a SKILL.md's size", () => {
+    const vault = mkdtempSync(join(tmpdir(), "skillmux-fingerprint-edit-"));
+    skill(vault, "first-skill");
+    const file = join(vault, "first-skill", "SKILL.md");
+    const tick = statSync(file).mtime;
+    const before = getVaultFingerprint(vault);
+
+    writeFileSync(file, "---\nname: first-skill\n---\n\nlonger body after the edit\n");
+    utimesSync(file, tick, tick);
+
+    expect(getVaultFingerprint(vault)).not.toBe(before);
+    rmSync(vault, { recursive: true, force: true });
   });
 });
