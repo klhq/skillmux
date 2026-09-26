@@ -803,6 +803,26 @@ describe("skillmux sync CLI", () => {
     resetCliHome();
   });
 
+  test("adopts an agent directory the agent created itself, keeping the agent's own files", async () => {
+    resetCliHome();
+    writeCoreManifest(["first-skill"]);
+    const codexSkills = join(cliHome, ".codex", "skills");
+    mkdirSync(join(codexSkills, ".system"), { recursive: true });
+
+    const result = await runWithAgents(["codex"], "sync");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("adopted existing directory");
+    expect(existsSync(join(codexSkills, "first-skill"))).toBe(true);
+    expect(existsSync(join(codexSkills, ".system"))).toBe(true);
+
+    const doctor = await runWithAgents(["codex"], "doctor", "--json");
+    expect(doctor.stdout).not.toContain("not owned by skillmux");
+
+    rmSync(manifestPath(), { force: true });
+    resetCliHome();
+  });
+
   test("security: a project directory named by the shared vault still needs --yes to be created", async () => {
     resetCliHome();
     const repo = mkdtempSync(join(tmpdir(), "skillmux-cli-sync-approval-repo-"));

@@ -221,6 +221,87 @@ describe("syncTarget", () => {
     rmSync(vaultPath, { recursive: true, force: true });
   });
 
+  test("adoptUnmarked takes over an existing directory and leaves its own entries unmanaged", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    const targetDir = tmpDir("skillmux-sync-adopt-");
+    mkdirSync(join(targetDir, ".system"));
+    writeFileSync(join(targetDir, ".system", "note.md"), "agent-owned\n");
+
+    const result = syncTarget(
+      { vaultPath, targetDir, targetName: "codex", coreSkillIds: ["writing-clearly"] },
+      { adoptUnmarked: true },
+    );
+
+    expect(result.adopted).toBe(true);
+    expect(result.added).toEqual(["writing-clearly"]);
+    expect(readFileSync(join(targetDir, ".system", "note.md"), "utf8")).toBe("agent-owned\n");
+    const marker = readSkillmuxMarker(targetDir);
+    expect(marker?.target).toBe("codex");
+    expect(marker?.managed_entries).toEqual(["writing-clearly"]);
+
+    const again = syncTarget(
+      { vaultPath, targetDir, targetName: "codex", coreSkillIds: ["writing-clearly"] },
+      { adoptUnmarked: true },
+    );
+    expect(again.adopted).toBeUndefined();
+    expect(again.added).toEqual([]);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("adoptUnmarked in dry-run reports the plan without writing a marker", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    const targetDir = tmpDir("skillmux-sync-adopt-dry-");
+
+    const result = syncTarget(
+      { vaultPath, targetDir, targetName: "codex", coreSkillIds: ["writing-clearly"] },
+      { dryRun: true, adoptUnmarked: true },
+    );
+
+    expect(result).toEqual({ added: ["writing-clearly"], removed: [], skipped: [], adopted: true });
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(false);
+    expect(existsSync(join(targetDir, "writing-clearly"))).toBe(false);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("adoptUnmarked still refuses a same-named entry in the way and writes nothing", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    mkdirSync(join(vaultPath, "writing-clearly"));
+    const targetDir = tmpDir("skillmux-sync-adopt-collide-");
+    mkdirSync(join(targetDir, "writing-clearly"));
+
+    expect(() =>
+      syncTarget(
+        { vaultPath, targetDir, targetName: "codex", coreSkillIds: ["writing-clearly"] },
+        { adoptUnmarked: true },
+      ),
+    ).toThrow("unmanaged entry collisions");
+    expect(existsSync(join(targetDir, ".skillmux"))).toBe(false);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(targetDir, { recursive: true, force: true });
+  });
+
+  test("adoptUnmarked refuses a directory that is a symlink", () => {
+    const vaultPath = tmpDir("skillmux-sync-vault-");
+    const realDir = tmpDir("skillmux-sync-adopt-real-");
+    const targetDir = join(tmpDir("skillmux-sync-adopt-link-"), "skills");
+    symlinkSync(realDir, targetDir);
+
+    expect(() =>
+      syncTarget({ vaultPath, targetDir, targetName: "codex", coreSkillIds: [] }, { adoptUnmarked: true }),
+    ).toThrow("is a symbolic link");
+    expect(existsSync(join(realDir, ".skillmux"))).toBe(false);
+
+    rmSync(vaultPath, { recursive: true, force: true });
+    rmSync(realDir, { recursive: true, force: true });
+  });
+
   test("dry-run still refuses an existing unmarked target dir", () => {
     const vaultPath = tmpDir("skillmux-sync-vault-");
     const targetDir = tmpDir("skillmux-sync-dryrun-unmarked-");

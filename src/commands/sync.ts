@@ -75,6 +75,7 @@ interface SyncDirSummary {
   removed?: string[];
   skipped?: string[];
   renamed_from?: string;
+  adopted?: boolean;
   projects?: {
     group: string;
     pin_dir: string;
@@ -152,8 +153,11 @@ export async function executeSync(options: ExecuteSyncOptions = {}): Promise<Exe
         coreSkillIds: manifest.core.skills,
         localVaultPaths,
       },
-      { dryRun },
+      { dryRun, adoptUnmarked: true },
     );
+    if (result.adopted) {
+      log(`${name}: adopted existing directory; entries already there stay unmanaged${suffix}`);
+    }
     if (result.renamedFrom !== undefined) {
       log(`${name}: adopted marker from legacy target "${result.renamedFrom}"${suffix}`);
     }
@@ -169,6 +173,7 @@ export async function executeSync(options: ExecuteSyncOptions = {}): Promise<Exe
       removed: result.removed,
       skipped: result.skipped,
       ...(result.renamedFrom === undefined ? {} : { renamed_from: result.renamedFrom }),
+      ...(result.adopted ? { adopted: true } : {}),
     };
 
     const groupNames = Object.keys(surface.projectGroups);
