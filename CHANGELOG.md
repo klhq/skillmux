@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1](https://github.com/klhq/skillmux/compare/v1.14.0...v1.14.1) (2026-09-26)
+
+
+### Fixed
+
+* **sync:** adopt an agent directory the agent created before skillmux ([#208](https://github.com/klhq/skillmux/issues/208)) ([8a80963](https://github.com/klhq/skillmux/commit/8a80963cde4634e41bcb8e12902eac29ab11867b))
+
 ## [1.14.0](https://github.com/klhq/skillmux/compare/v1.13.2...v1.14.0) (2026-09-25)
 
 
