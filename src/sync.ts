@@ -148,10 +148,21 @@ export interface SyncTargetResult {
    *  (e.g. a hand-named target like "agents-albatron") and was rewritten to the
    *  directory's surface id. */
   renamedFrom?: string;
+  /** Set when an existing directory without a marker was taken over (see
+   *  SyncTargetOptions.adoptUnmarked). */
+  adopted?: boolean;
 }
 
 export interface SyncTargetOptions {
   dryRun?: boolean;
+  /**
+   * Take ownership of an existing directory that has no marker instead of refusing it.
+   * Only agent directories pass this: naming an agent in config.toml is the consent to
+   * manage its directory, and some agents create theirs (with their own files, such as
+   * Codex's .system/) before skillmux ever runs. Entries already there stay unmanaged,
+   * and a same-named entry in the way of a core skill still fails as a collision.
+   */
+  adoptUnmarked?: boolean;
 }
 
 /** Splits `skillIds` into those safe to symlink into a target and those refused
@@ -169,9 +180,21 @@ function partitionSyncable(
   return { syncable, skipped };
 }
 
+/** The same shape checks init applies before adopting a directory. */
+function assertAdoptableDir(dir: string, vaultPath: string): void {
+  const stat = lstatSync(dir);
+  if (stat.isSymbolicLink()) {
+    throw new Error(`${dir} is a symbolic link; classify or migrate it before skillmux can manage it`);
+  }
+  if (!stat.isDirectory()) throw new Error(`${dir} is not a directory`);
+  if (realpathSync(dir) === realpathSync(vaultPath)) {
+    throw new Error(`${dir} is the vault itself; it cannot be managed as an agent directory`);
+  }
+}
+
 export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions = {}): SyncTargetResult {
   const { vaultPath, targetDir, targetName, coreSkillIds, localVaultPaths = [] } = params;
-  const { dryRun = false } = options;
+  const { dryRun = false, adoptUnmarked = false } = options;
   const skillSource = (skillId: string) => resolveSkillRoot(skillId, vaultPath, localVaultPaths) ?? vaultPath;
 
   if (!existsSync(targetDir)) {
@@ -186,8 +209,20 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   }
 
   let marker = readSkillmuxMarker(targetDir);
+  let adopted = false;
   if (!marker) {
-    throw new Error(`not owned by skillmux — run skillmux init`);
+    if (!adoptUnmarked) throw new Error(`not owned by skillmux — run skillmux init`);
+    assertAdoptableDir(targetDir, vaultPath);
+    marker = {
+      schema_version: 1,
+      managed_by: "skillmux",
+      role: "target",
+      target: targetName,
+      vault_path: vaultPath,
+      managed_entries: [],
+      created_at: new Date().toISOString(),
+    };
+    adopted = true;
   }
   if (marker.role === "local_vault") {
     throw new Error(`${targetDir} has a local_vault marker, not target ownership`);
@@ -234,7 +269,10 @@ export function syncTarget(params: SyncTargetParams, options: SyncTargetOptions 
   const removed = [...managedEntries].filter((name) => existing.includes(name) && !desired.has(name));
   const addedCandidates = coreSkillIds.filter((skillId) => !existing.includes(skillId));
   const { syncable: added, skipped } = partitionSyncable(addedCandidates, skillSource);
-  const renamed = renamedFrom === undefined ? {} : { renamedFrom };
+  const renamed = {
+    ...(renamedFrom === undefined ? {} : { renamedFrom }),
+    ...(adopted ? { adopted } : {}),
+  };
   if (dryRun) return { added, removed, skipped, ...renamed };
 
   for (const name of removed) unlinkSync(join(targetDir, name));
@@ -459,7 +497,8 @@ export function syncProjectTargets(
       const pinDir = resolveProjectPinDir(targetDir, path);
       const result = syncTarget(
         { vaultPath, targetDir: pinDir, targetName, coreSkillIds: projectGroup.skills, localVaultPaths },
-        options,
+        // Never adoptUnmarked: a pin directory is created only after its own approval.
+        { dryRun: options.dryRun },
       );
       results.push({ group, path, pinDir, ...result });
     }
@@ -545,7 +584,7 @@ export function planSyncDrift(params: {
           coreSkillIds,
           localVaultPaths,
         },
-        { dryRun: true },
+        { dryRun: true, adoptUnmarked: true },
       );
       record({ target: target.name, targetDir: target.dir, added: core.added, removed: core.removed });
 

@@ -91,7 +91,11 @@ template instead, since the next render replaces whatever the CLI wrote.
 
 Because `agents` lives in this machine's own config, `sync` creates an agent
 directory the first time without asking. Nothing in the shared vault can point
-it somewhere new.
+it somewhere new. If the agent already created the directory itself, as Codex
+does with `~/.codex/skills/.system`, `sync` adopts it: it writes the
+`.skillmux` marker, links the core skills, and leaves the entries it found
+unmanaged. It still refuses a directory that is a symlink, and it refuses a
+skill name that is already taken by an entry it does not manage.
 
 ## Local inference
 
