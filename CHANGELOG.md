@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0](https://github.com/klhq/skillmux/compare/v1.13.2...v1.14.0) (2026-09-25)
+
+
+### Added
+
+* **sync:** replace manifest targets with per-machine agents ([#205](https://github.com/klhq/skillmux/issues/205)) ([3a817f7](https://github.com/klhq/skillmux/commit/3a817f72b7004a49b2a1b67426e9b02d5195b658))
+
+
+### Fixed
+
+* **index:** detect skills added in the same mtime tick as the last index ([#207](https://github.com/klhq/skillmux/issues/207)) ([bea3df8](https://github.com/klhq/skillmux/commit/bea3df8f9e00c19105aa6f1469bae7e82e1c7359))
+
 ## [1.13.2](https://github.com/klhq/skillmux/compare/v1.13.1...v1.13.2) (2026-09-14)
 
 
