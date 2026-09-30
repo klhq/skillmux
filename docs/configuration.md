@@ -86,6 +86,11 @@ waiting for input. `skillmux sync --no-pull` skips the fetch. `skillmux doctor`
 adds a `vault_url` check that fails when the checkout's `origin` differs, or
 when the vault has not been cloned yet.
 
+You can set it without editing the file: `skillmux config set vault_url
+git@github.com:you/skills.git` validates the value, previews the change and
+writes it, and `skillmux config get vault_url` reads it back. A value that is
+not a git URL is rejected and the file is left as it was.
+
 `vault_url` must be an `https://`, `ssh://`, `git://` or `file://` URL, or
 `user@host:path`. A value that git could read as an option is rejected when the
 config loads. The URL comes only from this machine's `config.toml`, never from

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node
 import { dirname, join } from "node:path";
 import { DEFAULT_CONFIG_PATH, expandHome, loadConfig } from "./config";
 import { describeDeployment } from "./deployment";
+import { isGitUrl } from "./git-url";
 import type { Config } from "./types";
 import { stringifyToml } from "./toml-writer";
 
@@ -144,6 +145,7 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
   const allKeys = [
     "config.environment_overrides",
     "vault_path",
+    "vault_url",
     "state_dir",
     "recall.k_lexical",
     "recall.k_vector",
@@ -226,6 +228,7 @@ export function validateDottedKey(key: string): void {
   const allowed = new Set([
     "config.environment_overrides",
     "vault_path",
+    "vault_url",
     "state_dir",
     "recall.k_lexical",
     "recall.k_vector",
@@ -261,6 +264,11 @@ export function validateDottedKey(key: string): void {
 }
 
 export function parseDottedValue(key: string, valueStr: string): unknown {
+  if (key === "vault_url" && !isGitUrl(valueStr)) {
+    throw new Error(
+      `vault_url must be a git URL (https://, ssh://, git://, file://) or user@host:path, got "${valueStr}"`,
+    );
+  }
   if (valueStr === "true") return true;
   if (valueStr === "false") return false;
   if (/^-?\d+$/.test(valueStr)) return parseInt(valueStr, 10);

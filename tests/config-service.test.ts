@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 import {
@@ -187,4 +187,39 @@ model = "reranker"
       expect(RESTART_REQUIRED_KEYS).toContain(key);
     }
   });
+});
+
+describe("vault_url key (AC16)", () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    writeFileSync(CONFIG_FILE, `vault_path = "~/skills"\n`, "utf-8");
+  });
+
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it("sets vault_url and reads it back with get", async () => {
+    await setDottedKey("vault_url", "git@github.com:klhq/skills.git", { configPath: CONFIG_FILE });
+
+    expect(await getDottedKey("vault_url", CONFIG_FILE)).toBe("git@github.com:klhq/skills.git");
+    expect(readFileSync(CONFIG_FILE, "utf-8")).toContain('vault_url = "git@github.com:klhq/skills.git"');
+  });
+
+  it("previews under --dry-run without writing", async () => {
+    await setDottedKey("vault_url", "https://github.com/klhq/skills.git", { configPath: CONFIG_FILE, dryRun: true });
+
+    expect(readFileSync(CONFIG_FILE, "utf-8")).not.toContain("vault_url");
+  });
+
+  it.each(["--upload-pack=touch /tmp/x@host:path", "klhq/skills", "ftp://example.com/skills.git"])(
+    "rejects %s and leaves the config file unchanged",
+    async (bad) => {
+      const before = readFileSync(CONFIG_FILE, "utf-8");
+
+      await expect(setDottedKey("vault_url", bad, { configPath: CONFIG_FILE })).rejects.toThrow("must be a git URL");
+
+      expect(readFileSync(CONFIG_FILE, "utf-8")).toBe(before);
+    },
+  );
 });

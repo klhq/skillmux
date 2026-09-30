@@ -147,6 +147,9 @@ skillmux config diff
 # Set a dotted key value (previews diff and validates before saving)
 skillmux config set recall.k_lexical 30
 
+# Point this machine's vault at a git remote (see configuration.md#vault-remote)
+skillmux config set vault_url git@github.com:you/skills.git
+
 # Perform dry-run validation without writing or activating changes
 skillmux config set recall.k_lexical 30 --dry-run
 
