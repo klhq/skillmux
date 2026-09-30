@@ -16,29 +16,33 @@ import {
   type ProjectGroupInput,
 } from "../sync";
 import type { Config } from "../types";
+import { refreshVault } from "../vault-update";
 import { confirmAction } from "./shared";
 
 function parseSyncArgs(args: string[]): {
   dryRun: boolean;
   restoreMonolith: boolean;
   installHook: boolean;
+  noPull: boolean;
   yes: boolean;
   isJson: boolean;
 } {
   let dryRun = false;
   let restoreMonolith = false;
   let installHook = false;
+  let noPull = false;
   let yes = false;
   let isJson = false;
   for (const arg of args) {
     if (arg === "--dry-run") dryRun = true;
     else if (arg === "--restore-monolith") restoreMonolith = true;
     else if (arg === "--install-hook") installHook = true;
+    else if (arg === "--no-pull") noPull = true;
     else if (arg === "--yes") yes = true;
     else if (arg === "--json") isJson = true;
     else throw new Error(`unknown sync option: ${arg}`);
   }
-  return { dryRun, restoreMonolith, installHook, yes, isJson };
+  return { dryRun, restoreMonolith, installHook, noPull, yes, isJson };
 }
 
 /**
@@ -240,9 +244,22 @@ export async function executeSync(options: ExecuteSyncOptions = {}): Promise<Exe
 }
 
 export async function runSync(args: string[]): Promise<void> {
-  const { dryRun, restoreMonolith, installHook, yes, isJson } = parseSyncArgs(args);
+  const { dryRun, restoreMonolith, installHook, noPull, yes, isJson } = parseSyncArgs(args);
   const config = await loadConfig();
   const log = isJson ? undefined : (line: string) => console.log(line);
+
+  const vaultUpdate = await refreshVault(config, { dryRun, noPull });
+  if (vaultUpdate.status === "failed") {
+    if (!isJson) warn(vaultUpdate.warning ?? "could not update the vault");
+  } else if (vaultUpdate.status === "skipped") {
+    if (vaultUpdate.reason === "no-agents") log?.(`note: ${NO_AGENTS_NOTE}`);
+    if (vaultUpdate.reason === "nested") {
+      log?.("vault: not pulling, this sync was started by a vault pull (SKILLMUX_SYNC_ACTIVE is set)");
+    }
+    if (vaultUpdate.reason === "dry-run") log?.(`vault: would ${vaultUpdate.would} ${config.vault_url} (dry-run)`);
+  } else {
+    log?.(`vault: ${vaultUpdate.status} ${config.vault_url}`);
+  }
 
   let hookInstalled: boolean | undefined;
   if (installHook) {
@@ -260,14 +277,14 @@ export async function runSync(args: string[]): Promise<void> {
     warn: isJson ? undefined : (line: string) => warn(line),
   });
   if (!result.manifestFound) {
-    emitSuccess({ isJson }, { hook_installed: hookInstalled ?? null, dirs: [] }, () =>
+    emitSuccess({ isJson }, { hook_installed: hookInstalled ?? null, vault_update: vaultUpdate, dirs: [] }, () =>
       console.log("no skillmux.toml found at vault root — nothing to sync"),
     );
     return;
   }
   emitSuccess(
     { isJson },
-    { hook_installed: hookInstalled ?? null, notes: result.notes, dirs: result.dirs },
+    { hook_installed: hookInstalled ?? null, vault_update: vaultUpdate, notes: result.notes, dirs: result.dirs },
     () => {},
   );
 }

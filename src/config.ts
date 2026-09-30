@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { SUPPORTED_AGENT_IDS } from "./agent-ids";
+import { isGitUrl } from "./git-url";
 import type { Config, ONNXDevice, ONNXDtype } from "./types";
 
 const onnxDeviceSchema = z.enum([
@@ -31,6 +32,9 @@ const configSchema = z.object({
     environment_overrides: z.boolean().default(true),
   }).strict().optional(),
   vault_path: z.string().min(1),
+  vault_url: z.string().min(1).refine(isGitUrl, {
+    message: "vault_url must be a git URL (https://, ssh://, git://, file://) or user@host:path",
+  }).optional(),
   local_vault_paths: z.array(z.string()),
   state_dir: z.string().min(1),
   agents: z.array(z.enum(SUPPORTED_AGENT_IDS)).default([]),

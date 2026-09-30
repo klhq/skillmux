@@ -147,6 +147,9 @@ skillmux config diff
 # Set a dotted key value (previews diff and validates before saving)
 skillmux config set recall.k_lexical 30
 
+# Point this machine's vault at a git remote (see configuration.md#vault-remote)
+skillmux config set vault_url git@github.com:you/skills.git
+
 # Perform dry-run validation without writing or activating changes
 skillmux config set recall.k_lexical 30 --dry-run
 
@@ -302,6 +305,25 @@ agents reads, matched by directory, so `opencode` and `hermes` reach the same
 `~/.agents/skills`. Mutating commands validate the complete manifest and replace
 it atomically. Run `skillmux sync` after direct maintenance commands to
 materialize the new state.
+
+---
+
+## Sync (`skillmux sync`)
+
+```sh
+skillmux sync [--dry-run] [--no-pull] [--restore-monolith] [--install-hook] [--yes] [--json]
+```
+
+`sync` applies the manifest to the skill directory of each configured agent.
+When `vault_url` is set in `config.toml`, it first clones the vault into
+`vault_path` or fast-forwards it from that remote; `--no-pull` skips that step.
+`--dry-run` writes nothing and, with `vault_url`, reports whether it would
+clone or update. With `--json`, `data.vault_update` carries `status`
+(`cloned`, `updated`, `up-to-date`, `skipped` or `failed`) plus `reason`
+(`no-vault-url`, `no-agents`, `no-pull`, `dry-run` or `nested`), `would` or
+`warning` when they apply. See
+[Vault remote](configuration.md#vault-remote) and
+[Synchronize agent directories](skill-management.md#synchronize-agent-directories).
 
 ---
 

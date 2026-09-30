@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { createClients, RemoteInferenceError } from "./clients";
 import { embeddingDimension, expandHome, isLoopbackBindHost } from "./config";
 import { describeDeployment, type DeploymentIdentity } from "./deployment";
@@ -38,6 +39,19 @@ export interface DoctorReport {
 
 export { describeDeployment };
 
+/** Whether vault_path is the checkout of the remote vault_url names. Not a network check: sync reports fetch failures. */
+function checkVaultUrl(vaultPath: string, vaultUrl: string): DoctorCheck {
+  if (!existsSync(join(vaultPath, ".git"))) {
+    return { name: "vault_url", ok: false, detail: `${vaultPath} is not a git checkout yet; run skillmux sync to clone ${vaultUrl}` };
+  }
+  const origin = Bun.spawnSync(["git", "-C", vaultPath, "remote", "get-url", "origin"], { stdout: "pipe", stderr: "pipe" });
+  const actual = origin.exitCode === 0 ? origin.stdout.toString().trim() : "(no origin)";
+  if (actual !== vaultUrl) {
+    return { name: "vault_url", ok: false, detail: `${vaultPath} has origin ${actual}, but vault_url is ${vaultUrl}` };
+  }
+  return { name: "vault_url", ok: true, detail: vaultUrl };
+}
+
 export async function diagnose(
   config: Config,
   environment: Record<string, string | undefined> = process.env,
@@ -56,6 +70,7 @@ export async function diagnose(
     checks.push({ name: `config_source:${key}`, ok: true, detail: source });
   }
   checks.push({ name: "vault", ok: existsSync(expandHome(config.vault_path)), detail: expandHome(config.vault_path) });
+  if (config.vault_url !== undefined) checks.push(checkVaultUrl(expandHome(config.vault_path), config.vault_url));
 
   // SMX-91: `serve --transport http` itself refuses to start over this combination
   // (assertSafeBindPosture in server.ts) unless SKILLMUX_ALLOW_INSECURE_BIND is set —
