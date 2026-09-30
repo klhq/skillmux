@@ -34,6 +34,9 @@ function gitEnv(): Record<string, string | undefined> {
     [SYNC_ACTIVE_ENV]: "1",
     GIT_TERMINAL_PROMPT: "0",
     GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes -o ConnectTimeout=10",
+    // Abort an http transfer that stays under 1000 B/s for 30 s, so a stalled remote cannot hang sync.
+    GIT_HTTP_LOW_SPEED_LIMIT: process.env.GIT_HTTP_LOW_SPEED_LIMIT ?? "1000",
+    GIT_HTTP_LOW_SPEED_TIME: process.env.GIT_HTTP_LOW_SPEED_TIME ?? "30",
   };
 }
 
@@ -47,16 +50,22 @@ async function runGit(args: string[], cwd?: string): Promise<{ ok: boolean; stdo
   return { ok: exitCode === 0, stdout: stdout.trim(), stderr: stderr.trim() };
 }
 
-export async function updateVault(params: VaultUpdateParams): Promise<VaultUpdateResult> {
-  const { vaultPath, vaultUrl, allowedHosts } = params;
+/** Refuses a vault_url the config must not fetch, or a checkout that belongs to another remote. Touches no network. */
+async function assertVaultTarget({ vaultPath, vaultUrl, allowedHosts }: VaultUpdateParams): Promise<void> {
   assertHostAllowed(vaultUrl, allowedHosts);
+  if (!existsSync(join(vaultPath, ".git"))) return;
+  const origin = await runGit(["remote", "get-url", "origin"], vaultPath);
+  if (!origin.ok || origin.stdout !== vaultUrl) {
+    throw new Error(
+      `${vaultPath} has origin ${origin.ok ? origin.stdout : "(none)"}, but vault_url is ${vaultUrl}; refusing to update it`,
+    );
+  }
+}
+
+export async function updateVault(params: VaultUpdateParams): Promise<VaultUpdateResult> {
+  const { vaultPath, vaultUrl } = params;
+  await assertVaultTarget(params);
   if (existsSync(join(vaultPath, ".git"))) {
-    const origin = await runGit(["remote", "get-url", "origin"], vaultPath);
-    if (!origin.ok || origin.stdout !== vaultUrl) {
-      throw new Error(
-        `${vaultPath} has origin ${origin.ok ? origin.stdout : "(none)"}, but vault_url is ${vaultUrl}; refusing to update it`,
-      );
-    }
     const dirty = await runGit(["status", "--porcelain", "--untracked-files=no"], vaultPath);
     if (dirty.stdout !== "") {
       return { status: "failed", warning: `${vaultPath} has uncommitted changes; not updating it` };
@@ -98,12 +107,10 @@ export async function refreshVault(
   if (process.env[SYNC_ACTIVE_ENV] === "1") return { status: "skipped", reason: "nested" };
   if (options.noPull) return { status: "skipped", reason: "no-pull" };
   const vaultPath = expandHome(config.vault_path);
+  const target = { vaultPath, vaultUrl: config.vault_url, allowedHosts: config.egress?.allowed_hosts };
   if (options.dryRun) {
+    await assertVaultTarget(target);
     return { status: "skipped", reason: "dry-run", would: existsSync(join(vaultPath, ".git")) ? "update" : "clone" };
   }
-  return updateVault({
-    vaultPath,
-    vaultUrl: config.vault_url,
-    allowedHosts: config.egress?.allowed_hosts,
-  });
+  return updateVault(target);
 }

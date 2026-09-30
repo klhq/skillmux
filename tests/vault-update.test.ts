@@ -134,6 +134,24 @@ describe("updateVault", () => {
     expect(readFileSync(seen, "utf8")).toBe("1");
   });
 
+  test("bounds a stalled http transfer so an unattended sync cannot hang", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+    const seen = join(tempDir(), "hook-env");
+    const hook = join(vaultPath, ".git", "hooks", "post-merge");
+    writeFileSync(
+      hook,
+      `#!/bin/sh\nprintf '%s %s' "$GIT_HTTP_LOW_SPEED_LIMIT" "$GIT_HTTP_LOW_SPEED_TIME" > "${seen}"\n`,
+    );
+    chmodSync(hook, 0o755);
+    remote.publish("second.txt", "two\n");
+
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+
+    expect(readFileSync(seen, "utf8")).toBe("1000 30");
+  });
+
   test("warns instead of throwing when a first clone cannot reach the remote", async () => {
     const vaultPath = join(tempDir(), "vault");
 
@@ -210,6 +228,36 @@ describe("refreshVault", () => {
 
     expect(result).toEqual({ status: "skipped", reason: "dry-run", would: "update" });
     expect(existsSync(join(vaultPath, "second.txt"))).toBe(false);
+  });
+
+  test("under --dry-run still refuses a vault_url whose host is not in [egress] allowed_hosts", async () => {
+    const vaultPath = join(tempDir(), "vault");
+
+    await expect(
+      refreshVault(
+        {
+          vault_path: vaultPath,
+          vault_url: "https://untrusted.example.com/klhq/skills.git",
+          agents: ["opencode"],
+          egress: { allowed_hosts: ["github.com"] },
+        },
+        { dryRun: true, noPull: false },
+      ),
+    ).rejects.toThrow("not in [egress] allowed_hosts");
+  });
+
+  test("under --dry-run still refuses a checkout whose origin is not vault_url, naming both", async () => {
+    const remote = createRemote();
+    const other = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+
+    await expect(
+      refreshVault(
+        { vault_path: vaultPath, vault_url: other.url, agents: ["opencode"] },
+        { dryRun: true, noPull: false },
+      ),
+    ).rejects.toThrow(new RegExp(`${remote.url}.*${other.url}|${other.url}.*${remote.url}`));
   });
 
   test("clones and updates through updateVault when vault_url and agents are set", async () => {
