@@ -26,8 +26,16 @@ function setup(configExtra: string) {
 }
 
 async function runSync(setupResult: ReturnType<typeof setup>, ...args: string[]) {
+  return runSyncWithEnv(setupResult, {}, ...args);
+}
+
+async function runSyncWithEnv(
+  setupResult: ReturnType<typeof setup>,
+  extraEnv: Record<string, string>,
+  ...args: string[]
+) {
   const proc = Bun.spawn(["bun", CLI_PATH, "sync", ...args], {
-    env: { ...process.env, HOME: setupResult.home, SKILLMUX_CONFIG: setupResult.configPath },
+    env: { ...process.env, HOME: setupResult.home, SKILLMUX_CONFIG: setupResult.configPath, ...extraEnv },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -90,6 +98,16 @@ describe("skillmux sync with vault_url", () => {
     expect(exitCode).toBe(0);
     expect(stderr).toContain("git pull failed");
     expect(lstatSync(join(machine.home, ".agents", "skills", "demo-skill")).isSymbolicLink()).toBe(true);
+  });
+
+  test("says why it did not pull when SKILLMUX_SYNC_ACTIVE marks it as started by a vault pull", async () => {
+    const machine = setup('agents = ["opencode"]\n');
+
+    const { exitCode, stdout } = await runSyncWithEnv(machine, { SKILLMUX_SYNC_ACTIVE: "1" }, "--yes");
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(machine.vault)).toBe(false);
+    expect(stdout).toContain("vault: not pulling, this sync was started by a vault pull (SKILLMUX_SYNC_ACTIVE is set)");
   });
 
   test("--json reports the vault update as data.vault_update", async () => {

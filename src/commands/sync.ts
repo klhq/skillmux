@@ -248,6 +248,9 @@ export async function runSync(args: string[]): Promise<void> {
     if (!isJson) warn(vaultUpdate.warning ?? "could not update the vault");
   } else if (vaultUpdate.status === "skipped") {
     if (vaultUpdate.reason === "no-agents") log?.(`note: ${NO_AGENTS_NOTE}`);
+    if (vaultUpdate.reason === "nested") {
+      log?.("vault: not pulling, this sync was started by a vault pull (SKILLMUX_SYNC_ACTIVE is set)");
+    }
     if (vaultUpdate.reason === "dry-run") log?.(`vault: would ${vaultUpdate.would} ${config.vault_url} (dry-run)`);
   } else {
     log?.(`vault: ${vaultUpdate.status} ${config.vault_url}`);

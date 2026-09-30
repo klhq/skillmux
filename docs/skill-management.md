@@ -231,7 +231,10 @@ skillmux sync --install-hook
 ```
 
 The hook lives in the configured vault checkout and runs `skillmux sync` after
-a merge. A sync that the hook starts from inside a pull does not pull again.
+a merge. A sync that the hook starts from inside a pull does not pull again: skillmux
+sets `SKILLMUX_SYNC_ACTIVE=1` for its own git calls, and a sync that sees it says
+so and only delivers skills. If that variable is exported in your shell, plain
+`skillmux sync` will not pull either, so unset it.
 Without `vault_url`, Git and your deployment process, not Skillmux, keep
 separate checkouts replicated and fresh.
 
