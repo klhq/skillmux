@@ -1,53 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { updateVault } from "../src/vault-update";
-
-const dirs: string[] = [];
-
-function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), "skillmux-vault-update-"));
-  dirs.push(dir);
-  return dir;
-}
-
-function git(cwd: string, ...args: string[]): string {
-  const proc = Bun.spawnSync(["git", ...args], {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: "t",
-      GIT_AUTHOR_EMAIL: "t@example.com",
-      GIT_COMMITTER_NAME: "t",
-      GIT_COMMITTER_EMAIL: "t@example.com",
-    },
-  });
-  if (proc.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${proc.stderr.toString()}`);
-  return proc.stdout.toString().trim();
-}
-
-/** A bare repo standing in for the GitHub remote, plus a working clone to push new commits from. */
-function createRemote(): { url: string; publish: (file: string, content: string) => void } {
-  const root = tempDir();
-  const bare = join(root, "remote.git");
-  const work = join(root, "work");
-  git(root, "init", "--bare", "-b", "main", bare);
-  git(root, "clone", "--quiet", bare, work);
-  const publish = (file: string, content: string) => {
-    writeFileSync(join(work, file), content);
-    git(work, "add", file);
-    git(work, "commit", "-q", "-m", `add ${file}`);
-    git(work, "push", "-q", "origin", "HEAD:main");
-  };
-  publish("first.txt", "one\n");
-  return { url: `file://${bare}`, publish };
-}
+import { cleanupTempDirs, createRemote, git, tempDir } from "./git-remote-fixture";
+import { refreshVault, updateVault } from "../src/vault-update";
 
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  cleanupTempDirs();
 });
 
 describe("updateVault", () => {
@@ -169,5 +127,86 @@ describe("updateVault", () => {
     expect(result.status).toBe("failed");
     expect(result.warning).toContain("git clone");
     expect(existsSync(vaultPath)).toBe(false);
+  });
+});
+
+describe("refreshVault", () => {
+  test("does nothing without a vault_url, so an existing sync setup is unchanged", async () => {
+    const vaultPath = join(tempDir(), "vault");
+
+    const result = await refreshVault(
+      { vault_path: vaultPath, agents: ["opencode"] },
+      { dryRun: false, noPull: false },
+    );
+
+    expect(result).toEqual({ status: "skipped", reason: "no-vault-url" });
+    expect(existsSync(vaultPath)).toBe(false);
+  });
+
+  test("does not clone for a host with no agents, which has nothing to deliver skills to", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+
+    const result = await refreshVault(
+      { vault_path: vaultPath, vault_url: remote.url, agents: [] },
+      { dryRun: false, noPull: false },
+    );
+
+    expect(result).toEqual({ status: "skipped", reason: "no-agents" });
+    expect(existsSync(vaultPath)).toBe(false);
+  });
+
+  test("skips the clone and pull under --no-pull", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+
+    const result = await refreshVault(
+      { vault_path: vaultPath, vault_url: remote.url, agents: ["opencode"] },
+      { dryRun: false, noPull: true },
+    );
+
+    expect(result).toEqual({ status: "skipped", reason: "no-pull" });
+    expect(existsSync(vaultPath)).toBe(false);
+  });
+
+  test("under --dry-run reports that it would clone, without cloning", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+
+    const result = await refreshVault(
+      { vault_path: vaultPath, vault_url: remote.url, agents: ["opencode"] },
+      { dryRun: true, noPull: false },
+    );
+
+    expect(result).toEqual({ status: "skipped", reason: "dry-run", would: "clone" });
+    expect(existsSync(vaultPath)).toBe(false);
+  });
+
+  test("under --dry-run reports that it would update an existing checkout, without pulling", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+    remote.publish("second.txt", "two\n");
+
+    const result = await refreshVault(
+      { vault_path: vaultPath, vault_url: remote.url, agents: ["opencode"] },
+      { dryRun: true, noPull: false },
+    );
+
+    expect(result).toEqual({ status: "skipped", reason: "dry-run", would: "update" });
+    expect(existsSync(join(vaultPath, "second.txt"))).toBe(false);
+  });
+
+  test("clones and updates through updateVault when vault_url and agents are set", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+
+    const result = await refreshVault(
+      { vault_path: vaultPath, vault_url: remote.url, agents: ["opencode"] },
+      { dryRun: false, noPull: false },
+    );
+
+    expect(result).toEqual({ status: "cloned" });
+    expect(existsSync(join(vaultPath, "first.txt"))).toBe(true);
   });
 });

@@ -576,12 +576,17 @@ usage:
   sync: `sync: apply the manifest to the skill directories of this machine's agents
 
 usage:
-  skillmux sync [--dry-run] [--restore-monolith] [--install-hook] [--yes] [--json]
+  skillmux sync [--dry-run] [--no-pull] [--restore-monolith] [--install-hook] [--yes] [--json]
 
 Agents come from "agents" in config.toml; each one's skill directory is fixed
 (several agents can share one, e.g. ~/.agents/skills). [core] goes into every
 one, and a [project.*] group goes into <path>/<dir> for the directories its own
 "agents" read.
+
+With "vault_url" in config.toml, sync first clones the vault into vault_path
+or fast-forwards it from that remote, so one command fetches and delivers. A
+host with no agents is left alone, and an unreachable remote warns and syncs
+the clone already on disk. --no-pull skips the fetch.
 
 --dry-run prints what would change without writing. --yes approves creating
 a project skill directory that does not exist yet (its path comes from the

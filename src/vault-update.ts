@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { expandHome } from "./config";
 import { assertHostAllowed } from "./install";
+import type { Config } from "./types";
 
 export type VaultUpdateStatus = "cloned" | "updated" | "up-to-date" | "failed";
 
@@ -60,4 +62,38 @@ export async function updateVault(params: VaultUpdateParams): Promise<VaultUpdat
   const clone = await runGit(["clone", "--quiet", "--", vaultUrl, vaultPath]);
   if (!clone.ok) return { status: "failed", warning: `git clone failed for ${vaultUrl}: ${clone.stderr}` };
   return { status: "cloned" };
+}
+
+export type VaultSkipReason = "no-vault-url" | "no-agents" | "no-pull" | "dry-run";
+
+export type RefreshVaultResult =
+  | VaultUpdateResult
+  | { status: "skipped"; reason: VaultSkipReason; would?: "clone" | "update" };
+
+export interface RefreshVaultOptions {
+  dryRun: boolean;
+  noPull: boolean;
+}
+
+/**
+ * Decides whether `skillmux sync` should bring the vault current, and does it.
+ * A host without vault_url, or without agents to deliver skills to, is left
+ * exactly as it was.
+ */
+export async function refreshVault(
+  config: Pick<Config, "vault_path" | "vault_url" | "agents" | "egress">,
+  options: RefreshVaultOptions,
+): Promise<RefreshVaultResult> {
+  if (config.vault_url === undefined) return { status: "skipped", reason: "no-vault-url" };
+  if (config.agents.length === 0) return { status: "skipped", reason: "no-agents" };
+  if (options.noPull) return { status: "skipped", reason: "no-pull" };
+  const vaultPath = expandHome(config.vault_path);
+  if (options.dryRun) {
+    return { status: "skipped", reason: "dry-run", would: existsSync(join(vaultPath, ".git")) ? "update" : "clone" };
+  }
+  return updateVault({
+    vaultPath,
+    vaultUrl: config.vault_url,
+    allowedHosts: config.egress?.allowed_hosts,
+  });
 }
