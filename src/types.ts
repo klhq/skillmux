@@ -123,6 +123,8 @@ export interface AuditConfig {
 export interface Config {
   config?: ConfigPolicy;
   vault_path: string;
+  /** Git remote `skillmux sync` clones or fast-forwards vault_path from. Absent means sync never touches git. */
+  vault_url?: string;
   local_vault_paths: string[];
   state_dir: string;
   /** Agents this machine syncs skills to. See docs/configuration.md#agents. */

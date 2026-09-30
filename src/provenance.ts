@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { isGitUrl } from "./install";
+import { isGitUrl } from "./git-url";
 import { SKILLMUX_ORIGIN_FILENAME, listSupportingFiles } from "./vault";
 
 export { SKILLMUX_ORIGIN_FILENAME };
