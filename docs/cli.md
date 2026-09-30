@@ -305,6 +305,25 @@ materialize the new state.
 
 ---
 
+## Sync (`skillmux sync`)
+
+```sh
+skillmux sync [--dry-run] [--no-pull] [--restore-monolith] [--install-hook] [--yes] [--json]
+```
+
+`sync` applies the manifest to the skill directory of each configured agent.
+When `vault_url` is set in `config.toml`, it first clones the vault into
+`vault_path` or fast-forwards it from that remote; `--no-pull` skips that step.
+`--dry-run` writes nothing and, with `vault_url`, reports whether it would
+clone or update. With `--json`, `data.vault_update` carries `status`
+(`cloned`, `updated`, `up-to-date`, `skipped` or `failed`) plus `reason`
+(`no-vault-url`, `no-agents`, `no-pull`, `dry-run` or `nested`), `would` or
+`warning` when they apply. See
+[Vault remote](configuration.md#vault-remote) and
+[Synchronize agent directories](skill-management.md#synchronize-agent-directories).
+
+---
+
 ## Agents (`skillmux agent`)
 
 `skillmux agent` edits `agents` in this machine's `config.toml`:

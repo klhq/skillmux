@@ -56,6 +56,41 @@ It validates that the path resolves to a directory with at least one
 same bootstrap when the machine config does not exist, then records the agents
 you selected in `agents`.
 
+## Vault remote
+
+`vault_url` is optional. When it is set, `skillmux sync` keeps `vault_path`
+current from that git remote, so nothing else has to clone or pull it:
+
+```toml
+vault_path = "~/.local/state/skills-vault"
+vault_url = "git@github.com:you/skills.git"
+agents = ["claude-code", "opencode"]
+```
+
+Each `sync` behaves as follows:
+
+- If `vault_path` is not a checkout, sync clones `vault_url` into it.
+- If it is a checkout whose `origin` is `vault_url`, sync runs
+  `git pull --ff-only`.
+- If its `origin` is anything else, sync stops with an error naming both URLs
+  and changes nothing.
+- If the checkout has uncommitted changes, has diverged from the remote, or the
+  remote is unreachable, sync warns and delivers the clone already on disk. It
+  never merges, rebases, or discards local work.
+- If `agents` is empty, sync does not clone or pull, because there is nothing to
+  deliver skills to.
+
+Git runs without prompts (`GIT_TERMINAL_PROMPT=0`, ssh `BatchMode=yes`, unless
+`GIT_SSH_COMMAND` is already set), so an unattended run fails fast instead of
+waiting for input. `skillmux sync --no-pull` skips the fetch. `skillmux doctor`
+adds a `vault_url` check that fails when the checkout's `origin` differs, or
+when the vault has not been cloned yet.
+
+`vault_url` must be an `https://`, `ssh://`, `git://` or `file://` URL, or
+`user@host:path`. A value that git could read as an option is rejected when the
+config loads. The URL comes only from this machine's `config.toml`, never from
+the vault, and it is subject to the [egress allowlist](#egress-allowlist).
+
 ## Agents
 
 `agents` in `config.toml` lists the agents this machine syncs skills to:
@@ -299,6 +334,9 @@ git host not on the list, checked before the network call — see
 `file://` sources are exempt (no network egress occurs; they're already
 gated by `--allow-local-source`), and host matching is exact and
 case-insensitive, with no glob support.
+
+`skillmux sync` applies the same list to [`vault_url`](#vault-remote): a
+remote whose host is not listed is refused before any clone or pull.
 
 The same `allowed_hosts` list also gates remote-inference calls: when set,
 a `[inference.embedding]` or `[inference.reranker]` `endpoint` host not on

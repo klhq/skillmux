@@ -218,6 +218,12 @@ Sync compares the manifest with entries recorded in each agent directory's
 `.skillmux` marker. It creates missing symlinks and removes stale managed
 links.
 
+With `vault_url` set in `config.toml` (see
+[Vault remote](configuration.md#vault-remote)), sync first clones the vault
+into `vault_path` or fast-forwards it from that remote, so one command fetches
+and delivers. `--no-pull` skips the fetch and syncs what is on disk, and
+`--dry-run` reports whether it would clone or update without running git.
+
 Install a vault-checkout Git hook when merges can change `skillmux.toml`:
 
 ```sh
@@ -225,8 +231,9 @@ skillmux sync --install-hook
 ```
 
 The hook lives in the configured vault checkout and runs `skillmux sync` after
-a merge. Git and your deployment process, not Skillmux, keep separate
-checkouts replicated and fresh.
+a merge. A sync that the hook starts from inside a pull does not pull again.
+Without `vault_url`, Git and your deployment process, not Skillmux, keep
+separate checkouts replicated and fresh.
 
 ## Inspect active state
 

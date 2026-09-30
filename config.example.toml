@@ -5,6 +5,12 @@
 # which core and project skills appear in those directories.
 vault_path = "~/skills"
 
+# Optional: a git remote for the vault. When set, `skillmux sync` clones it into
+# vault_path or fast-forwards it first, so nothing else has to. `sync --no-pull`
+# skips the fetch. A host with no agents is left alone. Subject to [egress]
+# allowed_hosts. See docs/configuration.md#vault-remote.
+# vault_url = "git@github.com:you/skills.git"
+
 # Optional: configuration authority policy. Defaults to true.
 # When set to false, behavioral environment variables are ignored and TOML remains
 # authoritative (CLI flags and secret names like api_key_env still resolve).
