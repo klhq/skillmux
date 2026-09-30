@@ -19,10 +19,19 @@ export interface VaultUpdateParams {
   allowedHosts?: string[];
 }
 
+/**
+ * Set on every git call made for a vault update. The post-merge hook that
+ * `skillmux sync --install-hook` writes runs `skillmux sync`, and git hands it
+ * this environment, so that nested sync can see it was started by a pull and
+ * must not pull again.
+ */
+export const SYNC_ACTIVE_ENV = "SKILLMUX_SYNC_ACTIVE";
+
 /** Git must never stop to ask a question: sync runs unattended from chezmoi and hooks. */
 function gitEnv(): Record<string, string | undefined> {
   return {
     ...process.env,
+    [SYNC_ACTIVE_ENV]: "1",
     GIT_TERMINAL_PROMPT: "0",
     GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes -o ConnectTimeout=10",
   };
@@ -64,7 +73,7 @@ export async function updateVault(params: VaultUpdateParams): Promise<VaultUpdat
   return { status: "cloned" };
 }
 
-export type VaultSkipReason = "no-vault-url" | "no-agents" | "no-pull" | "dry-run";
+export type VaultSkipReason = "no-vault-url" | "no-agents" | "no-pull" | "dry-run" | "nested";
 
 export type RefreshVaultResult =
   | VaultUpdateResult
@@ -86,6 +95,7 @@ export async function refreshVault(
 ): Promise<RefreshVaultResult> {
   if (config.vault_url === undefined) return { status: "skipped", reason: "no-vault-url" };
   if (config.agents.length === 0) return { status: "skipped", reason: "no-agents" };
+  if (process.env[SYNC_ACTIVE_ENV] === "1") return { status: "skipped", reason: "nested" };
   if (options.noPull) return { status: "skipped", reason: "no-pull" };
   const vaultPath = expandHome(config.vault_path);
   if (options.dryRun) {

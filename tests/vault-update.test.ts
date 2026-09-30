@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanupTempDirs, createRemote, git, tempDir } from "./git-remote-fixture";
 import { refreshVault, updateVault } from "../src/vault-update";
@@ -119,6 +119,21 @@ describe("updateVault", () => {
     expect(existsSync(vaultPath)).toBe(false);
   });
 
+  test("marks git's environment so a sync started by the post-merge hook can tell it is nested", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+    const seen = join(tempDir(), "hook-env");
+    const hook = join(vaultPath, ".git", "hooks", "post-merge");
+    writeFileSync(hook, `#!/bin/sh\nprintf '%s' "$SKILLMUX_SYNC_ACTIVE" > "${seen}"\n`);
+    chmodSync(hook, 0o755);
+    remote.publish("second.txt", "two\n");
+
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+
+    expect(readFileSync(seen, "utf8")).toBe("1");
+  });
+
   test("warns instead of throwing when a first clone cannot reach the remote", async () => {
     const vaultPath = join(tempDir(), "vault");
 
@@ -208,5 +223,24 @@ describe("refreshVault", () => {
 
     expect(result).toEqual({ status: "cloned" });
     expect(existsSync(join(vaultPath, "first.txt"))).toBe(true);
+  });
+
+  test("does not pull again when it is itself running inside a vault pull", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    const previous = process.env.SKILLMUX_SYNC_ACTIVE;
+    process.env.SKILLMUX_SYNC_ACTIVE = "1";
+    try {
+      const result = await refreshVault(
+        { vault_path: vaultPath, vault_url: remote.url, agents: ["opencode"] },
+        { dryRun: false, noPull: false },
+      );
+
+      expect(result).toEqual({ status: "skipped", reason: "nested" });
+      expect(existsSync(vaultPath)).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.SKILLMUX_SYNC_ACTIVE;
+      else process.env.SKILLMUX_SYNC_ACTIVE = previous;
+    }
   });
 });
