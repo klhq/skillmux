@@ -269,14 +269,14 @@ export async function runSync(args: string[]): Promise<void> {
     warn: isJson ? undefined : (line: string) => warn(line),
   });
   if (!result.manifestFound) {
-    emitSuccess({ isJson }, { hook_installed: hookInstalled ?? null, dirs: [] }, () =>
+    emitSuccess({ isJson }, { hook_installed: hookInstalled ?? null, vault_update: vaultUpdate, dirs: [] }, () =>
       console.log("no skillmux.toml found at vault root — nothing to sync"),
     );
     return;
   }
   emitSuccess(
     { isJson },
-    { hook_installed: hookInstalled ?? null, notes: result.notes, dirs: result.dirs },
+    { hook_installed: hookInstalled ?? null, vault_update: vaultUpdate, notes: result.notes, dirs: result.dirs },
     () => {},
   );
 }

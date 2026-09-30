@@ -1,10 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openIndex, upsertSkill } from "../src/db";
 import { diagnose } from "../src/doctor";
 import { syncTarget } from "../src/sync";
+import { updateVault } from "../src/vault-update";
+import { cleanupTempDirs, createRemote, tempDir } from "./git-remote-fixture";
 import type { Config } from "../src/types";
 
 const server = Bun.serve({
@@ -489,5 +491,49 @@ describe("diagnose configuration provenance and checks", () => {
 
     expect(report.checks.find((check) => check.name === "config_source:vault_path")?.detail).toBe("toml");
     expect(report.checks.find((check) => check.name === "config_source:recall.k_rerank")?.detail).toBe("environment");
+  });
+});
+
+describe("diagnose vault_url", () => {
+  afterEach(() => cleanupTempDirs());
+
+  const vaultUrlCheck = async (config: Config) =>
+    (await diagnose(config, {})).checks.find((check) => check.name === "vault_url");
+
+  test("reports nothing when vault_url is not configured", async () => {
+    expect(await vaultUrlCheck(testConfig({ vault_path: tempDir() }))).toBeUndefined();
+  });
+
+  test("passes when the checkout's origin is the configured vault_url", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+
+    expect(await vaultUrlCheck(testConfig({ vault_path: vaultPath, vault_url: remote.url }))).toMatchObject({
+      ok: true,
+      detail: expect.stringContaining(remote.url),
+    });
+  });
+
+  test("fails and names both URLs when the checkout's origin differs", async () => {
+    const remote = createRemote();
+    const other = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+
+    const check = await vaultUrlCheck(testConfig({ vault_path: vaultPath, vault_url: other.url }));
+
+    expect(check?.ok).toBe(false);
+    expect(check?.detail).toContain(remote.url);
+    expect(check?.detail).toContain(other.url);
+  });
+
+  test("fails with a hint when vault_path is not a checkout yet", async () => {
+    const check = await vaultUrlCheck(
+      testConfig({ vault_path: join(tempDir(), "vault"), vault_url: "git@github.com:klhq/skills.git" }),
+    );
+
+    expect(check?.ok).toBe(false);
+    expect(check?.detail).toContain("skillmux sync");
   });
 });

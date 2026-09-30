@@ -91,4 +91,26 @@ describe("skillmux sync with vault_url", () => {
     expect(stderr).toContain("git pull failed");
     expect(lstatSync(join(machine.home, ".agents", "skills", "demo-skill")).isSymbolicLink()).toBe(true);
   });
+
+  test("--json reports the vault update as data.vault_update", async () => {
+    const machine = setup('agents = ["opencode"]\n');
+
+    const { stdout } = await runSync(machine, "--json", "--yes");
+
+    expect(JSON.parse(stdout).data.vault_update).toEqual({ status: "cloned" });
+  });
+
+  test("--json reports a skipped update with its reason, and a failed one with its warning", async () => {
+    const machine = setup('agents = ["opencode"]\n');
+    const skipped = await runSync(machine, "--json", "--no-pull");
+    expect(JSON.parse(skipped.stdout).data.vault_update).toEqual({ status: "skipped", reason: "no-pull" });
+
+    await runSync(machine, "--yes");
+    rmSync(machine.remote.url.replace("file://", ""), { recursive: true, force: true });
+    const failed = await runSync(machine, "--json", "--yes");
+
+    const update = JSON.parse(failed.stdout).data.vault_update;
+    expect(update.status).toBe("failed");
+    expect(update.warning).toContain("git pull failed");
+  });
 });
