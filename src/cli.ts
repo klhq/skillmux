@@ -1,22 +1,8 @@
 #!/usr/bin/env bun
-import { unknownOptionError, usageError } from "./arg-errors";
 import packageJson from "../package.json" with { type: "json" };
-import { lstatSync, mkdirSync } from "node:fs";
-
-import { createClients } from "./clients";
-import { loadConfig, setConfigNoticeHandler } from "./config";
-import { openAudit } from "./db";
+import { setConfigNoticeHandler } from "./config";
 import { getEffectiveConfig } from "./config-service";
 import { buildRedactor } from "./redact";
-import { evalVault } from "./eval";
-import { runOutdated } from "./commands/outdated";
-import { runUpdate } from "./commands/update";
-import { serializeManifest } from "./manifest";
-
-import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
-import { type StatsResponse } from "./stats";
-import { scanVault } from "./vault";
-
 import {
   DEFAULT_CONTEXTS_PATH,
   contextSource,
@@ -24,9 +10,8 @@ import {
   type ContextSource,
   type ResolvedContext,
 } from "./context";
-import { createContextAdapter, isLoopbackHost, type ContextAdapter } from "./adapters";
+import { createContextAdapter } from "./adapters";
 import {
-  emitSuccess,
   CliError,
   formatJsonEnvelope,
   mapExitCode,
@@ -39,8 +24,8 @@ import {
   suggestCorrection,
   warn,
 } from "./output";
-import { generateCompletions, type ShellType } from "./completions";
 import { COMMAND_HELP } from "./command-help";
+import { REMOVED_COMMANDS, findHandler } from "./command-handlers";
 import {
   COMMANDS,
   KNOWN_COMMANDS,
@@ -50,22 +35,6 @@ import {
   type LocalOnlyReason,
 } from "./command-registry";
 import { SUPPORTED_AGENT_IDS } from "./init-agents";
-import { runAudit } from "./commands/audit";
-import { handleConfigCommand } from "./commands/config";
-import { handleContextCommand } from "./commands/context";
-import { runDoctor } from "./commands/doctor";
-import { runEvalPromote } from "./commands/eval";
-import { runInstall } from "./commands/install";
-import { runCore } from "./commands/core";
-import { runLocalVaultInit } from "./commands/local-vault";
-import { runModelDownload } from "./commands/models";
-import { runProject } from "./commands/project";
-import { runReport } from "./commands/report";
-import { runScan } from "./commands/scan";
-import { runSkill } from "./commands/skill";
-import { runAgent } from "./commands/agent";
-import { runSync } from "./commands/sync";
-import { runInit } from "./commands/init";
 
 export { KNOWN_COMMANDS };
 
@@ -288,170 +257,33 @@ async function main() {
   const adapter = createContextAdapter(resolvedContext, { allowInsecure });
 
   try {
-    switch (command) {
-      case "context":
-        await handleContextCommand(subCommand, commandArgs, {
-          context: resolvedContext,
-          isJson,
-        });
-        break;
-      case "config":
-        await handleConfigCommand(adapter, subCommand, commandArgs, {
-          context: resolvedContext,
-          isJson,
-          dryRun: isDryRun,
-        });
-        break;
-      case "calibrate":
-        throw new Error(
-          'skillmux calibrate was removed. Threshold calibration was removed; use "skillmux eval" for ranking evaluation.',
-        );
-      case "completions":
-        await handleCompletionsCommand(subCommand);
-        break;
-      case "serve": {
-        const { startServer } = await import("./server");
-        const { transport, port, statsPort } = parseServeArgs(rawArgv.slice(1));
-        const handle = await startServer({ transport, port, statsPort });
-        let stopping = false;
-        const shutdown = async () => {
-          if (stopping) return;
-          stopping = true;
-          const timeout = setTimeout(() => process.exit(1), 10_000);
-          timeout.unref();
-          await handle.stop();
-          clearTimeout(timeout);
-          process.exit(0);
-        };
-        process.once("SIGTERM", shutdown);
-        process.once("SIGINT", shutdown);
-        if (transport === "stdio") {
-          process.stdin.on("close", shutdown);
-          process.stdin.on("end", shutdown);
-        }
-        break;
-      }
-      case "index":
-        await runIndex();
-        break;
-      case "sync":
-        await runSync(rawArgv.slice(1));
-        break;
-      case "init":
-        await runInit(rawArgv.slice(1), { isJson, dryRun: isDryRun });
-        break;
-      case "project":
-        await runProject(subCommand, commandArgs, {
-          isJson,
-          dryRun: isDryRun,
-          sync: runSync,
-        });
-        break;
-      case "agent":
-        await runAgent(subCommand, commandArgs, { isJson, dryRun: isDryRun });
-        break;
-      case "core":
-        await runCore(subCommand, commandArgs, { isJson, dryRun: isDryRun });
-        break;
-      case "report":
-        await runReport(rawArgv.slice(1), {
-          isJson,
-          context: resolvedContext,
-          allowInsecure,
-          adapter,
-        });
-        break;
-      case "audit":
-        await runAudit(subCommand, commandArgs, {
-          isJson,
-          dryRun: isDryRun,
-          context: resolvedContext,
-          adapter,
-        });
-        break;
-      case "scan":
-        await runScan(rawArgv.slice(1), { isJson });
-        break;
-      case "install":
-        await runInstall(rawArgv.slice(1), { isJson });
-        break;
-      case "outdated":
-        await runOutdated(rawArgv.slice(1), { isJson });
-        break;
-      case "update":
-        await runUpdate(rawArgv.slice(1), { isJson });
-        break;
-      case "eval":
-        if (subCommand === "promote") {
-          await runEvalPromote(commandArgs, { isJson, dryRun: isDryRun, adapter });
-        } else if (subCommand === "") {
-          await runEval({ isJson, adapter });
-        } else {
-          throw usageError(`unknown eval subcommand "${subCommand}"`, "usage: skillmux eval [promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]]");
-        }
-        break;
-      case "doctor":
-        await runDoctor({
-          isJson,
-          verbose: isVerbose,
-          context: resolvedContext,
-          adapter,
-          args: rawArgv.slice(1),
-        });
-        break;
-      case "which":
-        throw new Error(
-          `skillmux which is removed - use "skillmux skill which ${subCommand || "<skill_id>"}" instead`,
-        );
-      case "skill":
-        await runSkill(subCommand, commandArgs);
-        break;
-      case "manifest":
-        throw new Error(
-          `skillmux manifest is removed - use "skillmux core ${subCommand || "pin|unpin"}" for [core] skills, or "skillmux project ${subCommand || "pin|unpin"} <group>" for [project.*] skills`,
-        );
-      case "local-vault":
-        if (subCommand !== "init")
-          throw usageError(
-            subCommand ? `unknown local-vault subcommand "${subCommand}"` : "missing subcommand",
-            "usage: skillmux local-vault init <path>",
-          );
-        await runLocalVaultInit(commandArgs, { isJson, dryRun: isDryRun });
-        break;
-      case "models":
-        if (subCommand !== "download")
-          throw usageError(
-            subCommand ? `unknown models subcommand "${subCommand}"` : "missing subcommand",
-            "usage: skillmux models download",
-          );
-        await runModelDownload({ isJson });
-        break;
-      case "target":
-        throw new Error(
-          '"skillmux target" was replaced by "skillmux agent": list agents in config.toml ' +
-            '(agents = [...]) instead of naming directories. See "skillmux agent --help"',
-        );
-      default: {
-        const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
-        const msg = suggestion
+    const handler = findHandler(command);
+    if (!handler) {
+      if (Object.hasOwn(REMOVED_COMMANDS, command)) throw new Error(REMOVED_COMMANDS[command]!(subCommand));
+      const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
+      throw new Error(
+        suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `Unknown command "${command}". Run "skillmux --help" to see the available commands: ${KNOWN_COMMANDS.join(", ")}.`;
-        throw new Error(msg);
-      }
+          : `Unknown command "${command}". Run "skillmux --help" to see the available commands: ${KNOWN_COMMANDS.join(", ")}.`,
+      );
     }
+    await handler({
+      args: rawArgv.slice(1),
+      subCommand,
+      subArgs: commandArgs,
+      isJson,
+      isDryRun,
+      isVerbose,
+      allowInsecure,
+      context: resolvedContext,
+      adapter,
+    });
   } catch (err: any) {
     await handleError(err, { context: resolvedContext, isJson, isVerbose });
   }
 }
 
 
-
-async function handleCompletionsCommand(shell: string) {
-  if (shell !== "bash" && shell !== "zsh" && shell !== "fish") {
-    throw usageError(shell ? `unsupported shell "${shell}"` : "missing <shell> argument", "usage: skillmux completions <bash|zsh|fish>");
-  }
-  console.log(generateCompletions(shell as ShellType));
-}
 
 async function handleError(
   err: any,
@@ -555,97 +387,6 @@ Global options: --json, --verbose, --dry-run, --no-color, --context <name>, --se
 
 Run "skillmux <command> --help" for a command's full usage.`));
 }
-
-// ---------------------------------------------------------------------------
-// Implementation of commands: serve, index, sync, init, report, scan, install, eval, doctor, models
-// ---------------------------------------------------------------------------
-
-type Transport = "stdio" | "http";
-
-function parseServeArgs(args: string[]): {
-  transport: Transport;
-  port?: number;
-  statsPort?: number;
-} {
-  let transport: Transport = "stdio";
-  let port: number | undefined;
-  let statsPort: number | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const option = args[i];
-    const value = args[i + 1];
-    if (option === "--transport") {
-      if (value !== "stdio" && value !== "http") {
-        throw new Error("--transport must be stdio or http");
-      }
-      transport = value;
-      i++;
-    } else if (option === "--port") {
-      const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
-        throw new Error("--port must be an integer between 0 and 65535");
-      }
-      port = parsed;
-      i++;
-    } else if (option === "--stats-port") {
-      const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
-        throw new Error("--stats-port must be an integer between 0 and 65535");
-      }
-      statsPort = parsed;
-      i++;
-    } else {
-      throw unknownOptionError("serve", option);
-    }
-  }
-  return { transport, port, statsPort };
-}
-
-async function runIndex(): Promise<void> {
-  const config = await loadConfig();
-  configure({ config, clients: createClients(config) });
-  const report = await rebuildIndex((skillId, error) => {
-    warn(`keeping previous index entry for ${skillId}: ${error}`);
-  });
-  const retainedNote =
-    report.retained.length > 0
-      ? ` (${report.retained.length} retained after parse errors)`
-      : "";
-  console.log(`indexed ${report.indexed} skills${retainedNote}`);
-
-  try {
-    const backfilled = await backfillEmbeddings();
-    console.log(`embeddings: ${backfilled} backfilled`);
-  } catch {
-    console.log(
-      "embeddings: skipped (endpoint unreachable; lexical-only recall until next index)",
-    );
-  }
-}
-
-async function runEval(options: { isJson: boolean; adapter: ContextAdapter }): Promise<void> {
-  const config = await loadConfig();
-  configure({ config, clients: createClients(config) });
-
-  const report = await options.adapter.evalRun().catch((error: unknown) => {
-    throw new Error(
-      `eval requires an embeddings client (local model or a configured remote endpoint): ${String(error)}`,
-    );
-  });
-  emitSuccess({ isJson: options.isJson }, report, () => {
-    console.log(`holdout queries:   ${report.queries}`);
-    console.log(`judged queries:    ${report.judged_queries}`);
-    console.log(`unjudged queries:  ${report.unjudged_queries}`);
-    console.log(`lexical recall@5:  ${report.lexical.recall_at_5.toFixed(3)}`);
-    console.log(`lexical recall@10: ${report.lexical.recall_at_10.toFixed(3)}`);
-    console.log(`lexical MRR:       ${report.lexical.mrr.toFixed(3)}`);
-    console.log(`lexical nDCG@10:   ${report.lexical.ndcg_at_10.toFixed(3)}`);
-    console.log(`hybrid recall@5:   ${report.hybrid.recall_at_5.toFixed(3)}`);
-    console.log(`hybrid recall@10:  ${report.hybrid.recall_at_10.toFixed(3)}`);
-    console.log(`hybrid MRR:        ${report.hybrid.mrr.toFixed(3)}`);
-    console.log(`hybrid nDCG@10:    ${report.hybrid.ndcg_at_10.toFixed(3)}`);
-  });
-}
-
 
 if (import.meta.main) {
   await main();
