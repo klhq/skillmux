@@ -1,27 +1,16 @@
+import { COMMANDS, findCommand } from "./command-registry";
 import { SUPPORTED_AGENT_IDS } from "./init-agents";
 
 export type ShellType = "bash" | "zsh" | "fish";
 
-const TOP_LEVEL_COMMANDS: { name: string; description: string }[] = [
-  { name: "context", description: "Manage connection contexts" },
-  { name: "config", description: "Manage configuration" },
-  { name: "serve", description: "Start MCP server" },
-  { name: "index", description: "Rebuild local search index" },
-  { name: "sync", description: "Synchronize vault skills" },
-  { name: "init", description: "Configure this machine and its agents" },
-  { name: "project", description: "Configure project-scoped skills" },
-  { name: "agent", description: "Choose which agents this machine syncs to" },
-  { name: "core", description: "Pin/unpin skills into [core]" },
-  { name: "report", description: "Generate usage stats" },
-  { name: "scan", description: "Audit skills for issues" },
-  { name: "install", description: "Install skills into vault" },
-  { name: "eval", description: "Evaluate search accuracy" },
-  { name: "doctor", description: "Check runtime health" },
-  { name: "skill", description: "Show which root resolves a skill_id" },
-  { name: "local-vault", description: "Manage local_vault_paths discoverability markers" },
-  { name: "models", description: "Manage local models" },
-  { name: "completions", description: "Generate shell completions" },
-];
+const TOP_LEVEL_COMMANDS = COMMANDS.map(({ name, description }) => ({ name, description }));
+
+/** Space-separated subcommands for a registry command, for embedding in a script. */
+function subs(command: string): string {
+  const found = findCommand(command)?.subcommands;
+  if (!found) throw new Error(`no subcommands registered for ${command}`);
+  return found.join(" ");
+}
 
 export function generateCompletions(shell: ShellType): string {
   if (shell === "bash") {
@@ -41,31 +30,37 @@ _skillmux_completions() {
 
     case "$prev" in
         context)
-            COMPREPLY=( $(compgen -W "add list current use remove" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("context")}" -- "$cur") )
             ;;
         config)
-            COMPREPLY=( $(compgen -W "init show get validate diff set status" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("config")}" -- "$cur") )
             ;;
         completions)
-            COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("completions")}" -- "$cur") )
             ;;
         core)
-            COMPREPLY=( $(compgen -W "pin unpin" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("core")}" -- "$cur") )
             ;;
         skill)
-            COMPREPLY=( $(compgen -W "which" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("skill")}" -- "$cur") )
             ;;
         project)
-            COMPREPLY=( $(compgen -W "init list show add-path remove-path pin unpin attach detach" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("project")}" -- "$cur") )
             ;;
         agent)
-            COMPREPLY=( $(compgen -W "list add remove rehome" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("agent")}" -- "$cur") )
             ;;
         local-vault)
-            COMPREPLY=( $(compgen -W "init" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("local-vault")}" -- "$cur") )
             ;;
         eval)
-            COMPREPLY=( $(compgen -W "promote" -- "$cur") )
+            COMPREPLY=( $(compgen -W "${subs("eval")}" -- "$cur") )
+            ;;
+        audit)
+            COMPREPLY=( $(compgen -W "${subs("audit")}" -- "$cur") )
+            ;;
+        models)
+            COMPREPLY=( $(compgen -W "${subs("models")}" -- "$cur") )
             ;;
         --agent|add|remove)
             COMPREPLY=( $(compgen -W "${SUPPORTED_AGENT_IDS.join(" ")}" -- "$cur") )
@@ -122,7 +117,7 @@ ${commands}
           '--dry-run[print the plan without writing]' \\
           '--json[emit a JSON envelope]'
     elif [[ "$words[2]" == "project" && CURRENT == 3 ]]; then
-        _values 'project command' init list show add-path remove-path pin unpin attach detach
+        _values 'project command' ${subs("project")}
     elif [[ "$words[2]" == "eval" && "$words[3]" == "promote" ]]; then
         _arguments \
           '--since[time window]:window:' \
@@ -131,17 +126,27 @@ ${commands}
           '--yes[apply without prompts]' \
           '--json[emit a JSON envelope]'
     elif [[ "$words[2]" == "eval" && CURRENT == 3 ]]; then
-        _values 'eval command' promote
+        _values 'eval command' ${subs("eval")}
     elif [[ "$words[2]" == "agent" && CURRENT == 3 ]]; then
-        _values 'agent command' list add remove rehome
+        _values 'agent command' ${subs("agent")}
     elif [[ "$words[2]" == "agent" && ( "$words[3]" == "add" || "$words[3]" == "remove" ) ]]; then
         _values 'agent' ${SUPPORTED_AGENT_IDS.join(" ")}
     elif [[ "$words[2]" == "skill" && CURRENT == 3 ]]; then
-        _values 'skill command' which
+        _values 'skill command' ${subs("skill")}
     elif [[ "$words[2]" == "core" && CURRENT == 3 ]]; then
-        _values 'core command' pin unpin
+        _values 'core command' ${subs("core")}
+    elif [[ "$words[2]" == "context" && CURRENT == 3 ]]; then
+        _values 'context command' ${subs("context")}
+    elif [[ "$words[2]" == "config" && CURRENT == 3 ]]; then
+        _values 'config command' ${subs("config")}
+    elif [[ "$words[2]" == "completions" && CURRENT == 3 ]]; then
+        _values 'shell' ${subs("completions")}
+    elif [[ "$words[2]" == "audit" && CURRENT == 3 ]]; then
+        _values 'audit command' ${subs("audit")}
+    elif [[ "$words[2]" == "models" && CURRENT == 3 ]]; then
+        _values 'models command' ${subs("models")}
     elif [[ "$words[2]" == "local-vault" && CURRENT == 3 ]]; then
-        _values 'local-vault command' init
+        _values 'local-vault command' ${subs("local-vault")}
     fi
 }
 _skillmux "$@"
@@ -167,7 +172,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from init" -l interactive -d "Fo
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l yes -d "Apply without prompts"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l dry-run -d "Print the plan without writing"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l json -d "Emit a JSON envelope"
-complete -c skillmux -n "__fish_seen_subcommand_from project" -a "init list show add-path remove-path pin unpin attach detach" -d "Manage projects"
+complete -c skillmux -n "__fish_seen_subcommand_from project" -a "${subs("project")}" -d "Manage projects"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l name -x -d "Project group name"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l skill -x -d "Project skill"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l agent -x -a "${SUPPORTED_AGENT_IDS.join(" ")}" -d "Select an agent"
@@ -175,17 +180,22 @@ complete -c skillmux -n "__fish_seen_subcommand_from project" -l register-mcp -d
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l interactive -d "Force guided setup"
 complete -c skillmux -n "__fish_seen_subcommand_from project" -l yes -d "Apply without prompts"
-complete -c skillmux -n "__fish_seen_subcommand_from eval" -a "promote" -d "Promote correlated fetches into eval cases"
+complete -c skillmux -n "__fish_seen_subcommand_from eval" -a "${subs("eval")}" -d "Promote correlated fetches into eval cases"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l since -x -d "Time window"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l out -r -d "Output file"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l dry-run -d "Print the plan without writing"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l yes -d "Apply without prompts"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l json -d "Emit a JSON envelope"
-complete -c skillmux -n "__fish_seen_subcommand_from agent; and not __fish_seen_subcommand_from list add remove rehome" -a "list add remove rehome" -d "Manage agents"
+complete -c skillmux -n "__fish_seen_subcommand_from agent; and not __fish_seen_subcommand_from ${subs("agent")}" -a "${subs("agent")}" -d "Manage agents"
 complete -c skillmux -n "__fish_seen_subcommand_from agent; and __fish_seen_subcommand_from add remove" -a "${SUPPORTED_AGENT_IDS.join(" ")}" -d "Agent"
-complete -c skillmux -n "__fish_seen_subcommand_from core" -a "pin unpin" -d "Manage [core] pins"
-complete -c skillmux -n "__fish_seen_subcommand_from skill" -a "which" -d "Show which root resolves a skill_id"
-complete -c skillmux -n "__fish_seen_subcommand_from local-vault" -a "init" -d "Initialize a local_vault_paths marker"
+complete -c skillmux -n "__fish_seen_subcommand_from core" -a "${subs("core")}" -d "Manage [core] pins"
+complete -c skillmux -n "__fish_seen_subcommand_from skill" -a "${subs("skill")}" -d "Show which root resolves a skill_id"
+complete -c skillmux -n "__fish_seen_subcommand_from context" -a "${subs("context")}" -d "Manage contexts"
+complete -c skillmux -n "__fish_seen_subcommand_from config" -a "${subs("config")}" -d "Manage configuration"
+complete -c skillmux -n "__fish_seen_subcommand_from completions" -a "${subs("completions")}" -d "Shell"
+complete -c skillmux -n "__fish_seen_subcommand_from audit" -a "${subs("audit")}" -d "Prune the audit database"
+complete -c skillmux -n "__fish_seen_subcommand_from models" -a "${subs("models")}" -d "Download local models"
+complete -c skillmux -n "__fish_seen_subcommand_from local-vault" -a "${subs("local-vault")}" -d "Initialize a local_vault_paths marker"
 `;
   }
 

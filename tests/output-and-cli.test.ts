@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { CliError, emitSuccess, formatJsonEnvelope, isColorEnabled, isInteractive, mapExitCode, red, suggestCorrection } from "../src/output";
 import { generateCompletions } from "../src/completions";
+import { KNOWN_COMMANDS } from "../src/command-registry";
 
 describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () => {
   it("keeps prompts interactive when NO_COLOR is set", () => {
@@ -140,7 +141,7 @@ describe("Output Formatting, Exit Codes, and Discoverability (AC11, AC12)", () =
       [...fish.matchAll(/__fish_use_subcommand" -a (\S+)/g)].map((m) => m[1]!),
     );
 
-    expect(bashCommands.size).toBe(18);
+    expect(bashCommands).toEqual(new Set(KNOWN_COMMANDS));
     expect(zshCommands).toEqual(bashCommands);
     expect(fishCommands).toEqual(bashCommands);
   });
