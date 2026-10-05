@@ -59,6 +59,13 @@ describe.skipIf(!python)("color on a real terminal", () => {
     expect(warning.tty).toContain(`${ESC}1;33mwarning:${ESC}0m --format is deprecated`);
   });
 
+  test("config deprecation warnings use the same colored label as other warnings", async () => {
+    const { tty } = await runOnPty(["config", "validate"], undefined, { SKILL_ROUTER_CONFIG: "/nonexistent/config.toml" });
+    expect(tty).toContain(
+      `${ESC}1;33mwarning:${ESC}0m SKILL_ROUTER_CONFIG is deprecated, use SKILLMUX_CONFIG instead`,
+    );
+  });
+
   test("scan colors severity tags by level", async () => {
     const vault = mkdtempSync(join(tmpdir(), "skillmux-scan-"));
     const dir = join(vault, "skill-a");

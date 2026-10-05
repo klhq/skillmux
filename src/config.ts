@@ -211,13 +211,35 @@ function deepMerge<T>(base: T, override: unknown): T {
 
 export const warnedEnv = new Set<string>();
 
+export type ConfigNoticeKind = "warning" | "note";
+
+/**
+ * Deprecation warnings and migration notes go through a replaceable handler
+ * rather than straight to a CLI output module. This file is also the root of
+ * the Docker model-prefetch stage's minimal source set, so importing the
+ * (frequently edited) CLI output code here would invalidate that cached
+ * layer and re-download the model bundle on unrelated changes. The default
+ * prints the plain "warning: ..." form; the CLI installs one that colors it.
+ */
+let notify: (kind: ConfigNoticeKind, line: string) => void = (kind, line) => {
+  console.error(`${kind}: ${line}`);
+};
+
+export function setConfigNoticeHandler(handler: (kind: ConfigNoticeKind, line: string) => void): void {
+  notify = handler;
+}
+
+function notice(kind: ConfigNoticeKind, line: string): void {
+  notify(kind, line);
+}
+
 function migrateLegacyDir(legacy: string, next: string): void {
   const legacyPath = expandHome(legacy);
   const nextPath = expandHome(next);
   if (existsSync(nextPath) || !existsSync(legacyPath)) return;
   mkdirSync(dirname(nextPath), { recursive: true });
   renameSync(legacyPath, nextPath);
-  console.error(`skillmux: migrated ${legacyPath} -> ${nextPath}`);
+  notice("note", `migrated ${legacyPath} -> ${nextPath}`);
 }
 
 export function migrateLegacyPaths(): void {
@@ -231,7 +253,7 @@ export function resolveConfigPath(path?: string): string {
   if (configEnv === undefined && process.env.SKILL_ROUTER_CONFIG !== undefined) {
     if (!warnedEnv.has("SKILL_ROUTER_CONFIG")) {
       warnedEnv.add("SKILL_ROUTER_CONFIG");
-      console.error("skillmux: SKILL_ROUTER_CONFIG is deprecated, use SKILLMUX_CONFIG instead");
+      notice("warning", "SKILL_ROUTER_CONFIG is deprecated, use SKILLMUX_CONFIG instead");
     }
     configEnv = process.env.SKILL_ROUTER_CONFIG;
   }
@@ -392,7 +414,7 @@ export async function loadConfig(path?: string): Promise<Config> {
   for (const [generic, preferred] of Object.entries(GENERIC_ENV_MAPPINGS)) {
     if (process.env[generic] !== undefined && !warnedEnv.has(generic)) {
       warnedEnv.add(generic);
-      console.error(`skillmux: ${generic} is deprecated, use ${preferred} instead`);
+      notice("warning", `${generic} is deprecated, use ${preferred} instead`);
     }
   }
 
@@ -405,7 +427,7 @@ export async function loadConfig(path?: string): Promise<Config> {
     if (process.env[legacyPrefixed] !== undefined) {
       if (!warnedEnv.has(legacyPrefixed)) {
         warnedEnv.add(legacyPrefixed);
-        console.error(`skillmux: ${legacyPrefixed} is deprecated, use ${newPrefixed} instead`);
+        notice("warning", `${legacyPrefixed} is deprecated, use ${newPrefixed} instead`);
       }
       return process.env[legacyPrefixed];
     }
@@ -456,7 +478,7 @@ export async function loadConfig(path?: string): Promise<Config> {
       if (modelsDirEnv === undefined && process.env.SKILL_ROUTER_MODELS_DIR !== undefined) {
         if (!warnedEnv.has("SKILL_ROUTER_MODELS_DIR")) {
           warnedEnv.add("SKILL_ROUTER_MODELS_DIR");
-          console.error("skillmux: SKILL_ROUTER_MODELS_DIR is deprecated, use SKILLMUX_MODELS_DIR instead");
+          notice("warning", "SKILL_ROUTER_MODELS_DIR is deprecated, use SKILLMUX_MODELS_DIR instead");
         }
         modelsDirEnv = process.env.SKILL_ROUTER_MODELS_DIR;
       }

@@ -4,7 +4,7 @@ import packageJson from "../package.json" with { type: "json" };
 import { lstatSync, mkdirSync } from "node:fs";
 
 import { createClients } from "./clients";
-import { loadConfig } from "./config";
+import { loadConfig, setConfigNoticeHandler } from "./config";
 import { openAudit } from "./db";
 import { getEffectiveConfig } from "./config-service";
 import { buildRedactor } from "./redact";
@@ -30,6 +30,7 @@ import {
   CliError,
   formatJsonEnvelope,
   mapExitCode,
+  note,
   dim,
   renderError,
   routeStderrUncolored,
@@ -203,6 +204,7 @@ async function main() {
   // option parser has to know about it (they reject options they don't know).
   const rawArgv = Bun.argv.slice(2).filter((arg) => arg !== "--no-color");
   routeStderrUncolored();
+  setConfigNoticeHandler((kind, line) => (kind === "warning" ? warn(line) : note(line)));
   if (rawArgv.length !== Bun.argv.length - 2) setColorDisabled(true);
 
   let isJson = process.env.SKILLMUX_JSON === "true";
