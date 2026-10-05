@@ -5,7 +5,7 @@ import { expandHome, loadConfig, resolveConfigPath } from "../config";
 import { adoptSurfaces } from "../init";
 import { isAgentId, planAgentSurfaces, SUPPORTED_AGENT_IDS, type AgentId } from "../init-agents";
 import { parseManifest, resolveManifestPath, resolveSyncSurfaces } from "../manifest";
-import { emitSuccess, unknownSubcommandError } from "../output";
+import { emitSuccess, green, unknownSubcommandError, yellow } from "../output";
 import {
   applyTargetMarkerRehome,
   planTargetMarkerRehome,
@@ -31,6 +31,11 @@ function dirState(dir: string): "managed" | "missing" | "unmanaged" {
   return readSkillmuxMarker(dir)?.role === "target" ? "managed" : "unmanaged";
 }
 
+/** managed is the healthy state; missing and unmanaged both need a look. */
+function colorDirState(state: ReturnType<typeof dirState>): string {
+  return state === "managed" ? green(state) : yellow(state);
+}
+
 export async function runAgent(
   subCommand: string,
   args: string[],
@@ -52,7 +57,7 @@ export async function runAgent(
         return;
       }
       for (const dir of dirs) {
-        console.log(`${dir.dir} (${dir.agents.join(", ")}): ${dir.state}`);
+        console.log(`${dir.dir} (${dir.agents.join(", ")}): ${colorDirState(dir.state)}`);
       }
     });
     return;

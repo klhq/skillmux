@@ -523,11 +523,25 @@ Run on a host, `doctor` also reports `sync_drift`: a planned-but-never-performed
 
 ## Color
 
-Interactive terminal output uses a small amount of color: red for error
-messages, yellow for `warning:` lines, green/red for `doctor`'s `ok`/`fail`
-checks, and bold table headers. Color is automatic — it's on only when
-stdout is a TTY and off whenever `--no-color` is passed, `NO_COLOR` is set, or
-output is piped or redirected. `--json` output never includes color codes.
+Interactive terminal output uses color to mark labels and statuses, never whole
+sentences, and the words always say the same thing without it:
+
+| Color | Used for |
+|-------|----------|
+| Bold red | the `error:` label and `scan` `[high]` findings |
+| Red | `doctor` failures and an invalid configuration |
+| Bold yellow | the `warning:` label |
+| Yellow | `scan` `[medium]` findings, agent directories that are `missing` or `unmanaged` |
+| Green | `ok` checks, a valid configuration, `managed` agent directories, a clean `scan` |
+| Cyan | the `note:` label in `sync` |
+| Dim | `scan` `[low]` findings and `--verbose` stack traces |
+| Bold | help headings, command names in help, and table headers |
+
+Color is automatic and decided per stream. Normal output is colored only when
+stdout is a TTY, and error and warning text only when stderr is a TTY, so
+`skillmux install x 2>err.log` writes no escape codes to `err.log`. Color is off
+whenever `--no-color` is passed, `NO_COLOR` is set, or the stream is piped or
+redirected. `--json` output never includes color codes.
 
 ---
 

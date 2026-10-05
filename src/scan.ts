@@ -1,3 +1,4 @@
+import { boldRed, dim, green, yellow } from "./output";
 import { existsSync, lstatSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { decodeUtf8Strict, listSupportingFiles, scanVault } from "./vault";
@@ -240,15 +241,25 @@ export async function scanPath(rootPath: string): Promise<ScanResult> {
   return { scanned: skillIds.size, findings };
 }
 
+const SEVERITY_STYLE: Record<ScanSeverity, (text: string) => string> = {
+  high: boldRed,
+  medium: yellow,
+  low: dim,
+};
+
+function severityTag(severity: ScanSeverity): string {
+  return SEVERITY_STYLE[severity](`[${severity}]`);
+}
+
 export function renderScanText(result: ScanResult): string {
   const skillWord = result.scanned === 1 ? "skill" : "skills";
   if (result.findings.length === 0) {
-    return `scanned ${result.scanned} ${skillWord}, no findings`;
+    return `scanned ${result.scanned} ${skillWord}, ${green("no findings")}`;
   }
   const lines: string[] = [`scanned ${result.scanned} ${skillWord}, ${result.findings.length} finding(s)`];
   for (const finding of result.findings) {
     const location = finding.line !== undefined ? `${finding.file}:${finding.line}` : finding.file;
-    lines.push(`[${finding.severity}] ${finding.skill_id}/${location} ${finding.rule_id} — ${finding.message}`);
+    lines.push(`${severityTag(finding.severity)} ${finding.skill_id}/${location} ${finding.rule_id} — ${finding.message}`);
   }
   return lines.join("\n");
 }

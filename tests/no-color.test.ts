@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { unknownOptionError } from "../src/arg-errors";
 import { generateCompletions } from "../src/completions";
 import { isColorEnabled, red, routeStderrUncolored, setColorDisabled } from "../src/output";
+import { ansiCount, python, runOnPty } from "./helpers/pty";
 
 const CLI = new URL("../src/cli.ts", import.meta.url).pathname;
 const TTY_ENV = { TERM: "xterm-256color" };
@@ -86,42 +87,15 @@ describe("--no-color flag", () => {
     expect(unknownOptionError("scan", "--no-colour").message).toContain("Did you mean --no-color?");
   });
 
-  const python = Bun.which("python3");
-
   // Bun colors console.error red on a TTY by itself and ignores in-process NO_COLOR,
   // so this has to run under a real pty to catch a regression.
-  (python ? test : test.skip)("leaves no ANSI codes in error output on a TTY", async () => {
-    const script = `
-import os, pty, select, sys
-def run(args):
-    pid, fd = pty.fork()
-    if pid == 0:
-        os.execvpe(args[0], args, {**os.environ, "TERM": "xterm-256color"})
-    out = b""
-    while True:
-        try:
-            if not select.select([fd], [], [], 30)[0]: break
-            d = os.read(fd, 4096)
-            if not d: break
-            out += d
-        except OSError:
-            break
-    os.waitpid(pid, 0)
-    return out.decode(errors="replace")
-cli = sys.argv[1]
-print(run(["bun", cli, "bogus"]).count("\\x1b["), run(["bun", cli, "bogus", "--no-color"]).count("\\x1b["))
-`;
-    // A developer's own NO_COLOR would make Bun skip coloring and hide the regression.
-    const { NO_COLOR: _ignored, ...env } = process.env;
-    const proc = Bun.spawn([python!, "-c", script, CLI], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...env, RUNNING_IN_DOCKER: "" },
-    });
-    const out = (await new Response(proc.stdout).text()).trim();
-    await proc.exited;
-    const [withColor, withFlag] = out.split(" ").map(Number);
-    expect(withColor).toBeGreaterThan(0);
-    expect(withFlag).toBe(0);
+  (python ? test : test.skip)("leaves no ANSI codes anywhere on a TTY", async () => {
+    for (const args of [["bogus"], ["install"], ["scan", "--help"], ["agent", "list"]]) {
+      const colored = await runOnPty(args);
+      const plain = await runOnPty([...args, "--no-color"]);
+      expect(ansiCount(plain.tty)).toBe(0);
+      // the unflagged run proves the pty actually enables color for this command
+      if (args[0] === "bogus" || args[0] === "install") expect(ansiCount(colored.tty)).toBeGreaterThan(0);
+    }
   });
 });

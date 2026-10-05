@@ -167,8 +167,9 @@ export function setColorDisabled(disabled: boolean): void {
 /**
  * Bun wraps console.error output in red on a TTY by itself, and only honors
  * NO_COLOR from the environment at startup, so setting it in-process does
- * nothing. Writing through process.stderr.write bypasses that, which is what
- * --no-color needs for error text to actually be uncolored.
+ * nothing. Writing through process.stderr.write bypasses that. main() always
+ * does this, so the only color on stderr is color this module chose (a red
+ * label, not a red paragraph), and --no-color can actually turn it off.
  *
  * Returns a function that restores the previous console.error.
  */
@@ -195,20 +196,84 @@ export function isColorEnabled(
   return isInteractive(env, stdoutIsTTY);
 }
 
-const ANSI = { reset: "\x1b[0m", bold: "\x1b[1m", red: "\x1b[31m", yellow: "\x1b[33m", green: "\x1b[32m" } as const;
+const ANSI = {
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  cyan: "\x1b[36m",
+  boldRed: "\x1b[1;31m",
+  boldYellow: "\x1b[1;33m",
+} as const;
 
-function paint(code: string, text: string): string {
-  return isColorEnabled() ? `${code}${text}${ANSI.reset}` : text;
+/** Color is decided per stream: stdout text checks stdout, error text checks stderr. */
+export type ColorStream = "stdout" | "stderr";
+
+function colorOn(stream: ColorStream): boolean {
+  // Coerce: an undefined isTTY (a redirected stream) would otherwise hit
+  // isColorEnabled's default parameter and silently borrow stdout's value.
+  return isColorEnabled(process.env, (stream === "stderr" ? process.stderr : process.stdout).isTTY === true);
 }
 
-export const red = (text: string): string => paint(ANSI.red, text);
-export const yellow = (text: string): string => paint(ANSI.yellow, text);
-export const green = (text: string): string => paint(ANSI.green, text);
-export const bold = (text: string): string => paint(ANSI.bold, text);
+function paint(code: string, text: string, stream: ColorStream): string {
+  return colorOn(stream) ? `${code}${text}${ANSI.reset}` : text;
+}
 
-/** Prints a "warning: <line>" message to stderr, colored yellow when color is enabled. */
+/*
+ * Color marks a label or a status, never a whole sentence, and the words
+ * always carry the meaning on their own (color is redundant, so it can be off
+ * without losing anything): red is failure, yellow is attention, green is
+ * success, cyan is an informational label, dim is secondary, bold is a heading.
+ */
+export const red = (text: string, stream: ColorStream = "stdout"): string => paint(ANSI.red, text, stream);
+export const yellow = (text: string, stream: ColorStream = "stdout"): string => paint(ANSI.yellow, text, stream);
+export const green = (text: string, stream: ColorStream = "stdout"): string => paint(ANSI.green, text, stream);
+export const cyan = (text: string, stream: ColorStream = "stdout"): string => paint(ANSI.cyan, text, stream);
+export const dim = (text: string, stream: ColorStream = "stdout"): string => paint(ANSI.dim, text, stream);
+export const bold = (text: string, stream: ColorStream = "stdout"): string => paint(ANSI.bold, text, stream);
+export const boldRed = (text: string, stream: ColorStream = "stdout"): string => paint(ANSI.boldRed, text, stream);
+
+/** Prints a "warning: <line>" message to stderr with only the label colored. */
 export function warn(line: string): void {
-  console.error(yellow(`warning: ${line}`));
+  console.error(`${paint(ANSI.boldYellow, "warning:", "stderr")} ${line}`);
+}
+
+/**
+ * Formats an error for stderr: a bold red "error:" label, then the message as
+ * written. A message that already starts with "error:" is not labeled twice,
+ * and one that starts with "usage:" is a usage line, which is not an error
+ * label's job. Any later line starting with "usage:" gets a bold label too.
+ */
+export function renderError(message: string): string {
+  const stderrBold = (text: string) => paint(ANSI.bold, text, "stderr");
+  const lines = message.split("\n").map((line, index) => {
+    if (line.startsWith("usage:")) return `${stderrBold("usage:")}${line.slice("usage:".length)}`;
+    if (index > 0) return line;
+    const body = line.startsWith("error:") ? line.slice("error:".length).trimStart() : line;
+    return `${paint(ANSI.boldRed, "error:", "stderr")} ${body}`;
+  });
+  return lines.join("\n");
+}
+
+/**
+ * Styles help text for a terminal: command names and section headings
+ * ("usage:", "Setup:", "Commands:") in bold. Plain text when color is off.
+ */
+export function styleHelp(text: string): string {
+  return text
+    .split("\n")
+    .map((line, index) => {
+      const heading = line.match(/^([A-Za-z][A-Za-z ]*:)$/);
+      if (heading) return bold(heading[1]!);
+      const usage = line.match(/^(usage:)( .*)$/);
+      if (usage) return `${bold(usage[1]!)}${usage[2]}`;
+      const name = index === 0 ? line.match(/^([a-z][a-z-]*:)( .*)$/) : null;
+      if (name) return `${bold(name[1]!)}${name[2]}`;
+      return line;
+    })
+    .join("\n");
 }
 
 export function renderContextBanner(context: ResolvedContext): void {
