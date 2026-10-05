@@ -47,11 +47,18 @@ When one of these commands receives a remote context, it exits with code 2.
 Human-mode output reports:
 
 ```
-error: `<command>` operates on the local vault only; --context/--server isn't supported here
+error: `<command>` operates on the local vault only; --context/--server isn't supported here.
+The target "prod" (https://prod.example.com) came from the default context in ~/.config/skillmux/contexts.toml.
+To run it on this machine, pass --context local, or switch the default with "skillmux context use local".
 ```
 
+The second line names the input that selected the remote target: the
+`--context` or `--server` flag, the `SKILLMUX_CONTEXT` or `SKILLMUX_SERVER`
+environment variable, or the default context. The third line is the matching
+way back to local, and a final line explains why the command has no remote form.
+
 In `--json` mode, the CLI emits a structured error envelope with `code: "REMOTE_CONTEXT_UNSUPPORTED"`
-and includes `rejected_command`.
+and includes `rejected_command`, `reason`, the rejected `target` (`name` and `server`), and its `source` (`{"kind": "flag" | "env" | "default", ...}`).
 
 ## Global options and target resolution
 
