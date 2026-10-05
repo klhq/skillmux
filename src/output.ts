@@ -113,13 +113,44 @@ export function levenshteinDistance(a: string, b: string): number {
   return dp[m]![n]!;
 }
 
+/**
+ * Edit distance where swapping two adjacent characters costs one edit, since
+ * that is the commonest typo ("sycn", "whcih"). Plain Levenshtein counts it as two.
+ */
+export function transpositionDistance(a: string, b: string): number {
+  const dp: number[][] = Array.from({ length: a.length + 1 }, (_, i) => {
+    const row = new Array<number>(b.length + 1).fill(0);
+    row[0] = i;
+    return row;
+  });
+  for (let j = 0; j <= b.length; j++) dp[0]![j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(dp[i - 1]![j]! + 1, dp[i]![j - 1]! + 1, dp[i - 1]![j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        best = Math.min(best, dp[i - 2]![j - 2]! + 1);
+      }
+      dp[i]![j] = best;
+    }
+  }
+  return dp[a.length]![b.length]!;
+}
+
+/**
+ * The closest candidate, or null when nothing is plausibly what was meant.
+ * A short name tolerates one edit and a longer one two, measured without any
+ * leading dashes: two edits turn "scope" into "core", which is a different
+ * word rather than a typo, and suggesting it sends the user the wrong way.
+ */
 export function suggestCorrection(input: string, candidates: readonly string[]): string | null {
   let minDistance = Infinity;
   let bestMatch: string | null = null;
 
   for (const candidate of candidates) {
-    const dist = levenshteinDistance(input, candidate);
-    if (dist < minDistance && dist <= 2) {
+    const allowed = candidate.replace(/^-+/, "").length <= 5 ? 1 : 2;
+    const dist = transpositionDistance(input, candidate);
+    if (dist < minDistance && dist <= allowed) {
       minDistance = dist;
       bestMatch = candidate;
     }

@@ -1,4 +1,5 @@
-import { unknownOptionError } from "../arg-errors";
+import { unknownOptionError, usageError } from "../arg-errors";
+import { helpUsage } from "../command-help";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -80,17 +81,17 @@ function parseInitArgs(args: string[]): {
       );
     } else if (option === "--agent") {
       const value = args[i + 1];
-      if (!value) throw new Error("--agent requires a name");
+      if (!value) throw usageError("--agent requires a name", helpUsage("init"));
       agents.push(value);
       i++;
     } else if (option === "--vault") {
       const value = args[i + 1];
-      if (!value) throw new Error("--vault requires a path");
+      if (!value) throw usageError("--vault requires a path", helpUsage("init"));
       vaultPath = value;
       i++;
     } else if (option === "--core") {
       const value = args[i + 1];
-      if (!value) throw new Error("--core requires a skill_id");
+      if (!value) throw usageError("--core requires a skill_id", helpUsage("init"));
       coreSkillIds.push(value);
       i++;
     } else if (
@@ -175,6 +176,9 @@ export async function runInit(
     vaultPath: requestedVaultPath,
     yes,
   } = parseInitArgs(args);
+  // Fail on an unsupported --agent before printing any of the plan, so the
+  // error is not preceded by a plan that can never be applied.
+  planAgentSurfaces(requestedAgents);
   const guided = shouldUseWizard(args, {
     interactive: isInteractive(),
     json: options.isJson,
