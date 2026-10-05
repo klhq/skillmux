@@ -1,3 +1,4 @@
+import { usageError } from "../arg-errors";
 import { expandHome } from "../config";
 import { pinCore, unpinCore, validateManifest, writeManifestAtomic } from "../manifest";
 import { emitSuccess, unknownSubcommandError } from "../output";
@@ -13,7 +14,8 @@ export async function runCore(
   }
   const skillIds = args.filter((arg) => !arg.startsWith("-"));
   if (skillIds.length === 0) {
-    throw new Error(
+    throw usageError(
+      "missing <skill_id> argument",
       `usage: skillmux core ${subCommand} <skill_id>... --yes [--no-sync]`,
     );
   }

@@ -1,3 +1,4 @@
+import { usageError } from "../arg-errors";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
@@ -10,7 +11,7 @@ export async function runLocalVaultInit(
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
   const path = args[0];
-  if (!path) throw new Error("usage: skillmux local-vault init <path> --yes");
+  if (!path) throw usageError("missing <path> argument", "usage: skillmux local-vault init <path> --yes");
   const expanded = expandHome(path);
   const config = await loadConfig();
   const localVaultPaths = config.local_vault_paths.map(expandHome);

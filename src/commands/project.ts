@@ -1,3 +1,4 @@
+import { unknownOptionError, usageError } from "../arg-errors";
 import { existsSync, lstatSync } from "node:fs";
 import { basename } from "node:path";
 import { expandHome } from "../config";
@@ -100,7 +101,7 @@ function parseProjectInitArgs(args: string[]): ProjectInitArgs {
     ) {
       continue;
     } else if (arg.startsWith("-")) {
-      throw new Error(`unknown project init option: ${arg}`);
+      throw unknownOptionError("project init", arg);
     } else if (projectPath) {
       throw new Error(PROJECT_INIT_USAGE);
     } else {
@@ -132,6 +133,9 @@ export async function runProject(
   },
 ): Promise<void> {
   if (subCommand === "list" || subCommand === "show") {
+    if (subCommand === "show" && !args[0]) {
+      throw usageError("missing <group> argument", "usage: skillmux project show <group>");
+    }
     const { manifest } = await loadManifestContext();
     const names =
       subCommand === "show"
@@ -163,7 +167,8 @@ export async function runProject(
   if (subCommand === "add-path" || subCommand === "remove-path") {
     const group = args[0];
     if (!group)
-      throw new Error(
+      throw usageError(
+        "missing <group> argument",
         `usage: skillmux project ${subCommand} <group> [path] --yes`,
       );
     const rawPath = args[1]?.startsWith("-") ? undefined : args[1];
@@ -215,7 +220,8 @@ export async function runProject(
     const group = args[0];
     const skills = args.slice(1).filter((arg) => !arg.startsWith("-"));
     if (!group || skills.length === 0) {
-      throw new Error(
+      throw usageError(
+        !group ? "missing <group> argument" : "missing <skill_id> argument",
         `usage: skillmux project ${subCommand} <group> <skill_id>... --yes`,
       );
     }
@@ -265,7 +271,7 @@ export async function runProject(
   if (subCommand === "attach" || subCommand === "detach") {
     const group = args[0];
     const usage = `usage: skillmux project ${subCommand} <group> --agent <id>... --yes`;
-    if (!group) throw new Error(usage);
+    if (!group) throw usageError("missing <group> argument", usage);
     const requested: string[] = [];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--agent") {
@@ -279,10 +285,10 @@ export async function runProject(
         args[i] !== "--dry-run" &&
         args[i] !== "--json"
       ) {
-        throw new Error(`unknown project ${subCommand} option: ${args[i]}`);
+        throw unknownOptionError(`project ${subCommand}`, args[i]);
       }
     }
-    if (requested.length === 0) throw new Error(usage);
+    if (requested.length === 0) throw usageError("missing --agent <id> option", usage);
     const agents = requireAgentIds(requested);
     const { config, vaultPath, manifestPath, manifest } =
       await loadManifestContext();

@@ -557,6 +557,13 @@ and read `data` for the same fields.
 | `3` | Target Unreachable / Unauthenticated | Connection refused, HTTP 401 Unauthorized, HTTP 403 Forbidden |
 | `4` | Conflict / Governance Gate | HTTP 409 `CONFIG_REVISION_CONFLICT` or `CONFIG_EXTERNALLY_MANAGED` |
 
+A missing argument or an unrecognized option exits `2` with the problem on the
+first line and the command's usage on the next. An unrecognized option also
+suggests the closest documented flag. In `--json` mode these errors carry
+`code: "USAGE_ERROR"`, with the usage line in `details.usage` (or the
+suggested flag in `details.suggestion`). Other exit-`2` failures keep the
+generic `EXIT_2` code.
+
 ---
 
 ## Shell completions (`skillmux completions`)

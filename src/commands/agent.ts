@@ -1,3 +1,4 @@
+import { usageError } from "../arg-errors";
 import { existsSync } from "node:fs";
 import { rollbackConfigAgents, writeConfigAgents, type ConfigAgentsWrite } from "../agents-config";
 import { expandHome, loadConfig, resolveConfigPath } from "../config";
@@ -16,7 +17,7 @@ import { executeSync } from "./sync";
 
 function parseAgentIds(args: string[], usage: string): AgentId[] {
   const ids = args.filter((arg) => !arg.startsWith("--"));
-  if (ids.length === 0) throw new Error(usage);
+  if (ids.length === 0) throw usageError("missing <agent> argument", usage);
   for (const id of ids) {
     if (!isAgentId(id)) {
       throw new Error(`unsupported agent "${id}"; supported agents: ${SUPPORTED_AGENT_IDS.join(", ")}`);

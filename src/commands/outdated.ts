@@ -1,3 +1,4 @@
+import { unknownOptionError } from "../arg-errors";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
@@ -93,7 +94,7 @@ export async function runOutdated(args: string[], options: { isJson: boolean }):
       allowLocalSource = true;
       continue;
     }
-    throw new Error(`unknown outdated option: ${arg}`);
+    throw unknownOptionError("outdated", arg);
   }
 
   const config = await loadConfig();

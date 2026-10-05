@@ -1,3 +1,4 @@
+import { unknownOptionError } from "../arg-errors";
 import { expandHome, loadConfig } from "../config";
 import { emitSuccess, warn } from "../output";
 import {
@@ -37,7 +38,7 @@ function parseScanArgs(args: string[]): {
     } else if (isGlobalFlag(option, "--json")) {
       // handled globally by main()'s isJson flag; recognized here so it isn't rejected
     } else if (option?.startsWith("--")) {
-      throw new Error(`unknown scan option: ${option}`);
+      throw unknownOptionError("scan", option);
     } else if (path !== undefined) {
       throw new Error("skillmux scan accepts at most one <path> argument");
     } else {

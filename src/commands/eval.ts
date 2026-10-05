@@ -1,3 +1,4 @@
+import { unknownOptionError, usageError } from "../arg-errors";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
@@ -29,11 +30,14 @@ export async function runEvalPromote(
     } else if (isGlobalFlagWithValue(arg)) {
       i++; // skip flag value
     } else if (arg?.startsWith("--")) {
-      throw new Error(`unknown eval promote option: ${arg}`);
+      throw unknownOptionError("eval promote", arg);
     }
   }
   if (!since) {
-    throw new Error("usage: skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]");
+    throw usageError(
+      "missing required option --since <window>",
+      "usage: skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]",
+    );
   }
 
   if (out !== undefined && target !== undefined && out !== target) {

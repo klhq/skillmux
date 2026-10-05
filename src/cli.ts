@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { unknownOptionError, usageError } from "./arg-errors";
 import packageJson from "../package.json" with { type: "json" };
 import { lstatSync, mkdirSync } from "node:fs";
 
@@ -334,7 +335,7 @@ async function main() {
         } else if (subCommand === "") {
           await runEval({ isJson, adapter });
         } else {
-          throw new Error(`usage: skillmux eval [promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]]`);
+          throw usageError(`unknown eval subcommand "${subCommand}"`, "usage: skillmux eval [promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]]");
         }
         break;
       case "doctor":
@@ -358,12 +359,18 @@ async function main() {
         );
       case "local-vault":
         if (subCommand !== "init")
-          throw new Error("usage: skillmux local-vault init <path>");
+          throw usageError(
+            subCommand ? `unknown local-vault subcommand "${subCommand}"` : "missing subcommand",
+            "usage: skillmux local-vault init <path>",
+          );
         await runLocalVaultInit(commandArgs, { isJson, dryRun: isDryRun });
         break;
       case "models":
         if (subCommand !== "download")
-          throw new Error("usage: skillmux models download");
+          throw usageError(
+            subCommand ? `unknown models subcommand "${subCommand}"` : "missing subcommand",
+            "usage: skillmux models download",
+          );
         await runModelDownload({ isJson });
         break;
       case "target":
@@ -388,7 +395,7 @@ async function main() {
 
 async function handleCompletionsCommand(shell: string) {
   if (shell !== "bash" && shell !== "zsh" && shell !== "fish") {
-    throw new Error("usage: skillmux completions <bash|zsh|fish>");
+    throw usageError(shell ? `unsupported shell "${shell}"` : "missing <shell> argument", "usage: skillmux completions <bash|zsh|fish>");
   }
   console.log(generateCompletions(shell as ShellType));
 }
@@ -540,7 +547,7 @@ function parseServeArgs(args: string[]): {
       statsPort = parsed;
       i++;
     } else {
-      throw new Error(`unknown serve option: ${option}`);
+      throw unknownOptionError("serve", option);
     }
   }
   return { transport, port, statsPort };

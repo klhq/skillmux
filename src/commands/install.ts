@@ -1,3 +1,4 @@
+import { unknownOptionError, usageError } from "../arg-errors";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
@@ -50,7 +51,7 @@ function parseInstallArgs(args: string[]): {
     } else if (isGlobalFlag(option, "--json", "--verbose")) {
       // handled globally by main()'s isJson/isVerbose flags; recognized here so they aren't rejected
     } else if (option?.startsWith("--")) {
-      throw new Error(`unknown install option: ${option}`);
+      throw unknownOptionError("install", option);
     } else if (repo !== undefined) {
       throw new Error("skillmux install accepts at most one <repo> argument");
     } else {
@@ -66,7 +67,8 @@ export async function runInstall(
 ): Promise<void> {
   const { repo, force, dryRun, failOn, allowLocalSource, yes } = parseInstallArgs(args);
   if (!repo) {
-    throw new Error(
+    throw usageError(
+      "missing <repo> argument",
       `usage: skillmux install <repo>[/path] [--yes] [--force] [--fail-on ${FAIL_ON_USAGE}] [--dry-run] [--allow-local-source] [--json]`,
     );
   }
