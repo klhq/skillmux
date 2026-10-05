@@ -112,7 +112,7 @@ export function levenshteinDistance(a: string, b: string): number {
   return dp[m]![n]!;
 }
 
-export function suggestCorrection(input: string, candidates: string[]): string | null {
+export function suggestCorrection(input: string, candidates: readonly string[]): string | null {
   let minDistance = Infinity;
   let bestMatch: string | null = null;
 

@@ -362,7 +362,8 @@ describe("skillmux command --help", () => {
     const result = await runCli("frobnicate", "--help");
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("usage: skillmux <serve|index|sync");
+    expect(result.stderr).toContain('Unknown command "frobnicate"');
+    expect(result.stderr).toContain("skillmux --help");
   });
 });
 
@@ -686,12 +687,11 @@ describe("skillmux serve CLI", () => {
 });
 
 describe("skillmux CLI usage", () => {
-  test("unknown command usage message names the skillmux binary", async () => {
+  test("unknown command error points at skillmux --help", async () => {
     const result = await runCli("bogus-command");
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain(
-      "usage: skillmux <serve|index|sync|init|project|agent|core pin/unpin|report|audit prune|scan|install|outdated|update|eval|doctor|skill which|local-vault init|config show|models download>",
-    );
+    expect(result.stderr).toContain('Unknown command "bogus-command"');
+    expect(result.stderr).toContain('"skillmux --help"');
   });
 
   test("config subcommand usage error names the skillmux binary and lists every valid subcommand", async () => {

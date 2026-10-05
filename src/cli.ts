@@ -28,6 +28,15 @@ import {
   warn,
 } from "./output";
 import { generateCompletions, type ShellType } from "./completions";
+import { COMMAND_HELP } from "./command-help";
+import {
+  COMMANDS,
+  KNOWN_COMMANDS,
+  findCommand,
+  isDockerHostOnly,
+  type CommandContextSupport,
+  type LocalOnlyReason,
+} from "./command-registry";
 import { SUPPORTED_AGENT_IDS } from "./init-agents";
 import { runAudit } from "./commands/audit";
 import { handleConfigCommand } from "./commands/config";
@@ -46,93 +55,34 @@ import { runAgent } from "./commands/agent";
 import { runSync } from "./commands/sync";
 import { runInit } from "./commands/init";
 
-export const KNOWN_COMMANDS = [
-  "context",
-  "config",
-  "completions",
-  "serve",
-  "index",
-  "sync",
-  "init",
-  "project",
-  "agent",
-  "core",
-  "report",
-  "audit",
-  "scan",
-  "install",
-  "outdated",
-  "update",
-  "eval",
-  "doctor",
-  "models",
-  "skill",
-  "local-vault",
-];
+export { KNOWN_COMMANDS };
 
 /**
- * Declared context support for every command in KNOWN_COMMANDS — the single
- * source of truth getLocalOnlyCommand() enforces against. A command missing
- * from here, or misclassified, is a bug: see tests/cli-context-support.test.ts,
- * which fails the build rather than letting a command silently drift out of
- * sync the way `config init` did (it was never rejected for a remote context,
- * nor actually remote-capable — it just silently ran local logic that choked
- * on an unrecognized --context/--server flag with a confusing error).
- *
- * - "local-only": operates on this machine's vault/filesystem/agents only;
- *   a remote context is rejected outright.
- * - "remote-capable": routed through ContextAdapter — same command, backed by
- *   LocalAdapter or RemoteAdapter depending on the resolved context.
- * - "context-agnostic": the resolved context isn't used to decide behavior at
- *   all (context management is inherently local; completions never touch
- *   vault/server state).
+ * Declared context support for every command in the registry: the single
+ * source of truth getLocalOnlyCommand() enforces against. See
+ * CommandContextSupport in command-registry.ts for the three classifications,
+ * and tests/cli-context-support.test.ts, which fails the build if a command
+ * drifts out of sync.
  *
  * Subcommand-level exceptions within an otherwise-classified command (e.g.
  * `config init`, which bootstraps *this machine's* config file and so is
- * local-only despite `config` overall being remote-capable) are handled in
- * getLocalOnlyCommand() itself, not in this top-level map.
+ * local-only despite `config` overall being remote-capable) come from
+ * `localOnlySubcommands` in the registry.
  */
-export type CommandContextSupport = "local-only" | "remote-capable" | "context-agnostic";
+export type { CommandContextSupport };
 
-export const COMMAND_CONTEXT_SUPPORT: Record<string, CommandContextSupport> = {
-  context: "context-agnostic",
-  config: "remote-capable",
-  completions: "context-agnostic",
-  serve: "local-only",
-  index: "local-only",
-  sync: "local-only",
-  init: "local-only",
-  project: "local-only",
-  agent: "local-only",
-  core: "local-only",
-  report: "remote-capable",
-  audit: "remote-capable",
-  scan: "local-only",
-  install: "local-only",
-  outdated: "local-only",
-  update: "local-only",
-  eval: "remote-capable",
-  doctor: "remote-capable",
-  models: "local-only",
-  skill: "local-only",
-  "local-vault": "local-only",
-};
-
-const LOCAL_ONLY_COMMANDS = new Set(
-  Object.entries(COMMAND_CONTEXT_SUPPORT)
-    .filter(([, support]) => support === "local-only")
-    .map(([command]) => command),
-);
+export const COMMAND_CONTEXT_SUPPORT: Record<string, CommandContextSupport> =
+  Object.fromEntries(COMMANDS.map((c) => [c.name, c.contextSupport]));
 
 export function getLocalOnlyCommand(command: string, subCommand: string): string | null {
-  if (command === "skill" && (subCommand === "which" || !subCommand)) {
-    return "skill which";
+  const spec = findCommand(command);
+  if (!spec) return null;
+  if (spec.contextSupport === "local-only") {
+    // `skill` takes only `which`, so a bare `skill` is rejected under that name too.
+    return spec.localOnlyLabel ?? command;
   }
-  if (command === "config" && subCommand === "init") {
-    return "config init";
-  }
-  if (LOCAL_ONLY_COMMANDS.has(command)) {
-    return command;
+  if (subCommand && spec.localOnlySubcommands?.[subCommand]) {
+    return `${command} ${subCommand}`;
   }
   return null;
 }
@@ -143,25 +93,14 @@ export function getLocalOnlyCommand(command: string, subCommand: string): string
  * remoteContextUnsupported() appends, so the rejection points somewhere
  * useful instead of just saying no.
  */
-type LocalOnlyReason = "vault-content" | "native-delivery" | "local-runtime" | "local-config";
-
-const LOCAL_ONLY_REASON: Record<string, LocalOnlyReason> = {
-  install: "vault-content",
-  update: "vault-content",
-  outdated: "vault-content",
-  scan: "vault-content",
-  init: "native-delivery",
-  sync: "native-delivery",
-  agent: "native-delivery",
-  core: "native-delivery",
-  project: "native-delivery",
-  "local-vault": "native-delivery",
-  "skill which": "native-delivery",
-  serve: "local-runtime",
-  models: "local-runtime",
-  index: "local-runtime",
-  "config init": "local-config",
-};
+const LOCAL_ONLY_REASON: Record<string, LocalOnlyReason> = Object.fromEntries(
+  COMMANDS.flatMap((c): [string, LocalOnlyReason][] => [
+    ...(c.localOnlyReason ? [[c.localOnlyLabel ?? c.name, c.localOnlyReason] as [string, LocalOnlyReason]] : []),
+    ...Object.entries(c.localOnlySubcommands ?? {}).map(
+      ([sub, reason]) => [`${c.name} ${sub}`, reason] as [string, LocalOnlyReason],
+    ),
+  ]),
+);
 
 const LOCAL_ONLY_GUIDANCE: Record<LocalOnlyReason, string> = {
   "vault-content":
@@ -186,32 +125,6 @@ function remoteContextUnsupported(rejectedCommand: string): CliError {
       ...(reason ? { reason } : {}),
     },
   );
-}
-
-function isDockerHostManagementCommand(command: string, subCommand: string): boolean {
-  if (
-    [
-      "init",
-      "sync",
-      "install",
-      "outdated",
-      "update",
-      "project",
-      "agent",
-      "core",
-      "local-vault",
-      "models",
-      "context",
-    ].includes(command)
-  ) {
-    return true;
-  }
-
-  // eval promote only touches the mounted state_dir, unlike bare `eval`
-  // (vault ranking evaluation), which needs an embeddings client and the vault.
-  if (command === "eval" && subCommand !== "promote") return true;
-
-  return command === "config" && ["init", "set"].includes(subCommand);
 }
 
 function containerCommandUnsupported(command: string, subCommand: string): CliError {
@@ -282,7 +195,7 @@ async function main() {
 
   if (
     process.env.RUNNING_IN_DOCKER === "true" &&
-    isDockerHostManagementCommand(command, subCommand)
+    isDockerHostOnly(command, subCommand)
   ) {
     await handleError(containerCommandUnsupported(command, subCommand), {
       context: resolvedContext,
@@ -462,7 +375,7 @@ async function main() {
         const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
         const msg = suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
-          : `usage: skillmux <serve|index|sync|init|project|agent|core pin/unpin|report|audit prune|scan|install|outdated|update|eval|doctor|skill which|local-vault init|config show|models download>`;
+          : `Unknown command "${command}". Run "skillmux --help" to see the available commands: ${KNOWN_COMMANDS.join(", ")}.`;
         throw new Error(msg);
       }
     }
@@ -527,261 +440,6 @@ async function handleError(
   }
 }
 
-const COMMAND_HELP: Record<string, string> = {
-  context: `context: manage named CLI contexts for remote administration
-
-usage:
-  skillmux context list
-  skillmux context current
-  skillmux context add <name> --server <url> [--token-env <env_name>]
-  skillmux context use <name>
-  skillmux context remove <name>`,
-
-  config: `config: inspect or update server/machine configuration
-
-usage:
-  skillmux config init --vault <path> --yes
-  skillmux config show [--sources]
-  skillmux config get <key>
-  skillmux config set <key> <value> [--dry-run]
-  skillmux config validate
-  skillmux config diff
-  skillmux config status
-
-config init bootstraps this machine's config file from a populated vault. It
-is not a prerequisite for anything: "skillmux init --vault <path>" runs the
-same bootstrap when no config exists, so reach for config init only when you
-are setting up the config without the guided init.
-
-Accepts --context <name> / --server <url> to target a remote deployment.`,
-
-  completions: `completions: generate a shell completion script
-
-usage:
-  skillmux completions <bash|zsh|fish>`,
-
-  serve: `serve: start the MCP server
-
-usage:
-  skillmux serve [--transport stdio|http] [--port <port>] [--stats-port <port>]
-
---transport defaults to stdio. --stats-port exposes GET /health and GET /stats
-alongside a stdio transport without opening the full HTTP surface.`,
-
-  index: `index: rebuild the local retrieval index and backfill embeddings
-
-usage:
-  skillmux index`,
-
-  sync: `sync: apply the manifest to the skill directories of this machine's agents
-
-usage:
-  skillmux sync [--dry-run] [--no-pull] [--restore-monolith] [--install-hook] [--yes] [--json]
-
-Agents come from "agents" in config.toml; each one's skill directory is fixed
-(several agents can share one, e.g. ~/.agents/skills). [core] goes into every
-one, and a [project.*] group goes into <path>/<dir> for the directories its own
-"agents" read.
-
-With "vault_url" in config.toml, sync first clones the vault into vault_path
-or fast-forwards it from that remote, so one command fetches and delivers. A
-host with no agents is left alone, and an unreachable remote warns and syncs
-the clone already on disk. --no-pull skips the fetch.
-
---dry-run prints what would change without writing. --yes approves creating
-a project skill directory that does not exist yet (its path comes from the
-shared vault); without it, an unseen one is skipped rather than created.
-
---install-hook installs a git post-merge hook in the vault checkout so a
-"git pull" re-syncs automatically.
-
---restore-monolith undoes managed-pin delivery: instead of individual pinned
-skills, each agent directory is replaced by a single
-symlink to the whole vault. It refuses to touch a directory skillmux does
-not own, one carrying a local_vault marker, or one whose marker points at a
-different vault.`,
-
-  init: `init: guided setup for native skill management
-
-usage:
-  skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
-                [--migrate-full-vault] [--show-mcp-setup] [--register-mcp]
-                [--no-instructions] [--no-sync]
-                [--interactive|--yes|--dry-run] [--json]
-
-agents: ${SUPPORTED_AGENT_IDS.join(", ")}
-
-Native pins and MCP are independent — skip both of the flags below for
-native-only setup, and init writes no instruction files (the managed
-block only teaches resolve_skill/fetch_skill, which are MCP tools).
---show-mcp-setup prints the MCP registration snippet to copy in yourself,
-for any agent, and also writes the instruction block for every selected
-agent. --register-mcp instead runs that agent's own CLI to register
-skillmux automatically, but only for claude-code and codex (the only
-agents with a verified registration command), and writes the instruction
-block just for those; interactively, init asks about this only when
-you've selected one of those two. --no-instructions forces instruction
-writes off even when an MCP flag is set. A tool not in the agents list
-above isn't supported yet. Add it to SUPPORTED_AGENT_IDS rather than
-guessing a directory. Selected agents are written to "agents" in config.toml.`,
-
-  project: `project: manage project-scoped skill pins and sync groups
-
-usage:
-  skillmux project init [path] [--name <group>] [--skill <skill_id>...]
-                [--agent <name>...] [--register-mcp]
-                [--no-sync] [--interactive|--yes|--dry-run] [--json]
-  skillmux project list
-  skillmux project show <group>
-  skillmux project add-path <group> [path] --yes
-  skillmux project remove-path <group> [path] --yes
-  skillmux project pin <group> <skill_id>... --yes
-  skillmux project unpin <group> <skill_id>... --yes
-  skillmux project attach <group> --agent <id>... --yes
-  skillmux project detach <group> --agent <id>... --yes
-
-A project lists the agents that should see its skills in
-[project.<group>].agents, shared through the vault. On each machine the
-group's skills land in <path>/<dir> for every configured agent directory
-one of those agents reads; a machine without any of them skips the group.
-
---register-mcp is the project-local counterpart to "skillmux init
---register-mcp": only for claude-code (the only agent whose own CLI has a
-project MCP scope — codex's mcp add has no scope flag, so it's always
-global). It runs "claude mcp add -s project" for this project directory,
-which writes a committed .mcp.json shared with your team, and writes a
-project-root CLAUDE.md with the resolve_skill/fetch_skill discovery
-paragraph — same reasoning as init: no instruction file is written unless
-MCP is actually being registered.`,
-
-  agent: `agent: choose which agents this machine syncs skills to
-
-usage:
-  skillmux agent list
-  skillmux agent add <agent>... --yes [--no-sync]
-  skillmux agent remove <agent>... --yes
-  skillmux agent rehome --yes
-
-agents: ${SUPPORTED_AGENT_IDS.join(", ")}
-
-add/remove edit "agents" in config.toml. Each agent's skill directory is
-fixed, and agents that read the same directory share it: opencode,
-github-copilot, windsurf, goose and hermes all use ~/.agents/skills. remove
-leaves files in place. rehome re-points managed links after vault_path moves.`,
-
-  core: `core: pin or unpin core-tier skills
-
-usage:
-  skillmux core pin <skill_id>... --yes [--no-sync]
-  skillmux core unpin <skill_id>... --yes [--no-sync]
-
-Pinning writes the manifest and then syncs, so the change reaches every agent
-directory in one command. --no-sync writes the manifest alone, for batching
-several pins before a single sync. A project directory this machine has never
-synced still needs its own approval and is reported as skipped, so a pin never
-creates one.`,
-
-  report: `report: show routing/fetch-outcome audit statistics
-
-usage:
-  skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]`,
-
-  audit: `audit: prune the audit database
-
-usage:
-  skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
-
-Accepts --context <name> / --server <url> to prune a remote deployment's audit db.`,
-
-  scan: `scan: check the vault for install-time or integrity issues
-
-usage:
-  skillmux scan [path] [--fail-on low|medium|high|none] [--json]
-
-Scans [path], or the configured vault when omitted. Reporting only: it
-exits 0 whatever it finds unless --fail-on names a severity, which is why
-it has no default threshold while install and update default to high.
-
---format text|json is deprecated: it emits JSON outside the standard
-envelope. Use --json instead; --format will be removed in a future 1.x
-release.`,
-
-  install: `install: install a skill from a git source
-
-usage:
-  skillmux install <repo>[/path] [--yes] [--force] [--fail-on low|medium|high|none] [--dry-run] [--allow-local-source] [--json]
-
---yes approves writing the skill into the vault. Without it an interactive
-run asks first, and a non-interactive one (no TTY, or --json) fails rather
-than installing unattended, matching "skillmux update".
-
-The fetched skill is scanned before it is written to the vault. --fail-on
-sets the severity that aborts the install and defaults to high; pass
---fail-on none to install despite findings. A lower threshold is stricter:
-low aborts on low, medium and high.
-
---force overwrites a skill that already exists in the vault instead of
-refusing. --dry-run reports where the skill would land without writing.
---allow-local-source permits a file:// or local path source, which is
-otherwise rejected.`,
-
-  outdated: `outdated: list installed skills with a newer upstream version
-
-usage:
-  skillmux outdated [--allow-local-source] [--json]
-
-Read-only: it reports what "skillmux update" would change and writes
-nothing. --allow-local-source includes skills installed from a local or
-file:// source, which are skipped by default because their upstream is a
-path on this machine rather than a shared remote.`,
-
-  update: `update: update one or all skills to their latest source version
-
-usage:
-  skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]
-
-Updates every installed skill, or just <skill-id>. --yes is required to
-apply non-interactively. --dry-run prints the plan without writing.
-
---fail-on works exactly as it does for install and defaults to high, so a
-skill whose new version carries a high-severity finding is skipped rather
-than updated; --fail-on none restores the old permissive behavior.
-
---force updates a skill whose local content no longer matches the hash
-recorded at install time, which otherwise blocks the update to avoid
-discarding local edits. --allow-local-source permits local/file:// sources.`,
-
-  eval: `eval: run retrieval evaluation against the holdout set
-
-usage:
-  skillmux eval [--json]
-  skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
-
-Accepts --context <name> / --server <url> to evaluate a remote deployment.`,
-
-  doctor: `doctor: check server/environment readiness
-
-usage:
-  skillmux doctor [--json]
-
-Accepts --context <name> / --server <url> to check a remote deployment.`,
-
-  skill: `skill: inspect local vault skill resolution
-
-usage:
-  skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)`,
-
-  "local-vault": `local-vault: register an additional local vault checkout
-
-usage:
-  skillmux local-vault init <path> --yes`,
-
-  models: `models: manage local embedding model downloads
-
-usage:
-  skillmux models download`,
-};
-
 function printCommandHelp(command: string): boolean {
   const help = COMMAND_HELP[command];
   if (!help) return false;
@@ -839,8 +497,7 @@ Operations:
   skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]
 
 Commands:
-  serve, index, sync, init, project, agent, core, report, audit, scan, install, outdated, update,
-  eval, doctor, skill, local-vault, config, models, context, completions
+  ${KNOWN_COMMANDS.join(", ")}
 
 Run "skillmux <command> --help" for a command's full usage.`);
 }
