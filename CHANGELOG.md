@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0](https://github.com/klhq/skillmux/compare/v1.15.0...v1.16.0) (2026-10-05)
+
+
+### Added
+
+* **cli:** add --no-color and color labels instead of whole lines ([#218](https://github.com/klhq/skillmux/issues/218)) ([add26b8](https://github.com/klhq/skillmux/commit/add26b8cf133e37215cb5248687d803150b526ef))
+* **cli:** complete flags after a command in every shell ([#221](https://github.com/klhq/skillmux/issues/221)) ([192f157](https://github.com/klhq/skillmux/commit/192f1571d2608f632f53b6433602c60ac57e3ddb))
+* **cli:** say where a rejected remote target came from ([#217](https://github.com/klhq/skillmux/issues/217)) ([a3c7798](https://github.com/klhq/skillmux/commit/a3c77988641356cac1a2ad48ec08b0211862f59c))
+* **doctor:** collapse config source checks and list failures first ([#215](https://github.com/klhq/skillmux/issues/215)) ([5938e62](https://github.com/klhq/skillmux/commit/5938e62be3848d90734508d456d365ac4ed83b34))
+
+
+### Fixed
+
+* **cli:** label config deprecation notices like other warnings ([#219](https://github.com/klhq/skillmux/issues/219)) ([4cac648](https://github.com/klhq/skillmux/commit/4cac64800647e49519a995d121af5db02e360115))
+* **cli:** tighten init argument errors and typo suggestions ([#222](https://github.com/klhq/skillmux/issues/222)) ([9b13eb1](https://github.com/klhq/skillmux/commit/9b13eb1dfdeaa44ee813d9088667f11ed35b1a20))
+* **cli:** use one dry-run marker shape everywhere ([#220](https://github.com/klhq/skillmux/issues/220)) ([0439c54](https://github.com/klhq/skillmux/commit/0439c549b14b51a3cf2bd110667411073bc3b4e6))
+
+
+### Changed
+
+* **cli:** derive command tables from a single registry ([#212](https://github.com/klhq/skillmux/issues/212)) ([491c14a](https://github.com/klhq/skillmux/commit/491c14ac5056c0c3724754cf4718fa42f77a9aa9))
+* **cli:** dispatch commands through a typed handler table ([#223](https://github.com/klhq/skillmux/issues/223)) ([cf55014](https://github.com/klhq/skillmux/commit/cf5501499f64e7236a67ac0b4f9710ded175ca07))
+* **cli:** report missing arguments and unknown options consistently ([#214](https://github.com/klhq/skillmux/issues/214)) ([9d1d802](https://github.com/klhq/skillmux/commit/9d1d8025819885fcee4c8c348d144adb08f2baf7))
+
 ## [1.15.0](https://github.com/klhq/skillmux/compare/v1.14.1...v1.15.0) (2026-09-30)
 
 
