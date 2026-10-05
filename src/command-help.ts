@@ -268,3 +268,16 @@ usage:
 export function documentedFlags(command: string): string[] {
   return [...new Set(COMMAND_HELP[command]?.match(/--[a-z][a-z-]*/g) ?? [])];
 }
+
+/**
+ * The "usage:" block from a command's help text, for errors that should show
+ * the full usage without a second copy of it living next to the parser.
+ */
+export function helpUsage(command: string): string {
+  const lines = COMMAND_HELP[command]?.split("\n") ?? [];
+  const start = lines.indexOf("usage:");
+  if (start === -1) return `usage: skillmux ${command}`;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => line.trim() === "");
+  return ["usage:", ...(end === -1 ? rest : rest.slice(0, end))].join("\n");
+}
