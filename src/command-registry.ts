@@ -2,10 +2,16 @@
  * The single source of truth for what top-level commands exist and how each
  * one behaves. cli.ts (dispatch guards, unknown-command usage, help),
  * completions.ts (command and subcommand lists), and the consistency tests all
- * derive from this table, so adding a command means adding one entry here.
+ * derive from this table.
  *
- * Per-command help text lives in command-help.ts; the dispatch switch in
- * cli.ts still owns how each command is invoked.
+ * To add a command:
+ *   1. Add an entry to COMMAND_TABLE below.
+ *   2. Add its help text to command-help.ts, documenting every flag it takes
+ *      (completions and "did you mean" suggestions read the flags from there).
+ *   3. Add its handler to HANDLERS in command-handlers.ts.
+ * Steps 1 and 3 are linked by the type system: HANDLERS is a
+ * Record<CommandName, CommandHandler>, so registering a command without a
+ * handler, or the reverse, fails `tsc` instead of surfacing as "Unknown command".
  */
 
 /**
@@ -48,7 +54,7 @@ export interface CommandSpec {
   dockerHostOnly?: boolean | ((subCommand: string) => boolean);
 }
 
-export const COMMANDS: readonly CommandSpec[] = [
+const COMMAND_TABLE = [
   {
     name: "context",
     description: "Manage connection contexts",
@@ -196,9 +202,19 @@ export const COMMANDS: readonly CommandSpec[] = [
     localOnlyReason: "native-delivery",
     dockerHostOnly: true,
   },
-];
+] as const satisfies readonly CommandSpec[];
 
-export const KNOWN_COMMANDS: readonly string[] = COMMANDS.map((c) => c.name);
+/**
+ * The name of every registered command, as a literal union derived from the
+ * table above. command-handlers.ts types its dispatch table as
+ * Record<CommandName, ...>, so a command added here without a handler (or a
+ * handler for a command that is not registered) fails to compile.
+ */
+export type CommandName = (typeof COMMAND_TABLE)[number]["name"];
+
+export const COMMANDS: readonly CommandSpec[] = COMMAND_TABLE;
+
+export const KNOWN_COMMANDS: readonly string[] = COMMAND_TABLE.map((c) => c.name);
 
 export function findCommand(name: string): CommandSpec | undefined {
   return COMMANDS.find((c) => c.name === name);
