@@ -259,3 +259,12 @@ usage:
 usage:
   skillmux models download`,
 };
+
+/**
+ * Flags a command documents in its own help text, in first-mention order.
+ * Shell completions and "did you mean" suggestions both read this, so a flag
+ * documented once is offered everywhere without a second list to maintain.
+ */
+export function documentedFlags(command: string): string[] {
+  return [...new Set(COMMAND_HELP[command]?.match(/--[a-z][a-z-]*/g) ?? [])];
+}

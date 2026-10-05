@@ -607,3 +607,11 @@ skillmux completions zsh > ~/.zsh/completion/_skillmux
 # Fish
 skillmux completions fish > ~/.config/fish/completions/skillmux.fish
 ```
+
+Completion covers commands, subcommands, and flags. After a command, pressing
+Tab on a word starting with `-` offers the flags that command documents in its
+`--help`, plus `--json`, `--verbose`, `--no-color`, and `--help`. The
+`--context`, `--server`, and `--allow-insecure` flags are offered only for the
+commands that can target a remote server (`config`, `report`, `audit`, `eval`,
+and `doctor`), since the local-only commands reject them. Deprecated flags such
+as `scan --format` are accepted but not suggested.
