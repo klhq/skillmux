@@ -1,4 +1,4 @@
-import { COMMAND_HELP } from "./command-help";
+import { documentedFlags } from "./command-help";
 import { CliError, suggestCorrection } from "./output";
 
 /** Flags every command accepts, so they are valid "did you mean" targets everywhere. */
@@ -21,8 +21,7 @@ export function usageError(problem: string, usage: string): CliError {
  */
 export function unknownOptionError(label: string, option: string | undefined): CliError {
   const command = label.split(" ")[0]!;
-  const documented = COMMAND_HELP[command]?.match(/--[a-z][a-z-]*/g) ?? [];
-  const candidates = [...new Set([...documented, ...GLOBAL_FLAGS])];
+  const candidates = [...new Set([...documentedFlags(command), ...GLOBAL_FLAGS])];
   const suggestion = option ? suggestCorrection(option, candidates) : null;
   const hint = suggestion ? `. Did you mean ${suggestion}?` : "";
   return new CliError(

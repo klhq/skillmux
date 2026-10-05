@@ -1,3 +1,4 @@
+import { documentedFlags } from "./command-help";
 import { COMMANDS, findCommand } from "./command-registry";
 import { SUPPORTED_AGENT_IDS } from "./init-agents";
 
@@ -12,8 +13,77 @@ function subs(command: string): string {
   return found.join(" ");
 }
 
+/** Accepted by every command, whether or not its help text mentions them. */
+const UNIVERSAL_FLAGS = ["--json", "--verbose", "--no-color", "--help"];
+/** Only meaningful where the command can target a remote server. */
+const REMOTE_FLAGS = ["--context", "--server", "--allow-insecure"];
+/** Still accepted for compatibility, but not worth suggesting. */
+const DEPRECATED_FLAGS = new Set(["--format", "--target"]);
+
+/** Every flag worth offering after a command: its documented ones plus the global ones that apply. */
+export function flagsFor(command: string): string[] {
+  const remote = findCommand(command)?.contextSupport === "remote-capable";
+  return [
+    ...new Set([
+      ...documentedFlags(command),
+      ...UNIVERSAL_FLAGS,
+      ...(remote ? REMOTE_FLAGS : []),
+    ]),
+  ].filter((flag) => !DEPRECATED_FLAGS.has(flag));
+}
+
+const FLAG_DESCRIPTIONS: Record<string, string> = {
+  "--json": "Emit a JSON envelope",
+  "--verbose": "Show more detail",
+  "--no-color": "Turn off terminal color",
+  "--help": "Show help",
+  "--dry-run": "Print the plan without writing",
+  "--yes": "Apply without prompts",
+  "--context": "Target context name",
+  "--server": "Target server URL",
+  "--allow-insecure": "Allow plaintext HTTP to non-loopback hosts",
+};
+
+/** Flags every command accepts, declared once with no command condition. */
+function fishGlobalFlags(): string {
+  return UNIVERSAL_FLAGS.map(
+    (flag) => `complete -c skillmux -l ${flag.slice(2)} -d "${FLAG_DESCRIPTIONS[flag] ?? ""}"`,
+  ).join("\n");
+}
+
+const FISH_VALUE_FLAGS = new Set(["--context", "--server"]);
+
+/**
+ * Per-command flags for everything the hand-written lines above and the
+ * global flags do not already cover, so each command completes the flags its
+ * own help documents (and --context/--server only where it can use them).
+ * `handWritten` is the script so far, used to avoid declaring a flag twice.
+ */
+function fishCommandFlags(handWritten: string): string {
+  const global = new Set(UNIVERSAL_FLAGS);
+  const lines: string[] = [];
+  for (const { name: command } of COMMANDS) {
+    for (const flag of flagsFor(command)) {
+      if (global.has(flag)) continue;
+      const name = flag.slice(2);
+      const declared = handWritten
+        .split("\n")
+        .some((line) => line.includes(`__fish_seen_subcommand_from ${command}`) && line.includes(` -l ${name} `));
+      if (declared) continue;
+      const value = FISH_VALUE_FLAGS.has(flag) ? " -x" : "";
+      lines.push(
+        `complete -c skillmux -n "__fish_seen_subcommand_from ${command}" -l ${name}${value} -d "${FLAG_DESCRIPTIONS[flag] ?? ""}"`,
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
 export function generateCompletions(shell: ShellType): string {
   if (shell === "bash") {
+    const COMMANDS_FLAG_CASES = COMMANDS.map(
+      (c) => `            ${c.name}) flags="${flagsFor(c.name).join(" ")}" ;;`,
+    ).join("\n");
     const opts = [...TOP_LEVEL_COMMANDS.map((c) => c.name), "--context", "--server", "--json", "--allow-insecure", "--verbose", "--dry-run", "--no-color", "--help"].join(" ");
     return `# bash completion for skillmux
 _skillmux_completions() {
@@ -66,14 +136,12 @@ _skillmux_completions() {
             COMPREPLY=( $(compgen -W "${SUPPORTED_AGENT_IDS.join(" ")}" -- "$cur") )
             ;;
     esac
-    if [ "\${COMP_WORDS[1]}" = "init" ] && [ "\${#COMPREPLY[@]}" -eq 0 ]; then
-        COMPREPLY=( $(compgen -W "--agent --vault --core --migrate-full-vault --show-mcp-setup --register-mcp --no-instructions --no-sync --interactive --yes --dry-run --json" -- "$cur") )
-    fi
-    if [ "\${COMP_WORDS[1]}" = "project" ] && [ "\${COMP_WORDS[2]}" = "init" ]; then
-        COMPREPLY=( $(compgen -W "--name --skill --agent --register-mcp --no-sync --interactive --yes --dry-run --json" -- "$cur") )
-    fi
-    if [ "\${COMP_WORDS[1]}" = "eval" ] && [ "\${COMP_WORDS[2]}" = "promote" ]; then
-        COMPREPLY=( $(compgen -W "--since --out --dry-run --yes --json" -- "$cur") )
+    if [ "\${#COMPREPLY[@]}" -eq 0 ] && [[ "$cur" == -* ]]; then
+        local flags=""
+        case "\${COMP_WORDS[1]}" in
+${COMMANDS_FLAG_CASES}
+        esac
+        COMPREPLY=( $(compgen -W "$flags" -- "$cur") )
     fi
 }
 complete -F _skillmux_completions skillmux
@@ -81,6 +149,9 @@ complete -F _skillmux_completions skillmux
   }
 
   if (shell === "zsh") {
+    const ZSH_FLAG_CASES = COMMANDS.map(
+      (c) => `            ${c.name}) flags=(${flagsFor(c.name).join(" ")}) ;;`,
+    ).join("\n");
     const commands = TOP_LEVEL_COMMANDS.map((c) => `        '${c.name}:${c.description}'`).join("\n");
     return `#compdef skillmux
 _skillmux() {
@@ -103,7 +174,9 @@ ${commands}
           '--interactive[force guided setup]' \\
           '--yes[apply without prompts]' \\
           '--dry-run[print the plan without writing]' \\
-          '--json[emit a JSON envelope]'
+          '--json[emit a JSON envelope]' \\
+          '--verbose[show more detail]' \\
+          '--no-color[turn off terminal color]'
     elif [[ "$words[2]" == "project" && "$words[3]" == "init" ]]; then
         _arguments \\
           '1:project directory:_directories' \\
@@ -115,7 +188,9 @@ ${commands}
           '--interactive[force guided setup]' \\
           '--yes[apply without prompts]' \\
           '--dry-run[print the plan without writing]' \\
-          '--json[emit a JSON envelope]'
+          '--json[emit a JSON envelope]' \\
+          '--verbose[show more detail]' \\
+          '--no-color[turn off terminal color]'
     elif [[ "$words[2]" == "project" && CURRENT == 3 ]]; then
         _values 'project command' ${subs("project")}
     elif [[ "$words[2]" == "eval" && "$words[3]" == "promote" ]]; then
@@ -124,7 +199,9 @@ ${commands}
           '--out[output file]:file:_files' \
           '--dry-run[print the plan without writing]' \
           '--yes[apply without prompts]' \
-          '--json[emit a JSON envelope]'
+          '--json[emit a JSON envelope]' \\
+          '--verbose[show more detail]' \\
+          '--no-color[turn off terminal color]'
     elif [[ "$words[2]" == "eval" && CURRENT == 3 ]]; then
         _values 'eval command' ${subs("eval")}
     elif [[ "$words[2]" == "agent" && CURRENT == 3 ]]; then
@@ -147,6 +224,12 @@ ${commands}
         _values 'models command' ${subs("models")}
     elif [[ "$words[2]" == "local-vault" && CURRENT == 3 ]]; then
         _values 'local-vault command' ${subs("local-vault")}
+    elif [[ "$words[CURRENT]" == -* ]]; then
+        local -a flags
+        case "$words[2]" in
+${ZSH_FLAG_CASES}
+        esac
+        compadd -- $flags
     fi
 }
 _skillmux "$@"
@@ -157,7 +240,7 @@ _skillmux "$@"
     const topLevel = TOP_LEVEL_COMMANDS.map(
       (c) => `complete -c skillmux -n "__fish_use_subcommand" -a ${c.name} -d "${c.description}"`,
     ).join("\n");
-    return `# fish completion for skillmux
+    const base = `# fish completion for skillmux
 complete -c skillmux -f
 ${topLevel}
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l agent -x -a "${SUPPORTED_AGENT_IDS.join(" ")}" -d "Select an agent"
@@ -197,6 +280,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from audit" -a "${subs("audit")}
 complete -c skillmux -n "__fish_seen_subcommand_from models" -a "${subs("models")}" -d "Download local models"
 complete -c skillmux -n "__fish_seen_subcommand_from local-vault" -a "${subs("local-vault")}" -d "Initialize a local_vault_paths marker"
 `;
+    return `${base}${fishGlobalFlags()}\n${fishCommandFlags(base)}\n`;
   }
 
   throw new Error(`Unsupported shell: ${shell}`);
