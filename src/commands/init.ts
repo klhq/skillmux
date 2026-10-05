@@ -34,7 +34,7 @@ import {
   registerMcpServer,
   type McpRegistrationResult,
 } from "../mcp-registration";
-import { isInteractive } from "../output";
+import { dryRunTag, isInteractive } from "../output";
 import { isGlobalFlag } from "../global-flags";
 import {
   parseCommaList,
@@ -508,10 +508,10 @@ export async function runInit(
       );
     } else {
       console.log(
-        `\ndry-run: agents ${nextAgents.join(", ") || "(none)"}, ` +
+        `\nagents ${nextAgents.join(", ") || "(none)"}, ` +
           `${instructionPlan.changes.filter((change) => change.status !== "unchanged").length} instruction file(s), ` +
           `core: ${plannedManifest.core.skills.join(", ") || "(unchanged)"}, ` +
-          `MCP registration: ${registerMcp ? registrableAgents.join(", ") || "(none)" : "(none)"}`,
+          `MCP registration: ${registerMcp ? registrableAgents.join(", ") || "(none)" : "(none)"} ${dryRunTag()}`,
       );
     }
     return;

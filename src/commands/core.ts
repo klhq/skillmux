@@ -1,7 +1,7 @@
 import { usageError } from "../arg-errors";
 import { expandHome } from "../config";
 import { pinCore, unpinCore, validateManifest, writeManifestAtomic } from "../manifest";
-import { emitSuccess, unknownSubcommandError } from "../output";
+import { dryRunTag, emitSuccess, unknownSubcommandError } from "../output";
 import { confirmIfNeeded, loadManifestContext } from "./shared";
 import { executeSync } from "./sync";
 export async function runCore(
@@ -40,7 +40,7 @@ export async function runCore(
       { isJson: options.isJson },
       { subcommand: subCommand, skill_ids: skillIds },
       () =>
-        console.log(`${subCommand}: [core] ${skillIds.join(", ")} (dry-run)`),
+        console.log(`${subCommand}: [core] ${skillIds.join(", ")} ${dryRunTag()}`),
     );
     return;
   }

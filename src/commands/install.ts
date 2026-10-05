@@ -13,7 +13,7 @@ import {
   resolveSkillDir,
   validateSkillCandidate,
 } from "../install";
-import { emitSuccess } from "../output";
+import { dryRunTag, emitSuccess } from "../output";
 import { hashSkillContent, writeSkillOrigin } from "../provenance";
 import {
   FAIL_ON_USAGE,
@@ -116,7 +116,7 @@ export async function runInstall(
         { skill_id: resolved.skillId, would_install_at: plannedPath },
         () =>
           console.log(
-            `dry-run: would install "${resolved.skillId}" into ${plannedPath}`,
+            `would install "${resolved.skillId}" into ${plannedPath} ${dryRunTag()}`,
           ),
       );
       return;

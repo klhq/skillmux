@@ -240,6 +240,15 @@ export function warn(line: string): void {
   console.error(`${paint(ANSI.boldYellow, "warning:", "stderr")} ${line}`);
 }
 
+/**
+ * The marker appended to every line that describes what --dry-run would do
+ * instead of doing it. One shape everywhere (a trailing "(dry-run)"), colored
+ * as an informational label.
+ */
+export function dryRunTag(): string {
+  return cyan("(dry-run)");
+}
+
 /** Prints a "note: <line>" message to stderr: informational, not a problem. */
 export function note(line: string): void {
   console.error(`${paint(ANSI.cyan, "note:", "stderr")} ${line}`);
