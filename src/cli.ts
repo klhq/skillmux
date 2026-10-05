@@ -17,7 +17,13 @@ import { backfillEmbeddings, configure, rebuildIndex } from "./router-core";
 import { type StatsResponse } from "./stats";
 import { scanVault } from "./vault";
 
-import { resolveContext, type ResolvedContext } from "./context";
+import {
+  DEFAULT_CONTEXTS_PATH,
+  contextSource,
+  resolveContext,
+  type ContextSource,
+  type ResolvedContext,
+} from "./context";
 import { createContextAdapter, isLoopbackHost, type ContextAdapter } from "./adapters";
 import {
   emitSuccess,
@@ -114,18 +120,51 @@ const LOCAL_ONLY_GUIDANCE: Record<LocalOnlyReason, string> = {
     "This bootstraps this machine's own config file. To inspect or change a remote deployment's configuration, use \"skillmux config show/set --context <name>\" instead.",
 };
 
-function remoteContextUnsupported(rejectedCommand: string): CliError {
+function describeTarget(target: Extract<ResolvedContext, { type: "remote" }>): string {
+  return target.name === "custom" ? target.server : `"${target.name}" (${target.server})`;
+}
+
+/** How to run the command on this machine instead, given what selected the remote target. */
+function localEscapeHint(source: ContextSource): string {
+  switch (source.kind) {
+    case "flag":
+      return `To run it on this machine, drop ${source.flag} or pass --context local.`;
+    case "env":
+      return `To run it on this machine, unset ${source.variable} or pass --context local.`;
+    case "default":
+      return 'To run it on this machine, pass --context local, or switch the default with "skillmux context use local".';
+  }
+}
+
+function describeSource(source: ContextSource): string {
+  switch (source.kind) {
+    case "flag":
+      return `the ${source.flag} flag`;
+    case "env":
+      return `the ${source.variable} environment variable`;
+    case "default":
+      return `the default context in ${DEFAULT_CONTEXTS_PATH}`;
+  }
+}
+
+function remoteContextUnsupported(
+  rejectedCommand: string,
+  target: Extract<ResolvedContext, { type: "remote" }>,
+  source: ContextSource,
+): CliError {
   const reason = LOCAL_ONLY_REASON[rejectedCommand];
-  const guidance = reason ? ` ${LOCAL_ONLY_GUIDANCE[reason]}` : "";
-  return new CliError(
-    `\`${rejectedCommand}\` operates on the local vault only; --context/--server isn't supported here.${guidance}`,
-    2,
-    "REMOTE_CONTEXT_UNSUPPORTED",
-    {
-      rejected_command: rejectedCommand,
-      ...(reason ? { reason } : {}),
-    },
-  );
+  const lines = [
+    `\`${rejectedCommand}\` operates on the local vault only; --context/--server isn't supported here.`,
+    `The target ${describeTarget(target)} came from ${describeSource(source)}.`,
+    localEscapeHint(source),
+    ...(reason ? [LOCAL_ONLY_GUIDANCE[reason]] : []),
+  ];
+  return new CliError(lines.join("\n"), 2, "REMOTE_CONTEXT_UNSUPPORTED", {
+    rejected_command: rejectedCommand,
+    ...(reason ? { reason } : {}),
+    target: { name: target.name, server: target.server },
+    source,
+  });
 }
 
 function containerCommandUnsupported(command: string, subCommand: string): CliError {
@@ -225,11 +264,14 @@ async function main() {
 
   const localOnlyCommand = getLocalOnlyCommand(command, subCommand);
   if (localOnlyCommand && resolvedContext.type === "remote") {
-    await handleError(remoteContextUnsupported(localOnlyCommand), {
-      context: resolvedContext,
-      isJson,
-      isVerbose,
-    });
+    await handleError(
+      remoteContextUnsupported(
+        localOnlyCommand,
+        resolvedContext,
+        contextSource({ context: flagContext, server: flagServer }),
+      ),
+      { context: resolvedContext, isJson, isVerbose },
+    );
     return;
   }
 

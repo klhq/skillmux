@@ -132,6 +132,27 @@ export async function useContext(name: string, filePath?: string): Promise<void>
   await saveContextConfig(config, filePath);
 }
 
+/** Where resolveContext() got the target from, in its precedence order. */
+export type ContextSource =
+  | { kind: "flag"; flag: "--context" | "--server" }
+  | { kind: "env"; variable: "SKILLMUX_CONTEXT" | "SKILLMUX_SERVER" }
+  | { kind: "default" };
+
+/**
+ * Mirrors resolveContext()'s precedence without loading anything, so an error
+ * can say which input selected the target and therefore how to change it.
+ */
+export function contextSource(
+  flags: { context?: string; server?: string },
+  env: NodeJS.ProcessEnv = process.env,
+): ContextSource {
+  if (flags.context) return { kind: "flag", flag: "--context" };
+  if (flags.server) return { kind: "flag", flag: "--server" };
+  if (env.SKILLMUX_CONTEXT) return { kind: "env", variable: "SKILLMUX_CONTEXT" };
+  if (env.SKILLMUX_SERVER) return { kind: "env", variable: "SKILLMUX_SERVER" };
+  return { kind: "default" };
+}
+
 export async function resolveContext(
   flags: { context?: string; server?: string },
   filePath?: string
