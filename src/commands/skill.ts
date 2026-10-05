@@ -1,3 +1,4 @@
+import { usageError } from "../arg-errors";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
@@ -12,7 +13,8 @@ export async function runSkill(subCommand: string, args: string[]): Promise<void
 async function runWhich(args: string[]): Promise<void> {
   const skillId = args[0];
   if (!skillId) {
-    throw new Error(
+    throw usageError(
+      "missing <skill_id> argument",
       "usage: skillmux skill which <skill_id> (local vault shadow resolution; unrelated to MCP routing)",
     );
   }

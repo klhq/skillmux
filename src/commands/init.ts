@@ -1,3 +1,4 @@
+import { unknownOptionError } from "../arg-errors";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -110,7 +111,7 @@ function parseInitArgs(args: string[]): {
     } else if (option === "--yes") {
       yes = true;
     } else {
-      throw new Error(`unknown init option: ${option}`);
+      throw unknownOptionError("init", option);
     }
   }
   return {

@@ -1,3 +1,4 @@
+import { unknownOptionError, usageError } from "../arg-errors";
 import { Database } from "bun:sqlite";
 import type { ContextAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
@@ -28,7 +29,7 @@ function parseReportArgs(args: string[]): {
       // handled globally by main()'s resolveContext(); recognized here so it isn't rejected
       i++;
     } else {
-      throw new Error(`unknown report option: ${option}`);
+      throw unknownOptionError("report", option);
     }
   }
   return { db, since };
@@ -40,7 +41,8 @@ export async function runReport(
 ): Promise<void> {
   const { db: dbPath, since } = parseReportArgs(args);
   if (!since)
-    throw new Error(
+    throw usageError(
+      "missing required option --since <window>",
       "usage: skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]",
     );
   if (dbPath && options.context.type === "remote")

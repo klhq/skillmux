@@ -1,3 +1,4 @@
+import { unknownOptionError, usageError } from "../arg-errors";
 import { emitSuccess } from "../output";
 import { confirmIfNeeded } from "./shared";
 import type { ContextAdapter } from "../adapters";
@@ -10,7 +11,10 @@ export async function runAudit(
   options: { isJson: boolean; dryRun: boolean; context: ResolvedContext; adapter: ContextAdapter },
 ): Promise<void> {
   if (subCommand !== "prune") {
-    throw new Error("usage: skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]");
+    throw usageError(
+      subCommand ? `unknown audit subcommand "${subCommand}"` : "missing subcommand",
+      "usage: skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]",
+    );
   }
 
   let olderThan: string | undefined;
@@ -26,7 +30,7 @@ export async function runAudit(
     } else if (isGlobalFlagWithValue(arg)) {
       i++; // skip flag value
     } else if (arg?.startsWith("--")) {
-      throw new Error(`unknown audit prune option: ${arg}`);
+      throw unknownOptionError("audit prune", arg);
     }
   }
 

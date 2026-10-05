@@ -1,3 +1,4 @@
+import { unknownOptionError } from "../arg-errors";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
@@ -203,7 +204,7 @@ function parseUpdateArgs(args: string[]): {
     } else if (isGlobalFlag(arg, "--json")) {
       // handled globally
     } else if (arg?.startsWith("--")) {
-      throw new Error(`unknown update option: ${arg}`);
+      throw unknownOptionError("update", arg);
     } else if (skillId !== undefined) {
       throw new Error("skillmux update accepts at most one <skill-id> argument");
     } else {

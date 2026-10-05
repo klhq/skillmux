@@ -1,3 +1,4 @@
+import { unknownOptionError } from "../arg-errors";
 import { existsSync } from "node:fs";
 import { expandHome, loadConfig } from "../config";
 import {
@@ -40,7 +41,7 @@ function parseSyncArgs(args: string[]): {
     else if (arg === "--no-pull") noPull = true;
     else if (arg === "--yes") yes = true;
     else if (arg === "--json") isJson = true;
-    else throw new Error(`unknown sync option: ${arg}`);
+    else throw unknownOptionError("sync", arg);
   }
   return { dryRun, restoreMonolith, installHook, noPull, yes, isJson };
 }

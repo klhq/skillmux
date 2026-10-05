@@ -1,3 +1,4 @@
+import { unknownOptionError } from "../arg-errors";
 import { resolveConfigPath } from "../config";
 import { diagnose } from "../doctor";
 import { getEffectiveConfig } from "../config-service";
@@ -24,7 +25,7 @@ export function parseDoctorArgs(args: readonly string[]): void {
       // handled globally by main()'s resolveContext(); skip its value too
       i++;
     } else {
-      throw new Error(`unknown doctor option: ${option}`);
+      throw unknownOptionError("doctor", option);
     }
   }
 }

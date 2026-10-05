@@ -1,3 +1,4 @@
+import { unknownOptionError, usageError } from "../arg-errors";
 import { expandHome, migrateLegacyPaths, resolveConfigPath } from "../config";
 import { type ContextAdapter } from "../adapters";
 import { type ResolvedContext } from "../context";
@@ -51,20 +52,23 @@ export async function handleConfigCommand(
       if (option === "--vault") {
         vaultPath = args[++i];
         if (!vaultPath)
-          throw new Error("usage: skillmux config init --vault <path> --yes");
+          throw usageError("--vault requires a path", "usage: skillmux config init --vault <path> --yes");
       } else if (option === "--yes") {
         yes = true;
       } else if (isGlobalFlag(option, "--dry-run", "--json")) {
         continue;
       } else {
-        throw new Error(`unknown config init option: ${option}`);
+        throw unknownOptionError("config init", option);
       }
     }
     if (!vaultPath) {
       if (isInteractive() && !ctx.isJson) {
         vaultPath = "~/skills";
       } else {
-        throw new Error("usage: skillmux config init --vault <path> --yes");
+        throw usageError(
+          "missing required option --vault <path> when not run interactively",
+          "usage: skillmux config init --vault <path> --yes",
+        );
       }
     }
 
@@ -148,7 +152,7 @@ export async function handleConfigCommand(
 
   if (sub === "get") {
     const key = args[0];
-    if (!key) throw new Error("usage: skillmux config get <key>");
+    if (!key) throw usageError("missing <key> argument", "usage: skillmux config get <key>");
     const val = await adapter.getConfigGet(key);
     emitSuccess(
       { isJson: ctx.isJson, context: ctx.context },
@@ -183,7 +187,10 @@ export async function handleConfigCommand(
     const key = args[0];
     const value = args[1];
     if (!key || value === undefined) {
-      throw new Error("usage: skillmux config set <key> <value> [--dry-run]");
+      throw usageError(
+        !key ? "missing <key> and <value> arguments" : "missing <value> argument",
+        "usage: skillmux config set <key> <value> [--dry-run]",
+      );
     }
     const res = await adapter.configSet(key, value, { dryRun: ctx.dryRun });
     emitSuccess({ isJson: ctx.isJson, context: ctx.context }, res, () => {

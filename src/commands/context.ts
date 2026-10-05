@@ -1,3 +1,4 @@
+import { usageError } from "../arg-errors";
 import {
   addContext,
   getCurrentContext,
@@ -57,7 +58,8 @@ export async function handleContextCommand(
       else if (args[i] === "--token-env") tokenEnv = args[++i];
     }
     if (!name || !server) {
-      throw new Error(
+      throw usageError(
+        !name ? "missing <name> argument" : "missing required option --server <url>",
         "usage: skillmux context add <name> --server <url> [--token-env <env_name>]",
       );
     }
@@ -74,7 +76,7 @@ export async function handleContextCommand(
 
   if (sub === "use") {
     const name = args[0];
-    if (!name) throw new Error("usage: skillmux context use <name>");
+    if (!name) throw usageError("missing <name> argument", "usage: skillmux context use <name>");
     await useContext(name);
     emitSuccess(
       { isJson: ctx.isJson, context: ctx.context },
@@ -88,7 +90,7 @@ export async function handleContextCommand(
 
   if (sub === "remove") {
     const name = args[0];
-    if (!name) throw new Error("usage: skillmux context remove <name>");
+    if (!name) throw usageError("missing <name> argument", "usage: skillmux context remove <name>");
     await removeContext(name);
     emitSuccess(
       { isJson: ctx.isJson, context: ctx.context },
