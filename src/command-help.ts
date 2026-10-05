@@ -236,7 +236,11 @@ Accepts --context <name> / --server <url> to evaluate a remote deployment.`,
   doctor: `doctor: check server/environment readiness
 
 usage:
-  skillmux doctor [--json]
+  skillmux doctor [--verbose] [--json]
+
+Failing checks print first, and a final line tallies the result. The per-key
+config source checks collapse into one count by source (environment, toml,
+default); --verbose lists each key. --json always carries every check.
 
 Accepts --context <name> / --server <url> to check a remote deployment.`,
 

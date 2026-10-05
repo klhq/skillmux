@@ -504,6 +504,11 @@ Named CLI contexts (`--context <name>` or `--server <url>`) support the followin
 - `skillmux eval promote --since <window>`: fetches promotable candidates from the remote server's audit db via `POST /admin/v1/eval/promote`, dedups against the local fixture file, and writes locally.
 - `skillmux doctor`: inspects remote server status, readiness, deployment runtime, and capabilities without requiring local vault access.
 
+`doctor` prints failing checks first and ends with a one-line tally. The per-key
+`config_source:*` checks collapse into one count by source (`environment`, `toml`,
+`default`), so an environment override still shows; pass `--verbose` to list
+every key. `--json` always carries every check.
+
 Run on a host, `doctor` also reports `sync_drift`: a planned-but-never-performed sync naming every agent directory whose contents no longer match what the manifest pins. A machine with no `agents` gets an `agents` note instead. `doctor` omits the check in a container, which serves skills without owning an agent directory.
 
 ---

@@ -1,6 +1,6 @@
 import { unknownOptionError } from "../arg-errors";
 import { resolveConfigPath } from "../config";
-import { diagnose } from "../doctor";
+import { diagnose, type DoctorCheck } from "../doctor";
 import { getEffectiveConfig } from "../config-service";
 import type { ContextAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
@@ -30,8 +30,53 @@ export function parseDoctorArgs(args: readonly string[]): void {
   }
 }
 
+const CONFIG_SOURCE_PREFIX = "config_source:";
+const SOURCE_ORDER = ["environment", "toml", "default"];
+
+function formatCheck(check: DoctorCheck): string {
+  return `${check.ok ? green("ok") : red("fail")}: ${check.name} - ${check.detail}`;
+}
+
+/**
+ * Human-readable check lines: failures first, so the thing to fix is never
+ * buried, then passing checks, then a tally. The per-key config_source checks
+ * are pure provenance (33 near-identical lines), so they collapse into one
+ * count by source unless `verbose`. An environment override stays visible in
+ * that count. The JSON report always carries every check.
+ */
+export function renderChecks(checks: readonly DoctorCheck[], verbose: boolean): string[] {
+  const isSource = (check: DoctorCheck) => check.ok && check.name.startsWith(CONFIG_SOURCE_PREFIX);
+  const sources = verbose ? [] : checks.filter(isSource);
+  const shown = checks.filter((check) => verbose || !isSource(check));
+  const lines = [
+    ...shown.filter((check) => !check.ok).map(formatCheck),
+    ...shown.filter((check) => check.ok).map(formatCheck),
+  ];
+
+  if (sources.length > 0) {
+    const counts = new Map<string, number>();
+    for (const check of sources) counts.set(check.detail, (counts.get(check.detail) ?? 0) + 1);
+    const ordered = [...counts.entries()].sort(([a], [b]) => {
+      const ai = SOURCE_ORDER.indexOf(a);
+      const bi = SOURCE_ORDER.indexOf(b);
+      return (ai === -1 ? SOURCE_ORDER.length : ai) - (bi === -1 ? SOURCE_ORDER.length : bi) || a.localeCompare(b);
+    });
+    const breakdown = ordered.map(([source, n]) => `${source}: ${n}`).join(", ");
+    lines.push(`${green("ok")}: config sources - ${sources.length} ${sources.length === 1 ? "key" : "keys"} (${breakdown}); --verbose lists each`);
+  }
+
+  const failed = checks.filter((check) => !check.ok).length;
+  lines.push(
+    failed === 0
+      ? `${checks.length} checks passed`
+      : `${red(`${failed} of ${checks.length} checks failed`)}`,
+  );
+  return lines;
+}
+
 export async function runDoctor(options: {
   isJson: boolean;
+  verbose?: boolean;
   context: ResolvedContext;
   adapter: ContextAdapter;
   args?: readonly string[];
@@ -89,10 +134,7 @@ export async function runDoctor(options: {
     console.log(`inference mode: ${report.mode}`);
     console.log(`routing capability: ${report.capability}`);
     console.log(`retrieval capability: ${report.retrieval_capability}`);
-    for (const check of report.checks)
-      console.log(
-        `${check.ok ? green("ok") : red("fail")}: ${check.name} - ${check.detail}`,
-      );
+    for (const line of renderChecks(report.checks, options.verbose ?? false)) console.log(line);
   });
   if (report.checks.some((check) => !check.ok)) process.exitCode = 1;
 }

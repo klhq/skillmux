@@ -341,6 +341,7 @@ async function main() {
       case "doctor":
         await runDoctor({
           isJson,
+          verbose: isVerbose,
           context: resolvedContext,
           adapter,
           args: rawArgv.slice(1),
