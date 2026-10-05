@@ -7,7 +7,7 @@ import {
   resolveSyncSurfaces,
   validateManifest,
 } from "../manifest";
-import { cyan, emitSuccess, isInteractive, warn } from "../output";
+import { cyan, dryRunTag, emitSuccess, isInteractive, warn } from "../output";
 import {
   installPostMergeHook,
   resolveProjectPinDir,
@@ -149,7 +149,7 @@ export async function executeSync(options: ExecuteSyncOptions = {}): Promise<Exe
       continue;
     }
 
-    const suffix = dryRun ? " (dry-run)" : "";
+    const suffix = dryRun ? ` ${dryRunTag()}` : "";
     const result = syncTarget(
       {
         vaultPath,
@@ -257,7 +257,7 @@ export async function runSync(args: string[]): Promise<void> {
     if (vaultUpdate.reason === "nested") {
       log?.("vault: not pulling, this sync was started by a vault pull (SKILLMUX_SYNC_ACTIVE is set)");
     }
-    if (vaultUpdate.reason === "dry-run") log?.(`vault: would ${vaultUpdate.would} ${config.vault_url} (dry-run)`);
+    if (vaultUpdate.reason === "dry-run") log?.(`vault: would ${vaultUpdate.would} ${config.vault_url} ${dryRunTag()}`);
   } else {
     log?.(`vault: ${vaultUpdate.status} ${config.vault_url}`);
   }

@@ -2,7 +2,7 @@ import { usageError } from "../arg-errors";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
-import { emitSuccess } from "../output";
+import { dryRunTag, emitSuccess } from "../output";
 import { writeLocalVaultMarker } from "../sync";
 import { confirmIfNeeded } from "./shared";
 
@@ -31,7 +31,7 @@ export async function runLocalVaultInit(
       },
       () =>
         console.log(
-          `local-vault init: ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)}) (dry-run)`,
+          `local-vault init: ${markerPath} (role: local_vault, vault_path: ${expandHome(config.vault_path)}) ${dryRunTag()}`,
         ),
     );
     return;

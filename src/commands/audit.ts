@@ -1,5 +1,5 @@
 import { unknownOptionError, usageError } from "../arg-errors";
-import { emitSuccess } from "../output";
+import { dryRunTag, emitSuccess } from "../output";
 import { confirmIfNeeded } from "./shared";
 import type { ContextAdapter } from "../adapters";
 import type { ResolvedContext } from "../context";
@@ -43,7 +43,7 @@ export async function runAudit(
         console.log(
           counts.cutoff === null
             ? "prune: audit.retention_days is 0 (pruning disabled); nothing to do"
-            : `prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} admin_audit=${counts.admin_audit_deleted} (dry-run)`,
+            : `prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} admin_audit=${counts.admin_audit_deleted} ${dryRunTag()}`,
         ),
     );
     return;

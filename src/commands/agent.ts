@@ -5,7 +5,7 @@ import { expandHome, loadConfig, resolveConfigPath } from "../config";
 import { adoptSurfaces } from "../init";
 import { isAgentId, planAgentSurfaces, SUPPORTED_AGENT_IDS, type AgentId } from "../init-agents";
 import { parseManifest, resolveManifestPath, resolveSyncSurfaces } from "../manifest";
-import { emitSuccess, green, unknownSubcommandError, yellow } from "../output";
+import { dryRunTag, emitSuccess, green, unknownSubcommandError, yellow } from "../output";
 import {
   applyTargetMarkerRehome,
   planTargetMarkerRehome,
@@ -72,7 +72,7 @@ export async function runAgent(
       emitSuccess(
         { isJson: options.isJson },
         { agents: nextAgents, new_dirs: newSurfaces.map((surface) => surface.path) },
-        () => console.log(`agent add: agents = [${nextAgents.join(", ")}] (dry-run)`),
+        () => console.log(`agent add: agents = [${nextAgents.join(", ")}] ${dryRunTag()}`),
       );
       return;
     }
@@ -134,7 +134,7 @@ export async function runAgent(
       emitSuccess(
         { isJson: options.isJson },
         { agents: nextAgents, released_dirs: released },
-        () => console.log(`agent remove: agents = [${nextAgents.join(", ")}] (dry-run)`),
+        () => console.log(`agent remove: agents = [${nextAgents.join(", ")}] ${dryRunTag()}`),
       );
       return;
     }
@@ -186,7 +186,7 @@ export async function runAgent(
       emitSuccess(
         { isJson: options.isJson },
         { marker_paths: markerPaths },
-        () => console.log(`agent rehome: ${markerPaths.length} marker(s) (dry-run)`),
+        () => console.log(`agent rehome: ${markerPaths.length} marker(s) ${dryRunTag()}`),
       );
       return;
     }

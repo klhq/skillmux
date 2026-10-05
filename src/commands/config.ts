@@ -3,7 +3,7 @@ import { expandHome, migrateLegacyPaths, resolveConfigPath } from "../config";
 import { type ContextAdapter } from "../adapters";
 import { type ResolvedContext } from "../context";
 import { applyConfigInit, planConfigInit, type ConfigInitPlan } from "../setup";
-import { emitSuccess, green, isInteractive, red, renderContextBanner, unknownSubcommandError } from "../output";
+import { dryRunTag, emitSuccess, green, isInteractive, red, renderContextBanner, unknownSubcommandError } from "../output";
 import { confirmAction } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 function emitConfigInitOutcome(
@@ -92,7 +92,7 @@ export async function handleConfigCommand(
         applied: false,
         plan,
         action: "create",
-        text: `config create: ${plan.configPath} (dry-run)`,
+        text: `config create: ${plan.configPath} ${dryRunTag()}`,
       });
       return;
     }
@@ -195,9 +195,9 @@ export async function handleConfigCommand(
     const res = await adapter.configSet(key, value, { dryRun: ctx.dryRun });
     emitSuccess({ isJson: ctx.isJson, context: ctx.context }, res, () => {
       renderContextBanner(ctx.context);
-      const prefix = ctx.dryRun ? "[dry-run] " : "";
+      const suffix = ctx.dryRun ? ` ${dryRunTag()}` : "";
       console.log(
-        `${prefix}${key}: ${JSON.stringify(res.prior_val)} -> ${JSON.stringify(res.resulting_val)}`,
+        `${key}: ${JSON.stringify(res.prior_val)} -> ${JSON.stringify(res.resulting_val)}${suffix}`,
       );
       console.log(
         `Persistence: ${res.persistence}, Application: ${res.application}`,

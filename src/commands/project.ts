@@ -29,7 +29,7 @@ import {
   promptText,
   shouldUseWizard,
 } from "../prompts";
-import { emitSuccess, isInteractive, unknownSubcommandError } from "../output";
+import { dryRunTag, emitSuccess, isInteractive, unknownSubcommandError } from "../output";
 import { confirmAction, confirmIfNeeded, loadManifestContext } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 const PROJECT_INIT_USAGE =
@@ -195,7 +195,7 @@ export async function runProject(
       emitSuccess(
         { isJson: options.isJson },
         { subcommand: subCommand, group, path: projectPath },
-        () => console.log(`${subCommand}: [project.${group}] ${projectPath} (dry-run)`),
+        () => console.log(`${subCommand}: [project.${group}] ${projectPath} ${dryRunTag()}`),
       );
       return;
     }
@@ -246,7 +246,7 @@ export async function runProject(
         { subcommand: subCommand, group, skill_ids: skills },
         () =>
           console.log(
-            `${subCommand}: [project.${group}] ${skills.join(", ")} (dry-run)`,
+            `${subCommand}: [project.${group}] ${skills.join(", ")} ${dryRunTag()}`,
           ),
       );
       return;
@@ -311,7 +311,7 @@ export async function runProject(
     };
     if (options.dryRun) {
       emitSuccess({ isJson: options.isJson }, payload, () =>
-        console.log(`${subCommand}: [project.${group}] ${display} (dry-run)`),
+        console.log(`${subCommand}: [project.${group}] ${display} ${dryRunTag()}`),
       );
       return;
     }
