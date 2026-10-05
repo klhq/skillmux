@@ -240,6 +240,11 @@ export function warn(line: string): void {
   console.error(`${paint(ANSI.boldYellow, "warning:", "stderr")} ${line}`);
 }
 
+/** Prints a "note: <line>" message to stderr: informational, not a problem. */
+export function note(line: string): void {
+  console.error(`${paint(ANSI.cyan, "note:", "stderr")} ${line}`);
+}
+
 /**
  * Formats an error for stderr: a bold red "error:" label, then the message as
  * written. A message that already starts with "error:" is not labeled twice,

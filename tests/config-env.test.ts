@@ -12,7 +12,7 @@ mock.module("node:os", () => {
   };
 });
 
-import { loadConfig, migrateLegacyPaths, warnedEnv } from "../src/config";
+import { loadConfig, migrateLegacyPaths, setConfigNoticeHandler, warnedEnv } from "../src/config";
 
 const originalEnv = { ...process.env };
 const files: string[] = [];
@@ -448,8 +448,27 @@ retention_days = -1
 });
 
 describe("Shim 1: legacy XDG directory migration", () => {
+  const originalConsoleError = console.error;
+  let stderrLines: string[];
+
+  beforeEach(() => {
+    stderrLines = [];
+    console.error = (...args: any[]) => {
+      stderrLines.push(args.join(" "));
+    };
+  });
+
   afterEach(() => {
+    console.error = originalConsoleError;
     rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  test("reports a migration as a note, not a warning", () => {
+    mkdirSync(join(fakeHome, ".config/skill-router"), { recursive: true });
+    migrateLegacyPaths();
+    expect(stderrLines).toEqual([
+      `note: migrated ${join(fakeHome, ".config/skill-router")} -> ${join(fakeHome, ".config/skillmux")}`,
+    ]);
   });
 
   test("migrates directories when only legacy exists", () => {
@@ -502,6 +521,22 @@ describe("Shim 2: legacy environment variable fallbacks", () => {
     console.error = originalConsoleError;
   });
 
+  test("notices go through a replaceable handler, plain by default", async () => {
+    const seen: [string, string][] = [];
+    setConfigNoticeHandler((kind, line) => seen.push([kind, line]));
+    try {
+      process.env.SKILL_ROUTER_CONFIG = await configFile("[recall]\nk_lexical = 12\n");
+      await loadConfig();
+    } finally {
+      // restore the default handler, which prints the plain "kind: line" form
+      setConfigNoticeHandler((kind, line) => console.error(`${kind}: ${line}`));
+    }
+    expect(seen).toEqual([
+      ["warning", "SKILL_ROUTER_CONFIG is deprecated, use SKILLMUX_CONFIG instead"],
+    ]);
+    expect(consoleErrorSpy).toEqual([]);
+  });
+
   test("SKILLMUX_CONFIG primary var works without warning", async () => {
     const configPath = await configFile("[config]\nenvironment_overrides = false\n[recall]\nk_lexical = 10\n");
     process.env.SKILLMUX_CONFIG = configPath;
@@ -518,14 +553,16 @@ describe("Shim 2: legacy environment variable fallbacks", () => {
     
     const config = await loadConfig();
     expect(config.recall.k_lexical).toBe(12);
-    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_CONFIG is deprecated"))).toBe(true);
+    expect(consoleErrorSpy).toContain("warning: SKILL_ROUTER_CONFIG is deprecated, use SKILLMUX_CONFIG instead");
   });
 
   test("SKILL_ROUTER_MODELS_DIR fallback works with deprecation warning", async () => {
     process.env.SKILL_ROUTER_MODELS_DIR = "/legacy-models-path";
     const config = await loadConfig();
     expect(config.inference.mode === "local" ? config.inference.models_dir : "").toBe("/legacy-models-path");
-    expect(consoleErrorSpy.some((msg: string) => msg.includes("SKILL_ROUTER_MODELS_DIR is deprecated"))).toBe(true);
+    expect(consoleErrorSpy).toContain(
+      "warning: SKILL_ROUTER_MODELS_DIR is deprecated, use SKILLMUX_MODELS_DIR instead",
+    );
   });
 
   test("removed embedding base-url environment variables provide targeted migration guidance", async () => {
@@ -609,7 +646,7 @@ dimension = 384
     expect(config.inference.mode === "remote" && config.inference.embedding.model).toBe("toml-model");
     expect(config.vault_path).toBe("~/skills");
     expect(config.state_dir).toBe("~/.local/state/skillmux");
-    expect(consoleErrorSpy.some((msg) => msg.includes("EMBED_MODEL is deprecated"))).toBe(true);
+    expect(consoleErrorSpy.some((msg) => msg.startsWith("warning: EMBED_MODEL is deprecated, use SKILLMUX_"))).toBe(true);
   });
 
   test("when environment_overrides is false, api_key_env secret resolution still succeeds", async () => {
@@ -648,7 +685,7 @@ dimension = 384
     process.env.EMBED_MODEL = "generic-embed-model";
     const config = await loadConfig(path);
     expect(config.inference.mode === "remote" && config.inference.embedding.model).toBe("generic-embed-model");
-    expect(consoleErrorSpy.some((msg) => msg.includes("EMBED_MODEL is deprecated"))).toBe(true);
+    expect(consoleErrorSpy.some((msg) => msg.startsWith("warning: EMBED_MODEL is deprecated, use SKILLMUX_"))).toBe(true);
   });
 });
 

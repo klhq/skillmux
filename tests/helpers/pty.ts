@@ -17,6 +17,7 @@ if pid == 0:
         os.dup2(target, 1 if stream == "stdout" else 2)
     env = {k: v for k, v in os.environ.items() if k != "NO_COLOR"}
     env["TERM"] = "xterm-256color"
+    env.update(json.loads(sys.argv[3]))
     os.execvpe(args[0], args, env)
 out = b""
 while True:
@@ -50,6 +51,7 @@ export interface PtyResult {
 export async function runOnPty(
   args: string[],
   redirect?: "stdout" | "stderr",
+  extraEnv: Record<string, string> = {},
 ): Promise<PtyResult> {
   if (!python) throw new Error("python3 is required for pty tests");
   const dir = mkdtempSync(join(tmpdir(), "skillmux-pty-"));
@@ -61,6 +63,7 @@ export async function runOnPty(
       PTY_SCRIPT,
       JSON.stringify(["bun", CLI, ...args]),
       JSON.stringify(redirect ? { [redirect]: file } : {}),
+      JSON.stringify(extraEnv),
     ],
     { stdout: "pipe", stderr: "pipe", env: { PATH: process.env.PATH!, HOME: process.env.HOME! } },
   );
