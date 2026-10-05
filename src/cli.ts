@@ -30,7 +30,11 @@ import {
   CliError,
   formatJsonEnvelope,
   mapExitCode,
-  red,
+  dim,
+  renderError,
+  routeStderrUncolored,
+  setColorDisabled,
+  styleHelp,
   suggestCorrection,
   warn,
 } from "./output";
@@ -195,7 +199,11 @@ function containerCommandUnsupported(command: string, subCommand: string): CliEr
 }
 
 async function main() {
-  const rawArgv = Bun.argv.slice(2);
+  // --no-color is purely global: strip it before dispatch so no command's own
+  // option parser has to know about it (they reject options they don't know).
+  const rawArgv = Bun.argv.slice(2).filter((arg) => arg !== "--no-color");
+  routeStderrUncolored();
+  if (rawArgv.length !== Bun.argv.length - 2) setColorDisabled(true);
 
   let isJson = process.env.SKILLMUX_JSON === "true";
   let allowInsecure = false;
@@ -475,17 +483,9 @@ async function handleError(
     });
     console.log(JSON.stringify(env));
   } else {
-    console.error(
-      red(
-        msg.startsWith("usage:") ||
-          msg.startsWith("Unknown") ||
-          msg.startsWith("error:")
-          ? msg
-          : `error: ${msg}`,
-      ),
-    );
+    console.error(renderError(msg));
     if (opts.isVerbose && err instanceof Error && err.stack) {
-      console.error(redact(err.stack));
+      console.error(dim(redact(err.stack), "stderr"));
     }
   }
 }
@@ -493,7 +493,7 @@ async function handleError(
 function printCommandHelp(command: string): boolean {
   const help = COMMAND_HELP[command];
   if (!help) return false;
-  console.log(help);
+  console.log(styleHelp(help));
   return true;
 }
 
@@ -515,7 +515,7 @@ See docs/deployment.md for server deployment examples.`);
     return;
   }
 
-  console.log(`usage: skillmux <command> [options]
+  console.log(styleHelp(`usage: skillmux <command> [options]
 
 Setup:
   skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
@@ -549,7 +549,9 @@ Operations:
 Commands:
   ${KNOWN_COMMANDS.join(", ")}
 
-Run "skillmux <command> --help" for a command's full usage.`);
+Global options: --json, --verbose, --dry-run, --no-color, --context <name>, --server <url>
+
+Run "skillmux <command> --help" for a command's full usage.`));
 }
 
 // ---------------------------------------------------------------------------

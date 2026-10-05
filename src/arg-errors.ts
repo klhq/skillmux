@@ -2,7 +2,7 @@ import { COMMAND_HELP } from "./command-help";
 import { CliError, suggestCorrection } from "./output";
 
 /** Flags every command accepts, so they are valid "did you mean" targets everywhere. */
-const GLOBAL_FLAGS = ["--json", "--verbose", "--dry-run", "--allow-insecure", "--context", "--server"];
+const GLOBAL_FLAGS = ["--json", "--verbose", "--dry-run", "--allow-insecure", "--no-color", "--context", "--server"];
 
 /**
  * A bad or missing argument: says what is wrong, then shows the usage line.

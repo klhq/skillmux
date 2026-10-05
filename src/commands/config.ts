@@ -3,7 +3,7 @@ import { expandHome, migrateLegacyPaths, resolveConfigPath } from "../config";
 import { type ContextAdapter } from "../adapters";
 import { type ResolvedContext } from "../context";
 import { applyConfigInit, planConfigInit, type ConfigInitPlan } from "../setup";
-import { emitSuccess, isInteractive, renderContextBanner, unknownSubcommandError } from "../output";
+import { emitSuccess, green, isInteractive, red, renderContextBanner, unknownSubcommandError } from "../output";
 import { confirmAction } from "./shared";
 import { isGlobalFlag } from "../global-flags";
 function emitConfigInitOutcome(
@@ -169,7 +169,7 @@ export async function handleConfigCommand(
   if (sub === "validate") {
     const res = await adapter.configValidate();
     emitSuccess({ isJson: ctx.isJson, context: ctx.context }, res, () => {
-      console.log(res.valid ? "configuration is valid" : "configuration is invalid");
+      console.log(res.valid ? green("configuration is valid") : red("configuration is invalid"));
     });
     return;
   }

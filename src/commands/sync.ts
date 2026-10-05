@@ -7,7 +7,7 @@ import {
   resolveSyncSurfaces,
   validateManifest,
 } from "../manifest";
-import { emitSuccess, isInteractive, warn } from "../output";
+import { cyan, emitSuccess, isInteractive, warn } from "../output";
 import {
   installPostMergeHook,
   resolveProjectPinDir,
@@ -136,7 +136,7 @@ export async function executeSync(options: ExecuteSyncOptions = {}): Promise<Exe
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   const { notes } = validateManifest(manifest, vaultPath, localVaultPaths);
   if (config.agents.length === 0) notes.push(NO_AGENTS_NOTE);
-  for (const note of notes) log(`note: ${note}`);
+  for (const note of notes) log(`${cyan("note:")} ${note}`);
 
   const summaries: SyncDirSummary[] = [];
   for (const surface of resolveSyncSurfaces(manifest, config.agents)) {
@@ -253,7 +253,7 @@ export async function runSync(args: string[]): Promise<void> {
   if (vaultUpdate.status === "failed") {
     if (!isJson) warn(vaultUpdate.warning ?? "could not update the vault");
   } else if (vaultUpdate.status === "skipped") {
-    if (vaultUpdate.reason === "no-agents") log?.(`note: ${NO_AGENTS_NOTE}`);
+    if (vaultUpdate.reason === "no-agents") log?.(`${cyan("note:")} ${NO_AGENTS_NOTE}`);
     if (vaultUpdate.reason === "nested") {
       log?.("vault: not pulling, this sync was started by a vault pull (SKILLMUX_SYNC_ACTIVE is set)");
     }
