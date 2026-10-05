@@ -133,14 +133,14 @@ export async function runProject(
   },
 ): Promise<void> {
   if (subCommand === "list" || subCommand === "show") {
+    if (subCommand === "show" && !args[0]) {
+      throw usageError("missing <group> argument", "usage: skillmux project show <group>");
+    }
     const { manifest } = await loadManifestContext();
     const names =
       subCommand === "show"
         ? [args[0] ?? ""]
         : Object.keys(manifest.project ?? {});
-    if (subCommand === "show" && !args[0]) {
-      throw usageError("missing <group> argument", "usage: skillmux project show <group>");
-    }
     if (subCommand === "show" && !manifest.project?.[names[0]!]) {
       throw new Error(`[project.${names[0]}] does not exist`);
     }
