@@ -78,6 +78,7 @@ Every target-aware command resolves its execution target deterministically in th
 | `--server <url>` | Select an explicit remote server URL |
 | `--json` | Emit line-stable JSON envelopes (schema version 1) to stdout |
 | `--allow-insecure` | Allow plaintext HTTP admin requests to non-loopback addresses |
+| `--no-color` | Turn off terminal color, like setting `NO_COLOR` |
 | `--verbose` | Output diagnostic stack traces for errors |
 
 `--context`/`--server` selects which Skillmux admin instance a command talks to
@@ -525,8 +526,8 @@ Run on a host, `doctor` also reports `sync_drift`: a planned-but-never-performed
 Interactive terminal output uses a small amount of color: red for error
 messages, yellow for `warning:` lines, green/red for `doctor`'s `ok`/`fail`
 checks, and bold table headers. Color is automatic — it's on only when
-stdout is a TTY and off whenever `NO_COLOR` is set or output is piped or
-redirected. `--json` output never includes color codes.
+stdout is a TTY and off whenever `--no-color` is passed, `NO_COLOR` is set, or
+output is piped or redirected. `--json` output never includes color codes.
 
 ---
 

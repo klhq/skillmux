@@ -31,6 +31,8 @@ import {
   formatJsonEnvelope,
   mapExitCode,
   red,
+  routeStderrUncolored,
+  setColorDisabled,
   suggestCorrection,
   warn,
 } from "./output";
@@ -195,7 +197,13 @@ function containerCommandUnsupported(command: string, subCommand: string): CliEr
 }
 
 async function main() {
-  const rawArgv = Bun.argv.slice(2);
+  // --no-color is purely global: strip it before dispatch so no command's own
+  // option parser has to know about it (they reject options they don't know).
+  const rawArgv = Bun.argv.slice(2).filter((arg) => arg !== "--no-color");
+  if (rawArgv.length !== Bun.argv.length - 2) {
+    setColorDisabled(true);
+    routeStderrUncolored();
+  }
 
   let isJson = process.env.SKILLMUX_JSON === "true";
   let allowInsecure = false;
@@ -548,6 +556,8 @@ Operations:
 
 Commands:
   ${KNOWN_COMMANDS.join(", ")}
+
+Global options: --json, --verbose, --dry-run, --no-color, --context <name>, --server <url>
 
 Run "skillmux <command> --help" for a command's full usage.`);
 }

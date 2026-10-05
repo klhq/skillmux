@@ -14,7 +14,7 @@ function subs(command: string): string {
 
 export function generateCompletions(shell: ShellType): string {
   if (shell === "bash") {
-    const opts = [...TOP_LEVEL_COMMANDS.map((c) => c.name), "--context", "--server", "--json", "--allow-insecure", "--verbose", "--dry-run", "--help"].join(" ");
+    const opts = [...TOP_LEVEL_COMMANDS.map((c) => c.name), "--context", "--server", "--json", "--allow-insecure", "--verbose", "--dry-run", "--no-color", "--help"].join(" ");
     return `# bash completion for skillmux
 _skillmux_completions() {
     local cur prev opts

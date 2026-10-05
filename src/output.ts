@@ -1,3 +1,4 @@
+import { format } from "node:util";
 import type { ResolvedContext } from "./context";
 
 export interface JsonEnvelope<T = any> {
@@ -156,11 +157,40 @@ export function isInteractive(
   return stdoutIsTTY === true && env.TERM !== "dumb";
 }
 
-/** Color is opt-out only: https://no-color.org, plus the same TTY check as isInteractive(). */
+let colorDisabled = false;
+
+/** Turns off color from this module's own helpers (red, green, bold, ...). */
+export function setColorDisabled(disabled: boolean): void {
+  colorDisabled = disabled;
+}
+
+/**
+ * Bun wraps console.error output in red on a TTY by itself, and only honors
+ * NO_COLOR from the environment at startup, so setting it in-process does
+ * nothing. Writing through process.stderr.write bypasses that, which is what
+ * --no-color needs for error text to actually be uncolored.
+ *
+ * Returns a function that restores the previous console.error.
+ */
+export function routeStderrUncolored(): () => void {
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    process.stderr.write(`${format(...args)}\n`);
+  };
+  return () => {
+    console.error = original;
+  };
+}
+
+/**
+ * Color is opt-out only: the --no-color flag, https://no-color.org, or a
+ * non-interactive stdout (the same TTY check as isInteractive()).
+ */
 export function isColorEnabled(
   env: NodeJS.ProcessEnv = process.env,
   stdoutIsTTY = process.stdout.isTTY,
 ): boolean {
+  if (colorDisabled) return false;
   if (env.NO_COLOR !== undefined) return false;
   return isInteractive(env, stdoutIsTTY);
 }
