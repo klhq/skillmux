@@ -51,7 +51,7 @@ function migrateLexicalIndex(db: Database): void {
     db.run("DROP TABLE IF EXISTS skills_fts");
     db.run(`CREATE VIRTUAL TABLE skills_fts USING fts5(
       skill_id, title, description, aliases,
-      tokenize = "unicode61 remove_diacritics 2 tokenchars '+#'"
+      tokenize = "porter unicode61 remove_diacritics 2 tokenchars '+#'"
     )`);
     db.run(`INSERT INTO skills_fts (skill_id, title, description, aliases)
       SELECT skill_id, title, description, aliases FROM skills`);
