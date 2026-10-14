@@ -14,7 +14,7 @@ test("lexical search matches English word forms in both directions across metada
   const db = openIndex(dir);
   try {
     for (const field of ["skill_id", "title", "description", "aliases"] as const) {
-      for (const [base, variant] of [["debug", "debugging"], ["deploy", "deploying"], ["test", "tests"]]) {
+      for (const [base, variant] of [["debug", "debugging"], ["deploy", "deploying"], ["test", "tests"]] as const) {
         for (const [indexed, query] of [[base, variant], [variant, base]]) {
           const row = skill({ [field]: field === "skill_id" ? `${indexed}-helper` : indexed });
           replaceSkills(db, [row]);

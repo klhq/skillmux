@@ -159,11 +159,21 @@ and `C`. Complete ID/title matching trims surrounding whitespace and ignores
 ASCII letter case. The lexical budget (`recall.k_lexical`) includes these exact
 matches. RRF and the reranker can change their position in the final shortlist.
 
+Skillmux wraps the Unicode tokenizer with SQLite's English Porter stemmer for
+both indexed terms and MATCH queries. Word forms such as `debug`/`debugging`,
+`deploy`/`deploying`, and `test`/`tests` can match each other. Skill metadata and
+the query text sent to embeddings and reranking keep their original spelling.
+Complete ID/title matching still compares the original metadata.
+
+Porter follows English suffix rules rather than expanding synonyms or matching
+arbitrary substrings. Some different words share a stem, which can add less
+relevant candidates. It does not add Chinese word segmentation or guarantee
+word-form matching in other languages. See the
+[SQLite Porter tokenizer documentation](https://www.sqlite.org/fts5.html#porter_tokenizer).
+
 On first opening an older index, Skillmux rebuilds the FTS table from stored
 skill metadata in a transaction. It preserves skill rows, vectors, and existing
-index metadata, so this upgrade does not require embedding backfill. This
-change retains the Unicode tokenizer's existing English word-form and Chinese
-segmentation limitations.
+index metadata, so this upgrade does not require embedding backfill.
 
 The default local inference configuration uses FTS5 and quantized
 `Xenova/gte-small` embeddings. Skillmux CLI installations cache the
