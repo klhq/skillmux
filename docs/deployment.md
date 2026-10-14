@@ -186,6 +186,21 @@ Configure and distribute separate bearer tokens. An MCP token authenticates an
 AI client to `/mcp` only; an administrative token authenticates an operator to
 `/admin/v1/*` only. Neither token grants access to the other surface.
 
+### Stateless MCP over HTTP
+
+`/mcp` holds no sessions. Every POST is served on its own, so one server
+process serves any number of AI clients at once, in either
+[protocol era](mcp-routing.md#protocol-versions):
+
+- `2026-07-28` clients send each request with the `_meta` envelope and the
+  `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers. That protocol
+  has no sessions.
+- 2025-era clients still send `initialize` first, and it succeeds, but the
+  server issues no `Mcp-Session-Id`. Later requests work with or without one.
+- `GET /mcp` (the 2025-era server-to-client stream) and `DELETE /mcp` (session
+  termination) return `405 Method Not Allowed`. Skillmux sends no
+  server-to-client requests or notifications, so clients lose nothing.
+
 ## Expose HTTP safely
 
 The Skillmux CLI binds `127.0.0.1`. Docker binds `0.0.0.0` so
@@ -253,7 +268,7 @@ The HTTP server provides:
 | `GET /health` | Compatibility alias for liveness |
 | `GET /metrics` | Prometheus text exposition |
 | `GET /stats` | Aggregated routing statistics for `skillmux report` |
-| `POST /mcp` | Streamable HTTP MCP transport |
+| `POST /mcp` | Streamable HTTP MCP transport, stateless (`GET` and `DELETE` return 405) |
 | `/admin/v1/*` | Administrative configuration API (when enabled) |
 
 The Docker health check calls `/health/ready`.
