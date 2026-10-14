@@ -561,7 +561,7 @@ export async function retrieveAndRerank(
       try {
         const queryVec = (embedRes as Float32Array[])[0];
         if (!queryVec) throw new Error("Embedding client returned no query vector.");
-        const nearest = vectorTopK(db, queryVec, config.recall.k_vector);
+        const nearest = vectorTopK(db, queryVec, config.recall.k_vector, embeddingFingerprint(config));
         rows = reciprocalRankFusion(lexical, nearest);
         fusedRows = rows;
         retrieval = "hybrid";

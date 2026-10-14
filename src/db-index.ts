@@ -219,14 +219,17 @@ function cosine(a: Float32Array, b: Float32Array): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-/** Brute-force cosine over every stored vector (vault is ~100 skills; no ANN). */
-export function vectorTopK(db: Database, query: Float32Array, k: number): SkillRow[] {
+/** Brute-force cosine over current, compatible vectors (vault is ~100 skills; no ANN). */
+export function vectorTopK(db: Database, query: Float32Array, k: number, embeddingFingerprint: string): SkillRow[] {
   const rows = db
     .query(
       `SELECT s.skill_id, s.title, s.description, s.aliases, s.content_sha256, v.vec
-       FROM vectors v JOIN skills s ON s.skill_id = v.skill_id`,
+       FROM vectors v JOIN skills s ON s.skill_id = v.skill_id
+       WHERE v.content_sha256 = s.content_sha256
+         AND v.dim = ?
+         AND v.embedding_fingerprint = ?`,
     )
-    .all() as (SkillRow & { vec: Uint8Array })[];
+    .all(query.length, embeddingFingerprint) as (SkillRow & { vec: Uint8Array })[];
   return rows
     .map(({ vec, ...row }) => ({
       row,

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { embeddingFingerprint, loadConfig, rerankerFingerprint } from "../src/config";
-import { ingestVault, openIndex, skillsNeedingVectors, upsertVector } from "../src/db";
+import { ingestVault, openIndex, skillsNeedingVectors, upsertVector, vectorTopK } from "../src/db";
 import type { Config } from "../src/types";
 
 describe("embedding fingerprint", () => {
@@ -47,6 +50,46 @@ describe("embedding fingerprint", () => {
     expect(skillsNeedingVectors(db, 3, "local:bundle:model:3")).toHaveLength(0);
     expect(skillsNeedingVectors(db, 3, "remote:openai:model:3")).toHaveLength(1);
     db.close();
+  });
+});
+
+describe("vector retrieval freshness", () => {
+  test("returns only current, compatible vectors before applying the result limit", () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "skillmux-vector-freshness-"));
+    const db = openIndex(stateDir);
+    const fingerprint = "remote:openai:current-model:3";
+    const contentHash = "current-content";
+    const fixtures = [
+      { id: "stale-content", hash: "old-content", fingerprint, vector: [1, 0, 0] },
+      { id: "old-model", hash: contentHash, fingerprint: "remote:openai:old-model:3", vector: [1, 0, 0] },
+      { id: "legacy-vector", hash: contentHash, fingerprint: "", vector: [1, 0, 0] },
+      { id: "wrong-dimension", hash: contentHash, fingerprint, vector: [1, 0] },
+      { id: "current-best", hash: contentHash, fingerprint, vector: [1, 1, 0] },
+      { id: "current-second", hash: contentHash, fingerprint, vector: [0, 1, 0] },
+    ];
+
+    try {
+      ingestVault(db, fixtures.map(({ id }) => ({
+        skill_id: id,
+        title: id,
+        description: "",
+        aliases: [],
+        content_sha256: contentHash,
+        body: "",
+      })));
+      for (const fixture of fixtures) {
+        upsertVector(db, fixture.id, fixture.hash, fixture.fingerprint, Float32Array.from(fixture.vector));
+      }
+
+      const query = Float32Array.from([1, 0, 0]);
+      for (const limit of [2, 10]) {
+        expect(vectorTopK(db, query, limit, fingerprint).map((row) => row.skill_id))
+          .toEqual(["current-best", "current-second"]);
+      }
+    } finally {
+      db.close();
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 });
 
