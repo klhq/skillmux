@@ -47,7 +47,7 @@ export function openIndex(stateDir: string): Database {
 function migrateLexicalIndex(db: Database): void {
   db.transaction(() => {
     const version = getIndexMeta(db, "lexical_schema_version");
-    if (version === "2") return;
+    if (version === "3") return;
     db.run("DROP TABLE IF EXISTS skills_fts");
     db.run(`CREATE VIRTUAL TABLE skills_fts USING fts5(
       skill_id, title, description, aliases,
@@ -55,7 +55,7 @@ function migrateLexicalIndex(db: Database): void {
     )`);
     db.run(`INSERT INTO skills_fts (skill_id, title, description, aliases)
       SELECT skill_id, title, description, aliases FROM skills`);
-    setIndexMeta(db, "lexical_schema_version", "2");
+    setIndexMeta(db, "lexical_schema_version", "3");
   })();
 }
 
