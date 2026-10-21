@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { createClients, parseLocalEmbeddingVectors, RemoteInferenceError } from "../src/clients";
+import { createClients, parseLocalEmbeddingVectors, prepareLocalEmbedder, RemoteInferenceError } from "../src/clients";
 import type { Config, RemoteRerankerConfig } from "../src/types";
 
 const requests: {
@@ -527,5 +527,25 @@ describe("reranker protocol adapters", () => {
     const clients = createClients(testConfig());
     const scores = await clients.rerank!("route my task", docs);
     expect(scores).toEqual([0.9, 0.6]);
+  });
+});
+
+describe("local embedding pooling", () => {
+  function fakePipeline() {
+    return { tokenizer: { padding_side: "right" } };
+  }
+
+  test("should pool decoder-only presets on the last token with left padding", () => {
+    const pipe = fakePipeline();
+    const options = prepareLocalEmbedder(pipe, { model: "Qwen/Qwen3-Embedding-0.6B" });
+    expect(options).toEqual({ pooling: "last_token", normalize: true });
+    expect(pipe.tokenizer.padding_side).toBe("left");
+  });
+
+  test("should keep mean pooling and tokenizer padding for the default bundle", () => {
+    const pipe = fakePipeline();
+    const options = prepareLocalEmbedder(pipe, { model: "Xenova/gte-small" });
+    expect(options).toEqual({ pooling: "mean", normalize: true });
+    expect(pipe.tokenizer.padding_side).toBe("right");
   });
 });
