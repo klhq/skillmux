@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DEFAULT_CONFIG_PATH, expandHome, loadConfig } from "./config";
 import { resolveEmbeddingPrefixes } from "./embedding-format";
@@ -374,11 +374,17 @@ export async function setDottedKey(
     const tmpPath = join(dir, `.config-${Math.random().toString(36).slice(2)}.tmp`);
     const newTomlText = stringifyToml(updatedToml);
     writeFileSync(tmpPath, newTomlText, { mode: existingMode, encoding: "utf-8" });
+    // Validate before replacing, so a rejected value never reaches the real config.
+    let newEffective: Config;
+    try {
+      ({ effective: newEffective } = await getEffectiveConfig(tmpPath));
+    } catch (error) {
+      rmSync(tmpPath, { force: true });
+      throw error;
+    }
     renameSync(tmpPath, fullPath);
 
     persistence = "persisted";
-
-    const { effective: newEffective } = await getEffectiveConfig(path);
     resultingRevision = computeHash(newEffective);
   }
 
