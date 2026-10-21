@@ -185,9 +185,9 @@ configured model:
 | `BAAI/bge-small-en-v1.5`, `bge-base-en-v1.5`, `bge-large-en-v1.5` | `cls` |
 | Any other model, including the default GTE bundle | `mean` |
 
-Set `pooling = "mean"`, `"cls"` or `"last_token"` explicitly for an ONNX
-conversion or fine-tune whose name differs from the canonical ID.
-Decoder-only models such as Qwen3-Embedding and Harrier need `last_token`.
+The published ONNX conversions listed below use the same preset as their
+original. Set `pooling = "mean"`, `"cls"` or `"last_token"` explicitly for a
+fine-tune or any other model name. Decoder-only models such as Qwen3-Embedding and Harrier need `last_token`.
 With `last_token`, Skillmux pads batches on the left so the final position
 always holds a real token.
 
@@ -220,7 +220,22 @@ model name, or plain input when the name is unknown.
 | `BAAI/bge-small-en-v1.5`, `bge-base-en-v1.5`, `bge-large-en-v1.5` | `Represent this sentence for searching relevant passages: ` | Empty |
 
 Provider-prefixed canonical names such as `infinity/microsoft/harrier-oss-v1-0.6b`
-use the same preset. Custom aliases, fine-tunes and other variants require
+use the same preset. These published ONNX conversions also use their
+original's preset, for both prefixes and local pooling:
+
+| ONNX conversion | Original |
+| --- | --- |
+| `onnx-community/Qwen3-Embedding-0.6B-ONNX`, `-4B-ONNX`, `-8B-ONNX` | `Qwen/Qwen3-Embedding-*` |
+| `onnx-community/harrier-oss-v1-270m-ONNX`, `-0.6b-ONNX` | `microsoft/harrier-oss-v1-*` |
+| `Xenova/e5-small-v2`, `e5-base-v2`, `e5-large-v2` | `intfloat/e5-*-v2` |
+| `Xenova/multilingual-e5-small`, `-base`, `-large` | `intfloat/multilingual-e5-*` |
+| `Xenova/bge-small-en-v1.5`, `bge-base-en-v1.5`, `bge-large-en-v1.5` | `BAAI/bge-*-en-v1.5` |
+
+The BGE preset uses CLS pooling as BAAI specifies, although some conversion
+READMEs show mean pooling. The 4B and 8B Qwen3 conversions publish no q8
+weights, so set `dtype` to a variant they provide.
+
+Custom aliases, fine-tunes and other variants require
 explicit prefixes when their format differs from plain text. For example,
 `intfloat/multilingual-e5-large-instruct` does not inherit the base E5 preset.
 A preset selects text formatting and, for local inference only, the

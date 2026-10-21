@@ -8,22 +8,23 @@ export interface EmbeddingPrefixes {
 const SKILL_QUERY_PREFIX =
   "Instruct: Given a task description, retrieve relevant skills that help complete the task.\nQuery: ";
 
-// Canonical, documented model IDs only. A gateway may prepend its provider path.
+// Canonical, documented model IDs and their published ONNX conversions only.
+// A gateway may prepend its provider path. Fine-tunes need explicit settings.
 const PRESETS: { model: RegExp; query_prefix: string; document_prefix: string; pooling: EmbeddingPooling }[] = [
   {
-    model: /(?:^|\/)(?:microsoft\/harrier-oss-v1-(?:270m|0\.6b|27b)|Qwen\/Qwen3-Embedding-(?:0\.6B|4B|8B))$/,
+    model: /(?:^|\/)(?:microsoft\/harrier-oss-v1-(?:270m|0\.6b|27b)|Qwen\/Qwen3-Embedding-(?:0\.6B|4B|8B)|onnx-community\/(?:harrier-oss-v1-(?:270m|0\.6b)|Qwen3-Embedding-(?:0\.6B|4B|8B))-ONNX)$/,
     query_prefix: SKILL_QUERY_PREFIX,
     document_prefix: "",
     pooling: "last_token",
   },
   {
-    model: /(?:^|\/)intfloat\/(?:e5-(?:small|base|large)-v2|multilingual-e5-(?:small|base|large))$/,
+    model: /(?:^|\/)(?:intfloat|Xenova)\/(?:e5-(?:small|base|large)-v2|multilingual-e5-(?:small|base|large))$/,
     query_prefix: "query: ",
     document_prefix: "passage: ",
     pooling: "mean",
   },
   {
-    model: /(?:^|\/)BAAI\/bge-(?:small|base|large)-en-v1\.5$/,
+    model: /(?:^|\/)(?:BAAI|Xenova)\/bge-(?:small|base|large)-en-v1\.5$/,
     query_prefix: "Represent this sentence for searching relevant passages: ",
     document_prefix: "",
     pooling: "cls",
