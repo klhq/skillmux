@@ -222,8 +222,8 @@
             "embedding": {
               "type": "object",
               "properties": {
-                "model": { "const": "Xenova/gte-small" },
-                "dimension": { "const": 384 },
+                "model": { "type": "string", "default": "Xenova/gte-small", "description": "Hugging Face model ID with ONNX weights for transformers.js. Known IDs and their published ONNX conversions select a preset." },
+                "dimension": { "type": "integer", "minimum": 1, "default": 384 },
                 "device": { "type": "string" },
                 "dtype": { "type": "string" },
                 "pooling": { "enum": ["mean", "cls", "last_token"], "description": "Local pooling override. Omit for the known-model preset; unknown models use mean. Changes require restart and vector backfill." },
