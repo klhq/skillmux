@@ -1,15 +1,16 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/klhq/skillmux/main/docs/assets/logo-dark.png">
-    <img src="https://raw.githubusercontent.com/klhq/skillmux/main/docs/assets/logo-light.png" alt="skillmux" width="400">
+    <img class="mx-auto" src="https://raw.githubusercontent.com/klhq/skillmux/main/docs/assets/logo-light.png" alt="skillmux" width="400">
   </picture>
 </p>
 
 <p align="center">
-  <a href="https://github.com/klhq/skillmux/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/klhq/skillmux/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/klhq/skillmux/releases/latest"><img alt="GitHub release" src="https://img.shields.io/github/v/release/klhq/skillmux"></a>
-  <a href="https://www.npmjs.com/package/@klhapp/skillmux"><img alt="npm" src="https://img.shields.io/npm/v/@klhapp/skillmux"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://github.com/klhq/skillmux/actions/workflows/ci.yml"><img class="inline" alt="CI" src="https://github.com/klhq/skillmux/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/klhq/skillmux/releases/latest"><img class="inline" alt="GitHub release" src="https://img.shields.io/github/v/release/klhq/skillmux"></a>
+  <a href="https://www.npmjs.com/package/@klhapp/skillmux"><img class="inline" alt="npm" src="https://img.shields.io/npm/v/@klhapp/skillmux"></a>
+  <a href="https://hub.docker.com/r/klhq/skillmux"><img class="inline" alt="Docker pulls" src="https://img.shields.io/docker/pulls/klhq/skillmux"></a>
+  <a href="LICENSE"><img class="inline" alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
 </p>
 
 <p align="center"><strong>One skill vault. Every AI coding agent. Nothing lost in translation.</strong></p>
