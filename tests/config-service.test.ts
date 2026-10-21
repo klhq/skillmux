@@ -59,6 +59,16 @@ describe("Config Service (AC4, AC5, AC6)", () => {
     }
   });
 
+  it("leaves the config file untouched when the new value makes the config invalid", async () => {
+    const remote =
+      '[inference]\nmode = "remote"\ntimeout_ms = 2000\n[inference.embedding]\nprovider = "openai"\n' +
+      'endpoint = "https://embed.example.com/v1/embeddings"\nmodel = "example"\ndimension = 3\n';
+    writeFileSync(CONFIG_FILE, remote);
+
+    await expect(setDottedKey("inference.embedding.device", "cpu", { configPath: CONFIG_FILE })).rejects.toThrow();
+    expect(readFileSync(CONFIG_FILE, "utf-8")).toBe(remote);
+  });
+
   it("identifies sources as default, toml, or environment (AC4)", async () => {
     writeFileSync(
       CONFIG_FILE,
