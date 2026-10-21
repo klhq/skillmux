@@ -20,6 +20,7 @@ const modelSchema = z.object({
   model: z.string().min(1),
   query_prefix: z.string().optional(),
   document_prefix: z.string().optional(),
+  pooling: z.enum(["mean", "cls", "last_token"]).optional(),
   device: onnxDeviceSchema.optional(),
   dtype: onnxDtypeSchema.optional(),
 }).strict();

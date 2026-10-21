@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
+import { loadConfig } from "../src/config";
 import { resolveEmbeddingPooling } from "../src/embedding-format";
 import type { EmbeddingPooling } from "../src/types";
 
@@ -18,5 +20,41 @@ describe("embedding pooling", () => {
   test("should let an explicit pooling override the model preset", () => {
     expect(resolveEmbeddingPooling({ model: "Qwen/Qwen3-Embedding-0.6B", pooling: "mean" })).toBe("mean");
     expect(resolveEmbeddingPooling({ model: "my-org/custom-decoder", pooling: "last_token" })).toBe("last_token");
+  });
+});
+
+describe("pooling configuration", () => {
+  async function loadToml(content: string) {
+    const path = `/tmp/skillmux-pooling-${crypto.randomUUID()}.toml`;
+    await Bun.write(path, content);
+    try {
+      return await loadConfig(path);
+    } finally {
+      rmSync(path, { force: true });
+    }
+  }
+
+  test("should accept a supported pooling for local inference", async () => {
+    const config = await loadToml(`[inference.embedding]\npooling = "last_token"\n`);
+    expect(config.inference.mode === "local" && config.inference.embedding.pooling).toBe("last_token");
+  });
+
+  test("should reject an unsupported pooling value", async () => {
+    await expect(loadToml(`[inference.embedding]\npooling = "max"\n`)).rejects.toThrow();
+  });
+
+  test("should reject pooling for remote inference, where the server pools", async () => {
+    const remote = [
+      `[inference]`,
+      `mode = "remote"`,
+      `timeout_ms = 2000`,
+      `[inference.embedding]`,
+      `provider = "openai"`,
+      `endpoint = "https://embed.example.com/v1/embeddings"`,
+      `model = "Qwen/Qwen3-Embedding-0.6B"`,
+      `dimension = 1024`,
+      `pooling = "last_token"`,
+    ].join("\n");
+    await expect(loadToml(remote)).rejects.toThrow("pooling");
   });
 });
