@@ -233,7 +233,12 @@ original's preset, for both prefixes and local pooling:
 
 The BGE preset uses CLS pooling as BAAI specifies, although some conversion
 READMEs show mean pooling. The 4B and 8B Qwen3 conversions publish no q8
-weights, so set `dtype` to a variant they provide.
+weights, so set `dtype` to a variant they provide. Prefer `dtype = "fp16"` for
+the Qwen3 conversions in general: with q8, a text embedded alone and the same
+text embedded in a batch measured a cosine similarity of only about 0.94 for
+`Qwen3-Embedding-0.6B-ONNX`, while fp16 matched exactly. Skillmux embeds
+documents in batches and queries one at a time, so that drift reaches ranking.
+The default GTE bundle stays above 0.997 with q8.
 
 Custom aliases, fine-tunes and other variants require
 explicit prefixes when their format differs from plain text. For example,
