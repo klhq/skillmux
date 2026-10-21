@@ -226,6 +226,7 @@
                 "dimension": { "const": 384 },
                 "device": { "type": "string" },
                 "dtype": { "type": "string" },
+                "pooling": { "enum": ["mean", "cls", "last_token"], "description": "Local pooling override. Omit for the known-model preset; unknown models use mean. Changes require restart and vector backfill." },
                 "query_prefix": { "type": "string", "description": "Query prefix override. Omit for the known-model preset; an empty string disables client formatting." },
                 "document_prefix": { "type": "string", "description": "Document prefix override. Omit for the known-model preset; an empty string disables client formatting. Changes require restart and vector backfill." }
               },

@@ -171,6 +171,31 @@ dtype = "q8"
 Use `skillmux models download` to prefetch the model and `skillmux doctor` to
 verify readiness.
 
+### Local pooling
+
+Local inference turns the model's token states into one vector with a
+pooling method. Omit `inference.embedding.pooling` to use the preset for the
+configured model:
+
+| Canonical model IDs | Pooling |
+| --- | --- |
+| `microsoft/harrier-oss-v1-270m`, `-0.6b`, `-27b` | `last_token` |
+| `Qwen/Qwen3-Embedding-0.6B`, `-4B`, `-8B` | `last_token` |
+| `intfloat/e5-*-v2`, `intfloat/multilingual-e5-*` | `mean` |
+| `BAAI/bge-small-en-v1.5`, `bge-base-en-v1.5`, `bge-large-en-v1.5` | `cls` |
+| Any other model, including the default GTE bundle | `mean` |
+
+Set `pooling = "mean"`, `"cls"` or `"last_token"` explicitly for an ONNX
+conversion or fine-tune whose name differs from the canonical ID.
+Decoder-only models such as Qwen3-Embedding and Harrier need `last_token`.
+With `last_token`, Skillmux pads batches on the left so the final position
+always holds a real token.
+
+A pooling change requires restart. A non-mean effective pooling participates
+in the embedding fingerprint, so startup backfill regenerates vectors made
+with another method. Mean pooling preserves the existing fingerprint. Remote
+inference rejects the key because the inference service does the pooling.
+
 ## Remote inference
 
 See [`config.remote.example.toml`](../config.remote.example.toml). Embeddings
@@ -198,8 +223,9 @@ Provider-prefixed canonical names such as `infinity/microsoft/harrier-oss-v1-0.6
 use the same preset. Custom aliases, fine-tunes and other variants require
 explicit prefixes when their format differs from plain text. For example,
 `intfloat/multilingual-e5-large-instruct` does not inherit the base E5 preset.
-A preset selects text formatting; it does not configure the inference engine,
-model dimensions or pooling. The default local GTE bundle keeps plain input.
+A preset selects text formatting and, for local inference only, the
+[pooling method](#local-pooling). It does not configure the inference engine
+or model dimensions. The default local GTE bundle keeps plain input.
 
 The Harrier and Qwen3 preset prepends this instruction to each query:
 

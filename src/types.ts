@@ -54,8 +54,13 @@ export interface EmbeddingPrefixOverrides {
   document_prefix?: string;
 }
 
+/** How local inference turns token states into one vector. */
+export type EmbeddingPooling = "mean" | "cls" | "last_token";
+
 export interface ModelConfig extends EmbeddingPrefixOverrides {
   model: string;
+  /** Omit to use the model preset; unknown models use mean pooling. */
+  pooling?: EmbeddingPooling;
   device?: ONNXDevice;
   dtype?: ONNXDtype;
 }

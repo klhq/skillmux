@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import { SUPPORTED_AGENT_IDS } from "./agent-ids";
 import { isGitUrl } from "./git-url";
-import { resolveEmbeddingPrefixes } from "./embedding-format";
+import { resolveEmbeddingPooling, resolveEmbeddingPrefixes } from "./embedding-format";
 import type { Config, ONNXDevice, ONNXDtype } from "./types";
 
 const onnxDeviceSchema = z.enum([
@@ -20,6 +20,7 @@ const modelSchema = z.object({
   model: z.string().min(1),
   query_prefix: z.string().optional(),
   document_prefix: z.string().optional(),
+  pooling: z.enum(["mean", "cls", "last_token"]).optional(),
   device: onnxDeviceSchema.optional(),
   dtype: onnxDtypeSchema.optional(),
 }).strict();
@@ -174,7 +175,10 @@ export function embeddingFingerprint(config: Config): string {
   const inference = config.inference;
   const implementation =
     inference.mode === "local" ? `local:${inference.bundle}` : `remote:${inference.embedding.provider}`;
-  const base = `${implementation}:${inference.embedding.model}:${inference.embedding.dimension}`;
+  const model = `${implementation}:${inference.embedding.model}:${inference.embedding.dimension}`;
+  // Mean pooling keeps the legacy fingerprint so existing local vectors stay valid.
+  const pooling = inference.mode === "local" ? resolveEmbeddingPooling(inference.embedding) : "mean";
+  const base = pooling === "mean" ? model : `${model}:pooling:${pooling}`;
   const prefix = resolveEmbeddingPrefixes(inference.embedding).document_prefix;
   if (prefix === "") return base;
   const hash = new Bun.CryptoHasher("sha256").update(prefix).digest("hex");

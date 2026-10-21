@@ -1,6 +1,6 @@
-import type { Clients, Config, EmbeddingRole, RemoteRerankerConfig } from "./types";
+import type { Clients, Config, EmbeddingPooling, EmbeddingRole, RemoteRerankerConfig } from "./types";
 import { expandHome } from "./config";
-import { formatEmbeddingInputs } from "./embedding-format";
+import { formatEmbeddingInputs, resolveEmbeddingPooling } from "./embedding-format";
 import { assertHostAllowed } from "./install";
 import type { pipeline as createPipeline } from "@huggingface/transformers";
 
@@ -19,7 +19,9 @@ export class RemoteInferenceError extends Error {
 // Lazy-loaded model instances for in-process ONNX inference
 type FeatureExtractor = Awaited<ReturnType<typeof createPipeline<"feature-extraction">>>;
 
-let localEmbedder: FeatureExtractor | null = null;
+type LocalEmbedder = { pipe: FeatureExtractor; options: ReturnType<typeof prepareLocalEmbedder> };
+
+let localEmbedder: LocalEmbedder | null = null;
 
 function authorizationHeaders(
   apiKeyEnv: string | undefined,
@@ -274,17 +276,31 @@ async function setupTransformers(cacheDir: string) {
   return pipeline;
 }
 
-async function getLocalEmbedder(config: Config): Promise<FeatureExtractor> {
+/**
+ * Applies the resolved pooling to a local pipeline. transformers.js takes the
+ * last sequence position for last-token pooling, so batches must pad on the left.
+ */
+export function prepareLocalEmbedder(
+  pipe: { tokenizer: { padding_side: string } },
+  embedding: { model: string; pooling?: EmbeddingPooling },
+): { pooling: EmbeddingPooling; normalize: true } {
+  const pooling = resolveEmbeddingPooling(embedding);
+  if (pooling === "last_token") pipe.tokenizer.padding_side = "left";
+  return { pooling, normalize: true };
+}
+
+async function getLocalEmbedder(config: Config): Promise<LocalEmbedder> {
   if (localEmbedder) return localEmbedder;
 
   const inference = localInference(config);
   const cacheDir = expandHome(inference.models_dir);
   const pipeline = await setupTransformers(cacheDir);
 
-  localEmbedder = await pipeline("feature-extraction", inference.embedding.model, {
+  const pipe = await pipeline("feature-extraction", inference.embedding.model, {
     device: inference.embedding.device || "cpu",
     dtype: inference.embedding.dtype || "q8",
   });
+  localEmbedder = { pipe, options: prepareLocalEmbedder(pipe, inference.embedding) };
   return localEmbedder;
 }
 
@@ -299,8 +315,8 @@ export function createClients(config: Config): Clients {
     async embed(texts: string[], role?: EmbeddingRole): Promise<Float32Array[]> {
       const input = formatEmbeddingInputs(texts, config.inference.embedding, role);
       if (config.inference.mode === "local") {
-        const pipe = await getLocalEmbedder(config);
-        const output = await pipe(input, { pooling: "mean", normalize: true });
+        const { pipe, options } = await getLocalEmbedder(config);
+        const output = await pipe(input, options);
         const dim = output.dims[1];
         if (
           dim === undefined ||

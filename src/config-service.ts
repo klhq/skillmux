@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DEFAULT_CONFIG_PATH, expandHome, loadConfig } from "./config";
-import { resolveEmbeddingPrefixes } from "./embedding-format";
+import { resolveEmbeddingPooling, resolveEmbeddingPrefixes } from "./embedding-format";
 import { describeDeployment } from "./deployment";
 import { isGitUrl } from "./git-url";
 import type { Config } from "./types";
@@ -56,6 +56,7 @@ export const RESTART_REQUIRED_KEYS = [
   "inference.embedding.device",
   "inference.embedding.dtype",
   "inference.embedding.document_prefix",
+  "inference.embedding.pooling",
 ];
 
 export const RELOADABLE_KEYS = [
@@ -120,10 +121,18 @@ export function computeHash(data: unknown): string {
   return createHash("sha256").update(str).digest("hex").slice(0, 16);
 }
 
-/** Compare runtime and displayed configs using the same effective prefix values. */
+/** Fills the effective prefixes, and local pooling, that presets would select. */
+function resolveEmbeddingDefaults(config: Config): void {
+  Object.assign(config.inference.embedding, resolveEmbeddingPrefixes(config.inference.embedding));
+  if (config.inference.mode === "local") {
+    config.inference.embedding.pooling = resolveEmbeddingPooling(config.inference.embedding);
+  }
+}
+
+/** Compare runtime and displayed configs using the same effective embedding values. */
 export function computeConfigHash(config: Config): string {
   const normalized = structuredClone(config);
-  Object.assign(normalized.inference.embedding, resolveEmbeddingPrefixes(normalized.inference.embedding));
+  resolveEmbeddingDefaults(normalized);
   return computeHash(normalized);
 }
 
@@ -173,6 +182,7 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
     "inference.embedding.api_key_env",
     "inference.embedding.query_prefix",
     "inference.embedding.document_prefix",
+    "inference.embedding.pooling",
     "inference.reranker.adapter",
     "inference.reranker.endpoint",
     "inference.reranker.model",
@@ -199,7 +209,7 @@ export async function getEffectiveConfig(configPath?: string): Promise<{
     }
   }
 
-  Object.assign(effective.inference.embedding, resolveEmbeddingPrefixes(effective.inference.embedding));
+  resolveEmbeddingDefaults(effective);
   return { effective, sources, rawToml };
 }
 
@@ -259,6 +269,7 @@ export function validateDottedKey(key: string): void {
     "inference.embedding.api_key_env",
     "inference.embedding.query_prefix",
     "inference.embedding.document_prefix",
+    "inference.embedding.pooling",
     "inference.reranker.adapter",
     "inference.reranker.endpoint",
     "inference.reranker.model",

@@ -32,6 +32,25 @@ describe("embedding fingerprint", () => {
     expect(embeddingFingerprint(config)).not.toBe(preset);
   });
 
+  test("tracks effective local pooling while preserving mean-pooled vectors", async () => {
+    const config = await loadConfig("/does/not/exist/config.toml");
+    if (config.inference.mode !== "local") throw new Error("expected local defaults");
+    const original = embeddingFingerprint(config);
+
+    config.inference.embedding.pooling = "mean";
+    expect(embeddingFingerprint(config)).toBe(original);
+    config.inference.embedding.pooling = "last_token";
+    expect(embeddingFingerprint(config)).not.toBe(original);
+
+    config.inference.embedding.model = "BAAI/bge-small-en-v1.5";
+    delete config.inference.embedding.pooling;
+    const preset = embeddingFingerprint(config);
+    config.inference.embedding.pooling = "cls";
+    expect(embeddingFingerprint(config)).toBe(preset);
+    config.inference.embedding.pooling = "mean";
+    expect(embeddingFingerprint(config)).not.toBe(preset);
+  });
+
   test("changes with model identity even when dimensions match", async () => {
     const local = await loadConfig("/does/not/exist/config.toml");
     const remote: Config = {

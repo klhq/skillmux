@@ -69,6 +69,23 @@ describe("Config Service (AC4, AC5, AC6)", () => {
     expect(readFileSync(CONFIG_FILE, "utf-8")).toBe(remote);
   });
 
+  it("reports resolved local pooling, persists overrides, and requires restart for pooling changes", async () => {
+    writeFileSync(
+      CONFIG_FILE,
+      '[inference]\nmode = "local"\n[inference.embedding]\nmodel = "Qwen/Qwen3-Embedding-0.6B"\ndimension = 1024\n',
+    );
+    const defaults = await getEffectiveConfig(CONFIG_FILE);
+    expect(defaults.effective.inference.mode === "local" && defaults.effective.inference.embedding.pooling).toBe("last_token");
+    expect(defaults.sources["inference.embedding.pooling"]).toBe("default");
+
+    await setDottedKey("inference.embedding.pooling", "mean", { configPath: CONFIG_FILE });
+    const { effective, sources } = await getEffectiveConfig(CONFIG_FILE);
+    expect(effective.inference.mode === "local" && effective.inference.embedding.pooling).toBe("mean");
+    expect(sources["inference.embedding.pooling"]).toBe("toml");
+    expect(RELOADABLE_KEYS).not.toContain("inference.embedding.pooling");
+    expect(RESTART_REQUIRED_KEYS).toContain("inference.embedding.pooling");
+  });
+
   it("identifies sources as default, toml, or environment (AC4)", async () => {
     writeFileSync(
       CONFIG_FILE,
