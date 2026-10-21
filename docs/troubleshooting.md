@@ -185,8 +185,14 @@ review. If the shortlist is empty (`candidates: []`) or missing an expected skil
 
 - write a concrete skill description with specific task vocabulary and user intents in `SKILL.md`;
 - verify embeddings are active with `skillmux doctor`;
+- check the `embedding_format` line in `skillmux doctor`: a model without a
+  preset runs with plain input and, locally, mean pooling, which ranks badly
+  for models such as Qwen3-Embedding (see
+  [Fine-tuned and other models](configuration.md#fine-tuned-and-other-models));
 - increase candidate recall depth in `[recall]` (`k_lexical`, `k_vector`, or `k_rerank`);
-- evaluate ranking quality against a labelled dataset with `skillmux eval` (see [Ranked-shortlist migration](ranked-shortlist-migration.md)).
+- compare `acceptance_rate` and `observed_mrr` in `skillmux report` before and
+  after a change. `skillmux eval` runs only the bundled `eval/queries.json`
+  dataset (see [Ranked-shortlist migration](ranked-shortlist-migration.md)).
 
 ### Server reports lexical mode
 

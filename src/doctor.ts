@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createClients, RemoteInferenceError } from "./clients";
 import { embeddingDimension, expandHome, isLoopbackBindHost } from "./config";
 import { describeDeployment, type DeploymentIdentity } from "./deployment";
+import { hasEmbeddingPreset } from "./embedding-format";
 import {
   parseManifest,
   resolveManifestPath,
@@ -50,6 +51,33 @@ function checkVaultUrl(vaultPath: string, vaultUrl: string): DoctorCheck {
     return { name: "vault_url", ok: false, detail: `${vaultPath} has origin ${actual}, but vault_url is ${vaultUrl}` };
   }
   return { name: "vault_url", ok: true, detail: vaultUrl };
+}
+
+/**
+ * An unknown model silently gets plain input (and mean pooling locally), which
+ * still returns vectors but can rank badly. Advisory only: the defaults may be right.
+ */
+export function embeddingFormatCheck(config: Config): DoctorCheck {
+  const embedding = config.inference.embedding;
+  const name = "embedding_format";
+  if (hasEmbeddingPreset(embedding.model)) return { name, ok: true, detail: `preset for ${embedding.model}` };
+
+  const settings: Record<string, unknown> = {
+    query_prefix: embedding.query_prefix,
+    document_prefix: embedding.document_prefix,
+  };
+  if (config.inference.mode === "local") settings.pooling = config.inference.embedding.pooling;
+  const defaulted = Object.keys(settings).filter((key) => settings[key] === undefined);
+  if (defaulted.length === 0) return { name, ok: true, detail: `explicit settings for ${embedding.model}` };
+
+  const keys = defaulted.map((key) => `inference.embedding.${key}`);
+  const list = keys.length === 1 ? keys[0] : `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`;
+  const defaults = config.inference.mode === "local" ? "mean pooling and plain input" : "plain input";
+  return {
+    name,
+    ok: true,
+    detail: `no preset for ${embedding.model}; using ${defaults}. Set ${list} if the model needs other values`,
+  };
 }
 
 export async function diagnose(
@@ -182,6 +210,8 @@ export async function diagnose(
       checks.push({ name: "models", ok: false, detail: String(error) });
     }
   }
+
+  checks.push(embeddingFormatCheck(config));
 
   const inferenceFailure = (error: unknown): Pick<DoctorCheck, "detail" | "failure_kind"> =>
     error instanceof RemoteInferenceError

@@ -517,6 +517,12 @@ Named CLI contexts (`--context <name>` or `--server <url>`) support the followin
 `default`), so an environment override still shows; pass `--verbose` to list
 every key. `--json` always carries every check.
 
+The `embedding_format` check names the embedding preset in use. For a model
+without a preset, it lists each prefix and, for local inference, the pooling
+that is still on its default. The check is advisory and always passes, because
+the defaults can be right. See
+[Fine-tuned and other models](configuration.md#fine-tuned-and-other-models).
+
 Run on a host, `doctor` also reports `sync_drift`: a planned-but-never-performed sync naming every agent directory whose contents no longer match what the manifest pins. A machine with no `agents` gets an `agents` note instead. `doctor` omits the check in a container, which serves skills without owning an agent directory.
 
 ---
