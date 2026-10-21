@@ -94,6 +94,20 @@ describe("diagnose", () => {
     rmSync(vaultDir, { recursive: true, force: true });
   });
 
+  test("advises explicit prefixes for a remote model without a preset", async () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), "doctor-format-vault-"));
+    const report = await diagnose(testConfig({ vault_path: vaultDir }));
+
+    expect(report.checks.find((check) => check.name === "embedding_format")).toEqual({
+      name: "embedding_format",
+      ok: true,
+      detail: "no preset for test-model; using plain input. " +
+        "Set inference.embedding.query_prefix and inference.embedding.document_prefix if the model needs other values",
+    });
+
+    rmSync(vaultDir, { recursive: true, force: true });
+  });
+
   test("reports strict configuration authority when environment_overrides is false", async () => {
     const vaultDir = mkdtempSync(join(tmpdir(), "doctor-strict-vault-"));
     const report = await diagnose(testConfig({

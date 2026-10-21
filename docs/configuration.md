@@ -238,6 +238,28 @@ weights, so set `dtype` to a variant they provide.
 Custom aliases, fine-tunes and other variants require
 explicit prefixes when their format differs from plain text. For example,
 `intfloat/multilingual-e5-large-instruct` does not inherit the base E5 preset.
+
+### Fine-tuned and other models
+
+Skillmux cannot tell how a fine-tune was trained, so it never applies a preset
+by similarity to a known name. Start from the base model's row in the tables
+above, then set every value explicitly, because a fine-tune may change the
+prompt format even when it keeps the base pooling:
+
+```toml
+[inference.embedding]
+model = "my-org/skill-embedder-onnx"
+dimension = 1024
+pooling = "last_token"   # local inference only
+query_prefix = "Instruct: Given a task description, retrieve relevant skills that help complete the task.\nQuery: "
+document_prefix = ""
+```
+
+`skillmux doctor` reports an `embedding_format` check. For a model without a
+preset, it names each value still on its default. A wrong pooling or prefix
+returns vectors of the right size and ranks worse without raising an error. To
+compare settings, check the `acceptance_rate` and `observed_mrr` in
+`skillmux report` before and after the change.
 A preset selects text formatting and, for local inference only, the
 [pooling method](#local-pooling). It does not configure the inference engine
 or model dimensions. The default local GTE bundle keeps plain input.

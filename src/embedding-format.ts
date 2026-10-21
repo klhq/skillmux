@@ -29,10 +29,21 @@ const PRESETS: { model: RegExp; query_prefix: string; document_prefix: string; p
     document_prefix: "",
     pooling: "cls",
   },
+  {
+    model: /(?:^|\/)(?:thenlper|Xenova)\/gte-(?:small|base|large)$/,
+    query_prefix: "",
+    document_prefix: "",
+    pooling: "mean",
+  },
 ];
 
 function findPreset(model: string) {
   return PRESETS.find((entry) => entry.model.test(model));
+}
+
+/** Whether the model name selects a documented preset rather than the plain defaults. */
+export function hasEmbeddingPreset(model: string): boolean {
+  return findPreset(model) !== undefined;
 }
 
 export function resolveEmbeddingPrefixes(embedding: { model: string } & EmbeddingPrefixOverrides): EmbeddingPrefixes {

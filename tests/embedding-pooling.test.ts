@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { loadConfig } from "../src/config";
 import { resolveEmbeddingPooling, resolveEmbeddingPrefixes } from "../src/embedding-format";
-import type { EmbeddingPooling } from "../src/types";
+import { embeddingFormatCheck } from "../src/doctor";
+import type { Config, EmbeddingPooling, ModelConfig } from "../src/types";
 
 describe("embedding pooling", () => {
   test.each([
@@ -87,4 +88,33 @@ describe("ONNX conversion presets", () => {
       expect(resolveEmbeddingPooling({ model })).toBe("mean");
     },
   );
+});
+
+describe("embedding format doctor check", () => {
+  function localConfig(embedding: Partial<ModelConfig> & { model: string }): Config {
+    return {
+      inference: { mode: "local", bundle: "gte-small-v1", models_dir: "/unused", embedding: { dimension: 384, ...embedding } },
+    } as Config;
+  }
+
+  test("should accept the default GTE bundle without explicit settings", () => {
+    const check = embeddingFormatCheck(localConfig({ model: "Xenova/gte-small" }));
+    expect(check).toEqual({ name: "embedding_format", ok: true, detail: "preset for Xenova/gte-small" });
+  });
+
+  test("should name every defaulted setting for a model without a preset", () => {
+    const check = embeddingFormatCheck(localConfig({ model: "my-org/skill-embedder", query_prefix: "" }));
+    expect(check.ok).toBe(true);
+    expect(check.detail).toBe(
+      "no preset for my-org/skill-embedder; using mean pooling and plain input. " +
+        "Set inference.embedding.document_prefix and inference.embedding.pooling if the model needs other values",
+    );
+  });
+
+  test("should accept a model without a preset once every setting is explicit", () => {
+    const check = embeddingFormatCheck(
+      localConfig({ model: "my-org/skill-embedder", query_prefix: "", document_prefix: "", pooling: "cls" }),
+    );
+    expect(check.detail).toBe("explicit settings for my-org/skill-embedder");
+  });
 });
