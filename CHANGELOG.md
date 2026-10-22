@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0](https://github.com/klhq/skillmux/compare/v1.17.0...v1.18.0) (2026-10-22)
+
+
+### Added
+
+* **embedding:** apply presets to ONNX conversions and flag unknown models ([#235](https://github.com/klhq/skillmux/issues/235)) ([2120260](https://github.com/klhq/skillmux/commit/2120260ed955e4f8e9d0ce15b9869777b4548c67))
+* **embedding:** select local pooling from model presets ([#234](https://github.com/klhq/skillmux/issues/234)) ([2389b63](https://github.com/klhq/skillmux/commit/2389b63e2d479078a17b401d5597cea44379970f))
+* **server:** support MCP 2026-07-28, fix multi-client HTTP and fetch_skill body in Claude Code ([#229](https://github.com/klhq/skillmux/issues/229)) ([d110396](https://github.com/klhq/skillmux/commit/d1103960f7820b7755f0204c61901560bff3ed3f))
+
+
+### Fixed
+
+* **config:** validate a config set before replacing the config file ([#233](https://github.com/klhq/skillmux/issues/233)) ([26a2e83](https://github.com/klhq/skillmux/commit/26a2e83800037b77bff9f955baed90f6f655cee1))
+
 ## [1.17.0](https://github.com/klhq/skillmux/compare/v1.16.0...v1.17.0) (2026-10-14)
 
 
