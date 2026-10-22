@@ -296,18 +296,41 @@ export function createMcpServer(): McpServer {
   return server;
 }
 
+// Metric labels are client-supplied and recorded before the SDK validates the
+// request, so only known values pass through; anything else counts as "unknown".
+const METRIC_TOOL_NAMES = new Set(["resolve_skill", "fetch_skill"]);
+const METRIC_METHODS = new Set([
+  "initialize",
+  "ping",
+  "server/discover",
+  "notifications/initialized",
+  "notifications/cancelled",
+  "notifications/progress",
+  "notifications/roots/list_changed",
+  "tools/list",
+  "tools/call",
+  "resources/list",
+  "resources/templates/list",
+  "resources/read",
+  "prompts/list",
+  "prompts/get",
+  "completion/complete",
+  "logging/setLevel",
+]);
+
+function metricLabel(method: unknown, toolName: unknown): string {
+  if (typeof method !== "string" || !METRIC_METHODS.has(method)) return "unknown";
+  if (method !== "tools/call" || !toolName) return method;
+  return typeof toolName === "string" && METRIC_TOOL_NAMES.has(toolName) ? toolName : "unknown";
+}
+
 // 2025-era clients send no Mcp-Method / Mcp-Name headers; fall back to the body.
 async function mcpMetricMethod(req: Request): Promise<string> {
   const headerMethod = req.headers.get("mcp-method");
-  if (headerMethod) {
-    return headerMethod === "tools/call"
-      ? req.headers.get("mcp-name") || "tools/call"
-      : headerMethod;
-  }
+  if (headerMethod) return metricLabel(headerMethod, req.headers.get("mcp-name"));
   try {
     const body = await req.clone().json();
-    if (body.method === "tools/call") return body.params?.name || "tools/call";
-    return body.method || "unknown";
+    return metricLabel(body.method, body.params?.name);
   } catch {
     return "unknown"; // Non-JSON or parsing error
   }
@@ -455,7 +478,7 @@ export async function startServer(opts?: {
             return new Response(null, {
               headers: {
                 "Access-Control-Allow-Origin": allowOriginHeader,
-                "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
                 "Access-Control-Allow-Headers":
                   "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
               },

@@ -158,6 +158,32 @@ describe("one HTTP server process serves many clients (regression: second initia
     const res = await fetch(url, { method: "GET", headers: { accept: "text/event-stream", ...auth } });
     expect(res.status).toBe(405);
   });
+
+  test("CORS preflight advertises only the methods the endpoint accepts", async () => {
+    const res = await fetch(url, {
+      method: "OPTIONS",
+      headers: { "access-control-request-method": "POST" },
+    });
+    expect(res.headers.get("access-control-allow-methods")).toBe("POST, OPTIONS");
+  });
+
+  test("an unknown Mcp-Name is counted as unknown, not under the header value", async () => {
+    const metricsUrl = url.replace(/\/mcp$/, "/metrics");
+    const unknownCount = async () => {
+      const text = await (await fetch(metricsUrl)).text();
+      return { text, count: Number(text.match(/requests_total\{method="unknown"\} (\d+)/)?.[1] ?? 0) };
+    };
+    const before = await unknownCount();
+    const res = await postModern(
+      url,
+      modernRequest(400, "tools/call", { name: "fetch_skill", arguments: { skill_id: "wire-skill" } }),
+      { ...auth, "mcp-name": "bogus-label-xyz" },
+    );
+    expect(res.status).toBe(400);
+    const after = await unknownCount();
+    expect(after.text).not.toContain("bogus-label-xyz");
+    expect(after.count).toBe(before.count + 1);
+  });
 });
 
 describe("HTTP auth applies to both eras", () => {
