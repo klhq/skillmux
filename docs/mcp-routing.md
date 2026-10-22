@@ -62,6 +62,32 @@ This is the MCP surface for AI clients. Its bearer token applies only to
 are for administering the deployed server, not remote agent skill directories.
 See [Deployment](deployment.md#http-surfaces).
 
+## Protocol versions
+
+Both transports serve two MCP protocol eras, chosen by the client:
+
+| Era | Versions | How a client opens |
+| --- | --- | --- |
+| Modern | `2026-07-28` | `server/discover`, then requests that each carry the `_meta` envelope (`io.modelcontextprotocol/protocolVersion`, `clientCapabilities`, `clientInfo`). No `initialize`, no session. |
+| Legacy | `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, `2024-10-07` | The `initialize` / `notifications/initialized` handshake. |
+
+Over stdio, the first message on a connection selects its era, and the
+connection stays pinned to that era until it closes. A `server/discover` probe
+does not pin it, so a client may probe and then send `initialize` on the same
+connection. Over HTTP every request stands alone. See
+[Deployment](deployment.md#stateless-mcp-over-http).
+
+On `2026-07-28`, every result carries `resultType` and stamps
+`_meta["io.modelcontextprotocol/serverInfo"]` with the Skillmux name and
+version. `tools/list` results are cacheable for an hour (`ttlMs: 3600000`,
+`cacheScope: "private"`): the tool set is fixed for the life of the process, so
+the server does not advertise `tools.listChanged`. A request that claims a
+protocol version the server does not support gets JSON-RPC error `-32022`
+(UnsupportedProtocolVersion) with the supported versions.
+
+The tool contract below is the same in both eras. Only the protocol envelope
+differs.
+
 ## Tool contract
 
 ### `resolve_skill`
@@ -108,9 +134,11 @@ Input:
 }
 ```
 
-The response contains the current `SKILL.md` body as text content.
-`structuredContent` contains the skill ID, title, content SHA-256, and
-supporting-file paths. `request_id` is optional. When it names a resolve that
+The response has two text content blocks: first the current `SKILL.md` body,
+verbatim, then a JSON object with the skill ID, title, content SHA-256, and
+supporting-file paths. It carries no `structuredContent`, because some clients
+show the model only `structuredContent` when it is present, which would drop
+the body. `request_id` is optional. When it names a resolve that
 minted it, the recorded fetch outcome links to that resolve and its rank in
 the shortlist. An absent, unknown, or malformed `request_id` still succeeds
 and records an uncorrelated fetch — delivery never fails because telemetry

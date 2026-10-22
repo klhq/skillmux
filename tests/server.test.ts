@@ -90,23 +90,26 @@ describe("MCP stdio server", () => {
     expect(topKSchema?.maximum).not.toBe(500);
   });
 
-  test("fetch_skill returns metadata in structuredContent and the body exactly once as text", async () => {
+  test("fetch_skill returns the body exactly once as text, then metadata as JSON text, with no structuredContent", async () => {
     const result = await client.callTool({
       name: "fetch_skill",
       arguments: { skill_id: "stdio-skill" },
     });
 
     expect(result.isError).toBeFalsy();
-    const meta = result.structuredContent as Record<string, unknown>;
+    // Claude Code shows the model only structuredContent when a result has it,
+    // dropping the body (anthropics/claude-code#79944).
+    expect(result).not.toHaveProperty("structuredContent");
+    const texts = (result.content as { type: string; text: string }[]).filter((c) => c.type === "text");
+    expect(texts).toHaveLength(2);
+    expect(texts[0]!.text).toStartWith("---\nname: stdio-skill\n");
+    expect(texts[0]!.text).toEndWith("Body of stdio-skill.\n");
+    const meta = JSON.parse(texts[1]!.text) as Record<string, unknown>;
     expect(meta.skill_id).toBe("stdio-skill");
     expect(meta.title).toBe("stdio-skill");
     expect(meta.content_sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(meta.files).toEqual(["references/notes.md"]);
     expect(meta).not.toHaveProperty("body");
-    const texts = (result.content as { type: string; text: string }[]).filter((c) => c.type === "text");
-    expect(texts).toHaveLength(1);
-    expect(texts[0]!.text).toStartWith("---\nname: stdio-skill\n");
-    expect(texts[0]!.text).toEndWith("Body of stdio-skill.\n");
   });
 
   test("resolve_skill answers degraded with model host fully offline (AC7)", async () => {

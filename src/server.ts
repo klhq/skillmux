@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 import { createHash, timingSafeEqual } from "node:crypto";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
+import packageJson from "../package.json" with { type: "json" };
 import { createClients } from "./clients";
 import { isLoopbackBindHost, loadConfig, resolveConfigPath } from "./config";
 import { describeDeployment } from "./deployment";
@@ -203,18 +204,35 @@ async function serveStatsOnly(opts: {
   return { port: bunServer.port, stop: () => bunServer.stop(true) };
 }
 
+// The tool set is fixed for the life of the process, so clients may cache it.
+const TOOLS_LIST_TTL_MS = 3_600_000;
+
+/**
+ * Called once per stdio connection and once per HTTP request, so it must stay
+ * cheap and side-effect-free: runtime state (index, embedder, audit DB) lives
+ * in router-core, not here.
+ */
 export function createMcpServer(): McpServer {
-  const server = new McpServer({ name: "skillmux", version: "0.1.0" });
+  const server = new McpServer(
+    { name: "skillmux", version: packageJson.version },
+    {
+      // McpServer defaults listChanged to true; the tool set never changes.
+      capabilities: { tools: { listChanged: false } },
+      cacheHints: { "tools/list": { ttlMs: TOOLS_LIST_TTL_MS, cacheScope: "private" } },
+    },
+  );
 
   // Transport rule from schema.json: the SKILL.md body appears exactly once on
-  // the wire — verbatim as text content; structuredContent carries the metadata.
+  // the wire — verbatim as text content. fetch_skill sends its metadata as a
+  // second text block, not structuredContent: Claude Code shows the model only
+  // structuredContent when a result has it (anthropics/claude-code#79944).
   server.registerTool(
     "resolve_skill",
     {
       description:
         "Route a natural-language task description to candidate skills in the vault. " +
         "Returns a ranked shortlist of candidates. Use fetch_skill to retrieve a candidate's complete instructions.",
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().min(1).describe("Natural-language task or prompt description to route."),
         top_k: z
           .number()
@@ -222,7 +240,7 @@ export function createMcpServer(): McpServer {
           .min(1)
           .optional()
           .describe("Optional maximum number of ranked candidates to return (subject to server max_top_k limit)."),
-      },
+      }),
     },
     async ({ query, top_k }) => {
       const startTime = performance.now();
@@ -253,18 +271,20 @@ export function createMcpServer(): McpServer {
         "Fetch a skill's SKILL.md verbatim by skill_id, with sha256 and supporting-file paths. " +
         "Independent of any prior resolve_skill outcome. Pass the request_id from a prior " +
         "resolve_skill call to link this fetch to it for quality measurement.",
-      inputSchema: {
+      inputSchema: z.object({
         skill_id: z.string().regex(SKILL_ID_PATTERN),
         request_id: z.string().min(1).max(128).optional(),
-      },
+      }),
     },
     async ({ skill_id, request_id }) => {
       try {
         const result = await fetchSkill({ skill_id, request_id });
         const { body, ...meta } = result;
         return {
-          content: [{ type: "text" as const, text: body }],
-          structuredContent: { ...meta },
+          content: [
+            { type: "text" as const, text: body },
+            { type: "text" as const, text: JSON.stringify(meta) },
+          ],
         };
       } catch (err) {
         metricsRegistry.recordError();
@@ -274,6 +294,46 @@ export function createMcpServer(): McpServer {
   );
 
   return server;
+}
+
+// Metric labels are client-supplied and recorded before the SDK validates the
+// request, so only known values pass through; anything else counts as "unknown".
+const METRIC_TOOL_NAMES = new Set(["resolve_skill", "fetch_skill"]);
+const METRIC_METHODS = new Set([
+  "initialize",
+  "ping",
+  "server/discover",
+  "notifications/initialized",
+  "notifications/cancelled",
+  "notifications/progress",
+  "notifications/roots/list_changed",
+  "tools/list",
+  "tools/call",
+  "resources/list",
+  "resources/templates/list",
+  "resources/read",
+  "prompts/list",
+  "prompts/get",
+  "completion/complete",
+  "logging/setLevel",
+]);
+
+function metricLabel(method: unknown, toolName: unknown): string {
+  if (typeof method !== "string" || !METRIC_METHODS.has(method)) return "unknown";
+  if (method !== "tools/call" || !toolName) return method;
+  return typeof toolName === "string" && METRIC_TOOL_NAMES.has(toolName) ? toolName : "unknown";
+}
+
+// 2025-era clients send no Mcp-Method / Mcp-Name headers; fall back to the body.
+async function mcpMetricMethod(req: Request): Promise<string> {
+  const headerMethod = req.headers.get("mcp-method");
+  if (headerMethod) return metricLabel(headerMethod, req.headers.get("mcp-name"));
+  try {
+    const body = await req.clone().json();
+    return metricLabel(body.method, body.params?.name);
+  } catch {
+    return "unknown"; // Non-JSON or parsing error
+  }
 }
 
 export async function startServer(opts?: {
@@ -327,8 +387,6 @@ export async function startServer(opts?: {
   const auditPruneInterval = setInterval(runAuditPrune, 24 * 60 * 60 * 1000);
   auditPruneInterval.unref();
 
-  const server = createMcpServer();
-
   const transportType = opts?.transport ?? "stdio";
   if (opts?.statsPort !== undefined && transportType === "http") {
     throw new Error(
@@ -341,12 +399,13 @@ export async function startServer(opts?: {
       : undefined;
 
   if (transportType === "http") {
-    const { WebStandardStreamableHTTPServerTransport } =
-      await import("@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js");
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: () => crypto.randomUUID(),
+    const maxBodyBytes = config.server?.max_body_bytes ?? DEFAULT_MAX_BODY_BYTES;
+    // The handler applies its own body cap (4 MiB by default); keep it equal
+    // to Bun.serve's below.
+    const mcpHandler = createMcpHandler(() => createMcpServer(), {
+      maxRequestBodySize: maxBodyBytes,
+      onerror: (err) => console.error(...redactedErrorLog("skillmux mcp error:", err, redact)),
     });
-    await server.connect(transport);
 
     const { RateLimiter } = await import("./rate-limiter");
     const rateLimiter = new RateLimiter(
@@ -363,7 +422,7 @@ export async function startServer(opts?: {
     const bunServer = Bun.serve({
       port,
       hostname,
-      maxRequestBodySize: config.server?.max_body_bytes ?? DEFAULT_MAX_BODY_BYTES,
+      maxRequestBodySize: maxBodyBytes,
       async fetch(req, server) {
         // AC3: a positive bound on in-flight requests, checked before any other
         // work — protects against connection exhaustion the same way
@@ -419,9 +478,9 @@ export async function startServer(opts?: {
             return new Response(null, {
               headers: {
                 "Access-Control-Allow-Origin": allowOriginHeader,
-                "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
                 "Access-Control-Allow-Headers":
-                  "Content-Type, Authorization, MCP-Protocol-Version",
+                  "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
               },
             });
           }
@@ -438,18 +497,7 @@ export async function startServer(opts?: {
             metricsRegistry.recordRateLimitExceeded();
 
             // Count the request in requests_total under the method if possible
-            let mcpMethod = "unknown";
-            try {
-              const bodyClone = await req.clone().json();
-              if (bodyClone.method === "tools/call") {
-                mcpMethod = bodyClone.params?.name || "tools/call";
-              } else {
-                mcpMethod = bodyClone.method || "unknown";
-              }
-            } catch {
-              // Non-JSON or parsing error
-            }
-            metricsRegistry.recordRequest(mcpMethod);
+            metricsRegistry.recordRequest(await mcpMetricMethod(req));
 
             const headers = new Headers(rateLimitResult.headers);
             if (allowOriginHeader) {
@@ -851,21 +899,9 @@ export async function startServer(opts?: {
             return new Response("Not Found", { status: 404, headers });
           }
 
-          // Record request metrics
-          let mcpMethod = "unknown";
-          try {
-            const bodyClone = await req.clone().json();
-            if (bodyClone.method === "tools/call") {
-              mcpMethod = bodyClone.params?.name || "tools/call";
-            } else {
-              mcpMethod = bodyClone.method || "unknown";
-            }
-          } catch {
-            // Non-JSON or parsing error
-          }
-          metricsRegistry.recordRequest(mcpMethod);
+          metricsRegistry.recordRequest(await mcpMetricMethod(req));
 
-          const res = await transport.handleRequest(req);
+          const res = await mcpHandler.fetch(req);
           const headers = new Headers(res.headers);
           if (allowOriginHeader) {
             headers.set("Access-Control-Allow-Origin", allowOriginHeader);
@@ -900,12 +936,14 @@ export async function startServer(opts?: {
         configWatcher?.stop();
         stopWatcher();
         snapshots.dispose();
-        await server.close();
+        await mcpHandler.close();
         closeRuntime();
       },
     };
   } else {
-    await server.connect(new StdioServerTransport());
+    const stdio = serveStdio(() => createMcpServer(), {
+      onerror: (err) => console.error(...redactedErrorLog("skillmux mcp error:", err, redact)),
+    });
     let stopped = false;
     return {
       statsPort: statsHandle?.port,
@@ -921,7 +959,7 @@ export async function startServer(opts?: {
         configWatcher?.stop();
         stopWatcher();
         snapshots.dispose();
-        await server.close();
+        await stdio.close();
         closeRuntime();
       },
     };
