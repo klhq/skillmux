@@ -184,6 +184,7 @@ export interface FetchSkillInput {
   skill_id: string;
   request_id?: string;
   path?: string;
+  parent_fetch_id?: number;
 }
 
 export interface FetchSkillResult {
@@ -194,6 +195,10 @@ export interface FetchSkillResult {
   files: string[];
   path?: string;
   byte_length?: number;
+  /** Main-file fetch row ID, available when path is absent. */
+  fetch_id?: number;
+  /** Validated same-skill parent for attachment reads, otherwise null. */
+  parent_fetch_id?: number | null;
 }
 
 export interface AuditCandidate {

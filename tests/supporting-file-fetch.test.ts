@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { closeRuntime, configure, fetchSkill } from "../src/router-core";
+import { countPrunable, insertFileFetch, openAudit, pruneAudit } from "../src/db";
 import type { Config } from "../src/types";
 import { sha256Hex } from "../src/vault";
 
@@ -100,5 +102,80 @@ describe("supporting-file fetch", () => {
     rmSync(join(override, "SKILL.md"));
     rmSync(join(skill, input.path));
     await expect(fetchSkill(input)).rejects.toThrow("FILE_NOT_FOUND:");
+  });
+
+  test("links attachment audit to a main fetch without adding adoption events", async () => {
+    const { skill, config } = fixture();
+    writeFileSync(join(skill, "references/notes.md"), "notes");
+    const parent = await fetchSkill({ skill_id: "test-skill" });
+    expect(parent.fetch_id).toEqual(expect.any(Number));
+
+    const input = { skill_id: "test-skill", path: "references/notes.md", parent_fetch_id: parent.fetch_id, request_id: "request-context" };
+    const attachment = await fetchSkill(input);
+    expect(attachment.parent_fetch_id).toBe(parent.fetch_id);
+    const db = new Database(join(config.state_dir, "audit.sqlite3"), { readonly: true });
+    try {
+      expect(db.query("SELECT count(*) AS n FROM fetch").get()).toEqual({ n: 1 });
+      expect(db.query("SELECT skill_id, path, content_sha256, byte_length, parent_fetch_id, request_id FROM file_fetch").get()).toEqual({
+        skill_id: "test-skill", path: input.path, content_sha256: sha256Hex("notes"), byte_length: 5,
+        parent_fetch_id: parent.fetch_id, request_id: "request-context",
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  test("prunes attachment audit with the existing retention policy and includes it in dry-run counts", () => {
+    const { config } = fixture();
+    const db = openAudit(config.state_dir);
+    try {
+      for (const ts of ["2026-01-01T00:00:00.000Z", "2026-08-27T00:00:00.000Z"]) {
+        insertFileFetch(db, { ts, skill_id: "test-skill", path: "references/notes.md", content_sha256: sha256Hex("notes"), byte_length: 5 });
+      }
+      const now = new Date("2026-08-28T00:00:00.000Z");
+      expect(countPrunable(db, "2026-07-29T00:00:00.000Z").fetch_deleted).toBe(1);
+      expect(pruneAudit(db, 0, now).fetch_deleted).toBe(0);
+      expect(pruneAudit(db, 30, now).fetch_deleted).toBe(1);
+      expect(db.query("SELECT ts FROM file_fetch").all()).toEqual([{ ts: "2026-08-27T00:00:00.000Z" }]);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("delivers independently and records null for unknown or different-skill parents", async () => {
+    const { skill, vault, config } = fixture();
+    writeFileSync(join(skill, "references/notes.md"), "notes");
+    mkdirSync(join(vault, "other-skill"));
+    writeFileSync(join(vault, "other-skill", "SKILL.md"), "---\nname: other-skill\n---\nOther.");
+    const other = await fetchSkill({ skill_id: "other-skill" });
+    for (const parent_fetch_id of [undefined, 999999, other.fetch_id]) {
+      const result = await fetchSkill({ skill_id: "test-skill", path: "references/notes.md", parent_fetch_id });
+      expect(result.body).toBe("notes");
+      expect(result.parent_fetch_id).toBeNull();
+    }
+    await expect(fetchSkill({ skill_id: "test-skill", path: "missing.txt" })).rejects.toThrow("FILE_NOT_FOUND:");
+    const db = new Database(join(config.state_dir, "audit.sqlite3"), { readonly: true });
+    try {
+      expect(db.query("SELECT count(*) AS n FROM fetch").get()).toEqual({ n: 1 });
+      expect(db.query("SELECT count(*) AS n FROM file_fetch WHERE parent_fetch_id IS NULL").get()).toEqual({ n: 3 });
+    } finally {
+      db.close();
+    }
+  });
+
+  test("opens an existing audit database without changing its main fetch rows", () => {
+    const { config } = fixture();
+    mkdirSync(config.state_dir, { recursive: true });
+    const old = new Database(join(config.state_dir, "audit.sqlite3"));
+    old.run("CREATE TABLE fetch (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, skill_id TEXT, request_id TEXT, resolve_audit_id INTEGER, rank_at_resolve INTEGER)");
+    old.run("INSERT INTO fetch (ts, skill_id) VALUES ('2026-01-01', 'test-skill')");
+    old.close();
+    const db = openAudit(config.state_dir);
+    try {
+      expect(db.query("SELECT id, skill_id FROM fetch").all()).toEqual([{ id: 1, skill_id: "test-skill" }]);
+      expect(db.query("SELECT count(*) AS n FROM file_fetch").get()).toEqual({ n: 0 });
+    } finally {
+      db.close();
+    }
   });
 });

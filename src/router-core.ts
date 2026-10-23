@@ -16,6 +16,7 @@ import {
   ingestVault,
   insertAudit,
   insertFetch,
+  insertFileFetch,
   openAudit,
   openIndex,
   pruneAudit,
@@ -647,6 +648,19 @@ export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResu
   }
   const result = await deliverSkill(db, config, input.skill_id, input.path);
 
+  if (result.path !== undefined) {
+    const parentId = insertFileFetch(auditDb, {
+      ts: new Date().toISOString(),
+      skill_id: input.skill_id,
+      path: result.path,
+      content_sha256: result.content_sha256,
+      byte_length: result.byte_length!,
+      request_id: input.request_id,
+      parent_fetch_id: input.parent_fetch_id,
+    });
+    return { ...result, parent_fetch_id: parentId };
+  }
+
   let resolveAuditId: number | null = null;
   let rankAtResolve: number | null = null;
   if (input.request_id) {
@@ -658,7 +672,7 @@ export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResu
     }
   }
 
-  insertFetch(auditDb, {
+  const fetchId = insertFetch(auditDb, {
     ts: new Date().toISOString(),
     skill_id: input.skill_id,
     request_id: input.request_id ?? null,
@@ -666,5 +680,5 @@ export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResu
     rank_at_resolve: rankAtResolve,
   });
 
-  return result;
+  return { ...result, fetch_id: fetchId };
 }
