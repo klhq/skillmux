@@ -47,6 +47,7 @@ import {
   listSupportingFiles,
   parseSkillMd,
   readSkill,
+  readSupportingFile,
   scanVaults,
   vaultResolutionOrder,
   sha256Hex,
@@ -147,7 +148,7 @@ export function closeRuntime(): void {
  * Zero-loss delivery: read SKILL.md from disk now, hash it, and if the
  * index is stale re-index that skill — never serve stale bytes.
  */
-async function deliverSkill(db: Database, config: Config, skillId: string): Promise<FetchSkillResult> {
+async function deliverSkill(db: Database, config: Config, skillId: string, supportingPath?: string): Promise<FetchSkillResult> {
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   const candidates = vaultResolutionOrder(vaultPath, localVaultPaths);
@@ -206,12 +207,15 @@ async function deliverSkill(db: Database, config: Config, skillId: string): Prom
     upsertSkill(db, fresh);
     row = getSkillRow(db, skillId)!;
   }
+  const files = listSupportingFiles(root, skillId);
+  const attachment = supportingPath === undefined ? null : readSupportingFile(root, skillId, supportingPath, files);
   return {
     skill_id: skillId,
     title: row.title,
-    content_sha256: contentSha256,
-    body: raw,
-    files: listSupportingFiles(root, skillId),
+    content_sha256: attachment === null ? contentSha256 : sha256Hex(attachment.bytes),
+    body: attachment === null ? raw : attachment.body,
+    files,
+    ...(attachment === null ? {} : { path: supportingPath, byte_length: attachment.bytes.length }),
   };
 }
 
@@ -641,7 +645,7 @@ export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResu
   if (getSkillRow(db, input.skill_id) === null) {
     throw new Error(`SKILL_NOT_FOUND: no skill '${input.skill_id}' in the index`);
   }
-  const result = await deliverSkill(db, config, input.skill_id);
+  const result = await deliverSkill(db, config, input.skill_id, input.path);
 
   let resolveAuditId: number | null = null;
   let rankAtResolve: number | null = null;

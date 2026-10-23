@@ -183,6 +183,7 @@ export interface ResolveSkillInput {
 export interface FetchSkillInput {
   skill_id: string;
   request_id?: string;
+  path?: string;
 }
 
 export interface FetchSkillResult {
@@ -191,6 +192,8 @@ export interface FetchSkillResult {
   content_sha256: string;
   body: string;
   files: string[];
+  path?: string;
+  byte_length?: number;
 }
 
 export interface AuditCandidate {
