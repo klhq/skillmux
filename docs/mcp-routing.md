@@ -135,14 +135,45 @@ Input:
 ```
 
 The response has two text content blocks: first the current `SKILL.md` body,
-verbatim, then a JSON object with the skill ID, title, content SHA-256, and
-supporting-file paths. It carries no `structuredContent`, because some clients
+verbatim, then a JSON object with the skill ID, title, content SHA-256,
+supporting-file paths, and `fetch_id`. It carries no `structuredContent`, because some clients
 show the model only `structuredContent` when it is present, which would drop
 the body. `request_id` is optional. When it names a resolve that
 minted it, the recorded fetch outcome links to that resolve and its rank in
 the shortlist. An absent, unknown, or malformed `request_id` still succeeds
 and records an uncorrelated fetch — delivery never fails because telemetry
 could not correlate. Fetch does not depend on an earlier resolve call.
+
+To read a supporting file from a remote vault, pass one path from `files`:
+
+```json
+{
+  "skill_id": "csv-formatter",
+  "path": "references/notes.md",
+  "parent_fetch_id": 42
+}
+```
+
+Use the main response's `fetch_id` for `parent_fetch_id`. You can omit it;
+an unknown ID or an ID for another skill records a null parent and delivery
+still succeeds. Supplying `parent_fetch_id` requires `path`.
+
+The first text block contains the requested file verbatim. The metadata block
+includes `path`, `byte_length`, `parent_fetch_id`, and the SHA-256 of those file
+bytes, alongside the skill ID, title, and supporting-file list. Attachment
+responses omit `fetch_id`. Both transports use this shape.
+
+Supporting files must contain valid UTF-8 text and fit within 256 KiB (262144
+bytes). Empty files work. Skillmux preserves BOMs and line endings. It rejects
+C0 controls except tab, LF, and CR, and rejects DEL. It does not truncate files
+or encode binary content. Error messages start with a stable code:
+
+- `INVALID_FILE_PATH`: an absolute path, backslash, NUL, empty/dot/parent
+  segment, or a parent ID without `path`.
+- `FILE_NOT_FOUND`: a path outside `files`, an unavailable file, a directory,
+  or a symlinked component.
+- `FILE_TOO_LARGE`: a file above the byte limit.
+- `FILE_NOT_TEXT`: invalid UTF-8 or binary control characters.
 
 The complete wire contract lives in [schema.json](schema.json).
 
@@ -238,9 +269,12 @@ The index stores metadata and retrieval state. Delivery reads the file from
 disk, computes its SHA-256, and returns those current bytes. If indexed
 metadata has gone stale, Skillmux refreshes it before delivery.
 
-Supporting files remain in the vault. `fetch_skill` lists their relative paths
-so the calling workflow can locate them through its configured filesystem
-access.
+Supporting files remain in the vault. Read a listed text file with
+`fetch_skill(skill_id, path)` over MCP, or use your configured filesystem access
+when the vault is local. Attachment reads use the same selected vault root as
+SKILL.md. A missing attachment in a local override does not fall back to another
+copy of the skill. Skillmux checks the allowlist and path components at read
+time and excludes symlinks and the provenance sidecar.
 
 ## Audit data
 
@@ -254,10 +288,16 @@ Each resolve request records:
 
 Each fetch request records:
 
-- timestamp and `skill_id`;
+- a `fetch_id`, timestamp, and `skill_id`;
 - the `request_id` supplied by the caller, or null when absent, unknown, or malformed;
 - the originating resolve's audit row id, or null when the fetch is uncorrelated;
 - `rank_at_resolve`: the fetched skill's rank in that resolve's shortlist, or null when the fetch is uncorrelated or the skill was absent from that shortlist.
+
+Each successful attachment read records a separate `file_fetch` row with its
+timestamp, skill ID, path, SHA-256, byte length, optional `request_id`, and
+validated `parent_fetch_id`. Attachment reads do not increase skill adoption
+statistics or generate eval promotion cases. Audit pruning covers both fetch
+tables; `fetch_deleted` counts their combined rows.
 
 Skillmux stores audit rows in `audit.sqlite3` under `state_dir`, a file
 separate from the retrieval index. Use `skillmux report` to summarize

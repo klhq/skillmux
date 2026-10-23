@@ -641,6 +641,9 @@ export async function pruneAuditIfDue(now: Date = new Date()): Promise<PruneResu
 }
 
 export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {
+  if (input.parent_fetch_id !== undefined && input.path === undefined) {
+    throw new Error("INVALID_FILE_PATH: parent_fetch_id requires a supporting-file path");
+  }
   const { config, db, auditDb } = await getEnv();
   await syncVaultIfNeeded();
   if (getSkillRow(db, input.skill_id) === null) {

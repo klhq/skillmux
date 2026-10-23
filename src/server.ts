@@ -269,16 +269,20 @@ export function createMcpServer(): McpServer {
     {
       description:
         "Fetch a skill's SKILL.md verbatim by skill_id, with sha256 and supporting-file paths. " +
+        "Pass path from that files list to read one supporting UTF-8 text file (at most 256 KiB). " +
+        "Pass the main response's fetch_id as parent_fetch_id to link attachment audit. " +
         "Independent of any prior resolve_skill outcome. Pass the request_id from a prior " +
         "resolve_skill call to link this fetch to it for quality measurement.",
       inputSchema: z.object({
         skill_id: z.string().regex(SKILL_ID_PATTERN),
         request_id: z.string().min(1).max(128).optional(),
+        path: z.string().optional().describe("Canonical relative path from the skill's files list; omit for SKILL.md."),
+        parent_fetch_id: z.number().int().positive().optional().describe("Main-file fetch_id for this skill; use with path."),
       }),
     },
-    async ({ skill_id, request_id }) => {
+    async ({ skill_id, request_id, path, parent_fetch_id }) => {
       try {
-        const result = await fetchSkill({ skill_id, request_id });
+        const result = await fetchSkill({ skill_id, request_id, path, parent_fetch_id });
         const { body, ...meta } = result;
         return {
           content: [

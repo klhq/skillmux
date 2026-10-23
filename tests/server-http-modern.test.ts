@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import packageJson from "../package.json" with { type: "json" };
+import { sha256Hex } from "../src/vault";
 import { startServer, type ServerHandle } from "../src/server";
 import { waitFor } from "./test-utils";
 import {
@@ -104,6 +105,29 @@ async function legacyClientRun() {
 }
 
 describe("MCP 2026-07-28 over Streamable HTTP", () => {
+  test("fetches one supporting file over HTTP with visible metadata and parent correlation", async () => {
+    const content = "\uFEFF# Remote reference\r\n原文\r\n";
+    const dir = join(tmp, "vault", "wire-skill", "references");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "notes.md"), content);
+    const parent = await readMcpResponse(await postModern(url,
+      modernRequest(50, "tools/call", { name: "fetch_skill", arguments: { skill_id: "wire-skill" } }), auth));
+    const { fetch_id } = JSON.parse(parent.result.content[1].text);
+    const response = await readMcpResponse(await postModern(url,
+      modernRequest(51, "tools/call", { name: "fetch_skill", arguments: {
+        skill_id: "wire-skill", path: "references/notes.md", parent_fetch_id: fetch_id,
+      } }), auth));
+
+    expect(response.result.isError).toBeFalsy();
+    expect(response.result).not.toHaveProperty("structuredContent");
+    expect(response.result.content).toHaveLength(2);
+    expect(response.result.content[0].text).toBe(content);
+    expect(JSON.parse(response.result.content[1].text)).toMatchObject({
+      skill_id: "wire-skill", path: "references/notes.md", content_sha256: sha256Hex(Buffer.from(content)),
+      byte_length: Buffer.byteLength(content), parent_fetch_id: fetch_id,
+    });
+  });
+
   test("discover, tools/list and tools/call work with the per-request envelope and headers", async () => {
     const { discover, list, call } = await modernClientRun(1);
 
