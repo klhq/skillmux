@@ -113,6 +113,7 @@ describe("supporting-file fetch", () => {
     const input = { skill_id: "test-skill", path: "references/notes.md", parent_fetch_id: parent.fetch_id, request_id: "request-context" };
     const attachment = await fetchSkill(input);
     expect(attachment.parent_fetch_id).toBe(parent.fetch_id);
+    expect(attachment).not.toHaveProperty("fetch_id");
     const db = new Database(join(config.state_dir, "audit.sqlite3"), { readonly: true });
     try {
       expect(db.query("SELECT count(*) AS n FROM fetch").get()).toEqual({ n: 1 });

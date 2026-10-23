@@ -122,6 +122,7 @@ describe("MCP 2026-07-28 over Streamable HTTP", () => {
     expect(response.result).not.toHaveProperty("structuredContent");
     expect(response.result.content).toHaveLength(2);
     expect(response.result.content[0].text).toBe(content);
+    expect(JSON.parse(response.result.content[1].text)).not.toHaveProperty("fetch_id");
     expect(JSON.parse(response.result.content[1].text)).toMatchObject({
       skill_id: "wire-skill", path: "references/notes.md", content_sha256: sha256Hex(Buffer.from(content)),
       byte_length: Buffer.byteLength(content), parent_fetch_id: fetch_id,
