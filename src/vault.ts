@@ -175,7 +175,8 @@ export function listSupportingFiles(vaultPath: string, skillId: string): string[
       const abs = join(dir, entry.name);
       if (entry.isDirectory()) walk(abs);
       else if (statSync(abs).isFile()) {
-        const rel = relative(root, abs);
+        // Report "/"-separated paths on every platform, matching RelativePath.
+        const rel = relative(root, abs).split(sep).join("/");
         if (rel !== "SKILL.md" && rel !== SKILLMUX_ORIGIN_FILENAME) files.push(rel);
       }
     }
@@ -196,15 +197,19 @@ export function readSupportingFile(vaultPath: string, skillId: string, path: str
   try {
     const root = join(vaultPath, skillId);
     let current = root;
-    for (const part of ["", ...path.split("/")]) {
-      if (part) current = join(current, part);
-      if (lstatSync(current).isSymbolicLink()) throw new Error("symlink");
+    // Keep the leaf's lstat from this walk: open() must land on this same inode,
+    // so swapping a component for a symlink after the walk fails the check below.
+    let expected = lstatSync(current);
+    if (expected.isSymbolicLink()) throw new Error("symlink");
+    for (const part of path.split("/")) {
+      current = join(current, part);
+      expected = lstatSync(current);
+      if (expected.isSymbolicLink()) throw new Error("symlink");
     }
     const rootReal = realpathSync(root);
     const fileReal = realpathSync(current);
     const rel = relative(rootReal, fileReal);
     if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("outside skill");
-    const expected = lstatSync(current);
     if (!expected.isFile()) throw new Error("not a regular file");
     fd = openSync(current, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const opened = fstatSync(fd);

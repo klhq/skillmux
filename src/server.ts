@@ -276,7 +276,7 @@ export function createMcpServer(): McpServer {
       inputSchema: z.object({
         skill_id: z.string().regex(SKILL_ID_PATTERN),
         request_id: z.string().min(1).max(128).optional(),
-        path: z.string().optional().describe("Canonical relative path from the skill's files list; omit for SKILL.md."),
+        path: z.string().min(1).optional().describe("Canonical relative path from the skill's files list; omit for SKILL.md."),
         parent_fetch_id: z.number().int().positive().optional().describe("Main-file fetch_id for this skill; use with path."),
       }),
     },
@@ -803,6 +803,7 @@ export async function startServer(opts?: {
                     JSON.stringify({
                       audit_deleted: 0,
                       fetch_deleted: 0,
+                      file_fetch_deleted: 0,
                       admin_audit_deleted: 0,
                       dry_run: dryRun,
                       cutoff: null,
