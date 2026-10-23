@@ -297,7 +297,7 @@ Each successful attachment read records a separate `file_fetch` row with its
 timestamp, skill ID, path, SHA-256, byte length, optional `request_id`, and
 validated `parent_fetch_id`. Attachment reads do not increase skill adoption
 statistics or generate eval promotion cases. Audit pruning covers both fetch
-tables; `fetch_deleted` counts their combined rows.
+tables and reports attachment rows separately as `file_fetch_deleted`.
 
 Skillmux stores audit rows in `audit.sqlite3` under `state_dir`, a file
 separate from the retrieval index. Use `skillmux report` to summarize

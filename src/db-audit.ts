@@ -190,8 +190,8 @@ export function insertFileFetch(db: Database, row: FileFetchInsert): number | nu
 
 export interface PruneResult {
   audit_deleted: number;
-  /** Includes both main-file and attachment fetch audit rows. */
   fetch_deleted: number;
+  file_fetch_deleted: number;
   admin_audit_deleted: number;
 }
 
@@ -213,14 +213,15 @@ export function pruneAuditBefore(db: Database, cutoffIso: string): PruneResult {
 
   return {
     audit_deleted: auditResult.changes,
-    fetch_deleted: fetchResult.changes + fileFetchResult.changes,
+    fetch_deleted: fetchResult.changes,
+    file_fetch_deleted: fileFetchResult.changes,
     admin_audit_deleted: adminAuditResult.changes,
   };
 }
 
 /** AC12: retentionDays <= 0 disables pruning entirely. */
 export function pruneAudit(db: Database, retentionDays: number, now: Date = new Date()): PruneResult {
-  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0, admin_audit_deleted: 0 };
+  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0, file_fetch_deleted: 0, admin_audit_deleted: 0 };
   const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
   return pruneAuditBefore(db, cutoff);
 }
@@ -320,5 +321,5 @@ export function countPrunable(db: Database, cutoffIso: string): PruneResult {
   const adminAuditRow = db
     .query("SELECT count(*) AS n FROM admin_audit WHERE ts < ?")
     .get(cutoffIso) as { n: number };
-  return { audit_deleted: auditRow.n, fetch_deleted: fetchRow.n + fileFetchRow.n, admin_audit_deleted: adminAuditRow.n };
+  return { audit_deleted: auditRow.n, fetch_deleted: fetchRow.n, file_fetch_deleted: fileFetchRow.n, admin_audit_deleted: adminAuditRow.n };
 }

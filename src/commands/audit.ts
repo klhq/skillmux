@@ -43,7 +43,7 @@ export async function runAudit(
         console.log(
           counts.cutoff === null
             ? "prune: audit.retention_days is 0 (pruning disabled); nothing to do"
-            : `prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} admin_audit=${counts.admin_audit_deleted} ${dryRunTag()}`,
+            : `prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} file_fetch=${counts.file_fetch_deleted ?? 0} admin_audit=${counts.admin_audit_deleted} ${dryRunTag()}`,
         ),
     );
     return;
@@ -54,7 +54,7 @@ export async function runAudit(
   if (countResult.cutoff === null) {
     emitSuccess(
       { isJson: options.isJson },
-      { audit_deleted: 0, fetch_deleted: 0, admin_audit_deleted: 0, dry_run: false, cutoff: null },
+      { audit_deleted: 0, fetch_deleted: 0, file_fetch_deleted: 0, admin_audit_deleted: 0, dry_run: false, cutoff: null },
       () => console.log("prune: audit.retention_days is 0 (pruning disabled); nothing to do"),
     );
     return;
@@ -83,7 +83,7 @@ export async function runAudit(
     counts,
     () =>
       console.log(
-        `prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} admin_audit=${counts.admin_audit_deleted}`,
+        `prune: audit=${counts.audit_deleted} fetch=${counts.fetch_deleted} file_fetch=${counts.file_fetch_deleted ?? 0} admin_audit=${counts.admin_audit_deleted}`,
       ),
   );
 }

@@ -134,9 +134,9 @@ describe("supporting-file fetch", () => {
         insertFileFetch(db, { ts, skill_id: "test-skill", path: "references/notes.md", content_sha256: sha256Hex("notes"), byte_length: 5 });
       }
       const now = new Date("2026-08-28T00:00:00.000Z");
-      expect(countPrunable(db, "2026-07-29T00:00:00.000Z").fetch_deleted).toBe(1);
-      expect(pruneAudit(db, 0, now).fetch_deleted).toBe(0);
-      expect(pruneAudit(db, 30, now).fetch_deleted).toBe(1);
+      expect(countPrunable(db, "2026-07-29T00:00:00.000Z").file_fetch_deleted).toBe(1);
+      expect(pruneAudit(db, 0, now).file_fetch_deleted).toBe(0);
+      expect(pruneAudit(db, 30, now).file_fetch_deleted).toBe(1);
       expect(db.query("SELECT ts FROM file_fetch").all()).toEqual([{ ts: "2026-08-27T00:00:00.000Z" }]);
     } finally {
       db.close();
