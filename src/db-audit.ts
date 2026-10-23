@@ -40,6 +40,16 @@ export function openAudit(stateDir: string): Database {
     resolve_audit_id INTEGER,
     rank_at_resolve INTEGER
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS file_fetch (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    byte_length INTEGER NOT NULL,
+    request_id TEXT,
+    parent_fetch_id INTEGER
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS admin_audit (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts TEXT NOT NULL,
@@ -139,8 +149,8 @@ export interface FetchInsert {
   rank_at_resolve?: number | null;
 }
 
-export function insertFetch(db: Database, row: FetchInsert): void {
-  db.run(
+export function insertFetch(db: Database, row: FetchInsert): number {
+  const result = db.run(
     `INSERT INTO fetch (ts, skill_id, request_id, resolve_audit_id, rank_at_resolve)
      VALUES (?, ?, ?, ?, ?)`,
     [
@@ -151,11 +161,37 @@ export function insertFetch(db: Database, row: FetchInsert): void {
       row.rank_at_resolve ?? null,
     ],
   );
+  return Number(result.lastInsertRowid);
+}
+
+export interface FileFetchInsert {
+  ts: string;
+  skill_id: string;
+  path: string;
+  content_sha256: string;
+  byte_length: number;
+  request_id?: string;
+  parent_fetch_id?: number;
+}
+
+/** Attachment reads do not contribute to main-file adoption statistics. */
+export function insertFileFetch(db: Database, row: FileFetchInsert): number | null {
+  const parent = row.parent_fetch_id === undefined ? null : db.query(
+    "SELECT id FROM fetch WHERE id = ? AND skill_id = ?",
+  ).get(row.parent_fetch_id, row.skill_id) as { id: number } | null;
+  const parentId = parent?.id ?? null;
+  db.run(
+    `INSERT INTO file_fetch (ts, skill_id, path, content_sha256, byte_length, request_id, parent_fetch_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [row.ts, row.skill_id, row.path, row.content_sha256, row.byte_length, row.request_id ?? null, parentId],
+  );
+  return parentId;
 }
 
 export interface PruneResult {
   audit_deleted: number;
   fetch_deleted: number;
+  file_fetch_deleted: number;
   admin_audit_deleted: number;
 }
 
@@ -171,19 +207,21 @@ export interface PruneResult {
 export function pruneAuditBefore(db: Database, cutoffIso: string): PruneResult {
   const auditResult = db.run("DELETE FROM audit WHERE ts < ?", [cutoffIso]);
   const fetchResult = db.run("DELETE FROM fetch WHERE ts < ?", [cutoffIso]);
+  const fileFetchResult = db.run("DELETE FROM file_fetch WHERE ts < ?", [cutoffIso]);
   const adminAuditResult = db.run("DELETE FROM admin_audit WHERE ts < ?", [cutoffIso]);
   db.run("PRAGMA incremental_vacuum");
 
   return {
     audit_deleted: auditResult.changes,
     fetch_deleted: fetchResult.changes,
+    file_fetch_deleted: fileFetchResult.changes,
     admin_audit_deleted: adminAuditResult.changes,
   };
 }
 
 /** AC12: retentionDays <= 0 disables pruning entirely. */
 export function pruneAudit(db: Database, retentionDays: number, now: Date = new Date()): PruneResult {
-  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0, admin_audit_deleted: 0 };
+  if (retentionDays <= 0) return { audit_deleted: 0, fetch_deleted: 0, file_fetch_deleted: 0, admin_audit_deleted: 0 };
   const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
   return pruneAuditBefore(db, cutoff);
 }
@@ -279,8 +317,9 @@ export function verifyAdminAuditChain(db: Database): AdminAuditChainResult {
 export function countPrunable(db: Database, cutoffIso: string): PruneResult {
   const auditRow = db.query("SELECT count(*) AS n FROM audit WHERE ts < ?").get(cutoffIso) as { n: number };
   const fetchRow = db.query("SELECT count(*) AS n FROM fetch WHERE ts < ?").get(cutoffIso) as { n: number };
+  const fileFetchRow = db.query("SELECT count(*) AS n FROM file_fetch WHERE ts < ?").get(cutoffIso) as { n: number };
   const adminAuditRow = db
     .query("SELECT count(*) AS n FROM admin_audit WHERE ts < ?")
     .get(cutoffIso) as { n: number };
-  return { audit_deleted: auditRow.n, fetch_deleted: fetchRow.n, admin_audit_deleted: adminAuditRow.n };
+  return { audit_deleted: auditRow.n, fetch_deleted: fetchRow.n, file_fetch_deleted: fileFetchRow.n, admin_audit_deleted: adminAuditRow.n };
 }

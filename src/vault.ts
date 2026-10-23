@@ -1,11 +1,13 @@
-import { existsSync, lstatSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join, relative, sep } from "node:path";
 
 export const SKILL_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,127}$/;
 
 /** Provenance sidecar filename (see provenance.ts). Kept here, not re-imported from
  *  provenance.ts, so listSupportingFiles can exclude it without a circular import. */
 export const SKILLMUX_ORIGIN_FILENAME = ".skillmux-origin";
+
+export const MAX_SUPPORTING_FILE_BYTES = 256 * 1024;
 
 export interface VaultSkill {
   skill_id: string;
@@ -173,13 +175,72 @@ export function listSupportingFiles(vaultPath: string, skillId: string): string[
       const abs = join(dir, entry.name);
       if (entry.isDirectory()) walk(abs);
       else if (statSync(abs).isFile()) {
-        const rel = relative(root, abs);
+        // Report "/"-separated paths on every platform, matching RelativePath.
+        const rel = relative(root, abs).split(sep).join("/");
         if (rel !== "SKILL.md" && rel !== SKILLMUX_ORIGIN_FILENAME) files.push(rel);
       }
     }
   };
   walk(root);
   return files.sort();
+}
+
+/** Read only an allowlisted regular file; recheck components at delivery time. */
+export function readSupportingFile(vaultPath: string, skillId: string, path: string, files: string[]): { bytes: Uint8Array; body: string } {
+  if (!path || isAbsolute(path) || /^[a-z]:/i.test(path) || path.includes("\\") || path.includes("\0") ||
+      path.split("/").some((part) => part === "" || part === "." || part === "..")) {
+    throw new Error("INVALID_FILE_PATH: use a canonical relative supporting-file path");
+  }
+  if (!files.includes(path)) throw new Error(`FILE_NOT_FOUND: '${path}' is not a listed supporting file`);
+
+  let fd: number | undefined;
+  try {
+    const root = join(vaultPath, skillId);
+    let current = root;
+    // Keep the leaf's lstat from this walk: open() must land on this same inode,
+    // so swapping a component for a symlink after the walk fails the check below.
+    let expected = lstatSync(current);
+    if (expected.isSymbolicLink()) throw new Error("symlink");
+    for (const part of path.split("/")) {
+      current = join(current, part);
+      expected = lstatSync(current);
+      if (expected.isSymbolicLink()) throw new Error("symlink");
+    }
+    const rootReal = realpathSync(root);
+    const fileReal = realpathSync(current);
+    const rel = relative(rootReal, fileReal);
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("outside skill");
+    if (!expected.isFile()) throw new Error("not a regular file");
+    fd = openSync(current, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || opened.dev !== expected.dev || opened.ino !== expected.ino) throw new Error("file changed");
+    if (opened.size > MAX_SUPPORTING_FILE_BYTES) throw new Error("FILE_TOO_LARGE: supporting files must be at most 262144 bytes");
+    // Read at most limit + 1 bytes even if the file grows after fstat.
+    const buffer = Buffer.alloc(MAX_SUPPORTING_FILE_BYTES + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const count = readSync(fd, buffer, length, buffer.length - length, null);
+      if (count === 0) break;
+      length += count;
+    }
+    if (length > MAX_SUPPORTING_FILE_BYTES) throw new Error("FILE_TOO_LARGE: supporting files must be at most 262144 bytes");
+    const bytes = buffer.subarray(0, length);
+    let body: string;
+    try {
+      body = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+    } catch {
+      throw new Error("FILE_NOT_TEXT: supporting files must contain UTF-8 text");
+    }
+    if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(body)) {
+      throw new Error("FILE_NOT_TEXT: supporting files must not contain binary control characters");
+    }
+    return { bytes, body };
+  } catch (err) {
+    if (err instanceof Error && /^(FILE_TOO_LARGE|FILE_NOT_TEXT):/.test(err.message)) throw err;
+    throw new Error(`FILE_NOT_FOUND: '${path}' is unavailable or unsafe`);
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 /**

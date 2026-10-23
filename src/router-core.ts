@@ -16,6 +16,7 @@ import {
   ingestVault,
   insertAudit,
   insertFetch,
+  insertFileFetch,
   openAudit,
   openIndex,
   pruneAudit,
@@ -47,6 +48,7 @@ import {
   listSupportingFiles,
   parseSkillMd,
   readSkill,
+  readSupportingFile,
   scanVaults,
   vaultResolutionOrder,
   sha256Hex,
@@ -147,7 +149,7 @@ export function closeRuntime(): void {
  * Zero-loss delivery: read SKILL.md from disk now, hash it, and if the
  * index is stale re-index that skill — never serve stale bytes.
  */
-async function deliverSkill(db: Database, config: Config, skillId: string): Promise<FetchSkillResult> {
+async function deliverSkill(db: Database, config: Config, skillId: string, supportingPath?: string): Promise<FetchSkillResult> {
   const vaultPath = expandHome(config.vault_path);
   const localVaultPaths = config.local_vault_paths.map(expandHome);
   const candidates = vaultResolutionOrder(vaultPath, localVaultPaths);
@@ -206,12 +208,15 @@ async function deliverSkill(db: Database, config: Config, skillId: string): Prom
     upsertSkill(db, fresh);
     row = getSkillRow(db, skillId)!;
   }
+  const files = listSupportingFiles(root, skillId);
+  const attachment = supportingPath === undefined ? null : readSupportingFile(root, skillId, supportingPath, files);
   return {
     skill_id: skillId,
     title: row.title,
-    content_sha256: contentSha256,
-    body: raw,
-    files: listSupportingFiles(root, skillId),
+    content_sha256: attachment === null ? contentSha256 : sha256Hex(attachment.bytes),
+    body: attachment === null ? raw : attachment.body,
+    files,
+    ...(attachment === null ? {} : { path: supportingPath, byte_length: attachment.bytes.length }),
   };
 }
 
@@ -636,12 +641,28 @@ export async function pruneAuditIfDue(now: Date = new Date()): Promise<PruneResu
 }
 
 export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {
+  if (input.parent_fetch_id !== undefined && input.path === undefined) {
+    throw new Error("INVALID_FILE_PATH: parent_fetch_id requires a supporting-file path");
+  }
   const { config, db, auditDb } = await getEnv();
   await syncVaultIfNeeded();
   if (getSkillRow(db, input.skill_id) === null) {
     throw new Error(`SKILL_NOT_FOUND: no skill '${input.skill_id}' in the index`);
   }
-  const result = await deliverSkill(db, config, input.skill_id);
+  const result = await deliverSkill(db, config, input.skill_id, input.path);
+
+  if (result.path !== undefined) {
+    const parentId = insertFileFetch(auditDb, {
+      ts: new Date().toISOString(),
+      skill_id: input.skill_id,
+      path: result.path,
+      content_sha256: result.content_sha256,
+      byte_length: result.byte_length!,
+      request_id: input.request_id,
+      parent_fetch_id: input.parent_fetch_id,
+    });
+    return { ...result, parent_fetch_id: parentId };
+  }
 
   let resolveAuditId: number | null = null;
   let rankAtResolve: number | null = null;
@@ -654,7 +675,7 @@ export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResu
     }
   }
 
-  insertFetch(auditDb, {
+  const fetchId = insertFetch(auditDb, {
     ts: new Date().toISOString(),
     skill_id: input.skill_id,
     request_id: input.request_id ?? null,
@@ -662,5 +683,5 @@ export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResu
     rank_at_resolve: rankAtResolve,
   });
 
-  return result;
+  return { ...result, fetch_id: fetchId };
 }

@@ -294,7 +294,7 @@ describe("audit store", () => {
 
       const result = pruneAudit(db, 0, now);
 
-      expect(result).toEqual({ audit_deleted: 0, fetch_deleted: 0, admin_audit_deleted: 0 });
+      expect(result).toEqual({ audit_deleted: 0, fetch_deleted: 0, file_fetch_deleted: 0, admin_audit_deleted: 0 });
       expect((db.query("SELECT count(*) AS n FROM audit").get() as { n: number }).n).toBe(1);
       expect((db.query("SELECT count(*) AS n FROM fetch").get() as { n: number }).n).toBe(1);
     });

@@ -11,7 +11,7 @@
     },
     "Sha256Hex": {
       "type": "string",
-      "description": "Lowercase hex SHA-256 of the exact SKILL.md bytes.",
+      "description": "Lowercase hex SHA-256 of the exact delivered file bytes.",
       "pattern": "^[a-f0-9]{64}$"
     },
     "RelativePath": {
@@ -105,33 +105,52 @@
       "type": "object",
       "properties": {
         "skill_id": { "$ref": "#/$defs/SkillId" },
-        "request_id": { "$ref": "#/$defs/InboundRequestId" }
+        "request_id": { "$ref": "#/$defs/InboundRequestId" },
+        "path": {
+          "type": "string",
+          "description": "Canonical relative path from files; omit to read SKILL.md. The server checks allowlist membership and rejects absolute paths, backslashes, NULs, empty/dot/parent segments, and symlinks."
+        },
+        "parent_fetch_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "Optional main-file fetch_id for this skill. Requires path. An unknown or different-skill ID records a null parent and does not prevent delivery."
+        }
       },
       "required": ["skill_id"],
+      "dependentRequired": { "parent_fetch_id": ["path"] },
       "additionalProperties": false
     },
     "FetchSkillResult": {
       "type": "object",
-      "description": "AC5: verbatim delivery independent of any prior resolve_skill call. Unknown skill_id raises ToolError with code SKILL_NOT_FOUND instead of returning this shape.",
+      "description": "Verbatim current SKILL.md or one listed supporting file, independent of any prior resolve call. Supporting files must be UTF-8 text without binary control characters and at most 262144 bytes. On MCP, body is the first text block and the remaining fields form a JSON second text block; structuredContent is absent.",
       "properties": {
         "skill_id": { "$ref": "#/$defs/SkillId" },
         "title": { "type": "string", "minLength": 1, "maxLength": 512 },
         "content_sha256": { "$ref": "#/$defs/Sha256Hex" },
-        "body": { "type": "string", "minLength": 1 },
+        "body": { "type": "string" },
+        "fetch_id": { "type": "integer", "minimum": 1, "description": "Main-file fetch audit ID; pass as parent_fetch_id when requesting an attachment." },
+        "path": { "type": "string", "description": "Requested supporting-file path; present only for attachment delivery." },
+        "byte_length": { "type": "integer", "minimum": 0, "maximum": 262144 },
+        "parent_fetch_id": { "type": ["integer", "null"], "minimum": 1, "description": "Same-skill parent fetch ID, or null when absent or uncorrelated." },
         "files": {
           "type": "array",
-          "description": "Relative paths of supporting files under the skill directory (references/, scripts/, ...). Paths only; callers with filesystem access read contents directly.",
+          "description": "Relative paths of supporting files under the skill directory. Call fetch_skill with path to read a supporting text file over MCP.",
           "items": { "$ref": "#/$defs/RelativePath" },
           "uniqueItems": true
         }
       },
       "required": ["skill_id", "title", "content_sha256", "body", "files"],
+      "oneOf": [
+        { "required": ["fetch_id"], "not": { "anyOf": [{ "required": ["path"] }, { "required": ["byte_length"] }, { "required": ["parent_fetch_id"] }] } },
+        { "required": ["path", "byte_length", "parent_fetch_id"], "not": { "required": ["fetch_id"] } }
+      ],
       "additionalProperties": false
     },
     "ErrorCode": {
       "type": "string",
       "description": "Machine-readable code carried in MCP ToolError messages as 'CODE: human message'.",
-      "enum": ["SKILL_NOT_FOUND", "VAULT_UNAVAILABLE", "INTERNAL"]
+      "enum": ["SKILL_NOT_FOUND", "INVALID_FILE_PATH", "FILE_NOT_FOUND", "FILE_TOO_LARGE", "FILE_NOT_TEXT", "VAULT_UNAVAILABLE", "INTERNAL"]
     },
     "Config": {
       "type": "object",

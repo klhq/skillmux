@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import packageJson from "../package.json" with { type: "json" };
@@ -102,6 +102,34 @@ describe("MCP 2026-07-28 over stdio", () => {
     expect(res.error).toBeUndefined();
     expect(res.result.isError).toBe(true);
     expect(JSON.stringify(res.result.content)).toContain("SKILL_NOT_FOUND");
+  });
+
+  test("fetch_skill refuses a parent_fetch_id without an attachment path", async () => {
+    const res = await wire.request(modernRequest(6, "tools/call", {
+      name: "fetch_skill", arguments: { skill_id: "wire-skill", parent_fetch_id: 1 },
+    }));
+    expect(Boolean(res.error) || res.result?.isError === true).toBe(true);
+    expect(JSON.stringify(res)).toContain("path");
+  });
+
+  test("fetch_skill delivers a supporting file over stdio and rejects traversal as a tool error", async () => {
+    const dir = join(tmp, "vault", "wire-skill", "references");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "stdio.md"), "stdio reference\n");
+    const res = await wire.request(modernRequest(7, "tools/call", {
+      name: "fetch_skill", arguments: { skill_id: "wire-skill", path: "references/stdio.md" },
+    }));
+    expect(res.result.isError).toBeFalsy();
+    expect(res.result).not.toHaveProperty("structuredContent");
+    expect(res.result.content).toHaveLength(2);
+    expect(res.result.content[0].text).toBe("stdio reference\n");
+    expect(JSON.parse(res.result.content[1].text)).toMatchObject({ path: "references/stdio.md", parent_fetch_id: null });
+
+    const invalid = await wire.request(modernRequest(8, "tools/call", {
+      name: "fetch_skill", arguments: { skill_id: "wire-skill", path: "../config.toml" },
+    }));
+    expect(invalid.result.isError).toBe(true);
+    expect(JSON.stringify(invalid.result.content)).toContain("INVALID_FILE_PATH:");
   });
 });
 

@@ -166,6 +166,7 @@ export class LocalAdapter implements ContextAdapter {
         return {
           audit_deleted: 0,
           fetch_deleted: 0,
+          file_fetch_deleted: 0,
           admin_audit_deleted: 0,
           dry_run: dryRun,
           cutoff: null,
