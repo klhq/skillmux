@@ -233,7 +233,14 @@ export function createMcpServer(): McpServer {
         "Route a natural-language task description to candidate skills in the vault. " +
         "Returns a ranked shortlist of candidates. Use fetch_skill to retrieve a candidate's complete instructions.",
       inputSchema: z.object({
-        query: z.string().min(1).describe("Natural-language task or prompt description to route."),
+        query: z
+          .string()
+          .min(1)
+          .describe(
+            "Natural-language task or prompt description to route. Write it in the language the skill " +
+              "descriptions use (usually English), translating the user's request if needed; a query in " +
+              "another language matches only through semantic search.",
+          ),
         top_k: z
           .number()
           .int()
