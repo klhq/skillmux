@@ -226,8 +226,11 @@ Complete ID/title matching still compares the original metadata.
 
 Porter follows English suffix rules rather than expanding synonyms or matching
 arbitrary substrings. Some different words share a stem, which can add less
-relevant candidates. It does not add Chinese word segmentation or guarantee
-word-form matching in other languages. See the
+relevant candidates. It does not guarantee word-form matching in other
+languages. Chinese, Japanese, Thai, Lao, Khmer, and Burmese text is split into
+words with the runtime's `Intl.Segmenter` before indexing and querying, so a
+query such as `安全漏洞` matches a description that contains it inside a
+sentence. Korean already uses spaces, so Korean particles are not stripped. See the
 [SQLite Porter tokenizer documentation](https://www.sqlite.org/fts5.html#porter_tokenizer).
 
 On first opening an older index, Skillmux rebuilds the FTS table from stored

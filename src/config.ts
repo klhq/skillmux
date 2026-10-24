@@ -572,6 +572,33 @@ export async function loadConfig(path?: string): Promise<Config> {
     throw new Error(`Invalid inference.mode: ${(merged.inference as { mode?: unknown }).mode}`);
   }
 
+  // A variable that belongs to the other inference mode is otherwise dropped
+  // silently, which looks like a working override.
+  if (allowEnvOverrides) {
+    const localOnly = ["SKILLMUX_MODELS_DIR", "SKILLMUX_EMBED_DEVICE", "SKILLMUX_EMBED_DTYPE"];
+    const remoteOnly = [
+      "SKILLMUX_EMBED_MODEL",
+      "SKILLMUX_EMBED_ENDPOINT",
+      "SKILLMUX_EMBED_DIMENSION",
+      "SKILLMUX_RERANK_ENDPOINT",
+      "SKILLMUX_RERANK_ADAPTER",
+      "SKILLMUX_RERANK_MODEL",
+    ];
+    const mode = merged.inference.mode;
+    const ignored = mode === "local" ? remoteOnly : localOnly;
+    for (const name of ignored) {
+      if (process.env[name] === undefined || warnedEnv.has(`${mode}:${name}`)) continue;
+      warnedEnv.add(`${mode}:${name}`);
+      notice(
+        "warning",
+        `${name} is ignored with inference.mode = "${mode}"; ` +
+          (mode === "local"
+            ? "set it in [inference.embedding] / [inference.reranker] in config.toml instead"
+            : "it only applies to local inference"),
+      );
+    }
+  }
+
   // HTTP server environment overrides
   if (merged.server) {
     if (allowEnvOverrides) {

@@ -171,6 +171,21 @@ dtype = "q8"
 Use `skillmux models download` to prefetch the model and `skillmux doctor` to
 verify readiness.
 
+### Inference environment variables
+
+Each variable applies to one inference mode. Skillmux warns once when a variable
+is set but ignored by the current mode, because it would otherwise have no
+effect. The full image bundles only `Xenova/gte-small`; any other local model is
+downloaded on first use.
+
+| Variable | `inference.mode = "local"` | `inference.mode = "remote"` |
+| --- | --- | --- |
+| `SKILLMUX_MODELS_DIR` | Model cache directory | Ignored |
+| `SKILLMUX_EMBED_DEVICE`, `SKILLMUX_EMBED_DTYPE` | ONNX device and dtype | Ignored |
+| `SKILLMUX_EMBED_MODEL`, `SKILLMUX_EMBED_DIMENSION` | Ignored; set `model` and `dimension` under `[inference.embedding]` | Embedding model and dimension |
+| `SKILLMUX_EMBED_ENDPOINT` | Ignored | Embedding endpoint URL |
+| `SKILLMUX_RERANK_ENDPOINT`, `SKILLMUX_RERANK_ADAPTER`, `SKILLMUX_RERANK_MODEL` | Ignored | Reranker settings, when `[inference.reranker]` exists |
+
 ### Local pooling
 
 Local inference turns the model's token states into one vector with a
