@@ -949,3 +949,39 @@ max_top_k = 20
 
 
 
+
+describe("inference variables for the other mode", () => {
+  async function loadCapturingNotices(toml: string): Promise<string[]> {
+    const seen: string[] = [];
+    setConfigNoticeHandler((_kind, line) => seen.push(line));
+    try {
+      process.env.SKILLMUX_CONFIG = await configFile(toml);
+      await loadConfig();
+    } finally {
+      setConfigNoticeHandler((kind, line) => console.error(`${kind}: ${line}`));
+    }
+    return seen;
+  }
+
+  test("warns once when a remote-only variable is set in local mode", async () => {
+    warnedEnv.clear();
+    process.env.SKILLMUX_EMBED_MODEL = "Xenova/multilingual-e5-small";
+    const first = await loadCapturingNotices("");
+    expect(first).toEqual([
+      'SKILLMUX_EMBED_MODEL is ignored with inference.mode = "local"; set it in [inference.embedding] / [inference.reranker] in config.toml instead',
+    ]);
+    expect(await loadCapturingNotices("")).toEqual([]);
+  });
+
+  test("does not warn for variables that the local mode applies", async () => {
+    warnedEnv.clear();
+    process.env.SKILLMUX_EMBED_DEVICE = "cpu";
+    expect(await loadCapturingNotices("")).toEqual([]);
+  });
+
+  test("stays silent when environment overrides are disabled", async () => {
+    warnedEnv.clear();
+    process.env.SKILLMUX_EMBED_MODEL = "x";
+    expect(await loadCapturingNotices("[config]\nenvironment_overrides = false\n")).toEqual([]);
+  });
+});
