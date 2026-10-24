@@ -1,0 +1,316 @@
+[
+ {
+  "query": "幫我部署容器並檢查狀態",
+  "split": "zh-Hant",
+  "relevant_skill_ids": [
+   "docker-deploy"
+  ]
+ },
+ {
+  "query": "容器啟動失敗怎麼排查",
+  "split": "zh-Hant",
+  "relevant_skill_ids": [
+   "docker-deploy"
+  ]
+ },
+ {
+  "query": "資料庫 schema 遷移與回滾",
+  "split": "zh-Hant",
+  "relevant_skill_ids": [
+   "db-migration"
+  ]
+ },
+ {
+  "query": "整理版本發布說明",
+  "split": "zh-Hant",
+  "relevant_skill_ids": [
+   "release-notes"
+  ]
+ },
+ {
+  "query": "部署",
+  "split": "zh-Hant",
+  "relevant_skill_ids": [
+   "docker-deploy"
+  ]
+ },
+ {
+  "query": "日誌裡的錯誤",
+  "split": "zh-Hant",
+  "relevant_skill_ids": [
+   "log-analyzer"
+  ]
+ },
+ {
+  "query": "审查代码里的安全漏洞",
+  "split": "zh-Hans",
+  "relevant_skill_ids": [
+   "code-security-audit"
+  ]
+ },
+ {
+  "query": "检查有没有 SQL 注入",
+  "split": "zh-Hans",
+  "relevant_skill_ids": [
+   "code-security-audit"
+  ]
+ },
+ {
+  "query": "整理会议记录并提取行动项",
+  "split": "zh-Hans",
+  "relevant_skill_ids": [
+   "meeting-notes"
+  ]
+ },
+ {
+  "query": "会议纪要",
+  "split": "zh-Hans",
+  "relevant_skill_ids": [
+   "meeting-notes"
+  ]
+ },
+ {
+  "query": "安全漏洞",
+  "split": "zh-Hans",
+  "relevant_skill_ids": [
+   "code-security-audit"
+  ]
+ },
+ {
+  "query": "把录音变成会议记录",
+  "split": "zh-Hans",
+  "relevant_skill_ids": [
+   "meeting-notes"
+  ]
+ },
+ {
+  "query": "CIが失敗した原因を調べて",
+  "split": "ja",
+  "relevant_skill_ids": [
+   "ci-failure-diagnosis"
+  ]
+ },
+ {
+  "query": "マージのコンフリクトを解消したい",
+  "split": "ja",
+  "relevant_skill_ids": [
+   "git-conflict-resolver"
+  ]
+ },
+ {
+  "query": "売上データのExcelレポートを作る",
+  "split": "ja",
+  "relevant_skill_ids": [
+   "excel-report"
+  ]
+ },
+ {
+  "query": "テストの失敗ログを分析",
+  "split": "ja",
+  "relevant_skill_ids": [
+   "ci-failure-diagnosis"
+  ]
+ },
+ {
+  "query": "コンフリクト",
+  "split": "ja",
+  "relevant_skill_ids": [
+   "git-conflict-resolver"
+  ]
+ },
+ {
+  "query": "グラフ付きの表を作成",
+  "split": "ja",
+  "relevant_skill_ids": [
+   "excel-report"
+  ]
+ },
+ {
+  "query": "서버에 앱 배포하기",
+  "split": "ko",
+  "relevant_skill_ids": [
+   "server-deploy"
+  ]
+ },
+ {
+  "query": "배포 실패하면 롤백",
+  "split": "ko",
+  "relevant_skill_ids": [
+   "server-deploy"
+  ]
+ },
+ {
+  "query": "API 문서 만들어줘",
+  "split": "ko",
+  "relevant_skill_ids": [
+   "api-doc-writer"
+  ]
+ },
+ {
+  "query": "엔드포인트 요청 응답 예시 문서화",
+  "split": "ko",
+  "relevant_skill_ids": [
+   "api-doc-writer"
+  ]
+ },
+ {
+  "query": "서버를 배포합니다",
+  "split": "ko",
+  "relevant_skill_ids": [
+   "server-deploy"
+  ]
+ },
+ {
+  "query": "문서 작성",
+  "split": "ko",
+  "relevant_skill_ids": [
+   "api-doc-writer"
+  ]
+ },
+ {
+  "query": "extract tables from a PDF",
+  "split": "en",
+  "relevant_skill_ids": [
+   "pdf-extract"
+  ]
+ },
+ {
+  "query": "write end-to-end browser tests",
+  "split": "en",
+  "relevant_skill_ids": [
+   "browser-e2e-test"
+  ]
+ },
+ {
+  "query": "why is my service slow, profile cpu",
+  "split": "en",
+  "relevant_skill_ids": [
+   "performance-profiler"
+  ]
+ },
+ {
+  "query": "analyze application logs for error spikes",
+  "split": "en",
+  "relevant_skill_ids": [
+   "log-analyzer"
+  ]
+ },
+ {
+  "query": "deploy an app in a docker container",
+  "split": "cross:en->xx",
+  "relevant_skill_ids": [
+   "docker-deploy"
+  ]
+ },
+ {
+  "query": "review code for injection vulnerabilities",
+  "split": "cross:en->xx",
+  "relevant_skill_ids": [
+   "code-security-audit"
+  ]
+ },
+ {
+  "query": "diagnose CI pipeline failure",
+  "split": "cross:en->xx",
+  "relevant_skill_ids": [
+   "ci-failure-diagnosis"
+  ]
+ },
+ {
+  "query": "roll back a failed server deployment",
+  "split": "cross:en->xx",
+  "relevant_skill_ids": [
+   "server-deploy"
+  ]
+ },
+ {
+  "query": "summarize meeting into action items",
+  "split": "cross:en->xx",
+  "relevant_skill_ids": [
+   "meeting-notes"
+  ]
+ },
+ {
+  "query": "resolve git merge conflict",
+  "split": "cross:en->xx",
+  "relevant_skill_ids": [
+   "git-conflict-resolver"
+  ]
+ },
+ {
+  "query": "從 PDF 擷取表格",
+  "split": "cross:xx->en",
+  "relevant_skill_ids": [
+   "pdf-extract"
+  ]
+ },
+ {
+  "query": "用瀏覽器跑端對端測試",
+  "split": "cross:xx->en",
+  "relevant_skill_ids": [
+   "browser-e2e-test"
+  ]
+ },
+ {
+  "query": "PDFからテキストを抽出",
+  "split": "cross:xx->en",
+  "relevant_skill_ids": [
+   "pdf-extract"
+  ]
+ },
+ {
+  "query": "서비스가 느려서 성능 프로파일링",
+  "split": "cross:xx->en",
+  "relevant_skill_ids": [
+   "performance-profiler"
+  ]
+ },
+ {
+  "query": "幫我 deploy docker 容器",
+  "split": "mixed",
+  "relevant_skill_ids": [
+   "docker-deploy"
+  ]
+ },
+ {
+  "query": "分析 log 找出 error",
+  "split": "mixed",
+  "relevant_skill_ids": [
+   "log-analyzer"
+  ]
+ },
+ {
+  "query": "CI の failure を調べる",
+  "split": "mixed",
+  "relevant_skill_ids": [
+   "ci-failure-diagnosis"
+  ]
+ },
+ {
+  "query": "서버 deploy 롤백",
+  "split": "mixed",
+  "relevant_skill_ids": [
+   "server-deploy"
+  ]
+ },
+ {
+  "query": "光速是多少",
+  "split": "negative",
+  "relevant_skill_ids": []
+ },
+ {
+  "query": "チョコレートケーキの焼き方",
+  "split": "negative",
+  "relevant_skill_ids": []
+ },
+ {
+  "query": "오늘 날씨 어때",
+  "split": "negative",
+  "relevant_skill_ids": []
+ },
+ {
+  "query": "how do I bake a chocolate cake",
+  "split": "negative",
+  "relevant_skill_ids": []
+ }
+]
