@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { segmentForFts } from "./fts-segment";
+import { SEGMENTER_VERSION, segmentForFts } from "./fts-segment";
 import type { VaultSkill } from "./vault";
 
 export interface SkillRow {
@@ -48,7 +48,7 @@ export function openIndex(stateDir: string): Database {
 function migrateLexicalIndex(db: Database): void {
   db.transaction(() => {
     const version = getIndexMeta(db, "lexical_schema_version");
-    if (version === "4") return;
+    if (version === "4" && getIndexMeta(db, "lexical_segmenter") === SEGMENTER_VERSION) return;
     db.run("DROP TABLE IF EXISTS skills_fts");
     db.run(`CREATE VIRTUAL TABLE skills_fts USING fts5(
       skill_id, title, description, aliases,
@@ -58,6 +58,7 @@ function migrateLexicalIndex(db: Database): void {
       insertFts(db, row);
     }
     setIndexMeta(db, "lexical_schema_version", "4");
+    setIndexMeta(db, "lexical_segmenter", SEGMENTER_VERSION);
   })();
 }
 
@@ -135,11 +136,13 @@ export function getSkillRow(db: Database, skillId: string): SkillRow | null {
  * index tokenizer and distinguish technical names like C++/C#.
  */
 export function toFtsQuery(text: string): string | null {
+  // Single hiragana tokens are particles (が, を, の); as OR terms they pull in
+  // every Japanese skill, so they are dropped from the query only.
   const terms = [
     ...new Set(
       segmentForFts(text.toLowerCase())
         .split(/[^\p{L}\p{N}+#]+/u)
-        .filter((t) => /[\p{L}\p{N}]/u.test(t)),
+        .filter((t) => /[\p{L}\p{N}]/u.test(t) && !/^\p{Script=Hiragana}$/u.test(t)),
     ),
   ];
   if (terms.length === 0) return null;
