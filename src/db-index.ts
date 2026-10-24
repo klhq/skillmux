@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { segmentForFts } from "./fts-segment";
 import type { VaultSkill } from "./vault";
 
 export interface SkillRow {
@@ -47,16 +48,24 @@ export function openIndex(stateDir: string): Database {
 function migrateLexicalIndex(db: Database): void {
   db.transaction(() => {
     const version = getIndexMeta(db, "lexical_schema_version");
-    if (version === "3") return;
+    if (version === "4") return;
     db.run("DROP TABLE IF EXISTS skills_fts");
     db.run(`CREATE VIRTUAL TABLE skills_fts USING fts5(
       skill_id, title, description, aliases,
       tokenize = "porter unicode61 remove_diacritics 2 tokenchars '+#'"
     )`);
-    db.run(`INSERT INTO skills_fts (skill_id, title, description, aliases)
-      SELECT skill_id, title, description, aliases FROM skills`);
-    setIndexMeta(db, "lexical_schema_version", "3");
+    for (const row of db.query("SELECT skill_id, title, description, aliases FROM skills").all() as SkillRow[]) {
+      insertFts(db, row);
+    }
+    setIndexMeta(db, "lexical_schema_version", "4");
   })();
+}
+
+function insertFts(db: Database, row: Omit<SkillRow, "content_sha256">): void {
+  db.run(
+    "INSERT INTO skills_fts (skill_id, title, description, aliases) VALUES (?, ?, ?, ?)",
+    [row.skill_id, segmentForFts(row.title), segmentForFts(row.description), segmentForFts(row.aliases)],
+  );
 }
 
 export function upsertSkill(db: Database, skill: VaultSkill): void {
@@ -68,10 +77,7 @@ export function upsertSkill(db: Database, skill: VaultSkill): void {
       "INSERT INTO skills (skill_id, title, description, aliases, content_sha256) VALUES (?, ?, ?, ?, ?)",
       [skill.skill_id, skill.title, skill.description, aliases, skill.content_sha256],
     );
-    db.run(
-      "INSERT INTO skills_fts (skill_id, title, description, aliases) VALUES (?, ?, ?, ?)",
-      [skill.skill_id, skill.title, skill.description, aliases],
-    );
+    insertFts(db, { skill_id: skill.skill_id, title: skill.title, description: skill.description, aliases });
   })();
 }
 
@@ -95,10 +101,7 @@ export function replaceSkills(db: Database, rows: SkillRow[]): void {
         "INSERT INTO skills (skill_id, title, description, aliases, content_sha256) VALUES (?, ?, ?, ?, ?)",
         [row.skill_id, row.title, row.description, row.aliases, row.content_sha256],
       );
-      db.run(
-        "INSERT INTO skills_fts (skill_id, title, description, aliases) VALUES (?, ?, ?, ?)",
-        [row.skill_id, row.title, row.description, row.aliases],
-      );
+      insertFts(db, row);
     }
     db.run("DELETE FROM vectors WHERE skill_id NOT IN (SELECT skill_id FROM skills)");
   })();
@@ -126,16 +129,15 @@ export function getSkillRow(db: Database, skillId: string): SkillRow | null {
 
 /**
  * Sanitize free text into an FTS5 OR-query; returns null when no usable terms
- * remain. Terms keep any Unicode letters/digits (CJK included) so non-ASCII
- * queries still get lexical recall — unicode61 tokenizes contiguous CJK runs
- * as single tokens, so matching works at that granularity. Keep + and # to
- * agree with the index tokenizer and distinguish technical names like C++/C#.
+ * remain. Terms keep any Unicode letters/digits. Unspaced scripts (CJK, Thai)
+ * are word-segmented first, exactly as at index time, because unicode61 would
+ * otherwise treat a whole run as one token. Keep + and # to agree with the
+ * index tokenizer and distinguish technical names like C++/C#.
  */
 export function toFtsQuery(text: string): string | null {
   const terms = [
     ...new Set(
-      text
-        .toLowerCase()
+      segmentForFts(text.toLowerCase())
         .split(/[^\p{L}\p{N}+#]+/u)
         .filter((t) => /[\p{L}\p{N}]/u.test(t)),
     ),
