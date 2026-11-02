@@ -42,10 +42,10 @@ RUN bun run scripts/download-models.ts
 
 # Stage 4: Slim runtime (no models, no ONNX runtime library)
 # curl is the readiness probe: the image carries no JavaScript runtime to
-# script one with.
+# script one with. git lets `vault_pull_interval` keep a served vault current.
 FROM debian:trixie-slim AS slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/skillmux /usr/local/bin/skillmux

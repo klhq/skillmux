@@ -96,6 +96,50 @@ not a git URL is rejected and the file is left as it was.
 config loads. The URL comes only from this machine's `config.toml`, never from
 the vault, and it is subject to the [egress allowlist](#egress-allowlist).
 
+### Server pulls
+
+`skillmux sync` is not the only way to keep a vault current. A server that runs
+somewhere else, such as a container behind an MCP gateway, can pull its own
+checkout:
+
+```toml
+vault_path = "/vault"
+vault_url = "https://github.com/you/skills.git"
+vault_pull_interval = "10m"
+```
+
+`vault_pull_interval` is a whole number followed by `s`, `m` or `h`, at least
+`10s`. It needs `vault_url`, and leaving it out keeps the server read-only, so
+existing deployments are unchanged. A change to this key takes effect after a
+restart.
+
+With it set, `skillmux serve` does the following:
+
+- At startup it clones `vault_url` into `vault_path` if there is no checkout, or
+  fast-forwards the one that is there, before it builds the index. A fresh
+  deployment therefore starts with the vault already indexed. Startup waits for
+  that first pull, and a failed pull never stops the server from starting.
+- It repeats the pull every interval. A pull that is still running when the
+  next one is due makes that one skip.
+- When a pull changes the tree, the server pauses its file watcher for the
+  length of the pull and then rebuilds the index once from the finished tree, so
+  the index never reflects a checkout that git is halfway through writing.
+- It uses the same rules as `sync` for everything that can go wrong. A dirty
+  checkout, a diverged branch, a different `origin` or an unreachable remote
+  logs a warning, leaves the checkout alone and keeps serving what is on disk.
+  The [egress allowlist](#egress-allowlist) applies.
+
+`/metrics` gains `skill_router_vault_pull_total{result="cloned|updated|up-to-date|failed"}`
+and `skill_router_vault_last_pull_success_timestamp_seconds`, so an alert on a
+stale timestamp tells you the server is stuck on old content. They appear only
+when `vault_pull_interval` is set.
+
+The server needs a writable `vault_path`. For a private remote, give it a
+read-only deploy key or token, because git runs without prompts and fails fast
+when it needs a password. A public remote needs no credentials. See
+[Deployment](deployment.md#let-the-server-pull-its-vault) for a container
+example.
+
 ## Agents
 
 `agents` in `config.toml` lists the agents this machine syncs skills to:

@@ -10,6 +10,8 @@ type MetricsDeploymentIdentity = Pick<
 /** Ranks above this share one label value, which keeps label cardinality fixed. */
 const MAX_RANK_LABEL = 10;
 const RESOLVE_RESULTS = ["candidates", "empty"] as const;
+const VAULT_PULL_RESULTS = ["cloned", "updated", "up-to-date", "failed"] as const;
+export type VaultPullResult = (typeof VAULT_PULL_RESULTS)[number];
 
 function rankLabel(rank: number | null): string {
   if (rank === null) return "none";
@@ -35,6 +37,8 @@ export class MetricsRegistry {
   private readiness: ReadinessSnapshot | null = null;
   private deployment: MetricsDeploymentIdentity | null = null;
   private nativeBaselineTokens: number | null = null;
+  private vaultPulls: Map<VaultPullResult, number> | null = null;
+  private lastVaultPullSuccess: Date | null = null;
 
   setReadiness(readiness: ReadinessSnapshot) {
     this.readiness = readiness;
@@ -47,6 +51,18 @@ export class MetricsRegistry {
 
   setDeployment(deployment: MetricsDeploymentIdentity) {
     this.deployment = deployment;
+  }
+
+  /** Marks this server as one that pulls its vault, so the pull series appear on /metrics. */
+  enableVaultPull() {
+    this.vaultPulls ??= new Map();
+  }
+
+  /** Counts one vault pull. Anything but a failure moves the last-success time. */
+  recordVaultPull(result: VaultPullResult, at: Date = new Date()) {
+    this.enableVaultPull();
+    this.vaultPulls!.set(result, (this.vaultPulls!.get(result) || 0) + 1);
+    if (result !== "failed") this.lastVaultPullSuccess = at;
   }
 
   recordRequest(method: string) {
@@ -175,6 +191,19 @@ export class MetricsRegistry {
       lines.push("# HELP skill_router_native_baseline_tokens Estimated tokens a native-only client spends at each session start listing the name and description of every unpinned skill.");
       lines.push("# TYPE skill_router_native_baseline_tokens gauge");
       lines.push(`skill_router_native_baseline_tokens ${this.nativeBaselineTokens}`);
+    }
+
+    if (this.vaultPulls) {
+      lines.push("# HELP skill_router_vault_pull_total Vault pulls from vault_url by outcome.");
+      lines.push("# TYPE skill_router_vault_pull_total counter");
+      for (const result of VAULT_PULL_RESULTS) {
+        lines.push(`skill_router_vault_pull_total{result="${result}"} ${this.vaultPulls.get(result) || 0}`);
+      }
+      if (this.lastVaultPullSuccess) {
+        lines.push("# HELP skill_router_vault_last_pull_success_timestamp_seconds Unix time of the last vault pull that did not fail.");
+        lines.push("# TYPE skill_router_vault_last_pull_success_timestamp_seconds gauge");
+        lines.push(`skill_router_vault_last_pull_success_timestamp_seconds ${this.lastVaultPullSuccess.getTime() / 1000}`);
+      }
     }
 
     if (this.deployment) {

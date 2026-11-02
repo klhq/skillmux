@@ -87,7 +87,7 @@ const LOCAL_ONLY_REASON: Record<string, LocalOnlyReason> = Object.fromEntries(
 
 const LOCAL_ONLY_GUIDANCE: Record<LocalOnlyReason, string> = {
   "vault-content":
-    "To change a remote deployment's vault contents, update its git-backed source and redeploy or pull on that host — skillmux doesn't replicate vault checkouts over the network.",
+    "To change a remote deployment's vault contents, update its git-backed source and redeploy or pull on that host — skillmux doesn't replicate vault checkouts over the network. A server that sets vault_pull_interval pulls its own vault, so pushing to the vault remote is enough there.",
   "native-delivery":
     "This manages skill delivery into agent directories on the machine you run it from; there's no remote equivalent — run it on the machine that owns those directories.",
   "local-runtime":
