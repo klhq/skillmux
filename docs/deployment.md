@@ -108,7 +108,7 @@ Docker Compose `command:` and Kubernetes `args:` likewise replace only the
 default command, not the executable.
 
 The supported container commands are `serve`, `index`, `doctor`, `report`,
-`scan`, `skill which`, and read-only `config show`, `config get`,
+`scan`, `skill list`, `skill which`, and read-only `config show`, `config get`,
 `config validate`, `config diff`, and `config status`.
 
 The image rejects host-management commands, including `init`, `sync`,

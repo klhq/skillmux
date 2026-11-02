@@ -34,9 +34,10 @@ describe("COMMAND_CONTEXT_SUPPORT consistency", () => {
     }
   });
 
-  test("skill which resolves through its own subcommand-specific rejection path", () => {
-    expect(getLocalOnlyCommand("skill", "which")).toBe("skill which");
-    expect(getLocalOnlyCommand("skill", "")).toBe("skill which");
+  test("skill subcommands are rejected under the bare command name", () => {
+    expect(getLocalOnlyCommand("skill", "which")).toBe("skill");
+    expect(getLocalOnlyCommand("skill", "list")).toBe("skill");
+    expect(getLocalOnlyCommand("skill", "")).toBe("skill");
   });
 
   test("config init is a local-only exception within an otherwise remote-capable command", () => {

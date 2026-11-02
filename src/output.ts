@@ -46,12 +46,29 @@ export function formatJsonEnvelope<T>(opts: {
   };
 }
 
+/**
+ * The JSON error code for an exit code that has no more specific code of its own.
+ * Every error carries a semantic name, so callers never have to match "EXIT_<n>".
+ */
+export function semanticErrorCode(exitCode: number): string {
+  switch (exitCode) {
+    case 2:
+      return "VALIDATION_ERROR";
+    case 3:
+      return "TARGET_UNREACHABLE";
+    case 4:
+      return "CONFLICT";
+    default:
+      return "COMMAND_FAILED";
+  }
+}
+
 export class CliError extends Error {
   exitCode: number;
   code: string;
   details?: unknown;
 
-  constructor(message: string, exitCode: number, code = `EXIT_${exitCode}`, details?: unknown) {
+  constructor(message: string, exitCode: number, code = semanticErrorCode(exitCode), details?: unknown) {
     super(message);
     this.name = "CliError";
     this.exitCode = exitCode;
@@ -171,14 +188,17 @@ export function unknownSubcommandError(
   command: string,
   subCommand: string,
   validSubcommands: string[],
-): Error {
+): CliError {
   const suggestion = subCommand ? suggestCorrection(subCommand, validSubcommands) : null;
-  if (suggestion) {
-    return new Error(
-      `Unknown "${command} ${subCommand}" subcommand. Did you mean "${command} ${suggestion}"?`,
-    );
-  }
-  return new Error(`usage: skillmux ${command} <${validSubcommands.join("|")}>`);
+  const message = suggestion
+    ? `Unknown "${command} ${subCommand}" subcommand. Did you mean "${command} ${suggestion}"?`
+    : `usage: skillmux ${command} <${validSubcommands.join("|")}>`;
+  return new CliError(message, 2, "USAGE_ERROR", {
+    command,
+    subcommand: subCommand,
+    valid_subcommands: validSubcommands,
+    ...(suggestion ? { suggestion } : {}),
+  });
 }
 
 export function isInteractive(

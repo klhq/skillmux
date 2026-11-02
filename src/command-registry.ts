@@ -35,11 +35,18 @@ export interface CommandSpec {
   /** Valid first arguments, used for completions and "did you mean" errors. */
   subcommands?: readonly string[];
   contextSupport: CommandContextSupport;
+  /**
+   * Whether the command changes anything on disk or on a server: true for every
+   * form, false for none, or the list of subcommands that write while the rest
+   * only read. Agents read this from `--help --json` to decide when to run
+   * `--dry-run` first and when to ask the user.
+   */
+  writes: boolean | readonly string[];
   /** Required when contextSupport is "local-only". */
   localOnlyReason?: LocalOnlyReason;
   /**
    * Name reported in the remote-context rejection when it differs from `name`
-   * (`skill` only ever means `skill which`).
+   * (kept for commands whose bare name reads oddly in the message).
    */
   localOnlyLabel?: string;
   /**
@@ -57,6 +64,7 @@ export interface CommandSpec {
 const COMMAND_TABLE = [
   {
     name: "context",
+    writes: ["add", "use", "remove"],
     description: "Manage connection contexts",
     subcommands: ["add", "list", "current", "use", "remove"],
     contextSupport: "context-agnostic",
@@ -64,6 +72,7 @@ const COMMAND_TABLE = [
   },
   {
     name: "config",
+    writes: ["init", "set"],
     description: "Manage configuration",
     subcommands: ["init", "show", "get", "validate", "diff", "set", "status"],
     contextSupport: "remote-capable",
@@ -72,24 +81,28 @@ const COMMAND_TABLE = [
   },
   {
     name: "completions",
+    writes: false,
     description: "Generate shell completions",
     subcommands: ["bash", "zsh", "fish"],
     contextSupport: "context-agnostic",
   },
   {
     name: "serve",
+    writes: false,
     description: "Start MCP server",
     contextSupport: "local-only",
     localOnlyReason: "local-runtime",
   },
   {
     name: "index",
+    writes: true,
     description: "Rebuild local search index",
     contextSupport: "local-only",
     localOnlyReason: "local-runtime",
   },
   {
     name: "sync",
+    writes: true,
     description: "Synchronize vault skills",
     contextSupport: "local-only",
     localOnlyReason: "native-delivery",
@@ -97,6 +110,7 @@ const COMMAND_TABLE = [
   },
   {
     name: "init",
+    writes: true,
     description: "Configure this machine and its agents",
     contextSupport: "local-only",
     localOnlyReason: "native-delivery",
@@ -104,6 +118,7 @@ const COMMAND_TABLE = [
   },
   {
     name: "project",
+    writes: ["init", "pin", "unpin", "add-path", "remove-path", "attach", "detach"],
     description: "Configure project-scoped skills",
     subcommands: ["init", "list", "show", "add-path", "remove-path", "pin", "unpin", "attach", "detach"],
     contextSupport: "local-only",
@@ -112,6 +127,7 @@ const COMMAND_TABLE = [
   },
   {
     name: "agent",
+    writes: ["add", "remove", "rehome"],
     description: "Choose which agents this machine syncs to",
     subcommands: ["list", "add", "remove", "rehome"],
     contextSupport: "local-only",
@@ -120,6 +136,7 @@ const COMMAND_TABLE = [
   },
   {
     name: "core",
+    writes: true,
     description: "Pin/unpin skills into [core]",
     subcommands: ["pin", "unpin"],
     contextSupport: "local-only",
@@ -128,23 +145,27 @@ const COMMAND_TABLE = [
   },
   {
     name: "report",
+    writes: false,
     description: "Generate usage stats",
     contextSupport: "remote-capable",
   },
   {
     name: "audit",
+    writes: ["prune"],
     description: "Prune the audit database",
     subcommands: ["prune"],
     contextSupport: "remote-capable",
   },
   {
     name: "scan",
+    writes: false,
     description: "Audit skills for issues",
     contextSupport: "local-only",
     localOnlyReason: "vault-content",
   },
   {
     name: "install",
+    writes: true,
     description: "Install skills into vault",
     contextSupport: "local-only",
     localOnlyReason: "vault-content",
@@ -152,6 +173,7 @@ const COMMAND_TABLE = [
   },
   {
     name: "outdated",
+    writes: false,
     description: "List skills with a newer upstream version",
     contextSupport: "local-only",
     localOnlyReason: "vault-content",
@@ -159,6 +181,7 @@ const COMMAND_TABLE = [
   },
   {
     name: "update",
+    writes: true,
     description: "Update installed skills",
     contextSupport: "local-only",
     localOnlyReason: "vault-content",
@@ -166,6 +189,7 @@ const COMMAND_TABLE = [
   },
   {
     name: "eval",
+    writes: ["promote"],
     description: "Evaluate search accuracy",
     subcommands: ["promote"],
     contextSupport: "remote-capable",
@@ -175,11 +199,13 @@ const COMMAND_TABLE = [
   },
   {
     name: "doctor",
+    writes: false,
     description: "Check runtime health",
     contextSupport: "remote-capable",
   },
   {
     name: "models",
+    writes: ["download"],
     description: "Manage local models",
     subcommands: ["download"],
     contextSupport: "local-only",
@@ -188,14 +214,23 @@ const COMMAND_TABLE = [
   },
   {
     name: "skill",
-    description: "Show which root resolves a skill_id",
-    subcommands: ["which"],
+    writes: false,
+    description: "List vault skills and show which root resolves a skill_id",
+    subcommands: ["list", "which"],
     contextSupport: "local-only",
     localOnlyReason: "native-delivery",
-    localOnlyLabel: "skill which",
+  },
+  {
+    name: "status",
+    writes: false,
+    description: "Summarize core usage, agents, vault and MCP registration",
+    contextSupport: "local-only",
+    localOnlyReason: "native-delivery",
+    dockerHostOnly: true,
   },
   {
     name: "local-vault",
+    writes: true,
     description: "Manage local_vault_paths discoverability markers",
     subcommands: ["init"],
     contextSupport: "local-only",

@@ -41,7 +41,7 @@ export interface DoctorReport {
 export { describeDeployment };
 
 /** Whether vault_path is the checkout of the remote vault_url names. Not a network check: sync reports fetch failures. */
-function checkVaultUrl(vaultPath: string, vaultUrl: string): DoctorCheck {
+export function checkVaultUrl(vaultPath: string, vaultUrl: string): DoctorCheck {
   if (!existsSync(join(vaultPath, ".git"))) {
     return { name: "vault_url", ok: false, detail: `${vaultPath} is not a git checkout yet; run skillmux sync to clone ${vaultUrl}` };
   }

@@ -19,12 +19,14 @@ import {
   dim,
   renderError,
   routeStderrUncolored,
+  semanticErrorCode,
   setColorDisabled,
   styleHelp,
   suggestCorrection,
   warn,
 } from "./output";
 import { COMMAND_HELP } from "./command-help";
+import { describeCommands } from "./help-json";
 import { REMOVED_COMMANDS, findHandler } from "./command-handlers";
 import {
   COMMANDS,
@@ -194,8 +196,11 @@ async function main() {
     return;
   }
 
-  if (!command || command === "--help" || command === "-h") {
-    printHelp();
+  const wantsJson = isJson || rawArgv.includes("--json");
+  const helpRequested = rawArgv.includes("--help") || rawArgv.includes("-h");
+  if (!command || command === "--help" || command === "-h" || (command === "--json" && helpRequested)) {
+    if (wantsJson && command) printHelpJson();
+    else printHelp();
     return;
   }
 
@@ -224,10 +229,7 @@ async function main() {
     return;
   }
 
-  if (
-    (rawArgv.includes("--help") || rawArgv.includes("-h")) &&
-    printCommandHelp(command)
-  ) {
+  if (helpRequested && printCommandHelp(command, wantsJson)) {
     return;
   }
 
@@ -259,12 +261,15 @@ async function main() {
   try {
     const handler = findHandler(command);
     if (!handler) {
-      if (Object.hasOwn(REMOVED_COMMANDS, command)) throw new Error(REMOVED_COMMANDS[command]!(subCommand));
+      if (Object.hasOwn(REMOVED_COMMANDS, command)) throw new CliError(REMOVED_COMMANDS[command]!(subCommand), 2, "USAGE_ERROR", { command, removed: true });
       const suggestion = suggestCorrection(command, KNOWN_COMMANDS);
-      throw new Error(
+      throw new CliError(
         suggestion
           ? `Unknown command "${command}". Did you mean "${suggestion}"?`
           : `Unknown command "${command}". Run "skillmux --help" to see the available commands: ${KNOWN_COMMANDS.join(", ")}.`,
+        2,
+        "USAGE_ERROR",
+        { command, ...(suggestion ? { suggestion } : {}), known_commands: KNOWN_COMMANDS },
       );
     }
     await handler({
@@ -310,7 +315,7 @@ async function handleError(
       ok: false,
       context: opts.context,
       error: {
-        code: err instanceof CliError ? err.code : `EXIT_${code}`,
+        code: err instanceof CliError ? err.code : semanticErrorCode(code),
         message: msg,
         details: err instanceof CliError ? err.details : undefined,
       },
@@ -324,11 +329,17 @@ async function handleError(
   }
 }
 
-function printCommandHelp(command: string): boolean {
+function printCommandHelp(command: string, isJson = false): boolean {
   const help = COMMAND_HELP[command];
   if (!help) return false;
-  console.log(styleHelp(help));
+  if (isJson) printHelpJson(command);
+  else console.log(styleHelp(help));
   return true;
+}
+
+/** `--help --json`: the command registry as data, so agents need not parse prose. */
+function printHelpJson(command?: string): void {
+  console.log(JSON.stringify(formatJsonEnvelope({ ok: true, context: "local", data: describeCommands(command) })));
 }
 
 function printHelp(): void {
@@ -339,7 +350,7 @@ Default:
   serve --transport http
 
 Supported commands:
-  serve, index, doctor, report, audit prune, eval promote, scan, skill which
+  serve, index, doctor, report, audit prune, eval promote, scan, skill list|which
   config show|get|validate|diff|status
 
 Native skill management:
@@ -354,7 +365,7 @@ See docs/deployment.md for server deployment examples.`);
 Setup:
   skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--show-mcp-setup] [--register-mcp]
-                [--no-instructions] [--no-sync]
+                [--no-instructions] [--manage-skill] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]
                 [--agent <name>...] [--no-sync]
@@ -362,7 +373,9 @@ Setup:
   skillmux project <list|show|add-path|remove-path|pin|unpin|attach|detach>
   skillmux agent <list|add|remove|rehome>  (which agents this machine syncs skills to)
   skillmux core <pin|unpin> <skill_id>... [--yes] [--dry-run] [--json]
-  skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)
+  skillmux skill list [--placement mcp-only|core|project] [--json]
+  skillmux skill which <skill_id> [--json]  (local vault shadow resolution; unrelated to MCP routing)
+  skillmux status [--json]  (core usage, agents, vault; run doctor for deeper checks)
   skillmux config init --vault <path> --yes
                 (bootstraps this machine's config on its own; not a
                 prerequisite, since "skillmux init --vault" does the same)

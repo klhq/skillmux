@@ -20,6 +20,7 @@ import { runProject } from "./commands/project";
 import { runReport } from "./commands/report";
 import { runScan } from "./commands/scan";
 import { runSkill } from "./commands/skill";
+import { runStatus } from "./commands/status";
 import { runSync } from "./commands/sync";
 import { runUpdate } from "./commands/update";
 import { generateCompletions, type ShellType } from "./completions";
@@ -140,7 +141,9 @@ export const HANDLERS: Record<CommandName, CommandHandler> = {
     await runModelDownload({ isJson });
   },
 
-  skill: ({ subCommand, subArgs }) => runSkill(subCommand, subArgs),
+  skill: ({ subCommand, subArgs, isJson }) => runSkill(subCommand, subArgs, { isJson }),
+
+  status: ({ args, isJson }) => runStatus(args, { isJson }),
 
   "local-vault": async ({ subCommand, subArgs, isJson, isDryRun }) => {
     if (subCommand !== "init") {

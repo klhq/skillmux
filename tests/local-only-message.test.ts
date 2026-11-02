@@ -98,7 +98,7 @@ describe("local-only rejection names where the target came from", () => {
     const { error } = JSON.parse(stdout);
     expect(error.code).toBe("REMOTE_CONTEXT_UNSUPPORTED");
     expect(error.details).toMatchObject({
-      rejected_command: "skill which",
+      rejected_command: "skill",
       target: { name: "custom", server: "https://x.test" },
       source: { kind: "flag", flag: "--server" },
     });

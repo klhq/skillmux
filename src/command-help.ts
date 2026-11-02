@@ -80,7 +80,7 @@ different vault.`,
 usage:
   skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--show-mcp-setup] [--register-mcp]
-                [--no-instructions] [--no-sync]
+                [--no-instructions] [--manage-skill] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
 
 agents: ${SUPPORTED_AGENT_IDS.join(", ")}
@@ -97,7 +97,13 @@ block just for those; interactively, init asks about this only when
 you've selected one of those two. --no-instructions forces instruction
 writes off even when an MCP flag is set. A tool not in the agents list
 above isn't supported yet. Add it to SUPPORTED_AGENT_IDS rather than
-guessing a directory. Selected agents are written to "agents" in config.toml.`,
+guessing a directory. Selected agents are written to "agents" in config.toml.
+
+--manage-skill writes the built-in skillmux-manage skill into the vault and
+pins it as core, so every agent knows how to list, pin, install, and sync
+skills with skillmux. Re-run it after upgrading skillmux to refresh the
+skill; "skillmux status" reports when the vault copy is stale. Interactive
+init asks about it.`,
 
   project: `project: manage project-scoped skill pins and sync groups
 
@@ -244,10 +250,26 @@ default); --verbose lists each key. --json always carries every check.
 
 Accepts --context <name> / --server <url> to check a remote deployment.`,
 
-  skill: `skill: inspect local vault skill resolution
+  skill: `skill: list vault skills and inspect local vault skill resolution
 
 usage:
-  skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)`,
+  skillmux skill list [--placement mcp-only|core|project] [--json]
+  skillmux skill which <skill_id> [--json]  (local vault shadow resolution; unrelated to MCP routing)
+
+skill list shows every skill with its id, description, and placement: core
+(synced to every agent), project (synced to the groups named in
+project_groups), or mcp-only (reached through resolve_skill and fetch_skill).
+--placement filters to one of them.`,
+
+  status: `status: summarize this machine's skillmux setup
+
+usage:
+  skillmux status [--json]
+
+Reports the vault path, core usage against its limit, project groups, each
+configured agent's skill directory and whether it is managed, and which agents
+skillmux init --register-mcp can register. It only reads. Run "skillmux
+doctor" for deeper checks such as embeddings and the server.`,
 
   "local-vault": `local-vault: register an additional local vault checkout
 
