@@ -40,6 +40,21 @@ skillmux serve --transport http --port 3000
 The native HTTP server binds `127.0.0.1` by default. Configure authentication
 and a reachable hostname before serving other machines.
 
+To start a shared server under systemd or a similar supervisor without writing a
+config file first, pass the vault, the state directory and the bind address as
+flags:
+
+```sh
+SKILLMUX_HTTP_AUTH_ENABLED=true SKILLMUX_AUTH_TOKEN=... skillmux serve --transport http --port 3000 \
+  --vault /srv/skills --state-dir /var/lib/skillmux --host 0.0.0.0
+```
+
+The flags do the same job as `SKILLMUX_VAULT_PATH`, `SKILLMUX_STATE_DIR` and
+`SKILLMUX_HTTP_HOSTNAME`. Binding an address other machines can reach is still
+refused unless `server.auth_enabled` is on. The process then exits with an
+error instead of idling. If your config sets `environment_overrides = false`,
+the flags cannot apply, and `serve` stops with a message naming them.
+
 Neither native command needs a config file or an existing `~/.config/skillmux`
 directory. They use safe defaults until you add a config for a vault checkout,
 remote inference, or server policy.

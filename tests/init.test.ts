@@ -164,6 +164,15 @@ describe("printLastMile", () => {
   });
 });
 
+describe("DISCOVERY_PARAGRAPH", () => {
+  test("tells agents to read supporting files through fetch_skill, not the local disk", async () => {
+    const { DISCOVERY_PARAGRAPH } = await import("../src/init");
+    expect(DISCOVERY_PARAGRAPH).toContain("`files`");
+    expect(DISCOVERY_PARAGRAPH).toContain("`path`");
+    expect(DISCOVERY_PARAGRAPH).toMatch(/not .*(local|filesystem|disk)/i);
+  });
+});
+
 describe("applyInit", () => {
   test("never writes agent directories or hostnames into the shared manifest", () => {
     const vaultPath = tmpDir("skillmux-init-host-vault-");

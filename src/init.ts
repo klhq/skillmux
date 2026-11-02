@@ -368,7 +368,9 @@ export const DISCOVERY_PARAGRAPH =
   "call `resolve_skill` with a one-line task description. `resolve_skill` " +
   "returns a ranked shortlist; inspect candidates, fetch one or more " +
   "relevant skills with `fetch_skill`, or ignore all and proceed normally " +
-  "when none are useful.";
+  "when none are useful. A fetched skill lists its supporting files in " +
+  "`files`; read one by calling `fetch_skill` again with that `path`, not " +
+  "from the local filesystem, because the skill may live on a remote server.";
 
 export const MCP_REGISTRATION_SNIPPET = JSON.stringify(
   { mcpServers: { "skillmux": { command: "skillmux", args: ["serve"] } } },
@@ -382,7 +384,7 @@ export function printLastMile(): string {
     "Register with your MCP client:",
     MCP_REGISTRATION_SNIPPET,
     "",
-    "Add this paragraph to your shared agent instructions (~80 tokens, the entire T3 discovery mechanism):",
+    "Add this paragraph to your shared agent instructions (the entire T3 discovery mechanism):",
     DISCOVERY_PARAGRAPH,
   ].join("\n");
 }
