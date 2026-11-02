@@ -32,6 +32,33 @@ export type AcceptanceSignal =
       uncorrelated_fetch_count: number;
     };
 
+export interface ContextSavings {
+  /** How the token numbers were estimated, including the error range. */
+  method: string;
+  /** Skills reached only through MCP, which a native-only setup would have to load. */
+  unpinned_skill_count: number;
+  /**
+   * Tokens a native-only client spends at the start of every session on the
+   * name and description of each skill that is not pinned.
+   */
+  baseline_tokens: number;
+  /** Tokens the resolve_skill and fetch_skill definitions cost at the start of every session. */
+  tool_definition_tokens: number;
+  /** Per session start: baseline_tokens minus tool_definition_tokens. Negative means skillmux costs more. */
+  session_start_savings_tokens: number;
+  /** resolve_skill calls in the window. */
+  resolve_calls: number;
+  /** Tokens of every resolve_skill shortlist returned in the window. */
+  shortlist_tokens: number;
+  /** shortlist_tokens per resolve call, 0 when there were none. */
+  average_shortlist_tokens: number;
+  /**
+   * Tokens of the SKILL.md bodies fetched in the window. Not overhead: a native
+   * client loads the same body when it uses the skill.
+   */
+  fetch_body_tokens: number;
+}
+
 export interface StatsResponse {
   since: string;
   until: string;
@@ -45,6 +72,8 @@ export interface StatsResponse {
   top_empty_shortlist_queries: EmptyShortlistQuery[];
   acceptance: AcceptanceSignal;
   top_unused_shortlist_queries: EmptyShortlistQuery[];
+  /** Present when the vault was readable alongside the audit data; absent for `report --db`. */
+  context_savings?: ContextSavings;
 }
 
 const RELATIVE_WINDOW = /^(\d+)([hdwmy])$/;
@@ -334,6 +363,23 @@ export function renderStatsText(stats: StatsResponse): string {
     for (const entry of stats.top_unused_shortlist_queries) {
       lines.push(`  "${entry.query}" (${entry.count})`);
     }
+  }
+
+  const savings = stats.context_savings;
+  if (savings) {
+    lines.push("context savings (estimated tokens):");
+    lines.push(
+      `  native only, each session start: ${savings.baseline_tokens} ` +
+        `(name and description of ${savings.unpinned_skill_count} unpinned skills)`,
+    );
+    lines.push(`  with skillmux, each session start: ${savings.tool_definition_tokens} (tool definitions)`);
+    lines.push(`  saved at each session start: ${savings.session_start_savings_tokens}`);
+    lines.push(
+      `  shortlists in this window: ${savings.shortlist_tokens} over ${savings.resolve_calls} resolve calls ` +
+        `(average ${savings.average_shortlist_tokens})`,
+    );
+    lines.push(`  skill bodies fetched in this window: ${savings.fetch_body_tokens} (not overhead, a native client loads them too)`);
+    lines.push(`  method: ${savings.method}`);
   }
 
   return lines.join("\n");

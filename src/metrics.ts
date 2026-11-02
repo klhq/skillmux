@@ -34,9 +34,15 @@ export class MetricsRegistry {
   private degradations = new Map<string, number>();
   private readiness: ReadinessSnapshot | null = null;
   private deployment: MetricsDeploymentIdentity | null = null;
+  private nativeBaselineTokens: number | null = null;
 
   setReadiness(readiness: ReadinessSnapshot) {
     this.readiness = readiness;
+  }
+
+  /** Estimated tokens a native-only client spends listing the unpinned skills each session. */
+  setNativeBaselineTokens(tokens: number | null) {
+    this.nativeBaselineTokens = tokens;
   }
 
   setDeployment(deployment: MetricsDeploymentIdentity) {
@@ -163,6 +169,12 @@ export class MetricsRegistry {
     lines.push("# TYPE skill_router_retrieval_capability gauge");
     for (const capability of ["exact", "reranked", "hybrid", "lexical"]) {
       lines.push(`skill_router_retrieval_capability{capability="${capability}"} ${this.readiness?.retrieval === capability ? 1 : 0}`);
+    }
+
+    if (this.nativeBaselineTokens !== null) {
+      lines.push("# HELP skill_router_native_baseline_tokens Estimated tokens a native-only client spends at each session start listing the name and description of every unpinned skill.");
+      lines.push("# TYPE skill_router_native_baseline_tokens gauge");
+      lines.push(`skill_router_native_baseline_tokens ${this.nativeBaselineTokens}`);
     }
 
     if (this.deployment) {

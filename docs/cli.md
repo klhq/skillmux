@@ -480,6 +480,28 @@ uncorrelated fetch count instead of printing a misleading `0.000`. It also
 lists the top queries that returned candidates but received no correlated
 fetch, distinct from the existing top empty-shortlist list.
 
+`report` also prints a context savings section that compares two setups for
+the same vault. A client that loads every skill natively spends tokens at the
+start of each session on the name and description of every skill that is not
+pinned. With skillmux, the session starts with the `resolve_skill` and
+`fetch_skill` tool definitions instead, and each `resolve_skill` call adds a
+shortlist. The section reports the native baseline, the tool definition cost,
+and the difference at each session start. It also reports the tokens spent on
+shortlists in the window, with the average per call, and the tokens of the
+`SKILL.md` bodies that were fetched. Fetched bodies are listed apart from the
+overhead, because a native client loads the same body when it uses the skill.
+`--json` carries the same numbers under `context_savings`.
+
+Token counts are estimates. The method counts ASCII characters at a quarter
+token each and every other character at one token, and it can differ from a
+real tokenizer by up to 30 percent. Clients use different tokenizers, so a
+documented estimate is more honest than an exact figure for one model. Shortlist
+and body sizes use the vault as it is now, so a skill edited after the window
+shifts them slightly. Numbers are per session start or per window, never per
+session, because the HTTP transport is stateless and cannot identify sessions.
+`report --db` reads only an audit file, so it has no vault to measure and omits
+the section.
+
 `audit prune` deletes resolve and fetch rows older than `--older-than` (same
 window syntax as `--since`), or `audit.retention_days` from configuration
 (default 90; `0` disables pruning). `--dry-run` reports counts without
