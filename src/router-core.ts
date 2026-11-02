@@ -373,6 +373,29 @@ async function reindexOneSkill(db: Database, vaultPath: string, skillId: string)
   }
 }
 
+let watcherPauseDepth = 0;
+
+export function isVaultWatcherPaused(): boolean {
+  return watcherPauseDepth > 0;
+}
+
+/**
+ * Stops the vault watcher from reindexing until the returned function is called.
+ * `skillmux serve` holds this while it pulls vault_url, so git writing a tree
+ * file by file is never indexed halfway; the caller then runs one
+ * syncVaultIfNeeded to take the finished tree in a single replace. Pauses
+ * nest, and releasing the same pause twice does nothing.
+ */
+export function pauseVaultWatcher(): () => void {
+  watcherPauseDepth++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    watcherPauseDepth--;
+  };
+}
+
 /**
  * Watch the vault and fold file changes into the index within seconds.
  * Events are debounced per skill; a write that fails to parse keeps the
@@ -390,12 +413,13 @@ export async function startVaultWatcher(): Promise<() => void> {
 
   const watcher = watch(vaultPath, { recursive: true }, (_event, filename) => {
     const skillId = filename?.split(/[\\/]/)[0];
-    if (!skillId || !SKILL_ID_PATTERN.test(skillId)) return;
+    if (!skillId || !SKILL_ID_PATTERN.test(skillId) || isVaultWatcherPaused()) return;
     clearTimeout(timers.get(skillId));
     timers.set(
       skillId,
       setTimeout(() => {
         timers.delete(skillId);
+        if (isVaultWatcherPaused()) return;
         void reindexOneSkill(db, vaultPath, skillId);
       }, WATCH_DEBOUNCE_MS),
     );

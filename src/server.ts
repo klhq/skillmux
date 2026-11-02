@@ -5,7 +5,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import packageJson from "../package.json" with { type: "json" };
 import { createClients } from "./clients";
-import { isLoopbackBindHost, loadConfig, resolveConfigPath } from "./config";
+import { expandHome, isLoopbackBindHost, loadConfig, parsePullInterval, resolveConfigPath } from "./config";
 import { describeDeployment } from "./deployment";
 import { ConfigWatcher, type ReloadStatus } from "./config-watcher";
 import { RuntimeSnapshotManager } from "./snapshot";
@@ -16,7 +16,8 @@ import {
   pruneAuditIfDue,
   resolveSkill,
 } from "./router-core";
-import { closeRuntime, getRuntime, startVaultWatcher } from "./router-core";
+import { closeRuntime, getRuntime, pauseVaultWatcher, startVaultWatcher, syncVaultIfNeeded } from "./router-core";
+import { startVaultPuller } from "./vault-puller";
 import { computeNativeBaseline, getStatsWithSavings } from "./context-savings";
 import { parseSince, SINCE_PATTERN } from "./stats";
 import { countPrunable, insertAdminAuditRow, pruneAuditBefore, type AdminAuditChange } from "./db";
@@ -381,6 +382,26 @@ export async function startServer(opts?: {
           console.error(...redactedErrorLog("skillmux config reload error:", error, redact)),
       })
     : undefined;
+  // vault_pull_interval makes this server the owner of its checkout. The first
+  // pull runs before the watcher starts so a fresh deployment indexes a cloned
+  // vault instead of an empty one; a failed pull never blocks startup.
+  const vaultPuller =
+    config.vault_url !== undefined && config.vault_pull_interval !== undefined
+      ? startVaultPuller({
+          vaultPath: expandHome(config.vault_path),
+          vaultUrl: config.vault_url,
+          allowedHosts: config.egress?.allowed_hosts,
+          intervalMs: parsePullInterval(config.vault_pull_interval),
+          pauseWatcher: pauseVaultWatcher,
+          resync: syncVaultIfNeeded,
+          onResult: (status) => metricsRegistry.recordVaultPull(status),
+          warn: (message) => console.error(redact(`skillmux ${message}`)),
+        })
+      : undefined;
+  if (vaultPuller) {
+    metricsRegistry.enableVaultPull();
+    await vaultPuller.pullNow();
+  }
   const stopWatcher = await startVaultWatcher();
   const initPromise = initializeRuntime(readinessState)
     .then(() => metricsRegistry.setReadiness(readinessState.get()))
@@ -943,6 +964,7 @@ export async function startServer(opts?: {
         bunServer.stop(true);
         statsHandle?.stop();
         configWatcher?.stop();
+        vaultPuller?.stop();
         stopWatcher();
         snapshots.dispose();
         await mcpHandler.close();
@@ -966,6 +988,7 @@ export async function startServer(opts?: {
         metricsRegistry.setReadiness(readinessState.get());
         statsHandle?.stop();
         configWatcher?.stop();
+        vaultPuller?.stop();
         stopWatcher();
         snapshots.dispose();
         await stdio.close();

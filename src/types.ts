@@ -136,6 +136,8 @@ export interface Config {
   vault_path: string;
   /** Git remote `skillmux sync` clones or fast-forwards vault_path from. Absent means sync never touches git. */
   vault_url?: string;
+  /** How often `skillmux serve` pulls vault_url, such as "10m". Absent means the server never pulls. */
+  vault_pull_interval?: string;
   local_vault_paths: string[];
   state_dir: string;
   /** Agents this machine syncs skills to. See docs/configuration.md#agents. */

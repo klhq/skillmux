@@ -31,6 +31,21 @@ const remoteThresholdsSchema = z.object({
   candidate_floor: z.number(),
 }).strict();
 
+const PULL_INTERVAL_PATTERN = /^(\d+)([smh])$/;
+const PULL_INTERVAL_UNIT_MS = { s: 1000, m: 60_000, h: 3_600_000 } as const;
+/** A shorter interval would turn the server into a polling load on the vault's git host. */
+const MIN_PULL_INTERVAL_MS = 10_000;
+
+/** Reads a `vault_pull_interval` such as "30s", "10m" or "2h" as milliseconds. */
+export function parsePullInterval(value: string): number {
+  const match = PULL_INTERVAL_PATTERN.exec(value);
+  const ms = match ? Number(match[1]) * PULL_INTERVAL_UNIT_MS[match[2] as keyof typeof PULL_INTERVAL_UNIT_MS] : 0;
+  if (ms < MIN_PULL_INTERVAL_MS) {
+    throw new Error(`vault_pull_interval must be a number plus s, m or h ("30s", "10m", "2h") and at least 10s, got "${value}"`);
+  }
+  return ms;
+}
+
 const configSchema = z.object({
   config: z.object({
     environment_overrides: z.boolean().default(true),
@@ -38,6 +53,16 @@ const configSchema = z.object({
   vault_path: z.string().min(1),
   vault_url: z.string().min(1).refine(isGitUrl, {
     message: "vault_url must be a git URL (https://, ssh://, git://, file://) or user@host:path",
+  }).optional(),
+  vault_pull_interval: z.string().refine((value) => {
+    try {
+      parsePullInterval(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, {
+    message: 'vault_pull_interval must be a number plus s, m or h ("30s", "10m", "2h") and at least 10s',
   }).optional(),
   local_vault_paths: z.array(z.string()),
   state_dir: z.string().min(1),
@@ -108,7 +133,10 @@ const configSchema = z.object({
   egress: z.object({
     allowed_hosts: z.array(z.string().min(1)).optional(),
   }).strict().optional(),
-}).strict().refine((cfg) => {
+}).strict().refine((cfg) => cfg.vault_pull_interval === undefined || cfg.vault_url !== undefined, {
+  message: "vault_pull_interval needs vault_url: there is no remote to pull from",
+  path: ["vault_pull_interval"],
+}).refine((cfg) => {
   const hasReranker = cfg.inference.mode === "remote" && !!cfg.inference.reranker;
   if (hasReranker && cfg.output.max_top_k > cfg.recall.k_rerank) {
     return false;

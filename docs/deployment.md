@@ -286,6 +286,8 @@ counters show whether routing works, not only whether the server is up:
 `skill_router_fetch_ranked_total{rank}` for `fetch_skill` calls linked to a
 `resolve_skill` call (ranks `1` to `10`, `11+`, and `none` when the fetched
 skill was not in the shortlist), and `skill_router_fetch_uncorrelated_total`.
+When `vault_pull_interval` is set, `skill_router_vault_pull_total{result}` and
+`skill_router_vault_last_pull_success_timestamp_seconds` report the vault pulls.
 Top-1 acceptance is `rank="1"` over the sum of the ranked buckets. They carry no
 query text or skill IDs as labels, and they count only `SKILL.md` fetches, not
 supporting files. The values match `skillmux doctor`,
@@ -359,13 +361,50 @@ out old rows automatically at startup and at most once per 24 hours while the
 server runs; see [CLI reference](cli.md#observability-and-evaluation-skillmux-report-audit-eval)
 for the on-demand `skillmux audit prune` command.
 
+## Let the server pull its vault
+
+By default the server image reads a checkout that something else keeps current,
+which is why the examples above mount the vault with `:ro`. If you have no
+orchestrator or cron job to do that, set `vault_url` and `vault_pull_interval`
+and let the server own the checkout. The vault mount must then be writable:
+
+```toml
+# /etc/skillmux/config.toml
+vault_path = "/vault"
+vault_url = "https://github.com/you/skills.git"
+vault_pull_interval = "10m"
+```
+
+```sh
+docker run -d \
+  --name skillmux \
+  -v skillmux-vault:/vault \
+  -v skillmux-data:/data \
+  -v "$PWD/config.toml:/etc/skillmux/config.toml:ro" \
+  -e SKILLMUX_CONFIG=/etc/skillmux/config.toml \
+  -p 3000:3000 \
+  ghcr.io/klhq/skillmux:latest-slim
+```
+
+The first start clones the vault into the empty volume and indexes it, and
+later pulls pick up whatever you push within one interval. For a private
+repository, mount a read-only deploy key and set `GIT_SSH_COMMAND` to use it, or
+put a read-only token in the URL through your secret mechanism. A public
+repository needs no credentials. The image includes `git` for this.
+
+Watch `skill_router_vault_last_pull_success_timestamp_seconds` on `/metrics`. If
+it stops advancing, the server is serving older content than the remote has. See
+[Server pulls](configuration.md#server-pulls) for the exact behavior when a pull
+fails.
+
 ## Native pins with shared retrieval
 
 For the combined topology, use one Git-backed vault source of truth. A vault
 checkout is a physical copy: each machine that manages native skills keeps its
 own checkout and runs the Skillmux CLI; the shared service mounts its own
 checkout for retrieval. On one machine, `~/skills` can be both the source of
-truth and its checkout. Skillmux does not pull, push, replicate, or determine
-freshness between checkouts; Git and your deployment process own that
-responsibility. The server image reads its mounted checkout and does not manage
-host agent directories.
+truth and its checkout. Skillmux never pushes or replicates a checkout. By
+default it also does not pull one, and Git and your deployment process own
+freshness. A server can opt in to pulling its own checkout with
+[`vault_pull_interval`](#let-the-server-pull-its-vault). The server image does
+not manage host agent directories.
