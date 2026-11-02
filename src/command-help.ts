@@ -244,10 +244,26 @@ default); --verbose lists each key. --json always carries every check.
 
 Accepts --context <name> / --server <url> to check a remote deployment.`,
 
-  skill: `skill: inspect local vault skill resolution
+  skill: `skill: list vault skills and inspect local vault skill resolution
 
 usage:
-  skillmux skill which <skill_id>  (local vault shadow resolution; unrelated to MCP routing)`,
+  skillmux skill list [--placement mcp-only|core|project] [--json]
+  skillmux skill which <skill_id> [--json]  (local vault shadow resolution; unrelated to MCP routing)
+
+skill list shows every skill with its id, description, and placement: core
+(synced to every agent), project (synced to the groups named in
+project_groups), or mcp-only (reached through resolve_skill and fetch_skill).
+--placement filters to one of them.`,
+
+  status: `status: summarize this machine's skillmux setup
+
+usage:
+  skillmux status [--json]
+
+Reports the vault path, core usage against its limit, project groups, each
+configured agent's skill directory and whether it is managed, and which agents
+skillmux init --register-mcp can register. It only reads. Run "skillmux
+doctor" for deeper checks such as embeddings and the server.`,
 
   "local-vault": `local-vault: register an additional local vault checkout
 

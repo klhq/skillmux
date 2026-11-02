@@ -374,7 +374,7 @@ describe("skillmux Docker command policy", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Skillmux server image");
     expect(result.stdout).toContain("Default:\n  serve --transport http");
-    expect(result.stdout).toContain("serve, index, doctor, report, audit prune, eval promote, scan, skill which");
+    expect(result.stdout).toContain("serve, index, doctor, report, audit prune, eval promote, scan, skill list|which");
     expect(result.stdout).toContain("config show|get|validate|diff|status");
     expect(result.stdout).toContain("Install the Skillmux CLI on the host for init, install, pinning, and sync.");
     expect(result.stdout).not.toContain("Setup:");
@@ -497,7 +497,7 @@ describe("Remote context rejection (Bucket A)", () => {
     { command: "scan", args: ["scan"], name: "scan" },
     { command: "init", args: ["init"], name: "init" },
     { command: "serve", args: ["serve"], name: "serve" },
-    { command: "skill which", args: ["skill", "which", "first-skill"], name: "skill which" },
+    { command: "skill", args: ["skill", "which", "first-skill"], name: "skill" },
   ];
 
   test("rejects all 14 Bucket A commands when --server is provided (human text mode)", async () => {

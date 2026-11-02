@@ -26,7 +26,7 @@ function parseAgentIds(args: string[], usage: string): AgentId[] {
   return [...new Set(ids as AgentId[])];
 }
 
-function dirState(dir: string): "managed" | "missing" | "unmanaged" {
+export function dirState(dir: string): "managed" | "missing" | "unmanaged" {
   if (!existsSync(dir)) return "missing";
   return readSkillmuxMarker(dir)?.role === "target" ? "managed" : "unmanaged";
 }

@@ -396,18 +396,47 @@ active watched config are reported without replacing the last known good values.
 
 ---
 
-## Skill introspection (`skillmux skill which`)
+## Skill introspection (`skillmux skill list`, `skill which`, `status`)
+
+List every skill in the vault with its placement:
+
+```sh
+skillmux skill list
+skillmux skill list --placement core --json
+```
+
+Each entry has the skill ID, description, and a placement: `core` (synced to
+every agent), `project` (synced to the groups named in `project_groups`), or
+`mcp-only` (reached through `resolve_skill` and `fetch_skill`). `--placement`
+filters to one of them. Skills whose `SKILL.md` cannot be read are reported
+under `invalid` rather than dropped.
 
 Show which root actually serves a skill_id, and every root it shadows:
 
 ```sh
 skillmux skill which csv-formatter
+skillmux skill which csv-formatter --json
 ```
+
+With `--json` the data carries `found`, `serving_from`, and `shadows`. A skill
+that is not found reports `found: false` and still exits `1`.
 
 > [!NOTE]
 > `skill which` performs local vault-checkout shadow resolution (which root
 > wins on the local filesystem) and is unrelated to semantic MCP skill routing
 > (`resolve_skill`/`fetch_skill`).
+
+Summarize this machine's setup in one read-only call:
+
+```sh
+skillmux status [--json]
+```
+
+It reports the vault path, core usage against its limit, project groups, each
+configured agent's skill directory (`managed`, `missing`, or `unmanaged`) and
+whether `init --register-mcp` can register it. Any problem appears under `checks` with the command
+that fixes it. `status` reuses `doctor`'s vault checks and leaves the slower
+ones, such as embeddings, to `skillmux doctor`.
 
 ---
 
@@ -594,8 +623,21 @@ A missing argument or an unrecognized option exits `2` with the problem on the
 first line and the command's usage on the next. An unrecognized option also
 suggests the closest documented flag. In `--json` mode these errors carry
 `code: "USAGE_ERROR"`, with the usage line in `details.usage` (or the
-suggested flag in `details.suggestion`). Other exit-`2` failures keep the
-generic `EXIT_2` code.
+suggested flag in `details.suggestion`). Other failures carry a
+semantic code: `VALIDATION_ERROR` for other exit-`2` failures, `TARGET_UNREACHABLE`
+for exit `3`, `CONFLICT` for exit `4`, and `COMMAND_FAILED` for anything else.
+An unknown command or subcommand is a `USAGE_ERROR` with the closest match in
+`details.suggestion`. No error uses an `EXIT_<n>` code any more.
+
+### Discovering commands (`--help --json`)
+
+`skillmux --help --json` prints the command registry in the usual envelope, so
+an agent never has to parse the help text. Each command lists its description,
+`subcommands`, documented `flags`, full `help` text, and whether it writes:
+`writes` is true when every form writes, and `writing_subcommands` names the
+subcommands that write when the rest only read. `skillmux <command> --help
+--json` describes just that command.
+
 
 ---
 

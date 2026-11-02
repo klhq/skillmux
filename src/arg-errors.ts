@@ -2,7 +2,7 @@ import { documentedFlags } from "./command-help";
 import { CliError, suggestCorrection } from "./output";
 
 /** Flags every command accepts, so they are valid "did you mean" targets everywhere. */
-const GLOBAL_FLAGS = ["--json", "--verbose", "--dry-run", "--allow-insecure", "--no-color", "--context", "--server"];
+export const GLOBAL_FLAGS = ["--json", "--verbose", "--dry-run", "--allow-insecure", "--no-color", "--context", "--server"];
 
 const PROJECT_INIT_HINT =
   'Skills for one project are set up with "skillmux project init [path]"; init configures this machine.';
