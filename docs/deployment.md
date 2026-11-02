@@ -278,10 +278,28 @@ The Docker health check calls `/health/ready`.
 Prometheus metrics cover request totals, resolve latency histograms, errors,
 rate-limit rejections, degraded retrieval totals by stage and reason, readiness
 and active retrieval capability gauges, and a `skill_router_deployment_info` gauge
-labelled with `version`, `runtime`, and `image_variant`. The values match `skillmux doctor`,
+labelled with `version`, `runtime`, and `image_variant`. Three routing-quality
+counters show whether routing works, not only whether the server is up:
+`skill_router_resolve_results_total{result="candidates|empty"}`,
+`skill_router_fetch_ranked_total{rank}` for `fetch_skill` calls linked to a
+`resolve_skill` call (ranks `1` to `10`, `11+`, and `none` when the fetched
+skill was not in the shortlist), and `skill_router_fetch_uncorrelated_total`.
+Top-1 acceptance is `rank="1"` over the sum of the ranked buckets. They carry no
+query text or skill IDs as labels, and they count only `SKILL.md` fetches, not
+supporting files. The values match `skillmux doctor`,
 `skillmux config status`, and `/health/ready`; use `image_variant="none"` for
 a host runtime. These operational outputs never include credentials, API keys,
-or token values. Health and metrics do not require bearer authentication, but
+or token values.
+
+Read the routing counters as a trend, not as ground truth. Linking a fetch to
+its resolve needs the client to pass `request_id` to `fetch_skill`, so ranked
+counts are a lower bound and the uncorrelated counter shows how much is
+missing. A fetch also does not prove the choice was right, and models tend to
+pick the first candidate, so acceptance overstates quality. Counters reset when
+the server restarts. `/metrics` exists only on the HTTP transport; stdio users
+get the same numbers from `skillmux report`.
+
+Health and metrics do not require bearer authentication, but
 `/stats` does when server authentication is enabled. CORS still applies to
 browser requests.
 

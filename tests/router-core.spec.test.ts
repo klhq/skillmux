@@ -313,6 +313,31 @@ describe("audit log contract", () => {
   });
 });
 
+describe("fetch correlation for metrics", () => {
+  test("reports the shortlist rank, or none, for a fetch linked to a resolve", async () => {
+    const resolved = await resolveSkill({ query: "alpha skill", top_k: 3 });
+    expect(resolved.candidates.length).toBeGreaterThan(0);
+    const first = resolved.candidates[0]!.skill_id;
+
+    const linked = await fetchSkill({ skill_id: first, request_id: resolved.request_id });
+    expect(linked.correlation).toEqual({ correlated: true, rank: 1 });
+
+    const shortlisted = new Set(resolved.candidates.map((c) => c.skill_id));
+    const outside = ["alpha-skill", "beta-skill", "gamma-skill", "router-core"].find((id) => !shortlisted.has(id));
+    if (outside) {
+      const unlisted = await fetchSkill({ skill_id: outside, request_id: resolved.request_id });
+      expect(unlisted.correlation).toEqual({ correlated: true, rank: null });
+    }
+  });
+
+  test("a missing or unknown request_id is uncorrelated", async () => {
+    expect((await fetchSkill({ skill_id: "alpha-skill" })).correlation).toEqual({ correlated: false });
+    expect(
+      (await fetchSkill({ skill_id: "alpha-skill", request_id: "no-such-request" })).correlation,
+    ).toEqual({ correlated: false });
+  });
+});
+
 describe("on-demand lazy indexing (First Principles #2)", () => {
   test("indexes a skill added within the same timestamp tick as the last index", async () => {
     await fetchSkill({ skill_id: "alpha-skill" });

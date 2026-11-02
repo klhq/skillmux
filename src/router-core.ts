@@ -37,6 +37,7 @@ import type {
   Config,
   DegradationReason,
   FetchSkillInput,
+  FetchCorrelation,
   FetchSkillResult,
   ResolveResult,
   ResolveSkillInput,
@@ -666,12 +667,14 @@ export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResu
 
   let resolveAuditId: number | null = null;
   let rankAtResolve: number | null = null;
+  let correlation: FetchCorrelation = { correlated: false };
   if (input.request_id) {
     const resolveRow = getAuditRowByRequestId(auditDb, input.request_id);
     if (resolveRow) {
       resolveAuditId = resolveRow.id;
       const index = resolveRow.candidates.findIndex((c) => c.skill_id === input.skill_id);
       rankAtResolve = index === -1 ? null : index + 1;
+      correlation = { correlated: true, rank: rankAtResolve };
     }
   }
 
@@ -683,5 +686,5 @@ export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResu
     rank_at_resolve: rankAtResolve,
   });
 
-  return { ...result, fetch_id: fetchId };
+  return { ...result, fetch_id: fetchId, correlation };
 }

@@ -136,5 +136,33 @@ describe("MetricsRegistry", () => {
     expect(body).toContain('skill_router_degraded_retrieval_total{stage="reranker",reason="reranker_timeout"} 2');
     expect(body).toContain('skill_router_degraded_retrieval_total{stage="embedding",reason="embedding_unavailable"} 1');
   });
-});
 
+  test("counts resolve results and fetch ranks without identifying labels", () => {
+    const registry = new MetricsRegistry();
+    registry.recordResolveResult(3);
+    registry.recordResolveResult(3);
+    registry.recordResolveResult(0);
+    registry.recordFetch({ correlated: true, rank: 1 });
+    registry.recordFetch({ correlated: true, rank: 1 });
+    registry.recordFetch({ correlated: true, rank: 4 });
+    registry.recordFetch({ correlated: true, rank: 25 });
+    registry.recordFetch({ correlated: true, rank: null });
+    registry.recordFetch({ correlated: false });
+
+    const output = registry.render();
+    expect(output).toContain('skill_router_resolve_results_total{result="candidates"} 2');
+    expect(output).toContain('skill_router_resolve_results_total{result="empty"} 1');
+    expect(output).toContain('skill_router_fetch_ranked_total{rank="1"} 2');
+    expect(output).toContain('skill_router_fetch_ranked_total{rank="4"} 1');
+    expect(output).toContain('skill_router_fetch_ranked_total{rank="2"} 0');
+    expect(output).toContain('skill_router_fetch_ranked_total{rank="11+"} 1');
+    expect(output).toContain('skill_router_fetch_ranked_total{rank="none"} 1');
+    expect(output).toContain("skill_router_fetch_uncorrelated_total 1");
+  });
+
+  test("a fresh registry exports zeroed routing-quality counters", () => {
+    const output = new MetricsRegistry().render();
+    expect(output).toContain('skill_router_resolve_results_total{result="empty"} 0');
+    expect(output).toContain("skill_router_fetch_uncorrelated_total 0");
+  });
+});

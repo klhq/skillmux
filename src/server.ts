@@ -248,6 +248,7 @@ export function createMcpServer(): McpServer {
         const result = await resolveSkill({ query, top_k });
         const duration = (performance.now() - startTime) / 1000;
         metricsRegistry.recordResolveLatencySeconds(duration);
+        metricsRegistry.recordResolveResult(result.candidates.length);
         if (result.degradation_reason) {
           const stage = result.degradation_reason.startsWith("embedding_") ? "embedding" : "reranker";
           metricsRegistry.recordDegradation(stage, result.degradation_reason);
@@ -283,7 +284,8 @@ export function createMcpServer(): McpServer {
     async ({ skill_id, request_id, path, parent_fetch_id }) => {
       try {
         const result = await fetchSkill({ skill_id, request_id, path, parent_fetch_id });
-        const { body, ...meta } = result;
+        const { body, correlation, ...meta } = result;
+        if (correlation) metricsRegistry.recordFetch(correlation);
         return {
           content: [
             { type: "text" as const, text: body },
