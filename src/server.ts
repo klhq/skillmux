@@ -17,11 +17,12 @@ import {
   resolveSkill,
 } from "./router-core";
 import { closeRuntime, getRuntime, startVaultWatcher } from "./router-core";
-import { getStats, parseSince, SINCE_PATTERN } from "./stats";
+import { computeNativeBaseline, getStatsWithSavings } from "./context-savings";
+import { parseSince, SINCE_PATTERN } from "./stats";
 import { countPrunable, insertAdminAuditRow, pruneAuditBefore, type AdminAuditChange } from "./db";
 import { buildPromotedCases, evalVault, queryPromotableFetches } from "./eval";
-import { SKILL_ID_PATTERN } from "./vault";
 import { MetricsRegistry } from "./metrics";
+import { FETCH_SKILL_TOOL, RESOLVE_SKILL_TOOL } from "./tool-defs";
 import { ReadinessState } from "./readiness";
 import { initializeRuntime } from "./lifecycle";
 import { buildRedactor } from "./redact";
@@ -38,6 +39,26 @@ import {
 } from "./config-service";
 
 export const metricsRegistry = new MetricsRegistry();
+
+const BASELINE_CACHE_MS = 60_000;
+let baselineCache: { at: number; tokens: number | null } | null = null;
+
+/**
+ * Scraping /metrics must stay cheap, and the baseline scans every SKILL.md, so
+ * the figure is cached briefly. A vault that cannot be read yields no gauge.
+ */
+async function nativeBaselineTokens(now = Date.now()): Promise<number | null> {
+  if (baselineCache && now - baselineCache.at < BASELINE_CACHE_MS) return baselineCache.tokens;
+  let tokens: number | null = null;
+  try {
+    const { config } = await getRuntime();
+    tokens = (await computeNativeBaseline(config)).baseline_tokens;
+  } catch {
+    tokens = null;
+  }
+  baselineCache = { at: now, tokens };
+  return tokens;
+}
 export const readinessState = new ReadinessState();
 
 // runtime-resource-hardening: positive defaults so the http transport is
@@ -191,8 +212,8 @@ async function serveStatsOnly(opts: {
             { status: 400, headers: { "Content-Type": "application/json" } },
           );
         }
-        const { auditDb } = await getRuntime();
-        return new Response(JSON.stringify(getStats(auditDb, since)), {
+        const { config, auditDb } = await getRuntime();
+        return new Response(JSON.stringify(await getStatsWithSavings(config, auditDb, since)), {
           status: 200,
           headers: { "Content-Type": "application/json", ...rateLimitResult.headers },
         });
@@ -227,20 +248,10 @@ export function createMcpServer(): McpServer {
   // second text block, not structuredContent: Claude Code shows the model only
   // structuredContent when a result has it (anthropics/claude-code#79944).
   server.registerTool(
-    "resolve_skill",
+    RESOLVE_SKILL_TOOL.name,
     {
-      description:
-        "Route a natural-language task description to candidate skills in the vault. " +
-        "Returns a ranked shortlist of candidates. Use fetch_skill to retrieve a candidate's complete instructions.",
-      inputSchema: z.object({
-        query: z.string().min(1).describe("Natural-language task or prompt description to route."),
-        top_k: z
-          .number()
-          .int()
-          .min(1)
-          .optional()
-          .describe("Optional maximum number of ranked candidates to return (subject to server max_top_k limit)."),
-      }),
+      description: RESOLVE_SKILL_TOOL.description,
+      inputSchema: RESOLVE_SKILL_TOOL.inputSchema,
     },
     async ({ query, top_k }) => {
       const startTime = performance.now();
@@ -266,20 +277,10 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
-    "fetch_skill",
+    FETCH_SKILL_TOOL.name,
     {
-      description:
-        "Fetch a skill's SKILL.md verbatim by skill_id, with sha256 and supporting-file paths. " +
-        "Pass path from that files list to read one supporting UTF-8 text file (at most 256 KiB). " +
-        "Pass the main response's fetch_id as parent_fetch_id to link attachment audit. " +
-        "Independent of any prior resolve_skill outcome. Pass the request_id from a prior " +
-        "resolve_skill call to link this fetch to it for quality measurement.",
-      inputSchema: z.object({
-        skill_id: z.string().regex(SKILL_ID_PATTERN),
-        request_id: z.string().min(1).max(128).optional(),
-        path: z.string().min(1).optional().describe("Canonical relative path from the skill's files list; omit for SKILL.md."),
-        parent_fetch_id: z.number().int().positive().optional().describe("Main-file fetch_id for this skill; use with path."),
-      }),
+      description: FETCH_SKILL_TOOL.description,
+      inputSchema: FETCH_SKILL_TOOL.inputSchema,
     },
     async ({ skill_id, request_id, path, parent_fetch_id }) => {
       try {
@@ -560,6 +561,7 @@ export async function startServer(opts?: {
               )) {
                 headers.set(key, value);
               }
+              metricsRegistry.setNativeBaselineTokens(await nativeBaselineTokens());
               return new Response(metricsRegistry.render(), {
                 status: 200,
                 headers,
@@ -598,13 +600,13 @@ export async function startServer(opts?: {
                 { status: 400, headers: { "Content-Type": "application/json" } },
               );
             }
-            const { auditDb } = await getRuntime();
+            const { config, auditDb } = await getRuntime();
             const headers = new Headers({ "Content-Type": "application/json" });
             if (allowOriginHeader)
               headers.set("Access-Control-Allow-Origin", allowOriginHeader);
             for (const [key, value] of Object.entries(rateLimitResult.headers))
               headers.set(key, value);
-            return new Response(JSON.stringify(getStats(auditDb, since)), {
+            return new Response(JSON.stringify(await getStatsWithSavings(config, auditDb, since)), {
               status: 200,
               headers,
             });

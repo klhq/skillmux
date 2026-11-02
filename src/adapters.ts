@@ -16,7 +16,8 @@ import {
 } from "./config-service";
 import type { ResolvedContext } from "./context";
 import type { Clients, Config } from "./types";
-import { getStats, parseSince, type StatsResponse } from "./stats";
+import { getStatsWithSavings } from "./context-savings";
+import { parseSince, type StatsResponse } from "./stats";
 import { countPrunable, openAudit, pruneAuditBefore, type PruneResult } from "./db";
 import { buildPromotedCases, evalVault, queryPromotableFetches, type EvalCase, type EvalReport } from "./eval";
 
@@ -145,7 +146,7 @@ export class LocalAdapter implements ContextAdapter {
     const stateDir = expandHome(config.state_dir);
     const db = openAudit(stateDir);
     try {
-      return getStats(db, since);
+      return await getStatsWithSavings(config, db, since);
     } finally {
       db.close();
     }

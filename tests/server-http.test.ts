@@ -306,8 +306,14 @@ describe("MCP Streamable HTTP Server (AC3)", () => {
     expect(text).toContain("# TYPE skill_router_requests_total");
     expect(text).toContain(`# HELP skill_router_deployment_info Immutable deployment identity for operator comparison.`);
     expect(text).toContain(`skill_router_deployment_info{version="${packageJson.version}",runtime="host",image_variant="none"} 1`);
-    expect(text).not.toContain("api_key");
-    expect(text).not.toContain("token");
+    expect(text).toContain("skill_router_native_baseline_tokens");
+    // The native-baseline gauge counts LLM tokens, not credentials, so it is the one metric allowed to say "token".
+    const withoutBaseline = text
+      .split("\n")
+      .filter((line) => !line.includes("native_baseline_tokens"))
+      .join("\n");
+    expect(withoutBaseline).not.toContain("api_key");
+    expect(withoutBaseline).not.toContain("token");
   });
 
   test("rejects a request body larger than the default max_body_bytes (1 MiB) with 413", async () => {

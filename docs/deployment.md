@@ -273,11 +273,13 @@ The HTTP server provides:
 
 The Docker health check calls `/health/ready`.
 
-`GET /stats` returns JSON aggregated from audit rows over a query window (using `?since=`, defaulting to 24 hours). The response contains `since`, `until`, `total_requests`, `empty_shortlist_count`, `empty_shortlist_rate`, `retrieval_totals` (counts for `exact`, `reranked`, `hybrid`, and `lexical`), `degraded_count`, `average_latency_ms`, per-skill candidate counts in `skills` (`skill_id`, `candidate_count`), `top_empty_shortlist_queries` (`query`, `count`), an `acceptance` signal derived from fetches correlated to their resolve (`acceptance_rate`, `observed_mrr`, `top1_acceptance_rate`, `accepted_count`, `resolves_with_candidates`, and `uncorrelated_fetch_count`, or `available: false` with just the uncorrelated count when a window has no correlated fetches), and `top_unused_shortlist_queries` (`query`, `count`) for queries that returned candidates but received no correlated fetch. See [Managing skills](skill-management.md#use-routing-data-to-tune-tiers) for using these statistics to tune delivery tiers.
+`GET /stats` returns JSON aggregated from audit rows over a query window (using `?since=`, defaulting to 24 hours). The response contains `since`, `until`, `total_requests`, `empty_shortlist_count`, `empty_shortlist_rate`, `retrieval_totals` (counts for `exact`, `reranked`, `hybrid`, and `lexical`), `degraded_count`, `average_latency_ms`, per-skill candidate counts in `skills` (`skill_id`, `candidate_count`), `top_empty_shortlist_queries` (`query`, `count`), an `acceptance` signal derived from fetches correlated to their resolve (`acceptance_rate`, `observed_mrr`, `top1_acceptance_rate`, `accepted_count`, `resolves_with_candidates`, and `uncorrelated_fetch_count`, or `available: false` with just the uncorrelated count when a window has no correlated fetches), and `top_unused_shortlist_queries` (`query`, `count`) for queries that returned candidates but received no correlated fetch, plus a `context_savings` block of estimated token counts (see [the report docs](cli.md#observability-and-evaluation-skillmux-report-audit-eval)). See [Managing skills](skill-management.md#use-routing-data-to-tune-tiers) for using these statistics to tune delivery tiers.
 
 Prometheus metrics cover request totals, resolve latency histograms, errors,
 rate-limit rejections, degraded retrieval totals by stage and reason, readiness
-and active retrieval capability gauges, and a `skill_router_deployment_info` gauge
+and active retrieval capability gauges, a `skill_router_native_baseline_tokens`
+gauge (the estimated tokens a native-only client spends each session listing the
+unpinned skills, cached for a minute), and a `skill_router_deployment_info` gauge
 labelled with `version`, `runtime`, and `image_variant`. Three routing-quality
 counters show whether routing works, not only whether the server is up:
 `skill_router_resolve_results_total{result="candidates|empty"}`,
