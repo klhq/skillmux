@@ -129,6 +129,9 @@ _skillmux_completions() {
         audit)
             COMPREPLY=( $(compgen -W "${subs("audit")}" -- "$cur") )
             ;;
+        vault)
+            COMPREPLY=( $(compgen -W "${subs("vault")}" -- "$cur") )
+            ;;
         models)
             COMPREPLY=( $(compgen -W "${subs("models")}" -- "$cur") )
             ;;
@@ -220,6 +223,8 @@ ${commands}
         _values 'shell' ${subs("completions")}
     elif [[ "$words[2]" == "audit" && CURRENT == 3 ]]; then
         _values 'audit command' ${subs("audit")}
+    elif [[ "$words[2]" == "vault" && CURRENT == 3 ]]; then
+        _values 'vault command' ${subs("vault")}
     elif [[ "$words[2]" == "models" && CURRENT == 3 ]]; then
         _values 'models command' ${subs("models")}
     elif [[ "$words[2]" == "local-vault" && CURRENT == 3 ]]; then
@@ -277,6 +282,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from context" -a "${subs("contex
 complete -c skillmux -n "__fish_seen_subcommand_from config" -a "${subs("config")}" -d "Manage configuration"
 complete -c skillmux -n "__fish_seen_subcommand_from completions" -a "${subs("completions")}" -d "Shell"
 complete -c skillmux -n "__fish_seen_subcommand_from audit" -a "${subs("audit")}" -d "Prune the audit database"
+complete -c skillmux -n "__fish_seen_subcommand_from vault" -a "${subs("vault")}" -d "Push a local vault to a server"
 complete -c skillmux -n "__fish_seen_subcommand_from models" -a "${subs("models")}" -d "Download local models"
 complete -c skillmux -n "__fish_seen_subcommand_from local-vault" -a "${subs("local-vault")}" -d "Initialize a local_vault_paths marker"
 `;

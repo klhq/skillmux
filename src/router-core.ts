@@ -55,6 +55,7 @@ import {
   sha256Hex,
   SKILL_ID_PATTERN,
 } from "./vault";
+import { vaultLock } from "./vault-lock";
 
 function vaultFingerprint(vaultPath: string, localVaultPaths: string[]): string {
   return [vaultPath, ...localVaultPaths].map((root) => `${root}=${getVaultFingerprint(root)}`).join("\n");
@@ -437,7 +438,11 @@ export async function startVaultWatcher(): Promise<() => void> {
   };
 }
 
-export async function resolveSkill(input: ResolveSkillInput): Promise<ResolveResult> {
+export function resolveSkill(input: ResolveSkillInput): Promise<ResolveResult> {
+  return vaultLock.read(() => resolveSkillLocked(input));
+}
+
+async function resolveSkillLocked(input: ResolveSkillInput): Promise<ResolveResult> {
   const t0 = performance.now();
   const { config, db, auditDb } = await getEnv();
   await syncVaultIfNeeded();
@@ -665,7 +670,11 @@ export async function pruneAuditIfDue(now: Date = new Date()): Promise<PruneResu
   return pruneAudit(auditDb, retentionDays, now);
 }
 
-export async function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {
+export function fetchSkill(input: FetchSkillInput): Promise<FetchSkillResult> {
+  return vaultLock.read(() => fetchSkillLocked(input));
+}
+
+async function fetchSkillLocked(input: FetchSkillInput): Promise<FetchSkillResult> {
   if (input.parent_fetch_id !== undefined && input.path === undefined) {
     throw new Error("INVALID_FILE_PATH: parent_fetch_id requires a supporting-file path");
   }

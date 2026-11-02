@@ -123,6 +123,11 @@ const configSchema = z.object({
     admin: z.object({
       enabled: z.boolean(),
       token_env: z.string().min(1),
+      vault_push: z.object({
+        enabled: z.boolean(),
+        max_bytes: z.number().int().positive().max(512 * 1024 * 1024).optional(),
+        fail_on: z.enum(["low", "medium", "high", "none"]).optional(),
+      }).strict().optional(),
     }).strict().optional(),
     max_body_bytes: z.number().int().positive().optional(),
     max_concurrent_requests: z.number().int().min(0).optional(),

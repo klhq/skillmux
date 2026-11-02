@@ -18,6 +18,8 @@ import {
 } from "./router-core";
 import { closeRuntime, getRuntime, pauseVaultWatcher, startVaultWatcher, syncVaultIfNeeded } from "./router-core";
 import { startVaultPuller } from "./vault-puller";
+import { handleVaultPush, vaultPushBodyLimit } from "./vault-push-endpoint";
+import { skillCount } from "./db-index";
 import { computeNativeBaseline, getStatsWithSavings } from "./context-savings";
 import { parseSince, SINCE_PATTERN } from "./stats";
 import { countPrunable, insertAdminAuditRow, pruneAuditBefore, type AdminAuditChange } from "./db";
@@ -61,6 +63,19 @@ async function nativeBaselineTokens(now = Date.now()): Promise<number | null> {
   return tokens;
 }
 export const readinessState = new ReadinessState();
+
+/**
+ * Brings the index up to date with the vault on disk and reports the new skill
+ * count on /health/ready. Readiness is written once at startup, so a vault
+ * that changes while the server runs (a pull, a push) would otherwise keep
+ * showing the count it started with.
+ */
+async function reindexVaultAndRefreshReadiness(): Promise<void> {
+  await syncVaultIfNeeded();
+  const { db } = await getRuntime();
+  readinessState.set({ ...readinessState.get(), skills: skillCount(db) });
+  metricsRegistry.setReadiness(readinessState.get());
+}
 
 // runtime-resource-hardening: positive defaults so the http transport is
 // never unbounded by omission, unlike the opt-in [egress] allowlist.
@@ -393,7 +408,7 @@ export async function startServer(opts?: {
           allowedHosts: config.egress?.allowed_hosts,
           intervalMs: parsePullInterval(config.vault_pull_interval),
           pauseWatcher: pauseVaultWatcher,
-          resync: syncVaultIfNeeded,
+          resync: reindexVaultAndRefreshReadiness,
           onResult: (status) => metricsRegistry.recordVaultPull(status),
           warn: (message) => console.error(redact(`skillmux ${message}`)),
         })
@@ -447,10 +462,14 @@ export async function startServer(opts?: {
     const port = opts?.port ?? Number(process.env.PORT || 3000);
     const hostname = config.server?.hostname ?? "127.0.0.1";
     assertSafeBindPosture(hostname, config.server?.auth_enabled ?? false);
+    // Vault push uploads a whole vault, so Bun's own body ceiling has to admit
+    // it. MCP requests keep the smaller maxBodyBytes: the MCP handler above
+    // applies its own cap, and the push route checks its own limit.
+    const vaultPushSettings = config.server?.admin?.enabled ? config.server.admin.vault_push : undefined;
     const bunServer = Bun.serve({
       port,
       hostname,
-      maxRequestBodySize: maxBodyBytes,
+      maxRequestBodySize: Math.max(maxBodyBytes, vaultPushBodyLimit(vaultPushSettings)),
       async fetch(req, server) {
         // AC3: a positive bound on in-flight requests, checked before any other
         // work — protects against connection exhaustion the same way
@@ -462,6 +481,18 @@ export async function startServer(opts?: {
           });
         }
         try {
+          // Raising Bun's body ceiling for vault push must not raise it for
+          // every other route, so refuse a declared oversize body up front.
+          if (
+            vaultPushSettings?.enabled &&
+            !(req.method === "POST" && new URL(req.url).pathname === "/admin/v1/vault")
+          ) {
+            const declared = Number(req.headers.get("content-length"));
+            if (Number.isFinite(declared) && declared > maxBodyBytes) {
+              concurrencyLimiter.release();
+              return new Response("Payload Too Large", { status: 413 });
+            }
+          }
           const res = await handleHttpRequest(req, server);
           // Defer the release until the response body actually finishes —
           // a buffered body drains almost immediately, but an open SSE
@@ -862,6 +893,20 @@ export async function startServer(opts?: {
                 }),
                 { status: 200, headers },
               );
+            }
+
+            if (req.method === "POST" && url.pathname === "/admin/v1/vault") {
+              const { auditDb } = await getRuntime();
+              const { status, body } = await handleVaultPush(req, url, {
+                config,
+                settings: vaultPushSettings,
+                auditDb,
+                pauseWatcher: pauseVaultWatcher,
+                reindex: reindexVaultAndRefreshReadiness,
+                redact,
+                warn: (message) => console.error(redact(`skillmux ${message}`)),
+              });
+              return new Response(JSON.stringify(body), { status, headers });
             }
 
             if (req.method === "POST" && url.pathname === "/admin/v1/eval") {

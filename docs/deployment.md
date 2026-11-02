@@ -397,6 +397,52 @@ it stops advancing, the server is serving older content than the remote has. See
 [Server pulls](configuration.md#server-pulls) for the exact behavior when a pull
 fails.
 
+## Push a local vault to the server
+
+When the vault is a plain directory with no git remote, `skillmux vault push`
+uploads it over the administrative API:
+
+```toml
+# server config.toml
+vault_path = "/vault"
+
+[server.admin]
+enabled = true
+token_env = "SKILLMUX_ADMIN_TOKEN"
+
+[server.admin.vault_push]
+enabled = true
+```
+
+Mount the vault writable, because the server swaps skill directories inside it:
+
+```sh
+docker run -d \
+  --name skillmux \
+  -v skillmux-vault:/vault \
+  -v skillmux-data:/data \
+  -v "$PWD/config.toml:/etc/skillmux/config.toml:ro" \
+  -e SKILLMUX_CONFIG=/etc/skillmux/config.toml \
+  -e SKILLMUX_ADMIN_TOKEN="replace-with-a-separate-admin-token" \
+  -p 3000:3000 \
+  ghcr.io/klhq/skillmux:latest-slim
+```
+
+Then, from the machine that has the vault:
+
+```sh
+skillmux context add prod --server https://skillmux.example.com --token-env SKILLMUX_ADMIN_TOKEN
+skillmux vault push --context prod --dry-run
+skillmux vault push --context prod --yes
+```
+
+The server scans the upload, replaces its vault in one step, and reindexes
+before it answers the next query. Use HTTPS for any server that is not on
+loopback, because the admin token travels with every push. A server uses one
+source of truth: it refuses a push when it also sets `vault_url`. See
+[Vault push](configuration.md#vault-push) for the limits, the checks and the
+audit trail, and read its security notes before you enable it.
+
 ## Native pins with shared retrieval
 
 For the combined topology, use one Git-backed vault source of truth. A vault
@@ -406,5 +452,6 @@ checkout for retrieval. On one machine, `~/skills` can be both the source of
 truth and its checkout. Skillmux never pushes or replicates a checkout. By
 default it also does not pull one, and Git and your deployment process own
 freshness. A server can opt in to pulling its own checkout with
-[`vault_pull_interval`](#let-the-server-pull-its-vault). The server image does
-not manage host agent directories.
+[`vault_pull_interval`](#let-the-server-pull-its-vault), or to receiving one
+from `skillmux vault push` when the vault has no git remote. The server image
+does not manage host agent directories.

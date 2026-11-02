@@ -497,6 +497,67 @@ Inside the server image, only read-only `config show`, `get`, `validate`,
 host CLI; the image returns `CONTAINER_COMMAND_UNSUPPORTED` with the exact host
 command to run. See [Deployment](deployment.md#container-command-contract).
 
+### Vault push
+
+`skillmux vault push` uploads a local vault to a server that has no git remote
+for it. The server accepts uploads only when you turn that on:
+
+```toml
+[server.admin]
+enabled = true
+token_env = "SKILLMUX_ADMIN_TOKEN"
+
+[server.admin.vault_push]
+enabled = true
+max_bytes = 33554432   # default: 32 MiB of skill content
+fail_on = "high"       # low, medium, high or none; default high
+```
+
+Leave `vault_push` out and `POST /admin/v1/vault` answers `403`. Turning it on
+is a real change in what the admin token can do. Whoever holds that token can
+replace every skill your agents are served, so give it the care you would give
+a deploy key, and expose the admin API only over TLS or a loopback address.
+Keep it a different token from `server.auth_token_env`.
+
+What the server does with an upload:
+
+- It reads a pack of regular files only. Every path must be either
+  `skillmux.toml` or inside a directory named like a skill id, with no `..`,
+  absolute path, backslash, control character or `.git` component. A pack with
+  a duplicate path, a size or hash that does not match its bytes, more than
+  5000 files, a file over 8 MiB, or more than `max_bytes` in total is refused
+  before any byte is written.
+- It checks that every skill has a `SKILL.md` that parses, and it refuses a pack
+  with no skills so a mistaken push cannot empty the server.
+- It writes the pack to a staging directory inside `vault_path` and runs the
+  same scan as `skillmux install` on it, rejecting the push if any finding is at
+  or above `fail_on`. Findings below it are accepted and listed in the response.
+  `fail_on = "none"` accepts any content.
+- It swaps the new skills in with renames and parks the old ones in a trash
+  directory until the swap succeeds, then reindexes before queries resume.
+  `resolve_skill` and `fetch_skill` wait for the swap, so no request sees part
+  of the old vault and part of the new one. If a rename fails, the old vault is
+  put back.
+- It replaces skill directories and `skillmux.toml` and leaves other entries in
+  `vault_path` alone.
+- It refuses to push when `vault_url` is set or `vault_path` is a git checkout,
+  so a server never has two sources of truth.
+- It writes one row to the admin audit trail for every upload that it reads,
+  whether the result was applied, rejected or a dry run. The row holds the
+  outcome, the SHA-256 of the whole upload and of the pack content, and the
+  counts, never the skill text.
+
+`vault_path` must be writable by the server, so a vault mounted with `:ro`
+cannot receive a push. Only one push runs at a time. While vault push is on,
+the server's request body ceiling rises to `max_bytes` plus a 4 MiB header
+allowance for the push route alone. Every other route still rejects a body
+larger than `max_body_bytes` as soon as its declared length is known.
+
+If the server crashes during the swap, the old vault is left in a
+`.skillmux-trash-*` directory inside `vault_path`. Move its contents back
+before you restart. Leftover `.skillmux-push-*` staging directories older than
+an hour are removed by the next push.
+
 ## Secret redaction and the admin audit trail
 
 Skillmux redacts resolved credential values before they can reach CLI
