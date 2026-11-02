@@ -147,3 +147,58 @@ describe("registerMcpServer", () => {
     );
   });
 });
+
+describe("registerMcpServer with a remote HTTP endpoint", () => {
+  const run = async (agent: "claude-code" | "codex", remote: { url: string; tokenEnv?: string }, scope?: "user" | "project") => {
+    let capturedCmd: string[] = [];
+    const result = await registerMcpServer(agent, {
+      remote,
+      scope,
+      spawn: (cmd) => {
+        capturedCmd = cmd;
+        return { exited: Promise.resolve(0), stderr: fakeStream("") };
+      },
+    });
+    return { capturedCmd, result };
+  };
+
+  test("registers claude-code over HTTP and references the token variable instead of its value", async () => {
+    const { capturedCmd, result } = await run("claude-code", { url: "https://skills.example.com/mcp", tokenEnv: "SKILLMUX_TOKEN" });
+    expect(capturedCmd).toEqual([
+      "claude", "mcp", "add", "--transport", "http", "-s", "user", "skillmux",
+      "https://skills.example.com/mcp", "-H", "Authorization: Bearer ${SKILLMUX_TOKEN}",
+    ]);
+    expect(result.ok).toBe(true);
+  });
+
+  test("puts the header option last, because it is variadic and would swallow the name and URL", async () => {
+    const { capturedCmd } = await run("claude-code", { url: "https://skills.example.com/mcp", tokenEnv: "T" });
+    expect(capturedCmd.indexOf("-H")).toBeGreaterThan(capturedCmd.indexOf("https://skills.example.com/mcp"));
+  });
+
+  test("omits the header when no token variable is given", async () => {
+    const { capturedCmd } = await run("claude-code", { url: "http://127.0.0.1:3000/mcp" });
+    expect(capturedCmd).toEqual([
+      "claude", "mcp", "add", "--transport", "http", "-s", "user", "skillmux", "http://127.0.0.1:3000/mcp",
+    ]);
+  });
+
+  test("keeps the project scope for claude-code", async () => {
+    const { capturedCmd } = await run("claude-code", { url: "https://skills.example.com/mcp" }, "project");
+    expect(capturedCmd.slice(5, 7)).toEqual(["-s", "project"]);
+  });
+
+  test("registers codex with --url and the token variable name", async () => {
+    const { capturedCmd } = await run("codex", { url: "https://skills.example.com/mcp", tokenEnv: "SKILLMUX_TOKEN" });
+    expect(capturedCmd).toEqual([
+      "codex", "mcp", "add", "skillmux", "--url", "https://skills.example.com/mcp",
+      "--bearer-token-env-var", "SKILLMUX_TOKEN",
+    ]);
+  });
+
+  test("never puts a stdio serve command in an HTTP registration", async () => {
+    const { capturedCmd } = await run("codex", { url: "https://skills.example.com/mcp" });
+    expect(capturedCmd).not.toContain("serve");
+    expect(capturedCmd).not.toContain("--");
+  });
+});

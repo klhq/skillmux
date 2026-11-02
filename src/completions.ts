@@ -172,6 +172,9 @@ ${commands}
           '--migrate-full-vault[convert a full-vault symlink to managed pins]' \\
           '--show-mcp-setup[also print the MCP registration snippet]' \\
           '--register-mcp[register skillmux via the agent own CLI]' \\
+          '--mcp-url[register a shared HTTP MCP server]:url:' \\
+          '--mcp-token-env[environment variable holding the bearer token]:env var name:' \\
+          '--mcp-context[take the MCP server from a context]:context:' \\
           '--no-instructions[skip managed instruction files]' \\
           '--no-sync[save setup without synchronizing]' \\
           '--interactive[force guided setup]' \\
@@ -254,6 +257,9 @@ complete -c skillmux -n "__fish_seen_subcommand_from init" -l core -x -d "Seed a
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l migrate-full-vault -d "Convert a full-vault symlink"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l show-mcp-setup -d "Also print the MCP registration snippet"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l register-mcp -d "Register skillmux via the agent's own CLI"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l mcp-url -x -d "Register a shared HTTP MCP server"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l mcp-token-env -x -d "Environment variable holding the bearer token"
+complete -c skillmux -n "__fish_seen_subcommand_from init" -l mcp-context -x -d "Take the MCP server from a context"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l no-instructions -d "Skip managed instruction files"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l no-sync -d "Save without synchronizing"
 complete -c skillmux -n "__fish_seen_subcommand_from init" -l interactive -d "Force guided setup"

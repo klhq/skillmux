@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isAgentId, SUPPORTED_AGENT_IDS, type AgentId } from "./agent-ids";
+import { remoteAuthorizationHeader, type McpRemote } from "./mcp-remote";
 
 export { isAgentId, SUPPORTED_AGENT_IDS, type AgentId };
 
@@ -23,7 +24,7 @@ export type McpRegistrationScope = "user" | "project";
 export interface McpRegistrationCommand {
   command: string;
   /** Returns undefined when this agent's CLI has no way to register at the requested scope. */
-  buildArgs: (scope: McpRegistrationScope) => string[] | undefined;
+  buildArgs: (scope: McpRegistrationScope, remote?: McpRemote) => string[] | undefined;
 }
 
 interface AgentPathOptions {
@@ -101,16 +102,18 @@ const AGENTS: Record<AgentId, AgentDefinition> = {
       // claude mcp add --scope: local (default, unshared), project (writes a
       // committed .mcp.json), or user (global). "project" is the only shared
       // option, so that's what a project-scoped registration means here.
-      buildArgs: (scope) => [
-        "mcp",
-        "add",
-        "-s",
-        scope === "project" ? "project" : "user",
-        "skillmux",
-        "--",
-        "skillmux",
-        "serve",
-      ],
+      // For a remote endpoint the header option is variadic, so it has to come
+      // after the name and URL or it would take them as header values.
+      buildArgs: (scope, remote) => {
+        const claudeScope = scope === "project" ? "project" : "user";
+        if (remote) {
+          return [
+            "mcp", "add", "--transport", "http", "-s", claudeScope, "skillmux", remote.url,
+            ...(remote.tokenEnv ? ["-H", `Authorization: ${remoteAuthorizationHeader(remote.tokenEnv)}`] : []),
+          ];
+        }
+        return ["mcp", "add", "-s", claudeScope, "skillmux", "--", "skillmux", "serve"];
+      },
     },
   },
   codex: {
@@ -124,10 +127,16 @@ const AGENTS: Record<AgentId, AgentDefinition> = {
       command: "codex",
       // codex mcp add has no --scope flag at all — it always writes to the
       // global ~/.codex/config.toml, so project scope is not representable.
-      buildArgs: (scope) =>
-        scope === "project"
-          ? undefined
-          : ["mcp", "add", "skillmux", "--", "skillmux", "serve"],
+      buildArgs: (scope, remote) => {
+        if (scope === "project") return undefined;
+        if (remote) {
+          return [
+            "mcp", "add", "skillmux", "--url", remote.url,
+            ...(remote.tokenEnv ? ["--bearer-token-env-var", remote.tokenEnv] : []),
+          ];
+        }
+        return ["mcp", "add", "skillmux", "--", "skillmux", "serve"];
+      },
     },
   },
   opencode: {

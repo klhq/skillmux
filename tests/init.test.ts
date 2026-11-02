@@ -416,3 +416,18 @@ describe("applyInit", () => {
     rmSync(targetDir, { recursive: true, force: true });
   });
 });
+
+describe("printLastMile for a remote HTTP endpoint", () => {
+  test("shows an HTTP registration with a token reference and no stdio command", () => {
+    const text = printLastMile({ url: "https://skills.example.com/mcp", tokenEnv: "SKILLMUX_TOKEN" });
+    expect(text).toContain('"type": "http"');
+    expect(text).toContain('"url": "https://skills.example.com/mcp"');
+    expect(text).toContain("Bearer ${SKILLMUX_TOKEN}");
+    expect(text).not.toContain('"command": "skillmux"');
+    expect(text).toContain("resolve_skill");
+  });
+
+  test("omits headers without a token variable", () => {
+    expect(printLastMile({ url: "http://127.0.0.1:3000/mcp" })).not.toContain("headers");
+  });
+});

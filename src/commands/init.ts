@@ -35,6 +35,8 @@ import {
   registerMcpServer,
   type McpRegistrationResult,
 } from "../mcp-registration";
+import { loadContextConfig } from "../context";
+import { mcpRemoteFromContext, parseMcpRemote, type McpRemote } from "../mcp-remote";
 import { dryRunTag, isInteractive } from "../output";
 import { isGlobalFlag } from "../global-flags";
 import {
@@ -52,6 +54,7 @@ import {
 } from "../setup";
 import { MANAGE_SKILL_ID, installManageSkill, planManageSkill } from "../builtin-skills";
 import { confirmAction } from "./shared";
+import { runInitRemoteOnly } from "./init-remote";
 import { runSync } from "./sync";
 
 function parseInitArgs(args: string[]): {
@@ -64,6 +67,9 @@ function parseInitArgs(args: string[]): {
   manageSkill: boolean;
   sync: boolean;
   vaultPath?: string;
+  mcpUrl?: string;
+  mcpTokenEnv?: string;
+  mcpContext?: string;
   yes: boolean;
 } {
   const agents: string[] = [];
@@ -75,6 +81,9 @@ function parseInitArgs(args: string[]): {
   let manageSkill = false;
   let sync = true;
   let vaultPath: string | undefined;
+  let mcpUrl: string | undefined;
+  let mcpTokenEnv: string | undefined;
+  let mcpContext: string | undefined;
   let yes = false;
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
@@ -91,6 +100,13 @@ function parseInitArgs(args: string[]): {
       const value = args[i + 1];
       if (!value) throw usageError("--vault requires a path", helpUsage("init"));
       vaultPath = value;
+      i++;
+    } else if (option === "--mcp-url" || option === "--mcp-token-env" || option === "--mcp-context") {
+      const value = args[i + 1];
+      if (!value || value.startsWith("--")) throw usageError(`${option} requires a value`, helpUsage("init"));
+      if (option === "--mcp-url") mcpUrl = value;
+      else if (option === "--mcp-token-env") mcpTokenEnv = value;
+      else mcpContext = value;
       i++;
     } else if (option === "--core") {
       const value = args[i + 1];
@@ -130,8 +146,32 @@ function parseInitArgs(args: string[]): {
     manageSkill,
     sync,
     vaultPath,
+    mcpUrl,
+    mcpTokenEnv,
+    mcpContext,
     yes,
   };
+}
+
+/** The shared HTTP server named by --mcp-url or --mcp-context, if either was given. */
+async function resolveMcpRemote(parsed: {
+  mcpUrl?: string;
+  mcpTokenEnv?: string;
+  mcpContext?: string;
+}): Promise<McpRemote | undefined> {
+  if (parsed.mcpContext && (parsed.mcpUrl || parsed.mcpTokenEnv)) {
+    throw usageError("--mcp-context cannot be combined with --mcp-url or --mcp-token-env", helpUsage("init"));
+  }
+  if (parsed.mcpTokenEnv && !parsed.mcpUrl) {
+    throw usageError("--mcp-token-env needs --mcp-url", helpUsage("init"));
+  }
+  if (parsed.mcpContext) {
+    const known = (await loadContextConfig()).contexts[parsed.mcpContext];
+    if (!known) throw usageError(`unknown context "${parsed.mcpContext}"; see "skillmux context list"`, helpUsage("init"));
+    return mcpRemoteFromContext(known);
+  }
+  if (parsed.mcpUrl) return parseMcpRemote({ url: parsed.mcpUrl, tokenEnv: parsed.mcpTokenEnv });
+  return undefined;
 }
 
 interface InitJsonPayload {
@@ -171,6 +211,7 @@ export async function runInit(
   args: string[],
   options: { isJson: boolean; dryRun: boolean },
 ): Promise<void> {
+  const parsedArgs = parseInitArgs(args);
   const {
     agents: requestedAgents,
     coreSkillIds,
@@ -182,7 +223,8 @@ export async function runInit(
     sync,
     vaultPath: requestedVaultPath,
     yes,
-  } = parseInitArgs(args);
+  } = parsedArgs;
+  const remote = await resolveMcpRemote(parsedArgs);
   // Fail on an unsupported --agent before printing any of the plan, so the
   // error is not preceded by a plan that can never be applied.
   planAgentSurfaces(requestedAgents);
@@ -193,6 +235,34 @@ export async function runInit(
   });
   migrateLegacyPaths();
   const configPath = resolveConfigPath();
+  // With a shared server named and no vault anywhere, this machine only
+  // consumes skills over HTTP. Nothing local needs a vault, so none is required.
+  if (remote && !requestedVaultPath && !existsSync(configPath)) {
+    const outcome = await runInitRemoteOnly({
+      agents: requestedAgents,
+      remote,
+      showMcpSetup,
+      skipInstructions,
+      yes,
+      guided,
+      isJson: options.isJson,
+      dryRun: options.dryRun,
+    });
+    if (outcome && options.isJson) {
+      const payload = outcome.payload as { phase: "plan" | "result"; applied: boolean; dry_run?: boolean; plan: unknown; result?: unknown };
+      console.log(
+        initJsonEnvelope({
+          command: "init",
+          phase: payload.phase,
+          dry_run: payload.dry_run ?? options.dryRun,
+          applied: payload.applied,
+          plan: payload.plan,
+          ...(payload.result ? { result: payload.result } : {}),
+        }),
+      );
+    }
+    return;
+  }
   let configPlan: ConfigInitPlan | undefined;
   let vaultPath: string;
   let existingAgents: AgentId[] = [];
@@ -285,8 +355,9 @@ export async function runInit(
   const registrableAgents = selectedAgents.filter((agent) =>
     MCP_REGISTRABLE_AGENTS.includes(agent as AgentId),
   ) as AgentId[];
-  let registerMcp = requestedRegisterMcp;
-  if (guided && registrableAgents.length > 0) {
+  // Naming a shared server is itself the request to register it.
+  let registerMcp = requestedRegisterMcp || remote !== undefined;
+  if (guided && remote === undefined && registrableAgents.length > 0) {
     registerMcp = await confirmAction(
       `Also register skillmux as an MCP server for ${registrableAgents.join(", ")}?`,
     );
@@ -645,7 +716,7 @@ export async function runInit(
   const mcpRegistrations: McpRegistrationResult[] = [];
   if (registerMcp) {
     for (const agent of registrableAgents) {
-      mcpRegistrations.push(await registerMcpServer(agent));
+      mcpRegistrations.push(await registerMcpServer(agent, { remote }));
     }
   }
 
@@ -697,7 +768,7 @@ export async function runInit(
     );
   }
   if (selectedAgents.length === 0 || showMcpSetup) {
-    console.log(`\n${printLastMile()}`);
+    console.log(`\n${printLastMile(remote)}`);
   }
   // Reaching this point already required approval above (--yes, or an accepted
   // confirmAction naming these exact directories), which also covers any
