@@ -38,9 +38,16 @@ usage:
 
 usage:
   skillmux serve [--transport stdio|http] [--port <port>] [--stats-port <port>]
+                 [--vault <path>] [--state-dir <path>] [--host <address>]
 
 --transport defaults to stdio. --stats-port exposes GET /health and GET /stats
-alongside a stdio transport without opening the full HTTP surface.`,
+alongside a stdio transport without opening the full HTTP surface.
+
+--vault, --state-dir and --host set the vault path, the state directory and the
+HTTP bind address without a config file, for a shared server started under
+systemd or similar. They take the place of SKILLMUX_VAULT_PATH,
+SKILLMUX_STATE_DIR and SKILLMUX_HTTP_HOSTNAME. Binding an address that other
+machines can reach still requires server.auth_enabled, as before.`,
 
   index: `index: rebuild the local retrieval index and backfill embeddings
 

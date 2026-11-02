@@ -167,6 +167,9 @@ describe("startVaultPuller", () => {
     const deadline = Date.now() + 5000;
     while (!events.includes("result:updated") && Date.now() < deadline) await Bun.sleep(25);
     puller.stop();
+    // A pull already running when stop() is called still finishes and reports.
+    // Let it land first, so the count below only sees pulls started after stop.
+    await Bun.sleep(300);
     const seen = events.length;
     await Bun.sleep(200);
 

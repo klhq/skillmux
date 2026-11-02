@@ -7,6 +7,7 @@ import type { CommandName } from "./command-registry";
 import { runAgent } from "./commands/agent";
 import { runAudit } from "./commands/audit";
 import { runVault } from "./commands/vault";
+import { applyServeOverrides, parseServeArgs, verifyServeOverrides } from "./serve-args";
 import { handleConfigCommand } from "./commands/config";
 import { handleContextCommand } from "./commands/context";
 import { runCore } from "./commands/core";
@@ -67,8 +68,22 @@ export const HANDLERS: Record<CommandName, CommandHandler> = {
 
   serve: async ({ args }) => {
     const { startServer } = await import("./server");
-    const { transport, port, statsPort } = parseServeArgs(args);
-    const handle = await startServer({ transport, port, statsPort });
+    const { transport, port, statsPort, overrides } = parseServeArgs(args);
+    if (Object.keys(overrides).length > 0) {
+      applyServeOverrides(overrides);
+      verifyServeOverrides(overrides, await loadConfig());
+    }
+    let handle: Awaited<ReturnType<typeof startServer>>;
+    try {
+      handle = await startServer({ transport, port, statsPort });
+    } catch (error) {
+      // A refusal such as an unsafe bind happens after the config watcher and
+      // other background work are already running, which keeps the process
+      // alive without serving. A supervisor would see a live service that
+      // answers nothing, so exit once the error has been reported.
+      setTimeout(() => process.exit(process.exitCode || 1), 500).unref();
+      throw error;
+    }
     let stopping = false;
     const shutdown = async () => {
       if (stopping) return;
@@ -194,46 +209,6 @@ async function handleCompletionsCommand(shell: string) {
     throw usageError(shell ? `unsupported shell "${shell}"` : "missing <shell> argument", "usage: skillmux completions <bash|zsh|fish>");
   }
   console.log(generateCompletions(shell as ShellType));
-}
-
-type Transport = "stdio" | "http";
-
-function parseServeArgs(args: string[]): {
-  transport: Transport;
-  port?: number;
-  statsPort?: number;
-} {
-  let transport: Transport = "stdio";
-  let port: number | undefined;
-  let statsPort: number | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const option = args[i];
-    const value = args[i + 1];
-    if (option === "--transport") {
-      if (value !== "stdio" && value !== "http") {
-        throw new Error("--transport must be stdio or http");
-      }
-      transport = value;
-      i++;
-    } else if (option === "--port") {
-      const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
-        throw new Error("--port must be an integer between 0 and 65535");
-      }
-      port = parsed;
-      i++;
-    } else if (option === "--stats-port") {
-      const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535) {
-        throw new Error("--stats-port must be an integer between 0 and 65535");
-      }
-      statsPort = parsed;
-      i++;
-    } else {
-      throw unknownOptionError("serve", option);
-    }
-  }
-  return { transport, port, statsPort };
 }
 
 async function runIndex(): Promise<void> {
