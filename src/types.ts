@@ -199,7 +199,16 @@ export interface FetchSkillResult {
   fetch_id?: number;
   /** Validated same-skill parent for attachment reads, otherwise null. */
   parent_fetch_id?: number | null;
+  /**
+   * How this main-file fetch related to a resolve_skill call. Internal: the
+   * MCP handler reads it for metrics and removes it before replying.
+   */
+  correlation?: FetchCorrelation;
 }
+
+export type FetchCorrelation =
+  | { correlated: false }
+  | { correlated: true; rank: number | null };
 
 export interface AuditCandidate {
   skill_id: string;
