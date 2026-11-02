@@ -1,3 +1,4 @@
+import { remoteAuthorizationHeader, type McpRemote } from "./mcp-remote";
 import {
   existsSync,
   lstatSync,
@@ -378,11 +379,29 @@ export const MCP_REGISTRATION_SNIPPET = JSON.stringify(
   2,
 );
 
+/** The `mcpServers` block for a shared HTTP endpoint. The token is a `${VAR}` reference the agent expands. */
+export function mcpRegistrationSnippet(remote?: McpRemote): string {
+  if (!remote) return MCP_REGISTRATION_SNIPPET;
+  return JSON.stringify(
+    {
+      mcpServers: {
+        skillmux: {
+          type: "http",
+          url: remote.url,
+          ...(remote.tokenEnv ? { headers: { Authorization: remoteAuthorizationHeader(remote.tokenEnv) } } : {}),
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
 /** §3.4 step 4: "print the last mile" — MCP registration command + discovery paragraph. */
-export function printLastMile(): string {
+export function printLastMile(remote?: McpRemote): string {
   return [
     "Register with your MCP client:",
-    MCP_REGISTRATION_SNIPPET,
+    mcpRegistrationSnippet(remote),
     "",
     "Add this paragraph to your shared agent instructions (the entire T3 discovery mechanism):",
     DISCOVERY_PARAGRAPH,

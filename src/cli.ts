@@ -365,6 +365,7 @@ See docs/deployment.md for server deployment examples.`);
 Setup:
   skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--show-mcp-setup] [--register-mcp]
+                [--mcp-url <url> [--mcp-token-env <env_name>] | --mcp-context <name>]
                 [--no-instructions] [--manage-skill] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
   skillmux project init [path] [--name <group>] [--skill <skill_id>...]

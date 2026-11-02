@@ -4,6 +4,7 @@ import {
   type AgentId,
   type McpRegistrationScope,
 } from "./init-agents";
+import type { McpRemote } from "./mcp-remote";
 
 export type { McpRegistrationScope };
 
@@ -44,11 +45,13 @@ export async function registerMcpServer(
     spawn?: SpawnFn;
     scope?: McpRegistrationScope;
     cwd?: string;
+    /** Register this shared HTTP endpoint instead of a local `skillmux serve` process. */
+    remote?: McpRemote;
   } = {},
 ): Promise<McpRegistrationResult> {
   const entry = getAgentDefinition(agent).mcpRegistration;
   const scope = options.scope ?? "user";
-  const args = entry?.buildArgs(scope);
+  const args = entry?.buildArgs(scope, options.remote);
   if (!entry || !args) {
     return {
       agent,

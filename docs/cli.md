@@ -219,6 +219,44 @@ registering; noninteractive runs only register when `--register-mcp` is
 passed explicitly. It is a no-op for agents with no known registration
 command (skip it and use `--show-mcp-setup` instead).
 
+### Connect to a shared HTTP server
+
+When a shared Skillmux server already runs, point agents at it instead of
+spawning a local `skillmux serve` process:
+
+```sh
+export SKILLMUX_TOKEN=...
+skillmux init --agent claude-code --agent codex \
+  --mcp-url https://skills.example.com/mcp --mcp-token-env SKILLMUX_TOKEN --yes
+```
+
+`--mcp-url` implies `--register-mcp`. For `claude-code` this runs
+`claude mcp add --transport http`, and for `codex` it runs `codex mcp add --url`.
+A bare host such as `https://skills.example.com` gets `/mcp` appended.
+`--mcp-context <name>` takes the URL and token variable from a context in
+`contexts.toml` instead.
+
+`--mcp-token-env` takes the name of an environment variable, never the token.
+Skillmux stores only the name. Claude Code expands `${SKILLMUX_TOKEN}` in the
+header and Codex reads the variable, both when they connect, so the secret stays
+out of their config files and off the command line. Set the variable wherever the
+agent runs. Plain `http` is accepted only for a loopback host, or when no token is
+sent. Credentials, a query string, or a fragment in the URL are rejected.
+
+There are two client shapes:
+
+- A hybrid client has a vault (a config file, or `--vault`). It keeps native pins
+  and `skillmux sync` as before and registers the HTTP server for retrieval.
+- A zero-vault client has neither. `init` writes the instruction block and
+  registers the server, and creates no config file, vault, or skill directory.
+  It also skips `--core`, `--manage-skill`, and sync, since nothing is pinned
+  locally.
+
+An agent that skillmux cannot register, such as `opencode`, gets the HTTP
+snippet to paste. A skill fetched from the shared server lists its supporting
+files in `files`, and the instruction block tells agents to read one with
+`fetch_skill` and `path` instead of from disk.
+
 The managed instruction block only teaches an agent to call `resolve_skill`/
 `fetch_skill` (MCP tools), so `init` only writes it for an agent actually
 getting MCP this run — one you passed `--register-mcp` for, or any agent at

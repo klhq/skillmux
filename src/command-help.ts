@@ -87,6 +87,7 @@ different vault.`,
 usage:
   skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--show-mcp-setup] [--register-mcp]
+                [--mcp-url <url> [--mcp-token-env <env_name>] | --mcp-context <name>]
                 [--no-instructions] [--manage-skill] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
 
@@ -105,6 +106,20 @@ you've selected one of those two. --no-instructions forces instruction
 writes off even when an MCP flag is set. A tool not in the agents list
 above isn't supported yet. Add it to SUPPORTED_AGENT_IDS rather than
 guessing a directory. Selected agents are written to "agents" in config.toml.
+
+--mcp-url <url> registers a shared HTTP MCP server instead of a local
+"skillmux serve" process, and implies --register-mcp. A bare host gets /mcp
+appended. --mcp-token-env <env_name> names the environment variable that holds
+the bearer token. Only the name is stored; the agent reads the value when it
+connects, so the token never lands in its config file. --mcp-context <name>
+takes the URL and token variable from a context in contexts.toml. Plain http
+is accepted only for a loopback host, or with no token.
+
+With --mcp-url or --mcp-context and no vault (no config file and no --vault),
+init sets up a machine that only reads skills over HTTP: it writes the
+instruction block and registers the server, and creates no config, vault, or
+skill directories. With a vault it does the usual native setup and registers
+the HTTP server in place of a local one.
 
 --manage-skill writes the built-in skillmux-manage skill into the vault and
 pins it as core, so every agent knows how to list, pin, install, and sync
