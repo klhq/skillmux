@@ -15,6 +15,8 @@ import {
   type SetConfigResult,
 } from "./config-service";
 import type { ResolvedContext } from "./context";
+import { PACK_CONTENT_TYPE } from "./vault-pack";
+import type { ScanFinding } from "./scan";
 import type { Clients, Config } from "./types";
 import { getStatsWithSavings } from "./context-savings";
 import { parseSince, type StatsResponse } from "./stats";
@@ -63,6 +65,17 @@ export interface ContextAdapter {
   auditCount(older_than?: string): Promise<AuditPruneResult>;
   evalRun(): Promise<EvalReport>;
   evalPromote(since: string): Promise<EvalCase[]>;
+  /** Uploads a packed vault to a server. Only a remote context can do this. */
+  vaultPush(body: Uint8Array, opts?: { dryRun?: boolean }): Promise<VaultPushResponse>;
+}
+
+export interface VaultPushResponse {
+  status: "replaced" | "dry-run";
+  content_sha256: string;
+  skills: string[];
+  files: number;
+  bytes: number;
+  findings: ScanFinding[];
 }
 
 export function isLoopbackHost(hostname: string): boolean {
@@ -192,6 +205,14 @@ export class LocalAdapter implements ContextAdapter {
 
   async auditCount(older_than?: string): Promise<AuditPruneResult> {
     return this.auditPrune({ older_than, dry_run: true });
+  }
+
+  async vaultPush(): Promise<VaultPushResponse> {
+    throw new CliError(
+      "vault push uploads to a server. Pass --context <name> or --server <url>.",
+      2,
+      "USAGE_ERROR",
+    );
   }
 
   async evalRun(): Promise<EvalReport> {
@@ -383,6 +404,28 @@ export class RemoteAdapter implements ContextAdapter {
       throw new Error(`Remote stats fetch failed (${status}): ${typeof data === "object" ? data?.message || data?.error || JSON.stringify(data) : data}`);
     }
     return data as StatsResponse;
+  }
+
+  async vaultPush(body: Uint8Array, opts?: { dryRun?: boolean }): Promise<VaultPushResponse> {
+    const { status, data } = await this.fetchJson(`/admin/v1/vault${opts?.dryRun ? "?dry_run=1" : ""}`, {
+      method: "POST",
+      headers: { "Content-Type": PACK_CONTENT_TYPE },
+      body: body as BodyInit,
+    });
+    if (status === 200) return data as VaultPushResponse;
+    const code = typeof data === "object" && data && typeof data.error === "string" ? data.error : "COMMAND_FAILED";
+    const reason = typeof data === "object" && data ? data.message || data.error || JSON.stringify(data) : String(data);
+    const findings: ScanFinding[] = typeof data === "object" && data && Array.isArray(data.findings) ? data.findings : [];
+    const lines = findings.map(
+      (f) => `  [${f.severity}] ${f.skill_id}/${f.file}${f.line ? `:${f.line}` : ""}: ${f.message}`,
+    );
+    const exitCode = status === 409 ? 4 : status >= 500 ? 1 : 2;
+    throw new CliError(
+      [`Server refused the vault (${status} ${code}): ${reason}`, ...lines].join("\n"),
+      exitCode,
+      code,
+      findings.length > 0 ? { findings } : undefined,
+    );
   }
 
   async auditPrune(opts?: AuditPruneOptions): Promise<AuditPruneResult> {

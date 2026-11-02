@@ -87,7 +87,7 @@ const LOCAL_ONLY_REASON: Record<string, LocalOnlyReason> = Object.fromEntries(
 
 const LOCAL_ONLY_GUIDANCE: Record<LocalOnlyReason, string> = {
   "vault-content":
-    "To change a remote deployment's vault contents, update its git-backed source and redeploy or pull on that host — skillmux doesn't replicate vault checkouts over the network. A server that sets vault_pull_interval pulls its own vault, so pushing to the vault remote is enough there.",
+    "To change a remote deployment's vault contents, update its git-backed source and redeploy or pull on that host — skillmux doesn't replicate vault checkouts over the network. A server that sets vault_pull_interval pulls its own vault, so pushing to the vault remote is enough there. For a vault with no git remote, \"skillmux vault push --context <name>\" uploads it to a server that enables server.admin.vault_push.",
   "native-delivery":
     "This manages skill delivery into agent directories on the machine you run it from; there's no remote equivalent — run it on the machine that owns those directories.",
   "local-runtime":
@@ -389,6 +389,7 @@ Init agents:
 Operations:
   skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
+  skillmux vault push --context <name> [--vault <path>] [--dry-run] [--yes] [--json]
   skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
   skillmux outdated [--allow-local-source] [--json]
   skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]

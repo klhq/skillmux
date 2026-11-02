@@ -520,6 +520,35 @@ Both `--dry-run` and `--yes` behave as elsewhere in the CLI.
 
 ---
 
+## Pushing a vault (`skillmux vault push`)
+
+```sh
+skillmux vault push --context prod --dry-run
+skillmux vault push --context prod --yes
+```
+
+This is for a server whose vault has no git remote. If you can host a remote,
+set `vault_url` and `vault_pull_interval` on the server instead and push to
+that remote; it is simpler and gives you history. See
+[Server pulls](configuration.md#server-pulls).
+
+The command reads `vault_path` from your `config.toml` (or `--vault <path>`),
+packs every directory named like a skill id plus `skillmux.toml`, and uploads it
+with the context's admin token. It lists anything it left out, such as a `.git`
+directory or loose files. A symlink in what would be sent stops the command
+before anything leaves your machine, and so does a vault with no skills.
+
+The upload replaces the server's skills. A skill that exists there and not in
+your vault is deleted, so the command asks for confirmation and needs `--yes`
+when it is not run interactively. `--dry-run` has the server validate and scan
+the pack and report what it would do, and it changes nothing. The server must
+set `server.admin.vault_push.enabled = true`, which is off by default, and it
+scans the pack and rejects it at its `fail_on` severity. A rejection prints each
+finding and exits 2. A server that pulls its vault from `vault_url` answers
+with a conflict and exit code 4. See
+[Vault push](configuration.md#vault-push) for the checks the server makes and
+the security considerations of enabling it.
+
 ## Administrative HTTP API (`/admin/v1/*`)
 
 The HTTP server has two separate surfaces:
@@ -550,6 +579,7 @@ Requests require `Authorization: Bearer <token>` where `<token>` matches the env
 | `/admin/v1/config` | `GET` | Returns desired/effective config, sources, and `ETag` revision hash |
 | `/admin/v1/config` | `PATCH` | Applies dotted-key updates; requires matching `If-Match` header |
 | `/admin/v1/audit/prune` | `POST` | Prunes audit/fetch/admin_audit rows older than cutoff; requires `confirm: true` unless `dry_run: true` |
+| `/admin/v1/vault` | `POST` | Replaces the served vault with an uploaded pack (`Content-Type: application/vnd.skillmux.vault-pack`); `?dry_run=1` validates and scans only. Off unless `server.admin.vault_push.enabled` is set |
 | `/admin/v1/eval` | `POST` | Runs vault ranking evaluation server-side and returns `EvalReport` |
 | `/admin/v1/eval/promote` | `POST` | Returns candidate promoted eval cases from the server's audit database; requires `since` |
 
@@ -560,6 +590,7 @@ Named CLI contexts (`--context <name>` or `--server <url>`) support the followin
 - `skillmux config` (`show`, `get`, `set`, `validate`, `diff`, `status`): inspect and modify remote server configuration over `/admin/v1/*`.
 - `skillmux report --since <window>`: fetches usage and retrieval metrics from the remote server's `GET /stats`.
 - `skillmux audit prune [--older-than <window>] [--dry-run] [--yes]`: prunes or dry-run counts audit records on the remote server via `POST /admin/v1/audit/prune`.
+- `skillmux vault push [--vault <path>] [--dry-run] [--yes]`: packs the local vault and replaces the server's vault with it via `POST /admin/v1/vault`. See [Pushing a vault](#pushing-a-vault-skillmux-vault-push).
 - `skillmux eval`: executes ranking evaluation against the remote server's in-process runtime via `POST /admin/v1/eval`.
 - `skillmux eval promote --since <window>`: fetches promotable candidates from the remote server's audit db via `POST /admin/v1/eval/promote`, dedups against the local fixture file, and writes locally.
 - `skillmux doctor`: inspects remote server status, readiness, deployment runtime, and capabilities without requiring local vault access.

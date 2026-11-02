@@ -173,6 +173,19 @@ usage:
 
 Accepts --context <name> / --server <url> to prune a remote deployment's audit db.`,
 
+  vault: `vault: push a local vault to a server that has no git remote for it
+
+usage:
+  skillmux vault push --context <name> [--vault <path>] [--dry-run] [--yes] [--json]
+
+Packs the skill directories and skillmux.toml in your vault, uploads them with
+the context's admin token, and replaces the server's vault. The server scans
+the upload first and rejects it at its configured severity. Skills on the
+server that are not in your vault are deleted, so the command asks you to
+confirm unless you pass --yes. --dry-run validates and scans on the server and
+changes nothing. The server must set server.admin.vault_push.enabled = true,
+and it refuses pushes when it pulls its vault from vault_url.`,
+
   scan: `scan: check the vault for install-time or integrity issues
 
 usage:

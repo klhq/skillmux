@@ -102,9 +102,19 @@ export interface RateLimitConfig {
   trust_proxy?: boolean;
 }
 
+/** `skillmux vault push` support. Off unless enabled, because it lets an admin token replace the served vault. */
+export interface VaultPushConfig {
+  enabled: boolean;
+  /** Largest accepted push body, in bytes. Default 32 MiB. */
+  max_bytes?: number;
+  /** Scan findings at or above this severity reject a push. Default "high". */
+  fail_on?: "low" | "medium" | "high" | "none";
+}
+
 export interface AdminConfig {
   enabled: boolean;
   token_env: string;
+  vault_push?: VaultPushConfig;
 }
 
 export interface ServerConfig {

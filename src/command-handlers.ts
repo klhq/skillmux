@@ -1,11 +1,12 @@
 import { unknownOptionError, usageError } from "./arg-errors";
 import { createContextAdapter, type ContextAdapter } from "./adapters";
 import { createClients } from "./clients";
-import { loadConfig } from "./config";
+import { expandHome, loadConfig } from "./config";
 import type { ResolvedContext } from "./context";
 import type { CommandName } from "./command-registry";
 import { runAgent } from "./commands/agent";
 import { runAudit } from "./commands/audit";
+import { runVault } from "./commands/vault";
 import { handleConfigCommand } from "./commands/config";
 import { handleContextCommand } from "./commands/context";
 import { runCore } from "./commands/core";
@@ -106,6 +107,15 @@ export const HANDLERS: Record<CommandName, CommandHandler> = {
 
   audit: ({ subCommand, subArgs, isJson, isDryRun, context, adapter }) =>
     runAudit(subCommand, subArgs, { isJson, dryRun: isDryRun, context, adapter }),
+
+  vault: ({ subCommand, subArgs, isJson, isDryRun, context, adapter }) =>
+    runVault(subCommand, subArgs, {
+      isJson,
+      dryRun: isDryRun,
+      context,
+      adapter,
+      resolveVaultPath: async () => expandHome((await loadConfig()).vault_path),
+    }),
 
   scan: ({ args, isJson }) => runScan(args, { isJson }),
 

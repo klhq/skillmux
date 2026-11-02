@@ -157,6 +157,16 @@ const COMMAND_TABLE = [
     contextSupport: "remote-capable",
   },
   {
+    name: "vault",
+    writes: ["push"],
+    description: "Push a local vault to a server",
+    subcommands: ["push"],
+    contextSupport: "remote-capable",
+    // The vault being uploaded lives on the machine that runs the command, so
+    // the server image has nothing to push.
+    dockerHostOnly: true,
+  },
+  {
     name: "scan",
     writes: false,
     description: "Audit skills for issues",
