@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0](https://github.com/klhq/skillmux/compare/v1.18.0...v1.19.0) (2026-11-02)
+
+
+### Added
+
+* **cli:** skill list, status, consistent JSON, and a built-in skillmux-manage skill ([#250](https://github.com/klhq/skillmux/issues/250)) ([6b7e52e](https://github.com/klhq/skillmux/commit/6b7e52e3f8198bccf125688d12e081d4ea32f8bc)), closes [#241](https://github.com/klhq/skillmux/issues/241) [#242](https://github.com/klhq/skillmux/issues/242)
+* **fetch:** read a skill's supporting files over MCP ([#243](https://github.com/klhq/skillmux/issues/243)) ([ec295d4](https://github.com/klhq/skillmux/commit/ec295d499d675be44d7d67930f398ed07a54ec82))
+* **search:** word-segment CJK and Thai text in the lexical index ([#245](https://github.com/klhq/skillmux/issues/245)) ([5c7f0cb](https://github.com/klhq/skillmux/commit/5c7f0cb834a4ee488f6ca09000793a78b95c5f01))
+
 ## [1.18.0](https://github.com/klhq/skillmux/compare/v1.17.0...v1.18.0) (2026-10-22)
 
 
