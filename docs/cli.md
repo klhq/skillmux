@@ -434,7 +434,8 @@ skillmux status [--json]
 
 It reports the vault path, core usage against its limit, project groups, each
 configured agent's skill directory (`managed`, `missing`, or `unmanaged`) and
-whether `init --register-mcp` can register it. Any problem appears under `checks` with the command
+whether `init --register-mcp` can register it, and the state of the built-in
+`skillmux-manage` skill. Any problem appears under `checks` with the command
 that fixes it. `status` reuses `doctor`'s vault checks and leaves the slower
 ones, such as embeddings, to `skillmux doctor`.
 
@@ -638,6 +639,14 @@ an agent never has to parse the help text. Each command lists its description,
 subcommands that write when the rest only read. `skillmux <command> --help
 --json` describes just that command.
 
+### Built-in management skill
+
+`skillmux init --manage-skill` writes the `skillmux-manage` skill into the vault
+and pins it as core. It teaches an agent to use the commands above with
+`--json`, run `--dry-run` before writes, and pass `--yes` only after the user
+confirms. The text is stamped with the skillmux version, so re-running the
+command after an upgrade refreshes it, and `skillmux status` reports
+`manage_skill: "stale"` until you do. Interactive `init` offers it.
 
 ---
 

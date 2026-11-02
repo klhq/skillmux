@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { MANAGE_SKILL_ID, planManageSkill } from "./builtin-skills";
 import { dirState } from "./commands/agent";
 import { expandHome } from "./config";
 import { checkVaultUrl, type DoctorCheck } from "./doctor";
@@ -22,6 +23,8 @@ export interface StatusReport {
     /** Whether `skillmux init --register-mcp` can register the MCP server with this agent. */
     mcp_registration: boolean;
   }[];
+  /** The built-in skillmux-manage skill in the vault: absent, current for this version, or stale. */
+  manage_skill: "absent" | "current" | "stale";
   checks: DoctorCheck[];
 }
 
@@ -42,6 +45,16 @@ export function buildStatus(config: Config): StatusReport {
   }
   if (config.agents.length === 0) {
     checks.push({ name: "agents", ok: false, detail: "no agents configured; run skillmux agent add <agent>" });
+  }
+
+  const manageStatus = vaultExists ? planManageSkill(vaultPath) : "create";
+  const manage_skill = manageStatus === "create" ? "absent" : manageStatus === "update" ? "stale" : "current";
+  if (manage_skill === "stale") {
+    checks.push({
+      name: "manage_skill",
+      ok: false,
+      detail: `${MANAGE_SKILL_ID} was written by another skillmux version; run skillmux init --manage-skill --yes`,
+    });
   }
 
   const agents = planAgentSurfaces(config.agents).surfaces.flatMap((surface) => {
@@ -75,6 +88,7 @@ export function buildStatus(config: Config): StatusReport {
       agents: group.agents,
     })),
     agents,
+    manage_skill,
     checks,
   };
 }

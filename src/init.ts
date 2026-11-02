@@ -220,7 +220,12 @@ function preflightManagedTargets(vaultPath: string, targets: ConfirmedTarget[]):
  * with `coreSkillIds` added to [core]. Agent selection lives in config.toml,
  * not here, so this only ever touches the shared vault's skill curation.
  */
-export function planInitManifest(vaultPath: string, coreSkillIds: string[] = []): Manifest {
+export function planInitManifest(
+  vaultPath: string,
+  coreSkillIds: string[] = [],
+  /** Skills init itself writes into the vault before the manifest, so they need not exist yet. */
+  pendingSkillIds: readonly string[] = [],
+): Manifest {
   const existingManifestPath = resolveManifestPath(vaultPath);
   const existingManifest: Manifest = existingManifestPath
     ? parseManifest(readFileSync(existingManifestPath, "utf-8"))
@@ -236,7 +241,8 @@ export function planInitManifest(vaultPath: string, coreSkillIds: string[] = [])
     throw coreLimitExceeded(manifest.core.skills.length, manifest.core.limit);
   }
   for (const skillId of coreSkillIds) {
-    if (!SKILL_ID_PATTERN.test(skillId) || !existsSync(join(vaultPath, skillId, "SKILL.md"))) {
+    const pending = pendingSkillIds.includes(skillId);
+    if (!SKILL_ID_PATTERN.test(skillId) || (!pending && !existsSync(join(vaultPath, skillId, "SKILL.md")))) {
       throw new Error(`[core] skill "${skillId}" does not exist in the vault`);
     }
     for (const [groupName, group] of Object.entries(existingManifest.project ?? {})) {
@@ -321,8 +327,9 @@ export function applyInit(
   confirmedTargets: ConfirmedTarget[],
   participant?: InitTransactionParticipant,
   coreSkillIds: string[] = [],
+  pendingSkillIds: readonly string[] = [],
 ): Manifest {
-  const manifest = planInitManifest(vaultPath, coreSkillIds);
+  const manifest = planInitManifest(vaultPath, coreSkillIds, pendingSkillIds);
   const manifestPath = resolveManifestPath(vaultPath) ?? join(vaultPath, MANIFEST_FILENAME);
   const existingCore = existsSync(manifestPath)
     ? parseManifest(readFileSync(manifestPath, "utf-8")).core.skills.length

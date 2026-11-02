@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import packageJson from "../package.json" with { type: "json" };
+import { KNOWN_COMMANDS } from "../src/command-registry";
 
 const tmp = mkdtempSync(join(tmpdir(), "skillmux-list-status-"));
 const vaultDir = join(tmp, "vault");
@@ -132,5 +134,41 @@ describe("error codes and --help --json", () => {
   test("<command> --help --json describes just that command", async () => {
     const { data } = JSON.parse((await run("skill", "--help", "--json")).stdout);
     expect(data.commands.map((c: any) => c.name)).toEqual(["skill"]);
+  });
+});
+
+describe("init --manage-skill", () => {
+  test("installs skillmux-manage into the vault, pins it as core, and status tracks staleness", async () => {
+    const dry = await run("init", "--manage-skill", "--dry-run", "--json");
+    expect(dry.exitCode).toBe(0);
+    expect(JSON.parse(dry.stdout).data.plan.manage_skill).toBe("create");
+    expect(existsSync(join(vaultDir, "skillmux-manage"))).toBe(false);
+
+    const applied = await run("init", "--manage-skill", "--yes", "--no-sync", "--json");
+    expect(applied.exitCode).toBe(0);
+    expect(JSON.parse(applied.stdout).data.result.core).toContain("skillmux-manage");
+    const skillMd = readFileSync(join(vaultDir, "skillmux-manage", "SKILL.md"), "utf8");
+    expect(skillMd).toContain(`skillmux_version: "${packageJson.version}"`);
+    expect(skillMd).not.toContain("{{version}}");
+
+    const listed = JSON.parse((await run("skill", "list", "--placement", "core", "--json")).stdout);
+    expect(listed.data.skills.map((s: any) => s.skill_id)).toContain("skillmux-manage");
+    expect(JSON.parse((await run("status", "--json")).stdout).data.manage_skill).toBe("current");
+
+    writeFileSync(join(vaultDir, "skillmux-manage", "SKILL.md"), skillMd.replace(packageJson.version, "0.0.1"));
+    const stale = JSON.parse((await run("status", "--json")).stdout).data;
+    expect(stale.manage_skill).toBe("stale");
+    const refreshed = await run("init", "--manage-skill", "--yes", "--no-sync", "--json");
+    expect(JSON.parse(refreshed.stdout).data.result.manage_skill).toBe("update");
+    expect(readFileSync(join(vaultDir, "skillmux-manage", "SKILL.md"), "utf8")).toBe(skillMd);
+  });
+
+  test("every command the skill mentions exists in the registry", () => {
+    const skillMd = readFileSync(join(import.meta.dir, "..", "src", "builtin-skills", "skillmux-manage", "SKILL.md"), "utf8");
+    const known = new Set(KNOWN_COMMANDS);
+    // Only commands in code: inline `skillmux x ...` spans and fenced lines starting with "skillmux x".
+    const mentioned = [...skillMd.matchAll(/`skillmux ([a-z][a-z-]*)|^skillmux ([a-z][a-z-]*)/gm)].map((m) => m[1] ?? m[2]!);
+    expect(mentioned.length).toBeGreaterThan(10);
+    for (const command of mentioned) expect(known.has(command)).toBe(true);
   });
 });

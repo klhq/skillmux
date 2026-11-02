@@ -80,7 +80,7 @@ different vault.`,
 usage:
   skillmux init [--agent <name>...] [--vault <path>] [--core <skill_id>...]
                 [--migrate-full-vault] [--show-mcp-setup] [--register-mcp]
-                [--no-instructions] [--no-sync]
+                [--no-instructions] [--manage-skill] [--no-sync]
                 [--interactive|--yes|--dry-run] [--json]
 
 agents: ${SUPPORTED_AGENT_IDS.join(", ")}
@@ -97,7 +97,13 @@ block just for those; interactively, init asks about this only when
 you've selected one of those two. --no-instructions forces instruction
 writes off even when an MCP flag is set. A tool not in the agents list
 above isn't supported yet. Add it to SUPPORTED_AGENT_IDS rather than
-guessing a directory. Selected agents are written to "agents" in config.toml.`,
+guessing a directory. Selected agents are written to "agents" in config.toml.
+
+--manage-skill writes the built-in skillmux-manage skill into the vault and
+pins it as core, so every agent knows how to list, pin, install, and sync
+skills with skillmux. Re-run it after upgrading skillmux to refresh the
+skill; "skillmux status" reports when the vault copy is stale. Interactive
+init asks about it.`,
 
   project: `project: manage project-scoped skill pins and sync groups
 

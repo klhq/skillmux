@@ -50,6 +50,7 @@ import {
   rollbackConfigInit,
   type ConfigInitPlan,
 } from "../setup";
+import { MANAGE_SKILL_ID, installManageSkill, planManageSkill } from "../builtin-skills";
 import { confirmAction } from "./shared";
 import { runSync } from "./sync";
 
@@ -60,6 +61,7 @@ function parseInitArgs(args: string[]): {
   showMcpSetup: boolean;
   registerMcp: boolean;
   skipInstructions: boolean;
+  manageSkill: boolean;
   sync: boolean;
   vaultPath?: string;
   yes: boolean;
@@ -70,6 +72,7 @@ function parseInitArgs(args: string[]): {
   let showMcpSetup = false;
   let registerMcp = false;
   let skipInstructions = false;
+  let manageSkill = false;
   let sync = true;
   let vaultPath: string | undefined;
   let yes = false;
@@ -107,6 +110,8 @@ function parseInitArgs(args: string[]): {
       registerMcp = true;
     } else if (option === "--no-instructions") {
       skipInstructions = true;
+    } else if (option === "--manage-skill") {
+      manageSkill = true;
     } else if (option === "--no-sync") {
       sync = false;
     } else if (option === "--yes") {
@@ -122,6 +127,7 @@ function parseInitArgs(args: string[]): {
     showMcpSetup,
     registerMcp,
     skipInstructions,
+    manageSkill,
     sync,
     vaultPath,
     yes,
@@ -172,6 +178,7 @@ export async function runInit(
     showMcpSetup,
     registerMcp: requestedRegisterMcp,
     skipInstructions,
+    manageSkill: requestedManageSkill,
     sync,
     vaultPath: requestedVaultPath,
     yes,
@@ -258,6 +265,19 @@ export async function runInit(
       ),
     );
   }
+
+  // The built-in skillmux-manage skill is written into the vault and pinned as
+  // core, so every configured agent can run skillmux for the user. A re-run
+  // refreshes it to the installed version, which is how it stays in step.
+  let manageSkill = requestedManageSkill;
+  if (guided && !manageSkill && planManageSkill(vaultPath) !== "unchanged") {
+    manageSkill = await confirmAction(
+      `Pin the ${MANAGE_SKILL_ID} skill so your agents can manage skillmux for you?`,
+    );
+  }
+  const manageSkillStatus = manageSkill ? planManageSkill(vaultPath) : undefined;
+  const pendingSkillIds = manageSkillStatus && manageSkillStatus !== "unchanged" ? [MANAGE_SKILL_ID] : [];
+  if (manageSkill) selectedCoreSkillIds = [...new Set([...selectedCoreSkillIds, MANAGE_SKILL_ID])];
 
   // Native pins and MCP registration are independent choices — this stays
   // opt-in and only offered for agents whose own CLI we've verified, so a
@@ -456,7 +476,7 @@ export async function runInit(
       ...(candidate.state === "full-vault" ? { migrateFullVault: true } : {}),
     };
   });
-  const plannedManifest = planInitManifest(vaultPath, selectedCoreSkillIds);
+  const plannedManifest = planInitManifest(vaultPath, selectedCoreSkillIds, pendingSkillIds);
   const serializedPlan = {
     vault_path: vaultPath,
     config: configPlan
@@ -465,6 +485,7 @@ export async function runInit(
     agents: nextAgents,
     dirs: agentPlan.surfaces.map((surface) => ({ dir: surface.path, agents: surface.agents })),
     core: plannedManifest.core.skills,
+    manage_skill: manageSkillStatus ?? null,
     instructions: instructionPlan.changes.map(({ path, agents, status }) => ({
       path,
       agents,
@@ -555,6 +576,9 @@ export async function runInit(
               (change) => `${change.status} instruction file ${change.path}?`,
             ),
           ...(hasConfigWrite ? [`create machine config ${configPath}?`] : []),
+          ...(pendingSkillIds.length > 0
+            ? [`${manageSkillStatus} the ${MANAGE_SKILL_ID} skill in ${vaultPath}?`]
+            : []),
           ...(selectedCoreSkillIds.length > 0
             ? [`pin core skills: ${selectedCoreSkillIds.join(", ")}?`]
             : []),
@@ -576,8 +600,10 @@ export async function runInit(
   let configCreated = false;
   let instructionsApplied = false;
   let agentsWrite: ConfigAgentsWrite | undefined;
+  let restoreManageSkill: (() => void) | undefined;
   const applyAdditional = () => {
     try {
+      if (pendingSkillIds.length > 0) restoreManageSkill = installManageSkill(vaultPath);
       if (configPlan?.action === "create") {
         configCreated = applyConfigInit(configPlan) === "created";
       }
@@ -589,6 +615,7 @@ export async function runInit(
     } catch (error) {
       if (agentsWrite) rollbackConfigAgents(agentsWrite);
       if (configCreated && configPlan) rollbackConfigInit(configPlan);
+      restoreManageSkill?.();
       configCreated = false;
       throw error;
     }
@@ -597,6 +624,7 @@ export async function runInit(
     if (instructionsApplied) rollbackInstructionPlan(instructionPlan);
     if (agentsWrite) rollbackConfigAgents(agentsWrite);
     if (configCreated && configPlan) rollbackConfigInit(configPlan);
+    restoreManageSkill?.();
   };
 
   if (confirmedTargets.length === 0 && selectedCoreSkillIds.length === 0) {
@@ -607,6 +635,7 @@ export async function runInit(
       confirmedTargets,
       { apply: applyAdditional, rollback: rollbackAdditional },
       selectedCoreSkillIds,
+      pendingSkillIds,
     );
   }
 
@@ -636,6 +665,7 @@ export async function runInit(
             .filter((change) => change.status !== "unchanged")
             .map((change) => change.path),
           core: plannedManifest.core.skills,
+          manage_skill: manageSkillStatus ?? null,
           mcp_registrations: mcpRegistrations,
         },
       }),
@@ -648,6 +678,9 @@ export async function runInit(
   }
   if (confirmedTargets.length > 0) {
     console.log(`managing: ${confirmedTargets.map((target) => target.dir).join(", ")}`);
+  }
+  if (pendingSkillIds.length > 0) {
+    console.log(`${manageSkillStatus === "create" ? "installed" : "updated"} ${MANAGE_SKILL_ID} in ${vaultPath}`);
   }
   if (selectedCoreSkillIds.length > 0) {
     console.log(`wrote ${join(vaultPath, "skillmux.toml")}`);
