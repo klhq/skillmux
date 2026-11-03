@@ -20,8 +20,9 @@ skillmux install owner/repo/path/to/skill
 skillmux install https://git.example.com/team/skill.git
 ```
 
-The repository root must contain `SKILL.md`. If a repository contains several
-skill directories, add the path for the one you want.
+If the repository root contains `SKILL.md`, that one skill is installed. If it
+does not, see [Install every skill in a repository](#install-every-skill-in-a-repository).
+Add a path to install a single skill from a collection.
 
 Skillmux clones into a temporary directory, validates the selected skill,
 scans its text files, and copies it to `vault_path`. Existing skill IDs require
@@ -53,6 +54,39 @@ instructions. A high-severity finding aborts the install by default. Use
 skillmux install owner/repo --fail-on low     # also abort on low and medium
 skillmux install owner/repo --fail-on none    # never abort on findings
 ```
+
+### Install every skill in a repository
+
+With no path and no `SKILL.md` at the root, `install` finds every directory
+that contains a `SKILL.md`, at any depth, and installs them all from one clone:
+
+```sh
+skillmux install owner/skills --dry-run
+skillmux install owner/skills --yes
+skillmux install owner/skills --only csv-formatter,pdf-extract --yes
+```
+
+Each skill is checked on its own and the plan is shown before anything is
+written. The directory name is the skill ID, so a directory whose name is not a
+valid ID, or whose ID another directory already uses, is reported as invalid.
+Symlinked directories are not followed, and a skill directory's own
+subdirectories count as its supporting files, never as more skills.
+
+The summary lists what was installed, skipped, blocked and invalid:
+
+- A skill whose ID already exists in the vault is skipped and the reason is
+  printed. `--force` overwrites it instead.
+- A skill with a finding at or above `--fail-on` is blocked and the rest still
+  install. The command then exits 1.
+- A skill with a bad `SKILL.md` or a symlink is invalid and reported the same way.
+- `--atomic` installs nothing if any skill is blocked or invalid.
+- `--only` takes skill IDs, comma-separated or repeated, and fails if the
+  repository has no skill with that ID.
+
+Every skill gets its own `.skillmux-origin` with the repository URL, the
+skill's path inside it, and the commit, so `outdated` and `update` track each
+one. Skills the author adds later are not picked up yet; run the command again
+to install them.
 
 `install` refuses a `file://` source by default — a `file://` URL reaches the
 local filesystem directly, so honoring one unconditionally would let anything

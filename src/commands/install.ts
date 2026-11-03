@@ -1,5 +1,5 @@
 import { unknownOptionError, usageError } from "../arg-errors";
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
 import {
@@ -13,6 +13,7 @@ import {
   resolveSkillDir,
   validateSkillCandidate,
 } from "../install";
+import { discoverSkills } from "../install-all";
 import { dryRunTag, emitSuccess } from "../output";
 import { hashSkillContent, writeSkillOrigin } from "../provenance";
 import {
@@ -25,6 +26,9 @@ import {
 } from "../scan";
 import { isGlobalFlag } from "../global-flags";
 import { confirmIfNeeded } from "./shared";
+import { installCollection } from "./install-collection";
+
+const INSTALL_USAGE = `usage: skillmux install <repo>[/path] [--only <id>[,<id>...]] [--atomic] [--yes] [--force] [--fail-on ${FAIL_ON_USAGE}] [--dry-run] [--allow-local-source] [--json]`;
 
 function parseInstallArgs(args: string[]): {
   repo?: string;
@@ -33,6 +37,8 @@ function parseInstallArgs(args: string[]): {
   failOn?: FailOnOption;
   allowLocalSource: boolean;
   yes: boolean;
+  only: string[];
+  atomic: boolean;
 } {
   let repo: string | undefined;
   let force = false;
@@ -40,12 +46,19 @@ function parseInstallArgs(args: string[]): {
   let failOn: FailOnOption | undefined;
   let allowLocalSource = false;
   let yes = false;
+  let atomic = false;
+  const only: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const option = args[i];
     if (option === "--force") force = true;
     else if (option === "--yes") yes = true;
     else if (option === "--dry-run") dryRun = true;
-    else if (option === "--allow-local-source") allowLocalSource = true;
+    else if (option === "--atomic") atomic = true;
+    else if (option === "--only") {
+      const value = args[++i];
+      if (!value || value.startsWith("--")) throw usageError("--only requires a skill id", INSTALL_USAGE);
+      only.push(...value.split(",").map((id) => id.trim()).filter(Boolean));
+    } else if (option === "--allow-local-source") allowLocalSource = true;
     else if (option === "--fail-on") {
       failOn = parseFailOn(args[++i]);
     } else if (isGlobalFlag(option, "--json", "--verbose")) {
@@ -58,19 +71,16 @@ function parseInstallArgs(args: string[]): {
       repo = option;
     }
   }
-  return { repo, force, dryRun, failOn, allowLocalSource, yes };
+  return { repo, force, dryRun, failOn, allowLocalSource, yes, only, atomic };
 }
 
 export async function runInstall(
   args: string[],
   options: { isJson: boolean },
 ): Promise<void> {
-  const { repo, force, dryRun, failOn, allowLocalSource, yes } = parseInstallArgs(args);
+  const { repo, force, dryRun, failOn, allowLocalSource, yes, only, atomic } = parseInstallArgs(args);
   if (!repo) {
-    throw usageError(
-      "missing <repo> argument",
-      `usage: skillmux install <repo>[/path] [--yes] [--force] [--fail-on ${FAIL_ON_USAGE}] [--dry-run] [--allow-local-source] [--json]`,
-    );
+    throw usageError("missing <repo> argument", INSTALL_USAGE);
   }
 
   const source = resolveRepoSource(repo);
@@ -83,6 +93,27 @@ export async function runInstall(
   assertHostAllowed(source.url, config.egress?.allowed_hosts);
   const cloneDir = await cloneToTemp(source.url);
   try {
+    if (!source.skillPath && !existsSync(join(cloneDir, "SKILL.md"))) {
+      await installCollection({
+        cloneDir,
+        source,
+        vaultPath: expandHome(config.vault_path),
+        force,
+        dryRun,
+        yes,
+        failOn,
+        only,
+        atomic,
+        isJson: options.isJson,
+      });
+      return;
+    }
+    if (only.length > 0 || atomic) {
+      throw usageError(
+        "--only and --atomic apply when installing every skill in a repository",
+        INSTALL_USAGE,
+      );
+    }
     const resolved = resolveSkillDir(
       cloneDir,
       deriveRepoName(source.url),

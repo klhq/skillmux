@@ -224,7 +224,7 @@ release.`,
   install: `install: install a skill from a git source
 
 usage:
-  skillmux install <repo>[/path] [--yes] [--force] [--fail-on low|medium|high|none] [--dry-run] [--allow-local-source] [--json]
+  skillmux install <repo>[/path] [--only <id>[,<id>...]] [--atomic] [--yes] [--force] [--fail-on low|medium|high|none] [--dry-run] [--allow-local-source] [--json]
 
 --yes approves writing the skill into the vault. Without it an interactive
 run asks first, and a non-interactive one (no TTY, or --json) fails rather
@@ -238,7 +238,15 @@ low aborts on low, medium and high.
 --force overwrites a skill that already exists in the vault instead of
 refusing. --dry-run reports where the skill would land without writing.
 --allow-local-source permits a file:// or local path source, which is
-otherwise rejected.`,
+otherwise rejected.
+
+With no path and no SKILL.md at the repository root, install finds every
+skill directory in the repository and installs them all from one clone. Each
+skill is scanned on its own: one that meets --fail-on is blocked, one with a
+bad SKILL.md is invalid, and one already in the vault is skipped unless
+--force. The rest still install, and the exit code is 1 if any was blocked or
+invalid. --atomic installs nothing when any skill is blocked or invalid.
+--only limits the run to the named skill ids.`,
 
   outdated: `outdated: list installed skills with a newer upstream version
 
