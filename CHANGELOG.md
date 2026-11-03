@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.1](https://github.com/klhq/skillmux/compare/v1.20.0...v1.20.1) (2026-11-03)
+
+
+### Added
+
+* **audit:** export audit rows so stdio deployments can be reported on ([#262](https://github.com/klhq/skillmux/issues/262)) ([b8f2bb9](https://github.com/klhq/skillmux/commit/b8f2bb906d44b4a39370be465d7b33a216b62a24)), closes [#246](https://github.com/klhq/skillmux/issues/246)
+
 ## [1.20.0](https://github.com/klhq/skillmux/compare/v1.19.0...v1.20.0) (2026-11-03)
 
 
