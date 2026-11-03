@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0](https://github.com/klhq/skillmux/compare/v1.19.0...v1.20.0) (2026-11-03)
+
+
+### Added
+
+* **agents:** support Pi, OpenClaw, Grok Build and DeepSeek Harness ([#261](https://github.com/klhq/skillmux/issues/261)) ([6cf2001](https://github.com/klhq/skillmux/commit/6cf2001231a68f6f5affee146d9828c313d82bef)), closes [#239](https://github.com/klhq/skillmux/issues/239)
+* **init:** register a shared HTTP MCP server and support clients with no vault ([#259](https://github.com/klhq/skillmux/issues/259)) ([9fde57d](https://github.com/klhq/skillmux/commit/9fde57db4bdad3fe199478bf9ac4af2393a4bcd0))
+* **install:** install every skill in a repository with one command ([#260](https://github.com/klhq/skillmux/issues/260)) ([6bdc5ff](https://github.com/klhq/skillmux/commit/6bdc5ff4d1edad7acd926cda556b9e307d2f1cee)), closes [#240](https://github.com/klhq/skillmux/issues/240)
+* **metrics:** export routing-quality counters on /metrics ([#251](https://github.com/klhq/skillmux/issues/251)) ([ec21503](https://github.com/klhq/skillmux/commit/ec21503f24f213f482299134fa4366da8de09053))
+* **report:** show context savings in skillmux report ([#253](https://github.com/klhq/skillmux/issues/253)) ([be4bf20](https://github.com/klhq/skillmux/commit/be4bf20c20e869a23b5842816ccb18bf5ae4aef6))
+* **serve:** add --vault, --state-dir and --host, and teach agents to fetch supporting files ([#258](https://github.com/klhq/skillmux/issues/258)) ([f36e7d6](https://github.com/klhq/skillmux/commit/f36e7d6f1a66e50b6b9b4af862ddca3374b641ad))
+* **server:** pull the vault from vault_url on an interval ([#256](https://github.com/klhq/skillmux/issues/256)) ([70339a7](https://github.com/klhq/skillmux/commit/70339a78a47bce45a1746eaf95c313e382c42c69))
+* **server:** push a local vault to the server with skillmux vault push ([#257](https://github.com/klhq/skillmux/issues/257)) ([55af3a8](https://github.com/klhq/skillmux/commit/55af3a8f04adfc48eb9cca10eb2e334a48b30c2f))
+
 ## [1.19.0](https://github.com/klhq/skillmux/compare/v1.18.0...v1.19.0) (2026-11-02)
 
 
