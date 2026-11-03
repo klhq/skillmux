@@ -2,7 +2,8 @@ import { unknownOptionError, usageError } from "../arg-errors";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expandHome, loadConfig } from "../config";
-import { excludeExistingCases, parseEvalCases } from "../eval";
+import { exportWindow, parseAuditExport, promotableFetchesFromExport } from "../audit-export";
+import { buildPromotedCases, excludeExistingCases, parseEvalCases, type EvalCase } from "../eval";
 import { emitSuccess, warn } from "../output";
 import { parseSince } from "../stats";
 import { confirmIfNeeded } from "./shared";
@@ -11,10 +12,11 @@ import { isGlobalFlag, isGlobalFlagWithValue } from "../global-flags";
 
 export async function runEvalPromote(
   args: string[],
-  options: { isJson: boolean; dryRun: boolean; adapter: ContextAdapter },
+  options: { isJson: boolean; dryRun: boolean; adapter: ContextAdapter; isLocalContext: boolean },
 ): Promise<void> {
   let since: string | undefined;
   let out: string | undefined;
+  let from: string | undefined;
   let target: string | undefined;
   let dryRun = options.dryRun;
   let yes = false;
@@ -22,6 +24,7 @@ export async function runEvalPromote(
     const arg = args[i];
     if (arg === "--since") since = args[++i];
     else if (arg === "--out") out = args[++i];
+    else if (arg === "--from") from = args[++i];
     else if (arg === "--target") target = args[++i];
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--yes") yes = true;
@@ -36,7 +39,7 @@ export async function runEvalPromote(
   if (!since) {
     throw usageError(
       "missing required option --since <window>",
-      "usage: skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]",
+      "usage: skillmux eval promote --since <window> [--from <export.jsonl>] [--out <path>] [--dry-run] [--yes] [--json]",
     );
   }
 
@@ -51,10 +54,26 @@ export async function runEvalPromote(
   const config = await loadConfig();
   const stateDir = expandHome(config.state_dir);
   const targetPath = out ?? target ?? join(stateDir, "eval-observed.json");
-  const sinceDate = parseSince(since);
-  const sinceIso = sinceDate.toISOString();
-
-  const candidates = await options.adapter.evalPromote(since);
+  let sinceIso: string;
+  let candidates: EvalCase[];
+  if (from !== undefined) {
+    if (!options.isLocalContext) {
+      throw new Error("--from cannot be combined with --context or --server");
+    }
+    const data = parseAuditExport(readFileSync(from, "utf-8"));
+    const window = exportWindow(data, since);
+    if (!window.covered) {
+      warn(
+        `the export starts at ${data.header.since}, after the start of the requested window; ` +
+          "only exported fetches can be promoted",
+      );
+    }
+    sinceIso = window.since.toISOString();
+    candidates = buildPromotedCases(promotableFetchesFromExport(data, sinceIso));
+  } else {
+    sinceIso = parseSince(since).toISOString();
+    candidates = await options.adapter.evalPromote(since);
+  }
 
   const existing = existsSync(targetPath) ? parseEvalCases(JSON.parse(readFileSync(targetPath, "utf-8"))) : [];
   const { cases: newCases, skipped } = excludeExistingCases(candidates, existing);

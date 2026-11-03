@@ -152,8 +152,8 @@ const COMMAND_TABLE = [
   {
     name: "audit",
     writes: ["prune"],
-    description: "Prune the audit database",
-    subcommands: ["prune"],
+    description: "Prune or export the audit database",
+    subcommands: ["prune", "export"],
     contextSupport: "remote-capable",
   },
   {

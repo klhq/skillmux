@@ -203,6 +203,7 @@ ${commands}
         _arguments \
           '--since[time window]:window:' \
           '--out[output file]:file:_files' \
+          '--from[audit export file]:file:_files' \
           '--dry-run[print the plan without writing]' \
           '--yes[apply without prompts]' \
           '--json[emit a JSON envelope]' \\
@@ -277,6 +278,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from project" -l yes -d "Apply w
 complete -c skillmux -n "__fish_seen_subcommand_from eval" -a "${subs("eval")}" -d "Promote correlated fetches into eval cases"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l since -x -d "Time window"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l out -r -d "Output file"
+complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l from -r -d "Audit export file"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l dry-run -d "Print the plan without writing"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l yes -d "Apply without prompts"
 complete -c skillmux -n "__fish_seen_subcommand_from eval; and __fish_seen_subcommand_from promote" -l json -d "Emit a JSON envelope"
@@ -287,7 +289,7 @@ complete -c skillmux -n "__fish_seen_subcommand_from skill" -a "${subs("skill")}
 complete -c skillmux -n "__fish_seen_subcommand_from context" -a "${subs("context")}" -d "Manage contexts"
 complete -c skillmux -n "__fish_seen_subcommand_from config" -a "${subs("config")}" -d "Manage configuration"
 complete -c skillmux -n "__fish_seen_subcommand_from completions" -a "${subs("completions")}" -d "Shell"
-complete -c skillmux -n "__fish_seen_subcommand_from audit" -a "${subs("audit")}" -d "Prune the audit database"
+complete -c skillmux -n "__fish_seen_subcommand_from audit" -a "${subs("audit")}" -d "Prune or export the audit database"
 complete -c skillmux -n "__fish_seen_subcommand_from vault" -a "${subs("vault")}" -d "Push a local vault to a server"
 complete -c skillmux -n "__fish_seen_subcommand_from models" -a "${subs("models")}" -d "Download local models"
 complete -c skillmux -n "__fish_seen_subcommand_from local-vault" -a "${subs("local-vault")}" -d "Initialize a local_vault_paths marker"

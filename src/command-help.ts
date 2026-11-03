@@ -190,14 +190,24 @@ creates one.`,
   report: `report: show routing/fetch-outcome audit statistics
 
 usage:
-  skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]`,
+  skillmux report [--context <name> | --server <url> | --db <path> | --from <export.jsonl>] --since <window> [--json]
 
-  audit: `audit: prune the audit database
+--from reads a file written by "skillmux audit export". A relative --since
+window counts back from the time of the export.`,
+
+  audit: `audit: prune or export the audit database
 
 usage:
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
+  skillmux audit export [--since <window>] [--db <path>] [--out <path>] [--json]
 
-Accepts --context <name> / --server <url> to prune a remote deployment's audit db.`,
+prune accepts --context <name> / --server <url> to prune a remote deployment's audit db.
+
+export writes resolve, fetch and attachment rows as JSON lines, to stdout or
+to a new owner-only --out file. It reads the local database read-only, so run
+it where the database lives, for example through an MCP gateway container's
+exec. "report --from" and "eval promote --from" read the file. Exports carry
+raw user queries.`,
 
   vault: `vault: push a local vault to a server that has no git remote for it
 
@@ -282,9 +292,10 @@ discarding local edits. --allow-local-source permits local/file:// sources.`,
 
 usage:
   skillmux eval [--json]
-  skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
+  skillmux eval promote --since <window> [--from <export.jsonl>] [--out <path>] [--dry-run] [--yes] [--json]
 
-Accepts --context <name> / --server <url> to evaluate a remote deployment.`,
+Accepts --context <name> / --server <url> to evaluate a remote deployment.
+promote --from reads a file written by "skillmux audit export" instead.`,
 
   doctor: `doctor: check server/environment readiness
 
