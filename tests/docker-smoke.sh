@@ -52,7 +52,7 @@ jq -e \
 # accidentally advertising the host CLI command surface.
 docker run --rm "$IMAGE" --help >"$WORKDIR/help.out"
 grep -Fq "Skillmux server image" "$WORKDIR/help.out"
-grep -Fq "serve, index, doctor, report, audit prune, eval promote, scan, skill list|which" "$WORKDIR/help.out"
+grep -Fq "serve, index, doctor, report, audit prune|export, eval promote, scan, skill list|which" "$WORKDIR/help.out"
 grep -Fq "config show|get|validate|diff|status" "$WORKDIR/help.out"
 if grep -Fq "project, target, core" "$WORKDIR/help.out"; then
   echo "Docker help advertised host-management commands" >&2
@@ -112,6 +112,13 @@ curl --fail --silent "http://127.0.0.1:$PORT/health/ready" | jq -e \
 curl --fail --silent "http://127.0.0.1:$PORT/metrics" | grep -F \
   "skill_router_deployment_info{" | grep -F \
   "runtime=\"docker\",image_variant=\"$EXPECTED_VARIANT\"" >/dev/null
+
+# The documented way to read a stdio deployment's audit rows (#246): a one-shot
+# container on the same volume exports them while the server holds the live
+# database. stdout must carry only the JSON lines.
+docker run --rm -v "$DATA:/data" "$IMAGE" audit export --since 1d >"$WORKDIR/audit.jsonl"
+head -n 1 "$WORKDIR/audit.jsonl" | jq -e \
+  '.format == "skillmux-audit-export" and .version == 1' >/dev/null
 
 # SIGTERM is the normal container stop signal and must exit cleanly.
 docker kill --signal=TERM "$CONTAINER" >/dev/null

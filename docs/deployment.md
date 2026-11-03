@@ -123,12 +123,13 @@ Docker Compose `command:` and Kubernetes `args:` likewise replace only the
 default command, not the executable.
 
 The supported container commands are `serve`, `index`, `doctor`, `report`,
-`scan`, `skill list`, `skill which`, and read-only `config show`, `config get`,
-`config validate`, `config diff`, and `config status`.
+`audit prune`, `audit export`, `eval promote`, `scan`, `skill list`,
+`skill which`, and read-only `config show`, `config get`, `config validate`,
+`config diff`, and `config status`.
 
 The image rejects host-management commands, including `init`, `sync`,
 `install`, `project`, `agent`, `core`, `local-vault`, `models download`,
-context management, evaluation, and configuration initialization
+context management, ranking evaluation (`eval`), and configuration initialization
 or mutation. Install the Skillmux CLI on the host when a command needs to
 manage a local vault or agent directory.
 
@@ -187,6 +188,45 @@ docker run --no-healthcheck -i --rm \
 
 The container must keep standard input open, so use `-i`. Disable the baked
 HTTP health check for stdio because no HTTP listener is started.
+
+### Reading audit data from a stdio deployment
+
+A stdio server writes its audit rows to `audit.sqlite3` in its own `state_dir`.
+No HTTP endpoint serves them, so `skillmux report` on the host reads the host's
+own, usually empty, database. This also applies when an MCP gateway runs
+skillmux as a stdio subprocess inside the gateway's container.
+
+Export the rows where the database lives, then read the file on the host. With
+the image above, run a one-shot container against the same volume:
+
+```sh
+docker run --rm -v skillmux-data:/data \
+  ghcr.io/klhq/skillmux:latest audit export --since 30d > audit.jsonl
+skillmux report --from audit.jsonl --since 7d
+skillmux eval promote --from audit.jsonl --since 7d --dry-run
+```
+
+When skillmux is installed inside a gateway container, run the same
+`skillmux audit export` command through that container's exec mechanism, as
+the user that runs the gateway. `audit export` opens the database read-only
+and never creates or migrates it.
+
+Do not open the live database from the host or from a root shell in another
+container. That can leave `-wal` and `-shm` files owned by the wrong user, and
+the server may then fail to write. The file `audit export` writes contains raw
+user queries, so keep it private and out of version control.
+
+### Which commands reach the audit data
+
+| Deployment | `report` | `audit prune` | `eval promote` |
+| --- | --- | --- | --- |
+| CLI and server share a machine and `state_dir` | Works with no flags | Works with no flags | Works with no flags |
+| HTTP server with the admin API | `--context` or `--server` | `--context` or `--server` | `--context` or `--server` |
+| stdio in a container or behind a gateway | `--from` an export | Run inside the container | `--from` an export |
+| Copy of `audit.sqlite3` (server stopped) | `--db <path>` | Not supported | Not supported |
+
+The server prunes its own audit rows at startup and once a day, so a stdio
+deployment rarely needs `audit prune` at all.
 
 ## HTTP surfaces
 
@@ -315,8 +355,11 @@ its resolve needs the client to pass `request_id` to `fetch_skill`, so ranked
 counts are a lower bound and the uncorrelated counter shows how much is
 missing. A fetch also does not prove the choice was right, and models tend to
 pick the first candidate, so acceptance overstates quality. Counters reset when
-the server restarts. `/metrics` exists only on the HTTP transport; stdio users
-get the same numbers from `skillmux report`.
+the server restarts. `/metrics` exists only on the HTTP transport. stdio users
+get the same numbers from `skillmux report` when the CLI shares the server's
+`state_dir`, or from `skillmux report --from` with a file from `skillmux audit
+export` when it does not. See
+[Reading audit data from a stdio deployment](#reading-audit-data-from-a-stdio-deployment).
 
 Health and metrics do not require bearer authentication, but
 `/stats` does when server authentication is enabled. CORS still applies to
@@ -371,7 +414,11 @@ it is safe to leave running unattended.
 
 Treat `audit.sqlite3` as sensitive because its rows can contain raw user
 queries. Stop the process or use SQLite-safe backup tooling before copying a
-live database. `audit.retention_days` (default 90; `0` disables pruning) ages
+live database. To read audit data from another machine or user, export it
+with `skillmux audit export` instead of mounting `state_dir` elsewhere. If you
+do mount it, `report --db` needs read access to `audit.sqlite3` and to its
+`-wal` and `-shm` files, or write access to the directory so SQLite can create
+them. `audit.retention_days` (default 90; `0` disables pruning) ages
 out old rows automatically at startup and at most once per 24 hours while the
 server runs; see [CLI reference](cli.md#observability-and-evaluation-skillmux-report-audit-eval)
 for the on-demand `skillmux audit prune` command.

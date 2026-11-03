@@ -350,7 +350,7 @@ Default:
   serve --transport http
 
 Supported commands:
-  serve, index, doctor, report, audit prune, eval promote, scan, skill list|which
+  serve, index, doctor, report, audit prune|export, eval promote, scan, skill list|which
   config show|get|validate|diff|status
 
 Native skill management:
@@ -388,10 +388,11 @@ Init agents:
   list isn't supported by init yet — see "skillmux init --help".)
 
 Operations:
-  skillmux report [--context <name> | --server <url> | --db <path>] --since <window> [--json]
+  skillmux report [--context <name> | --server <url> | --db <path> | --from <export.jsonl>] --since <window> [--json]
   skillmux audit prune [--older-than <window>] [--dry-run] [--yes] [--json]
+  skillmux audit export [--since <window>] [--db <path>] [--out <path>] [--json]
   skillmux vault push --context <name> [--vault <path>] [--dry-run] [--yes] [--json]
-  skillmux eval promote --since <window> [--out <path>] [--dry-run] [--yes] [--json]
+  skillmux eval promote --since <window> [--from <export.jsonl>] [--out <path>] [--dry-run] [--yes] [--json]
   skillmux outdated [--allow-local-source] [--json]
   skillmux update [skill-id] [--yes] [--dry-run] [--force] [--allow-local-source] [--fail-on low|medium|high|none] [--json]
 

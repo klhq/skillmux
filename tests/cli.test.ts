@@ -374,7 +374,7 @@ describe("skillmux Docker command policy", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Skillmux server image");
     expect(result.stdout).toContain("Default:\n  serve --transport http");
-    expect(result.stdout).toContain("serve, index, doctor, report, audit prune, eval promote, scan, skill list|which");
+    expect(result.stdout).toContain("serve, index, doctor, report, audit prune|export, eval promote, scan, skill list|which");
     expect(result.stdout).toContain("config show|get|validate|diff|status");
     expect(result.stdout).toContain("Install the Skillmux CLI on the host for init, install, pinning, and sync.");
     expect(result.stdout).not.toContain("Setup:");
@@ -2850,6 +2850,134 @@ describe("skillmux eval promote CLI (AC17, AC18)", () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("cannot specify conflicting --out and --target");
     rmSync(root, { recursive: true, force: true });
+  });
+
+  // #246: stdio skillmux inside an MCP gateway container keeps its audit
+  // database where the host CLI cannot read it. "gateway" holds the data,
+  // "host" has an empty state_dir and only sees the exported file.
+  describe("audit export and --from (#246)", () => {
+    function gatewayAndHost(label: string) {
+      const gateway = mkdtempSync(join(tmpdir(), `skillmux-export-gw-${label}-`));
+      const host = mkdtempSync(join(tmpdir(), `skillmux-export-host-${label}-`));
+      seedCorrelatedFetch(gateway, "run docker logs", "docker-manager", "req-1");
+      return {
+        gateway,
+        host,
+        gatewayConfig: privateConfig(gateway),
+        hostConfig: privateConfig(host),
+        cleanup: () => {
+          rmSync(gateway, { recursive: true, force: true });
+          rmSync(host, { recursive: true, force: true });
+        },
+      };
+    }
+
+    test("writes JSON lines to stdout with a header and warns about raw queries", async () => {
+      const env = gatewayAndHost("stdout");
+      const result = await runCliEnv(["audit", "export", "--since", "30d"], { SKILLMUX_CONFIG: env.gatewayConfig });
+
+      expect(result.exitCode).toBe(0);
+      const lines = result.stdout.trim().split("\n").map((line) => JSON.parse(line));
+      expect(lines[0]).toMatchObject({ format: "skillmux-audit-export", version: 1 });
+      expect(lines.slice(1).map((row) => row.kind)).toEqual(["resolve", "fetch"]);
+      expect(lines[1].query).toBe("run docker logs");
+      expect(result.stderr).toContain("raw user queries");
+      env.cleanup();
+    });
+
+    test("--out creates an owner-only file, refuses to overwrite it, and --json summarizes", async () => {
+      const env = gatewayAndHost("out");
+      const out = join(env.host, "audit.jsonl");
+
+      const first = await runCliEnv(["audit", "export", "--out", out, "--json"], { SKILLMUX_CONFIG: env.gatewayConfig });
+      expect(first.exitCode).toBe(0);
+      expect(JSON.parse(first.stdout).data).toMatchObject({ path: out, since: null, rows: { resolve: 1, fetch: 1, file_fetch: 0 } });
+      expect(lstatSync(out).mode & 0o777).toBe(0o600);
+
+      const second = await runCliEnv(["audit", "export", "--out", out], { SKILLMUX_CONFIG: env.gatewayConfig });
+      expect(second.exitCode).toBe(4);
+      expect(second.stderr).toContain("already exists");
+      env.cleanup();
+    });
+
+    test("does not create a database that is not there", async () => {
+      const env = gatewayAndHost("missing");
+      const result = await runCliEnv(["audit", "export"], { SKILLMUX_CONFIG: env.hostConfig });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("no audit database at");
+      expect(existsSync(join(env.host, "state", "audit.sqlite3"))).toBe(false);
+      env.cleanup();
+    });
+
+    test("rejects --json without --out and a remote target", async () => {
+      const env = gatewayAndHost("reject");
+      const json = await runCliEnv(["audit", "export", "--json"], { SKILLMUX_CONFIG: env.gatewayConfig });
+      expect(json.exitCode).toBe(2);
+      expect(JSON.parse(json.stdout).error.message).toContain("--json needs --out");
+
+      const remote = await runCliEnv(
+        ["audit", "export", "--server", "https://127.0.0.1:9999", "--allow-insecure"],
+        { SKILLMUX_CONFIG: env.gatewayConfig },
+      );
+      expect(remote.exitCode).toBe(2);
+      expect(remote.stderr).toContain("does not take --context/--server");
+      env.cleanup();
+    });
+
+    test("report --from on the host matches report --db on the gateway", async () => {
+      const env = gatewayAndHost("report");
+      const out = join(env.host, "audit.jsonl");
+      await runCliEnv(["audit", "export", "--out", out], { SKILLMUX_CONFIG: env.gatewayConfig });
+
+      const fromDb = await runCliEnv(
+        ["report", "--db", join(env.gateway, "state", "audit.sqlite3"), "--since", "30d", "--json"],
+        { SKILLMUX_CONFIG: env.gatewayConfig },
+      );
+      const fromFile = await runCliEnv(["report", "--from", out, "--since", "30d", "--json"], {
+        SKILLMUX_CONFIG: env.hostConfig,
+      });
+
+      expect(fromFile.exitCode).toBe(0);
+      const a = JSON.parse(fromDb.stdout).data;
+      const b = JSON.parse(fromFile.stdout).data;
+      expect(b.total_requests).toBe(1);
+      expect({ ...b, since: undefined, until: undefined }).toEqual({ ...a, since: undefined, until: undefined });
+
+      const conflict = await runCliEnv(["report", "--from", out, "--db", "x", "--since", "30d"], {
+        SKILLMUX_CONFIG: env.hostConfig,
+      });
+      expect(conflict.exitCode).toBe(2);
+      env.cleanup();
+    });
+
+    test("report --from warns when the export does not cover the requested window", async () => {
+      const env = gatewayAndHost("cover");
+      const out = join(env.host, "audit.jsonl");
+      await runCliEnv(["audit", "export", "--since", "1d", "--out", out], { SKILLMUX_CONFIG: env.gatewayConfig });
+
+      const result = await runCliEnv(["report", "--from", out, "--since", "30d"], { SKILLMUX_CONFIG: env.hostConfig });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain("counts cover only the exported rows");
+      env.cleanup();
+    });
+
+    test("eval promote --from writes cases on a host whose own audit database is empty", async () => {
+      const env = gatewayAndHost("promote");
+      const out = join(env.host, "audit.jsonl");
+      await runCliEnv(["audit", "export", "--out", out], { SKILLMUX_CONFIG: env.gatewayConfig });
+      const cases = join(env.host, "observed.json");
+
+      const result = await runPromoteCli(env.hostConfig, "--since", "30d", "--from", out, "--out", cases, "--yes");
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toContain("raw user queries");
+      expect(JSON.parse(readFileSync(cases, "utf-8"))).toEqual([
+        { query: "run docker logs", split: "observed", relevant_skill_ids: ["docker-manager"] },
+      ]);
+      env.cleanup();
+    });
   });
 });
 

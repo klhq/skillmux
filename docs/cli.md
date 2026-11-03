@@ -497,21 +497,27 @@ eval cases.
 skillmux report --since 7d
 skillmux report --server https://skillmux.internal:3000 --since 24h
 skillmux report --db ~/.local/state/skillmux/audit.sqlite3 --since 2026-08-01
+skillmux report --from audit.jsonl --since 7d
 
 # Prune audit rows older than the configured retention window (default 90 days)
 skillmux audit prune --yes
 skillmux audit prune --older-than 30d --dry-run
 skillmux audit prune --older-than 30d --json
 
+# Export audit rows as JSON lines, for a database the CLI cannot reach
+skillmux audit export --since 30d > audit.jsonl
+skillmux audit export --since 30d --out ~/private/audit.jsonl
+
 # Promote observed, correlated fetches into an eval case file
 skillmux eval promote --since 7d --dry-run
 skillmux eval promote --since 7d --yes
 skillmux eval promote --since 7d --out eval/observed.json --yes
+skillmux eval promote --from audit.jsonl --since 7d --yes
 ```
 
 `report` reads `--server <url>`, `--db <path>` (an explicit SQLite file,
-opened read-only), or the configured local `state_dir` by default;
-`--server` and `--db` are mutually exclusive. Alongside request totals,
+opened read-only), `--from <path>` (a file written by `audit export`), or the
+configured local `state_dir` by default. Only one of them can be given. Alongside request totals,
 empty-shortlist rate, retrieval-lane totals, degradation counts, and
 per-skill candidate counts, `report` prints an acceptance signal derived
 from correlated fetches: `acceptance_rate`, `observed_mrr` (reciprocal rank
@@ -543,6 +549,27 @@ shifts them slightly. Numbers are per session start or per window, never per
 session, because the HTTP transport is stateless and cannot identify sessions.
 `report --db` reads only an audit file, so it has no vault to measure and omits
 the section.
+
+`audit export` writes resolve, fetch and attachment rows as JSON lines. The
+first line is a header with the format version, the export time, and the
+`--since` lower bound (null when every row was exported). Without `--out` the
+rows go to stdout. `--out` creates a new file readable only by its owner and
+refuses to overwrite one that exists; `--json` prints a row-count summary and
+requires `--out`. The command reads the configured `state_dir`, or `--db
+<path>`, read-only, and fails rather than create a missing database. It does
+not take `--context` or `--server`. Run it where the database lives, such as
+inside the container of a stdio deployment, as described in
+[Reading audit data from a stdio deployment](deployment.md#reading-audit-data-from-a-stdio-deployment).
+A fetch in the window keeps its resolve row even when that resolve is older,
+so promotion from the file finds the query. Exports carry raw user queries,
+and the command always prints a stderr warning.
+
+`report --from` and `eval promote --from` read an export instead of a
+database. A relative `--since` window such as `7d` counts back from the time of
+the export, not from now, so a file read later still covers the same window.
+When the export starts after the requested window, both commands warn that
+they see only the exported rows. `report --from` omits the context savings
+section, as `report --db` does.
 
 `audit prune` deletes resolve and fetch rows older than `--older-than` (same
 window syntax as `--since`), or `audit.retention_days` from configuration

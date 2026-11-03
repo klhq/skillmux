@@ -140,9 +140,9 @@ export const HANDLERS: Record<CommandName, CommandHandler> = {
 
   update: ({ args, isJson }) => runUpdate(args, { isJson }),
 
-  eval: async ({ subCommand, subArgs, isJson, isDryRun, adapter }) => {
+  eval: async ({ subCommand, subArgs, isJson, isDryRun, context, adapter }) => {
     if (subCommand === "promote") {
-      await runEvalPromote(subArgs, { isJson, dryRun: isDryRun, adapter });
+      await runEvalPromote(subArgs, { isJson, dryRun: isDryRun, adapter, isLocalContext: context.type === "local" });
     } else if (subCommand === "") {
       await runEval({ isJson, adapter });
     } else {

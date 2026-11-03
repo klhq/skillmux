@@ -308,5 +308,8 @@ activity, `skillmux audit prune` to reclaim space under
 `audit.retention_days` (default 90 days), and `skillmux eval promote` to turn
 correlated fetches into eval cases — see [CLI
 reference](cli.md#observability-and-evaluation-skillmux-report-audit-eval)
-for all three. Treat raw queries as private user data when backing up or
-sharing the database.
+for all three. When the CLI cannot reach the database, such as with stdio
+skillmux behind an MCP gateway container, `skillmux audit export` writes the
+rows to a file that `report --from` and `eval promote --from` read. Treat raw
+queries as private user data when backing up or sharing the database or an
+export.

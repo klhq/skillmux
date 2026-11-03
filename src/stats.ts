@@ -248,54 +248,69 @@ interface AuditTableRow {
   latency_ms: number;
 }
 
+/** Validates a resolve row's decoded candidate list, from the database or an export file. */
+export function parseAuditCandidates(parsed: unknown, rowId: number): AuditCandidate[] {
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Invalid candidates JSON for audit row ${rowId}: expected array, got ${typeof parsed}`);
+  }
+  return parsed.map((c: any, index: number) => {
+    if (!c || typeof c !== "object" || Array.isArray(c) || typeof c.skill_id !== "string") {
+      throw new Error(`Invalid candidate at index ${index} for audit row ${rowId}: missing or invalid skill_id`);
+    }
+    const score = c.score;
+    if (score !== null && (typeof score !== "number" || !Number.isFinite(score))) {
+      throw new Error(`Invalid candidate at index ${index} for audit row ${rowId}: missing or invalid score`);
+    }
+    return {
+      skill_id: c.skill_id,
+      score,
+    };
+  });
+}
+
+const AUDIT_COLUMNS =
+  "id, ts, request_id, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms";
+
+function decodeAuditRow(row: AuditTableRow): AuditRow {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.candidates);
+  } catch {
+    throw new Error(`Failed to parse candidates JSON for audit row ${row.id}`);
+  }
+  const candidates = parseAuditCandidates(parsed, row.id);
+
+  const result: AuditRow = {
+    id: row.id,
+    ts: row.ts,
+    request_id: row.request_id,
+    query: row.query,
+    retrieval: row.retrieval,
+    candidates,
+    latency_ms: row.latency_ms,
+  };
+  if (row.degraded_from !== null && row.degraded_from !== undefined) {
+    result.degraded_from = row.degraded_from as AuditRow["degraded_from"];
+  }
+  if (row.degradation_reason !== null && row.degradation_reason !== undefined) {
+    result.degradation_reason = row.degradation_reason as AuditRow["degradation_reason"];
+  }
+  return result;
+}
+
 export function queryAuditRows(db: Database, sinceIso: string): AuditRow[] {
   const rows = db
-    .query(
-      "SELECT id, ts, request_id, query, retrieval, degraded_from, degradation_reason, candidates, latency_ms FROM audit WHERE ts >= ? ORDER BY ts ASC",
-    )
+    .query(`SELECT ${AUDIT_COLUMNS} FROM audit WHERE ts >= ? ORDER BY ts ASC`)
     .all(sinceIso) as AuditTableRow[];
+  return rows.map(decodeAuditRow);
+}
 
-  return rows.map((row) => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(row.candidates);
-    } catch {
-      throw new Error(`Failed to parse candidates JSON for audit row ${row.id}`);
-    }
-    if (!Array.isArray(parsed)) {
-      throw new Error(`Invalid candidates JSON for audit row ${row.id}: expected array, got ${typeof parsed}`);
-    }
-    const candidates: AuditCandidate[] = parsed.map((c: any, index: number) => {
-      if (!c || typeof c !== "object" || Array.isArray(c) || typeof c.skill_id !== "string") {
-        throw new Error(`Invalid candidate at index ${index} for audit row ${row.id}: missing or invalid skill_id`);
-      }
-      const score = c.score;
-      if (score !== null && (typeof score !== "number" || !Number.isFinite(score))) {
-        throw new Error(`Invalid candidate at index ${index} for audit row ${row.id}: missing or invalid score`);
-      }
-      return {
-        skill_id: c.skill_id,
-        score,
-      };
-    });
-
-    const result: AuditRow = {
-      id: row.id,
-      ts: row.ts,
-      request_id: row.request_id,
-      query: row.query,
-      retrieval: row.retrieval,
-      candidates,
-      latency_ms: row.latency_ms,
-    };
-    if (row.degraded_from !== null && row.degraded_from !== undefined) {
-      result.degraded_from = row.degraded_from as AuditRow["degraded_from"];
-    }
-    if (row.degradation_reason !== null && row.degradation_reason !== undefined) {
-      result.degradation_reason = row.degradation_reason as AuditRow["degradation_reason"];
-    }
-    return result;
-  });
+export function queryAuditRowsById(db: Database, ids: number[]): AuditRow[] {
+  if (ids.length === 0) return [];
+  const rows = db
+    .query(`SELECT ${AUDIT_COLUMNS} FROM audit WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id ASC`)
+    .all(JSON.stringify(ids)) as AuditTableRow[];
+  return rows.map(decodeAuditRow);
 }
 
 export function queryFetchRows(db: Database, sinceIso: string): FetchAuditRow[] {
