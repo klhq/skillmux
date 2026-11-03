@@ -200,7 +200,8 @@ Skillmux supports these agent IDs:
 |--------|----------------|
 | `claude-code` | `~/.claude/skills` |
 | `codex` | `$CODEX_HOME/skills`, falling back to `~/.codex/skills` |
-| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes` | Shared `~/.agents/skills` |
+| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes`, `pi`, `deepseek-harness`, `openclaw` | Shared `~/.agents/skills` |
+| `grok-build` | `~/.grok/skills` |
 | `antigravity` | `~/.gemini/config/skills` |
 
 `init` records the selected agents in `agents` in `config.toml`, merged with
@@ -283,7 +284,9 @@ skillmux init --agent claude-code --migrate-full-vault \
 Agent instruction adapters append one managed discovery block and preserve
 the rest of each file. Skillmux uses `.hermes.md` for Hermes and refuses
 `SOUL.md` or Hermes's installed-source `AGENTS.md`. An agent without a safe
-user-level convention reports manual setup.
+user-level convention reports manual setup. `skillmux init --register-mcp`
+runs the agent's own CLI for `claude-code`, `codex` and `pi`; for the others it
+prints the snippet to add by hand.
 
 ---
 

@@ -30,6 +30,10 @@ describe("init agent registry", () => {
       "antigravity",
       "goose",
       "hermes",
+      "pi",
+      "openclaw",
+      "grok-build",
+      "deepseek-harness",
     ]);
   });
 
@@ -82,8 +86,8 @@ describe("init agent registry", () => {
   });
 
   test("rejects an agent the registry does not know", () => {
-    expect(() => planAgentSurfaces(["pi"], { home: "/home/tester" }))
-      .toThrow(/unsupported agent "pi"/);
+    expect(() => planAgentSurfaces(["cursor"], { home: "/home/tester" }))
+      .toThrow(/unsupported agent "cursor"/);
   });
 
   test("reports skill surface, MCP registration, and instructions separately", () => {
@@ -116,7 +120,58 @@ describe("init agent registry", () => {
 
   test("every agent maps to a skill directory", () => {
     for (const id of SUPPORTED_AGENT_IDS) {
-      expect(getAgentDefinition(id).surfaceId, `${id} declares no surfaceId`).toBeDefined();
+      expect(getAgentDefinition(id).skillDirs.length, `${id} declares no skill directory`).toBeGreaterThan(0);
+    }
+  });
+
+  test("pi and deepseek-harness read the shared directory with the other shared readers", () => {
+    const plan = planAgentSurfaces(["opencode", "pi", "deepseek-harness"], { home: "/home/tester" });
+
+    expect(plan.surfaces).toEqual([
+      { id: "agent-skills", path: "/home/tester/.agents/skills", agents: ["opencode", "pi", "deepseek-harness"] },
+    ]);
+  });
+
+  test("openclaw reads two directories but is planned into the shared one only", () => {
+    const plan = planAgentSurfaces(["openclaw"], { home: "/home/tester" });
+
+    expect(plan.surfaces).toEqual([
+      { id: "agent-skills", path: "/home/tester/.agents/skills", agents: ["openclaw"] },
+    ]);
+    expect(getAgentDefinition("openclaw").skillDirs).toEqual(["openclaw", "agent-skills"]);
+  });
+
+  test("grok-build cannot read the shared directory, so it gets its own", () => {
+    const plan = planAgentSurfaces(["grok-build", "opencode"], { home: "/home/tester" });
+
+    expect(plan.surfaces).toEqual([
+      { id: "grok", path: "/home/tester/.grok/skills", agents: ["grok-build"] },
+      { id: "agent-skills", path: "/home/tester/.agents/skills", agents: ["opencode"] },
+    ]);
+  });
+
+  test("every pinned skill is planned exactly once per agent", () => {
+    const plan = planAgentSurfaces([...SUPPORTED_AGENT_IDS], { home: "/home/tester" });
+
+    for (const id of SUPPORTED_AGENT_IDS) {
+      expect(plan.surfaces.filter((surface) => surface.agents.includes(id)), id).toHaveLength(1);
+    }
+  });
+
+  test("pi registers over stdio and over HTTP with the verified pi mcp add flags", () => {
+    const registration = getAgentDefinition("pi").mcpRegistration!;
+
+    expect(registration.command).toBe("pi");
+    expect(registration.buildArgs("user")).toEqual(["mcp", "add", "skillmux", "--", "skillmux", "serve"]);
+    expect(registration.buildArgs("project")).toBeUndefined();
+    expect(registration.buildArgs("user", { url: "https://s.test/mcp", tokenEnv: "SKILLMUX_TOKEN" })).toEqual([
+      "mcp", "add", "skillmux", "--url", "https://s.test/mcp", "--bearer-token-env-var", "SKILLMUX_TOKEN",
+    ]);
+  });
+
+  test("agents whose registration command is unverified print a snippet instead", () => {
+    for (const id of ["openclaw", "grok-build", "deepseek-harness"] as const) {
+      expect(getAgentDefinition(id).mcpRegistration, id).toBeUndefined();
     }
   });
 });

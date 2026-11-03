@@ -76,7 +76,7 @@ skills = []
 [project.infra]
 paths = []
 skills = []
-agents = ["pi"]
+agents = ["cursor"]
 `)).toThrow();
   });
 

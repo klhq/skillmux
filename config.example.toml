@@ -24,7 +24,8 @@ vault_path = "~/skills"
 
 # Agents this machine syncs skills to. Each agent reads a fixed directory
 # (claude-code: ~/.claude/skills, codex: $CODEX_HOME/skills, opencode,
-# github-copilot, windsurf, goose and hermes: ~/.agents/skills, antigravity:
+# github-copilot, windsurf, goose, hermes, pi, deepseek-harness and openclaw:
+# ~/.agents/skills, grok-build: ~/.grok/skills, antigravity:
 # ~/.gemini/config/skills), so you never name a directory. Defaults to [],
 # which syncs nothing. See docs/configuration.md#agents.
 # agents = ["claude-code", "opencode"]

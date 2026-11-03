@@ -17,7 +17,7 @@ function fakeStream(text: string): ReadableStream<Uint8Array> {
 
 describe("MCP_REGISTRABLE_AGENTS", () => {
   test("only lists agents with a verified CLI registration command", () => {
-    expect(MCP_REGISTRABLE_AGENTS).toEqual(["claude-code", "codex"]);
+    expect(MCP_REGISTRABLE_AGENTS).toEqual(["claude-code", "codex", "pi"]);
   });
 
   test("isMcpRegistrable matches the registrable set", () => {
