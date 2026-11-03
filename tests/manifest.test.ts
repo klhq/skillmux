@@ -76,7 +76,7 @@ skills = []
 [project.infra]
 paths = []
 skills = []
-agents = ["cursor"]
+agents = ["emacs"]
 `)).toThrow();
   });
 

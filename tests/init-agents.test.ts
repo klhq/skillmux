@@ -34,6 +34,12 @@ describe("init agent registry", () => {
       "openclaw",
       "grok-build",
       "deepseek-harness",
+      "cursor",
+      "amp",
+      "kiro",
+      "factory-droid",
+      "junie",
+      "roo-code",
     ]);
   });
 
@@ -86,8 +92,8 @@ describe("init agent registry", () => {
   });
 
   test("rejects an agent the registry does not know", () => {
-    expect(() => planAgentSurfaces(["cursor"], { home: "/home/tester" }))
-      .toThrow(/unsupported agent "cursor"/);
+    expect(() => planAgentSurfaces(["emacs"], { home: "/home/tester" }))
+      .toThrow(/unsupported agent "emacs"/);
   });
 
   test("reports skill surface, MCP registration, and instructions separately", () => {
@@ -169,8 +175,31 @@ describe("init agent registry", () => {
     ]);
   });
 
+  test("cursor, amp, factory-droid, junie and roo-code share ~/.agents/skills, and kiro has its own", () => {
+    const shared = planAgentSurfaces(["cursor", "amp", "factory-droid", "junie", "roo-code"], { home: "/home/tester" });
+    expect(shared.surfaces).toEqual([
+      {
+        id: "agent-skills",
+        path: "/home/tester/.agents/skills",
+        agents: ["cursor", "amp", "factory-droid", "junie", "roo-code"],
+      },
+    ]);
+    expect(planAgentSurfaces(["kiro"], { home: "/home/tester" }).surfaces).toEqual([
+      { id: "kiro", path: "/home/tester/.kiro/skills", agents: ["kiro"] },
+    ]);
+  });
+
+  test("amp registers over stdio only", () => {
+    const registration = getAgentDefinition("amp").mcpRegistration!;
+
+    expect(registration.command).toBe("amp");
+    expect(registration.buildArgs("user")).toEqual(["mcp", "add", "skillmux", "--", "skillmux", "serve"]);
+    expect(registration.buildArgs("project")).toBeUndefined();
+    expect(registration.buildArgs("user", { url: "https://s.test/mcp" })).toBeUndefined();
+  });
+
   test("agents whose registration command is unverified print a snippet instead", () => {
-    for (const id of ["openclaw", "grok-build", "deepseek-harness"] as const) {
+    for (const id of ["openclaw", "grok-build", "deepseek-harness", "cursor", "kiro", "factory-droid", "junie", "roo-code"] as const) {
       expect(getAgentDefinition(id).mcpRegistration, id).toBeUndefined();
     }
   });

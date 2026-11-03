@@ -12,7 +12,7 @@ export { isAgentId, SUPPORTED_AGENT_IDS, type AgentId };
  * windsurf, goose and hermes all read ~/.agents/skills). The id is what a
  * directory's .skillmux marker records as its owner.
  */
-export type SurfaceId = "agent-skills" | "claude-code" | "codex" | "antigravity" | "openclaw" | "grok";
+export type SurfaceId = "agent-skills" | "claude-code" | "codex" | "antigravity" | "openclaw" | "grok" | "kiro";
 
 export interface DetectedAgent {
   agent: AgentId;
@@ -227,6 +227,52 @@ const AGENTS: Record<AgentId, AgentDefinition> = {
     skillDirs: ["agent-skills"],
     detectionPath: ({ home }) => join(home, ".dsh"),
   },
+  cursor: {
+    id: "cursor",
+    // Also reads ~/.cursor/skills; the shared directory is documented as read.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".cursor"),
+  },
+  amp: {
+    id: "amp",
+    // Reads ~/.config/agents/skills, ~/.agents/skills and ~/.config/amp/skills.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".config", "amp"),
+    mcpRegistration: {
+      command: "amp",
+      // `amp mcp add <name> -- <command>` writes amp.mcpServers in the user
+      // settings (ampcode.com/docs/customize/mcp). The documented URL form has
+      // no header option, so a shared HTTP server is left to the printed snippet.
+      buildArgs: (scope, remote) => {
+        if (scope === "project" || remote) return undefined;
+        return ["mcp", "add", "skillmux", "--", "skillmux", "serve"];
+      },
+    },
+  },
+  kiro: {
+    id: "kiro",
+    // The docs list ~/.kiro/skills only, and say the CLI and Web do not read it.
+    skillDirs: ["kiro"],
+    detectionPath: ({ home }) => join(home, ".kiro"),
+  },
+  "factory-droid": {
+    id: "factory-droid",
+    // Also reads ~/.factory/skills.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".factory"),
+  },
+  junie: {
+    id: "junie",
+    // Also reads ~/.junie/skills.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".junie"),
+  },
+  "roo-code": {
+    id: "roo-code",
+    // Also reads ~/.roo/skills, which outranks the shared directory.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".roo"),
+  },
 };
 
 export function getAgentDefinition(agent: AgentId): AgentDefinition {
@@ -258,6 +304,7 @@ function surfacePath(
   if (surfaceId === "codex") return join(options.codexHome ?? join(options.home, ".codex"), "skills");
   if (surfaceId === "openclaw") return join(options.home, ".openclaw", "skills");
   if (surfaceId === "grok") return join(options.home, ".grok", "skills");
+  if (surfaceId === "kiro") return join(options.home, ".kiro", "skills");
   return join(options.home, ".gemini", "config", "skills");
 }
 
