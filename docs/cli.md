@@ -200,7 +200,7 @@ Skillmux supports these agent IDs:
 |--------|----------------|
 | `claude-code` | `~/.claude/skills` |
 | `codex` | `$CODEX_HOME/skills`, falling back to `~/.codex/skills` |
-| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes`, `pi`, `deepseek-harness`, `openclaw`, `cursor`, `amp`, `factory-droid`, `junie`, `roo-code` | Shared `~/.agents/skills` |
+| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes`, `pi`, `deepseek-harness`, `openclaw`, `cursor`, `amp`, `factory-droid`, `junie`, `roo-code`, `omp` | Shared `~/.agents/skills` |
 | `grok-build` | `~/.grok/skills` |
 | `kiro` | `~/.kiro/skills` (IDE only) |
 | `antigravity` | `~/.gemini/config/skills` |

@@ -169,7 +169,7 @@ agents: ${SUPPORTED_AGENT_IDS.join(", ")}
 add/remove edit "agents" in config.toml. Each agent's skill directory is
 fixed, and agents that read the same directory share it: opencode,
 github-copilot, windsurf, goose, hermes, pi, deepseek-harness, cursor, amp,
-factory-droid, junie and roo-code all use ~/.agents/skills. kiro reads
+factory-droid, junie, roo-code and omp all use ~/.agents/skills. kiro reads
 ~/.kiro/skills, which only the Kiro IDE loads. openclaw reads ~/.openclaw/skills too but is pinned into
 ~/.agents/skills only, so a skill never shows up twice. grok-build reads
 ~/.grok/skills. remove

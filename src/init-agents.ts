@@ -273,6 +273,14 @@ const AGENTS: Record<AgentId, AgentDefinition> = {
     skillDirs: ["agent-skills"],
     detectionPath: ({ home }) => join(home, ".roo"),
   },
+  omp: {
+    id: "omp",
+    // oh-my-pi, a Pi fork. Its agents provider reads .agent[s]/skills at user
+    // level and has its own toggle, separate from the Claude, Codex and Pi ones.
+    // Its MCP servers are added inside a session (/mcp add), so there is no CLI to run.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".omp"),
+  },
 };
 
 export function getAgentDefinition(agent: AgentId): AgentDefinition {

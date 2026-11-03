@@ -40,6 +40,7 @@ describe("init agent registry", () => {
       "factory-droid",
       "junie",
       "roo-code",
+      "omp",
     ]);
   });
 
@@ -176,12 +177,12 @@ describe("init agent registry", () => {
   });
 
   test("cursor, amp, factory-droid, junie and roo-code share ~/.agents/skills, and kiro has its own", () => {
-    const shared = planAgentSurfaces(["cursor", "amp", "factory-droid", "junie", "roo-code"], { home: "/home/tester" });
+    const shared = planAgentSurfaces(["cursor", "amp", "factory-droid", "junie", "roo-code", "omp"], { home: "/home/tester" });
     expect(shared.surfaces).toEqual([
       {
         id: "agent-skills",
         path: "/home/tester/.agents/skills",
-        agents: ["cursor", "amp", "factory-droid", "junie", "roo-code"],
+        agents: ["cursor", "amp", "factory-droid", "junie", "roo-code", "omp"],
       },
     ]);
     expect(planAgentSurfaces(["kiro"], { home: "/home/tester" }).surfaces).toEqual([
@@ -199,7 +200,7 @@ describe("init agent registry", () => {
   });
 
   test("agents whose registration command is unverified print a snippet instead", () => {
-    for (const id of ["openclaw", "grok-build", "deepseek-harness", "cursor", "kiro", "factory-droid", "junie", "roo-code"] as const) {
+    for (const id of ["openclaw", "grok-build", "deepseek-harness", "cursor", "kiro", "factory-droid", "junie", "roo-code", "omp"] as const) {
       expect(getAgentDefinition(id).mcpRegistration, id).toBeUndefined();
     }
   });
