@@ -12,7 +12,7 @@ export { isAgentId, SUPPORTED_AGENT_IDS, type AgentId };
  * windsurf, goose and hermes all read ~/.agents/skills). The id is what a
  * directory's .skillmux marker records as its owner.
  */
-export type SurfaceId = "agent-skills" | "claude-code" | "codex" | "antigravity";
+export type SurfaceId = "agent-skills" | "claude-code" | "codex" | "antigravity" | "openclaw" | "grok" | "kiro";
 
 export interface DetectedAgent {
   agent: AgentId;
@@ -47,7 +47,12 @@ interface AgentInstructionOptions extends AgentPathOptions {
  */
 interface AgentDefinition {
   id: AgentId;
-  surfaceId: SurfaceId;
+  /**
+   * Every directory the agent reads skills from, in the agent's own
+   * precedence order. Planning writes to one of them (see chooseSurface), so
+   * an agent that reads several never shows the same pin twice.
+   */
+  skillDirs: readonly SurfaceId[];
   /** Filesystem evidence used by guided-mode agent detection. */
   detectionPath?: (options: AgentPathOptions) => string;
   instructions?: {
@@ -91,7 +96,7 @@ export interface AgentReadiness {
 const AGENTS: Record<AgentId, AgentDefinition> = {
   "claude-code": {
     id: "claude-code",
-    surfaceId: "claude-code",
+    skillDirs: ["claude-code"],
     detectionPath: ({ home }) => join(home, ".claude"),
     instructions: {
       global: ({ claudeConfigDir }) => join(claudeConfigDir, "CLAUDE.md"),
@@ -118,7 +123,7 @@ const AGENTS: Record<AgentId, AgentDefinition> = {
   },
   codex: {
     id: "codex",
-    surfaceId: "codex",
+    skillDirs: ["codex"],
     detectionPath: ({ codexHome }) => codexHome,
     instructions: {
       global: ({ codexHome }) => join(codexHome, "AGENTS.md"),
@@ -141,7 +146,7 @@ const AGENTS: Record<AgentId, AgentDefinition> = {
   },
   opencode: {
     id: "opencode",
-    surfaceId: "agent-skills",
+    skillDirs: ["agent-skills"],
     detectionPath: ({ home }) => join(home, ".config", "opencode"),
     instructions: {
       global: ({ home }) => join(home, ".config", "opencode", "AGENTS.md"),
@@ -149,24 +154,24 @@ const AGENTS: Record<AgentId, AgentDefinition> = {
   },
   "github-copilot": {
     id: "github-copilot",
-    surfaceId: "agent-skills",
+    skillDirs: ["agent-skills"],
     detectionPath: ({ home }) => join(home, ".config", "github-copilot"),
   },
   windsurf: {
     id: "windsurf",
-    surfaceId: "agent-skills",
+    skillDirs: ["agent-skills"],
     detectionPath: ({ home }) => join(home, ".codeium", "windsurf"),
   },
   antigravity: {
     id: "antigravity",
-    surfaceId: "antigravity",
+    skillDirs: ["antigravity"],
     instructions: {
       global: ({ home }) => join(home, ".gemini", "GEMINI.md"),
     },
   },
   goose: {
     id: "goose",
-    surfaceId: "agent-skills",
+    skillDirs: ["agent-skills"],
     detectionPath: ({ home }) => join(home, ".config", "goose"),
     instructions: {
       global: ({ home }) => join(home, ".config", "goose", ".goosehints"),
@@ -174,11 +179,107 @@ const AGENTS: Record<AgentId, AgentDefinition> = {
   },
   hermes: {
     id: "hermes",
-    surfaceId: "agent-skills",
+    skillDirs: ["agent-skills"],
     detectionPath: ({ home }) => join(home, ".hermes"),
     instructions: {
       global: ({ home }) => join(home, ".hermes.md"),
     },
+  },
+  pi: {
+    id: "pi",
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".pi", "agent"),
+    instructions: {
+      global: ({ home }) => join(home, ".pi", "agent", "AGENTS.md"),
+    },
+    mcpRegistration: {
+      command: "pi",
+      // pi mcp add writes ~/.pi/agent/mcp.json. Its -l flag writes .pi/mcp.json,
+      // but project init's registration is the shared .mcp.json flow, so only
+      // user scope is offered. Verified against `pi mcp add --help` (pi 0.99).
+      buildArgs: (scope, remote) => {
+        if (scope === "project") return undefined;
+        if (remote) {
+          return [
+            "mcp", "add", "skillmux", "--url", remote.url,
+            ...(remote.tokenEnv ? ["--bearer-token-env-var", remote.tokenEnv] : []),
+          ];
+        }
+        return ["mcp", "add", "skillmux", "--", "skillmux", "serve"];
+      },
+    },
+  },
+  openclaw: {
+    id: "openclaw",
+    // Its own directory first, then the shared one. Both hold the same skill
+    // names, so a pin in each would trigger OpenClaw's precedence rules; the
+    // planner writes only the shared directory.
+    skillDirs: ["openclaw", "agent-skills"],
+    detectionPath: ({ home }) => join(home, ".openclaw"),
+  },
+  "grok-build": {
+    id: "grok-build",
+    skillDirs: ["grok"],
+    detectionPath: ({ home }) => join(home, ".grok"),
+  },
+  "deepseek-harness": {
+    id: "deepseek-harness",
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".dsh"),
+  },
+  cursor: {
+    id: "cursor",
+    // Also reads ~/.cursor/skills; the shared directory is documented as read.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".cursor"),
+  },
+  amp: {
+    id: "amp",
+    // Reads ~/.config/agents/skills, ~/.agents/skills and ~/.config/amp/skills.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".config", "amp"),
+    mcpRegistration: {
+      command: "amp",
+      // `amp mcp add <name> -- <command>` writes amp.mcpServers in the user
+      // settings (ampcode.com/docs/customize/mcp). The documented URL form has
+      // no header option, so a shared HTTP server is left to the printed snippet.
+      buildArgs: (scope, remote) => {
+        if (scope === "project" || remote) return undefined;
+        return ["mcp", "add", "skillmux", "--", "skillmux", "serve"];
+      },
+    },
+  },
+  kiro: {
+    id: "kiro",
+    // The docs list ~/.kiro/skills only, and say the CLI and Web do not read it.
+    skillDirs: ["kiro"],
+    detectionPath: ({ home }) => join(home, ".kiro"),
+  },
+  "factory-droid": {
+    id: "factory-droid",
+    // Also reads ~/.factory/skills.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".factory"),
+  },
+  junie: {
+    id: "junie",
+    // Also reads ~/.junie/skills.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".junie"),
+  },
+  "roo-code": {
+    id: "roo-code",
+    // Also reads ~/.roo/skills, which outranks the shared directory.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".roo"),
+  },
+  omp: {
+    id: "omp",
+    // oh-my-pi, a Pi fork. Its agents provider reads .agent[s]/skills at user
+    // level and has its own toggle, separate from the Claude, Codex and Pi ones.
+    // Its MCP servers are added inside a session (/mcp add), so there is no CLI to run.
+    skillDirs: ["agent-skills"],
+    detectionPath: ({ home }) => join(home, ".omp"),
   },
 };
 
@@ -209,6 +310,9 @@ function surfacePath(
   if (surfaceId === "agent-skills") return join(options.home, ".agents", "skills");
   if (surfaceId === "claude-code") return join(options.home, ".claude", "skills");
   if (surfaceId === "codex") return join(options.codexHome ?? join(options.home, ".codex"), "skills");
+  if (surfaceId === "openclaw") return join(options.home, ".openclaw", "skills");
+  if (surfaceId === "grok") return join(options.home, ".grok", "skills");
+  if (surfaceId === "kiro") return join(options.home, ".kiro", "skills");
   return join(options.home, ".gemini", "config", "skills");
 }
 
@@ -216,6 +320,15 @@ function defaultCodexHome(): string | undefined {
   const value = process.env.CODEX_HOME;
   if (!value) return undefined;
   return value.startsWith("~") ? join(homedir(), value.slice(1)) : value;
+}
+
+/**
+ * The one directory a pin goes to for this agent. The shared ~/.agents/skills
+ * wins whenever the agent reads it, because that covers every other reader of
+ * it at once; otherwise the agent's own first directory is used.
+ */
+function chooseSurface(agent: AgentDefinition): SurfaceId {
+  return agent.skillDirs.includes("agent-skills") ? "agent-skills" : agent.skillDirs[0]!;
 }
 
 /**
@@ -241,13 +354,14 @@ export function planAgentSurfaces(
   const surfaces = new Map<string, PlannedAgentSurface>();
 
   for (const agent of agents) {
-    const path = surfacePath(agent.surfaceId, { home, codexHome });
+    const surfaceId = chooseSurface(agent);
+    const path = surfacePath(surfaceId, { home, codexHome });
     const existing = surfaces.get(path);
     if (existing) {
       if (!existing.agents.includes(agent.id)) existing.agents.push(agent.id);
       continue;
     }
-    surfaces.set(path, { id: agent.surfaceId, path, agents: [agent.id] });
+    surfaces.set(path, { id: surfaceId, path, agents: [agent.id] });
   }
 
   return { agents, surfaces: [...surfaces.values()] };

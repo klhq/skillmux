@@ -1359,9 +1359,9 @@ describe("skillmux project CLI", () => {
     const manifest = `[core]\nskills = []\n\n[project.demo]\npaths = ["${tmp}"]\nskills = []\n`;
     writeFileSync(manifestPath(), manifest);
 
-    const unknown = await runCli("project", "attach", "demo", "--agent", "pi", "--yes");
+    const unknown = await runCli("project", "attach", "demo", "--agent", "emacs", "--yes");
     expect(unknown.exitCode).not.toBe(0);
-    expect(unknown.stderr).toContain('unsupported agent "pi"');
+    expect(unknown.stderr).toContain('unsupported agent "emacs"');
 
     const target = await runCli("project", "attach", "demo", "--target", "claude", "--yes");
     expect(target.exitCode).not.toBe(0);
@@ -1502,9 +1502,9 @@ describe("skillmux agent CLI", () => {
     const config = writableConfig("add-reject");
     const before = readFileSync(config, "utf8");
 
-    const unknown = await runCliEnv(["agent", "add", "pi", "--yes"], { SKILLMUX_CONFIG: config });
+    const unknown = await runCliEnv(["agent", "add", "emacs", "--yes"], { SKILLMUX_CONFIG: config });
     expect(unknown.exitCode).not.toBe(0);
-    expect(unknown.stderr).toContain('unsupported agent "pi"');
+    expect(unknown.stderr).toContain('unsupported agent "emacs"');
 
     const noYes = await runCliEnv(["agent", "add", "codex"], { SKILLMUX_CONFIG: config });
     expect(noYes.exitCode).not.toBe(0);

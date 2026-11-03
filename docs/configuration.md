@@ -156,8 +156,16 @@ this list. You never name a directory yourself:
 |---|---|
 | `claude-code` | `~/.claude/skills` |
 | `codex` | `$CODEX_HOME/skills` (default `~/.codex/skills`) |
-| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes` | `~/.agents/skills` |
+| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes`, `pi`, `deepseek-harness`, `openclaw`, `cursor`, `amp`, `factory-droid`, `junie`, `roo-code`, `omp` | `~/.agents/skills` |
+| `grok-build` | `~/.grok/skills` |
+| `kiro` | `~/.kiro/skills` (IDE only) |
 | `antigravity` | `~/.gemini/config/skills` |
+
+Some agents read more than one directory. `openclaw` reads `~/.openclaw/skills`
+and `~/.agents/skills`, and the second is where Skillmux pins for it. Writing a
+skill to both would list it twice and trigger OpenClaw's precedence rules, so
+Skillmux picks the shared directory whenever an agent can read it and uses an
+agent's own directory only when it cannot.
 
 Agents that share a directory share one sync, so listing `opencode` and
 `hermes` together fills `~/.agents/skills` once. An unknown name fails config

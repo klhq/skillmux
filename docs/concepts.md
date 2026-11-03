@@ -121,7 +121,9 @@ instruction-file conventions:
 | --- | --- |
 | `claude-code` | `~/.claude/skills` |
 | `codex` | `$CODEX_HOME/skills` |
-| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes` | `~/.agents/skills` |
+| `opencode`, `github-copilot`, `windsurf`, `goose`, `hermes`, `pi`, `deepseek-harness`, `openclaw`, `cursor`, `amp`, `factory-droid`, `junie`, `roo-code`, `omp` | `~/.agents/skills` |
+| `grok-build` | `~/.grok/skills` |
+| `kiro` | `~/.kiro/skills` (IDE only) |
 | `antigravity` | `~/.gemini/config/skills` |
 
 Several agents read `~/.agents/skills`, so Skillmux syncs that directory once

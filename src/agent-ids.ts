@@ -10,6 +10,17 @@ export const SUPPORTED_AGENT_IDS = [
   "antigravity",
   "goose",
   "hermes",
+  "pi",
+  "openclaw",
+  "grok-build",
+  "deepseek-harness",
+  "cursor",
+  "amp",
+  "kiro",
+  "factory-droid",
+  "junie",
+  "roo-code",
+  "omp",
 ] as const;
 
 export type AgentId = (typeof SUPPORTED_AGENT_IDS)[number];

@@ -99,10 +99,10 @@ block only teaches resolve_skill/fetch_skill, which are MCP tools).
 --show-mcp-setup prints the MCP registration snippet to copy in yourself,
 for any agent, and also writes the instruction block for every selected
 agent. --register-mcp instead runs that agent's own CLI to register
-skillmux automatically, but only for claude-code and codex (the only
+skillmux automatically, but only for claude-code, codex, pi and amp (the only
 agents with a verified registration command), and writes the instruction
 block just for those; interactively, init asks about this only when
-you've selected one of those two. --no-instructions forces instruction
+you've selected one of those four. --no-instructions forces instruction
 writes off even when an MCP flag is set. A tool not in the agents list
 above isn't supported yet. Add it to SUPPORTED_AGENT_IDS rather than
 guessing a directory. Selected agents are written to "agents" in config.toml.
@@ -168,7 +168,11 @@ agents: ${SUPPORTED_AGENT_IDS.join(", ")}
 
 add/remove edit "agents" in config.toml. Each agent's skill directory is
 fixed, and agents that read the same directory share it: opencode,
-github-copilot, windsurf, goose and hermes all use ~/.agents/skills. remove
+github-copilot, windsurf, goose, hermes, pi, deepseek-harness, cursor, amp,
+factory-droid, junie, roo-code and omp all use ~/.agents/skills. kiro reads
+~/.kiro/skills, which only the Kiro IDE loads. openclaw reads ~/.openclaw/skills too but is pinned into
+~/.agents/skills only, so a skill never shows up twice. grok-build reads
+~/.grok/skills. remove
 leaves files in place. rehome re-points managed links after vault_path moves.`,
 
   core: `core: pin or unpin core-tier skills
