@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * **sync:** report dirty or locally ahead vaults, detached checkouts, and branches without an upstream as errors and exit non-zero after delivering existing skills. Unreachable remotes still warn and continue.
 
+## [1.20.2](https://github.com/klhq/skillmux/compare/v1.20.1...v1.20.2) (2026-11-05)
+
+
+### Fixed
+
+* **sync:** fail for unhealthy vault checkouts ([#264](https://github.com/klhq/skillmux/issues/264)) ([82d9603](https://github.com/klhq/skillmux/commit/82d96032ff96c27901738a4725bd91496c51921e))
+
 ## [1.20.1](https://github.com/klhq/skillmux/compare/v1.20.0...v1.20.1) (2026-11-03)
 
 
