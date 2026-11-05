@@ -48,6 +48,19 @@ async function runSyncWithEnv(
 }
 
 describe("skillmux sync with vault_url", () => {
+  test("a detached vault exits non-zero after delivering skills", async () => {
+    const machine = setup('agents = ["opencode"]\n');
+    git(machine.home, "clone", "--quiet", machine.remote.url, machine.vault);
+    git(machine.vault, "checkout", "--detach", "-q");
+    machine.remote.publish("remote.txt", "new\n");
+
+    const result = await runSync(machine, "--yes");
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(machine.vault);
+    expect(result.stderr).toContain("detached HEAD");
+    expect(lstatSync(join(machine.home, ".agents", "skills", "demo-skill")).isSymbolicLink()).toBe(true);
+  });
   test("a dirty vault reports an error after delivering skills", async () => {
     const machine = setup('agents = ["opencode"]\n');
     git(machine.home, "clone", "--quiet", machine.remote.url, machine.vault);
@@ -143,7 +156,7 @@ describe("skillmux sync with vault_url", () => {
     const { exitCode, stderr } = await runSync(machine, "--yes");
 
     expect(exitCode).toBe(0);
-    expect(stderr).toContain("git pull failed");
+    expect(stderr).toContain("git fetch failed");
     expect(lstatSync(join(machine.home, ".agents", "skills", "demo-skill")).isSymbolicLink()).toBe(true);
   });
 
@@ -176,6 +189,6 @@ describe("skillmux sync with vault_url", () => {
 
     const update = JSON.parse(failed.stdout).data.vault_update;
     expect(update.status).toBe("failed");
-    expect(update.warning).toContain("git pull failed");
+    expect(update.warning).toContain("git fetch failed");
   });
 });

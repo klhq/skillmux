@@ -368,8 +368,9 @@ skillmux sync [--dry-run] [--no-pull] [--restore-monolith] [--install-hook] [--y
 When `vault_url` is set in `config.toml`, it first clones the vault into
 `vault_path` or fast-forwards it from that remote; `--no-pull` skips that step.
 If the remote is unreachable, sync warns and delivers from the existing clone.
-If tracked files are modified or local commits prevent a fast-forward, sync
-delivers from the existing clone, reports the checkout problem, and exits 1.
+If tracked files are modified, local commits prevent a fast-forward, or the
+checkout has no upstream (including a detached HEAD), sync delivers from the
+existing clone, reports the checkout problem, and exits 1.
 Inspect the reported changes before discarding them; do not edit the vault.
 The same exit behavior applies when another command invokes sync. `--no-pull`
 skips the checkout check. `--dry-run` writes nothing and, with `vault_url`,

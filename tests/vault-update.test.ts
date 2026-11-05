@@ -9,6 +9,37 @@ afterEach(() => {
 });
 
 describe("updateVault", () => {
+  test("reports a detached HEAD as an error without changing it", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+    git(vaultPath, "checkout", "--detach", "-q");
+    const before = git(vaultPath, "rev-parse", "HEAD");
+    remote.publish("second.txt", "two\n");
+
+    const result = await updateVault({ vaultPath, vaultUrl: remote.url });
+
+    expect(result.error).toContain(vaultPath);
+    expect(result.error).toContain("detached HEAD");
+    expect(result.error).toContain("re-clone");
+    expect(git(vaultPath, "rev-parse", "HEAD")).toBe(before);
+  });
+
+  test("reports a branch without an upstream as an error without changing it", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+    git(vaultPath, "checkout", "-qb", "local-only");
+    const before = git(vaultPath, "rev-parse", "HEAD");
+    remote.publish("second.txt", "two\n");
+
+    const result = await updateVault({ vaultPath, vaultUrl: remote.url });
+
+    expect(result.error).toContain(vaultPath);
+    expect(result.error).toContain("branch local-only");
+    expect(result.error).toContain("tracking origin");
+    expect(git(vaultPath, "rev-parse", "HEAD")).toBe(before);
+  });
   test("clones vault_url into vault_path when vault_path does not exist", async () => {
     const remote = createRemote();
     const vaultPath = join(tempDir(), "vault");
@@ -69,7 +100,7 @@ describe("updateVault", () => {
     const result = await updateVault({ vaultPath, vaultUrl: remote.url });
 
     expect(result.status).toBe("failed");
-    expect(result.warning).toContain("git pull");
+    expect(result.warning).toContain("git fetch failed");
     expect(readFileSync(join(vaultPath, "first.txt"), "utf8")).toBe("one\n");
   });
 
