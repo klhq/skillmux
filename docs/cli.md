@@ -367,11 +367,18 @@ skillmux sync [--dry-run] [--no-pull] [--restore-monolith] [--install-hook] [--y
 `sync` applies the manifest to the skill directory of each configured agent.
 When `vault_url` is set in `config.toml`, it first clones the vault into
 `vault_path` or fast-forwards it from that remote; `--no-pull` skips that step.
-`--dry-run` writes nothing and, with `vault_url`, reports whether it would
-clone or update. With `--json`, `data.vault_update` carries `status`
+If the remote is unreachable, sync warns and delivers from the existing clone.
+If tracked files are modified, local commits prevent a fast-forward, or the
+checkout has no upstream (including a detached HEAD), sync delivers from the
+existing clone, reports the checkout problem, and exits 1.
+Inspect the reported changes before discarding them; do not edit the vault.
+The same exit behavior applies when another command invokes sync. `--no-pull`
+skips the checkout check. `--dry-run` writes nothing and, with `vault_url`,
+reports whether it would clone or update without checking the checkout state.
+With `--json`, `data.vault_update` carries `status`
 (`cloned`, `updated`, `up-to-date`, `skipped` or `failed`) plus `reason`
 (`no-vault-url`, `no-agents`, `no-pull`, `dry-run` or `nested`), `would` or
-`warning` when they apply. See
+`warning` or `error` when they apply. See
 [Vault remote](configuration.md#vault-remote) and
 [Synchronize agent directories](skill-management.md#synchronize-agent-directories).
 

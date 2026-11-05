@@ -46,7 +46,7 @@ export function startVaultPuller(options: VaultPullerOptions): VaultPuller {
       } catch (error) {
         result = { status: "failed", warning: error instanceof Error ? error.message : String(error) };
       }
-      if (result.warning) warn(`vault pull: ${result.warning}`);
+      if (result.error || result.warning) warn(`vault pull: ${result.error ?? result.warning}`);
       if (result.status === "cloned" || result.status === "updated") {
         try {
           await resync();
