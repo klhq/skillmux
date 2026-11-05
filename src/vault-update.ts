@@ -10,6 +10,8 @@ export interface VaultUpdateResult {
   status: VaultUpdateStatus;
   /** Set when the vault could not be brought current; sync carries on with whatever is on disk. */
   warning?: string;
+  /** A checkout problem that should make sync fail after delivering existing skills. */
+  error?: string;
 }
 
 export interface VaultUpdateParams {
@@ -67,9 +69,19 @@ export async function updateVault(params: VaultUpdateParams): Promise<VaultUpdat
   await assertVaultTarget(params);
   if (existsSync(join(vaultPath, ".git"))) {
     const dirty = await runGit(["status", "--porcelain", "--untracked-files=no"], vaultPath);
+    const fetch = await runGit(["fetch", "--quiet"], vaultPath);
+    const counts = await runGit(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], vaultPath);
+    const match = counts.ok ? /^(\d+)\s+(\d+)$/.exec(counts.stdout) : null;
+    const distance = match ? `${match[1]} ahead, ${match[2]} behind ${fetch.ok ? "origin" : "last fetched upstream"}` : "upstream distance unknown";
+    const quotedPath = `'${vaultPath.replaceAll("'", "'\\''")}'`;
+    const fix = `Don't edit the vault. Inspect with git -C ${quotedPath} diff; if changes are disposable, use git -C ${quotedPath} checkout -- . or reset to origin.`;
     if (dirty.stdout !== "") {
-      return { status: "failed", warning: `${vaultPath} has uncommitted changes; not updating it` };
+      return { status: "failed", error: `${vaultPath} has uncommitted changes:\n${dirty.stdout}\n${distance}. ${fix}` };
     }
+    if (match && Number(match[1]) > 0) {
+      return { status: "failed", error: `${vaultPath} cannot fast-forward: ${distance}. ${fix}` };
+    }
+    if (!fetch.ok) return { status: "failed", warning: `git pull failed in ${vaultPath}: ${fetch.stderr}` };
     const before = await runGit(["rev-parse", "HEAD"], vaultPath);
     const pull = await runGit(["pull", "--ff-only", "--quiet"], vaultPath);
     if (!pull.ok) return { status: "failed", warning: `git pull failed in ${vaultPath}: ${pull.stderr}` };

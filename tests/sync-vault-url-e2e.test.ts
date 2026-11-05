@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { cleanupTempDirs, createRemote, tempDir } from "./git-remote-fixture";
+import { cleanupTempDirs, createRemote, git, tempDir } from "./git-remote-fixture";
 
 const CLI_PATH = join(process.cwd(), "src/cli.ts");
 
@@ -48,6 +48,53 @@ async function runSyncWithEnv(
 }
 
 describe("skillmux sync with vault_url", () => {
+  test("a dirty vault reports an error after delivering skills", async () => {
+    const machine = setup('agents = ["opencode"]\n');
+    git(machine.home, "clone", "--quiet", machine.remote.url, machine.vault);
+    writeFileSync(join(machine.vault, "first.txt"), "local edit\n");
+    machine.remote.publish("remote.txt", "new\n");
+
+    const result = await runSync(machine, "--yes");
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(machine.vault);
+    expect(result.stderr).toContain("first.txt");
+    expect(result.stderr).toContain("behind");
+    expect(lstatSync(join(machine.home, ".agents", "skills", "demo-skill")).isSymbolicLink()).toBe(true);
+  });
+
+  test("a diverged vault reports counts after delivering skills", async () => {
+    const machine = setup('agents = ["opencode"]\n');
+    git(machine.home, "clone", "--quiet", machine.remote.url, machine.vault);
+    writeFileSync(join(machine.vault, "local.txt"), "local\n");
+    git(machine.vault, "add", "local.txt");
+    git(machine.vault, "commit", "-qm", "local");
+    machine.remote.publish("remote.txt", "remote\n");
+    const result = await runSync(machine, "--yes");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(machine.vault);
+    expect(result.stderr).toContain("1 ahead, 1 behind");
+    expect(result.stderr).toContain("git -C");
+    expect(lstatSync(join(machine.home, ".agents", "skills", "demo-skill")).isSymbolicLink()).toBe(true);
+  });
+
+  test("JSON reports a vault error and exits non-zero after delivery", async () => {
+    const machine = setup('agents = ["opencode"]\n');
+    git(machine.home, "clone", "--quiet", machine.remote.url, machine.vault);
+    writeFileSync(join(machine.vault, "first.txt"), "local\n");
+    const result = await runSync(machine, "--json", "--yes");
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout).data.vault_update.error).toContain("first.txt");
+    expect(lstatSync(join(machine.home, ".agents", "skills", "demo-skill")).isSymbolicLink()).toBe(true);
+  });
+
+  test("dry-run and no-pull skip checking a dirty vault", async () => {
+    const machine = setup('agents = ["opencode"]\n');
+    git(machine.home, "clone", "--quiet", machine.remote.url, machine.vault);
+    writeFileSync(join(machine.vault, "first.txt"), "local\n");
+    expect((await runSync(machine, "--dry-run", "--yes")).exitCode).toBe(0);
+    expect((await runSync(machine, "--no-pull", "--yes")).exitCode).toBe(0);
+  });
   test("clones the vault and delivers its core skills to the agent directory in one command", async () => {
     const machine = setup('agents = ["opencode"]\n');
 

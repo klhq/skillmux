@@ -83,7 +83,9 @@ describe("updateVault", () => {
     const result = await updateVault({ vaultPath, vaultUrl: remote.url });
 
     expect(result.status).toBe("failed");
-    expect(result.warning).toContain("uncommitted");
+    expect(result.error).toContain("uncommitted");
+    expect(result.error).toContain("first.txt");
+    expect(result.error).toContain("1 behind");
     expect(readFileSync(join(vaultPath, "first.txt"), "utf8")).toBe("hand edit\n");
     expect(existsSync(join(vaultPath, "second.txt"))).toBe(false);
   });
@@ -101,8 +103,31 @@ describe("updateVault", () => {
     const result = await updateVault({ vaultPath, vaultUrl: remote.url });
 
     expect(result.status).toBe("failed");
+    expect(result.error).toContain("1 ahead, 1 behind");
     expect(git(vaultPath, "rev-parse", "HEAD")).toBe(before);
     expect(existsSync(join(vaultPath, "second.txt"))).toBe(false);
+  });
+
+  test("reports local commits even when the remote has not moved", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+    writeFileSync(join(vaultPath, "local.txt"), "local\n");
+    git(vaultPath, "add", "local.txt");
+    git(vaultPath, "commit", "-qm", "local");
+    const result = await updateVault({ vaultPath, vaultUrl: remote.url });
+    expect(result.error).toContain("1 ahead, 0 behind");
+  });
+
+  test("a dirty checkout remains an error when origin is unreachable", async () => {
+    const remote = createRemote();
+    const vaultPath = join(tempDir(), "vault");
+    await updateVault({ vaultPath, vaultUrl: remote.url });
+    writeFileSync(join(vaultPath, "first.txt"), "local\n");
+    rmSync(remote.url.replace("file://", ""), { recursive: true, force: true });
+    const result = await updateVault({ vaultPath, vaultUrl: remote.url });
+    expect(result.error).toContain("first.txt");
+    expect(result.error).toContain("last fetched upstream");
   });
 
   test("refuses a vault_url whose host is not in [egress] allowed_hosts before touching the network", async () => {

@@ -251,7 +251,10 @@ export async function runSync(args: string[]): Promise<void> {
 
   const vaultUpdate = await refreshVault(config, { dryRun, noPull });
   if (vaultUpdate.status === "failed") {
-    if (!isJson) warn(vaultUpdate.warning ?? "could not update the vault");
+    if (vaultUpdate.error) {
+      process.exitCode = 1;
+      if (!isJson) console.error(`error: ${vaultUpdate.error}`);
+    } else if (!isJson) warn(vaultUpdate.warning ?? "could not update the vault");
   } else if (vaultUpdate.status === "skipped") {
     if (vaultUpdate.reason === "no-agents") log?.(`${cyan("note:")} ${NO_AGENTS_NOTE}`);
     if (vaultUpdate.reason === "nested") {
